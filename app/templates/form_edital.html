@@ -1,47 +1,48 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <div class="card shadow mx-auto" style="max-width: 600px;">
-        <div class="card-header bg-primary text-white">
-            <h3 class="mb-0">
-                <i class="fas fa-file-signature"></i>
-                {% if edital %}Editar Edital{% else %}Novo Edital{% endif %}
-            </h3>
-        </div>
-        <div class="card-body p-4">
-            <form method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Número do Edital <span class="text-danger">*</span></label>
-                    <input type="number" class="form-control" name="nu_edital"
-                           value="{{ edital.NU_EDITAL if edital }}" required>
-                </div>
+    <a href="{{ url_for('edital.lista_editais') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
 
-                <div class="mb-3">
-                    <label class="form-label">Ano <span class="text-danger">*</span></label>
-                    <input type="number" class="form-control" name="ano"
-                           min="2000" max="{{ current_year }}"
-                           value="{{ edital.ANO if edital }}" required>
-                </div>
+    <div class="form-container">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    {% if edital %}Editar Edital{% else %}Novo Edital{% endif %}
+                </h3>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Número do Edital <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="nu_edital"
+                               value="{{ edital.NU_EDITAL if edital }}" required>
+                    </div>
 
-                <div class="mb-4">
-                    <label class="form-label">Descrição <span class="text-danger">*</span></label>
-                    <textarea class="form-control" name="descricao"
-                              rows="3" maxlength="100" required>{{ edital.DESCRICAO if edital }}</textarea>
-                </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ano <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="ano"
+                               min="2000" max="{{ current_year }}"
+                               value="{{ edital.ANO if edital }}" required>
+                    </div>
 
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                    <a href="{{ url_for('edital.lista_editais') }}" class="btn btn-secondary">
-                        <i class="fas fa-times"></i> Cancelar
-                    </a>
-                    <button type="submit" class="btn btn-success">
-                        {% if edital %}
-                            <i class="fas fa-save"></i> Salvar
-                        {% else %}
-                            <i class="fas fa-check-circle"></i> Cadastrar
-                        {% endif %}
-                    </button>
-                </div>
-            </form>
+                    <div class="mb-4">
+                        <label class="form-label">Descrição <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="descricao"
+                                  rows="3" maxlength="100" required>{{ edital.DESCRICAO if edital }}</textarea>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('edital.lista_editais') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            {% if edital %}Salvar{% else %}Cadastrar{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 {% endblock %}

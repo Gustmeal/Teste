@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Cadastro - GEINC</title>
+    <title>Sistema de Editais</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -14,25 +13,12 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('edital.index') }}">
-                <i class="fas fa-file-contract"></i>
-                EMGEA GEINC
+                <!-- Logo EMGEA foi removido conforme solicitado -->
+                emgea
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <div class="navbar-nav">
-                    <a class="nav-link" href="{{ url_for('edital.lista_editais') }}">
-                        <i class="fas fa-list"></i> Editais
-                    </a>
-                    <a class="nav-link" href="{{ url_for('periodo.lista_periodos') }}">
-                        <i class="fas fa-calendar-alt"></i> Períodos
-                    </a>
-                </div>
-            </div>
         </div>
     </nav>
 
@@ -51,18 +37,18 @@
         {% block content %}{% endblock %}
     </div>
 
+    <footer class="py-3">
+        <div class="container text-center">
+            <span>
+                Sistema de Cadastro • {{ current_year }}
+            </span>
+        </div>
+    </footer>
+
     <!-- Botão de alternância de tema -->
     <div class="theme-toggle" id="themeToggle">
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
-
-    <footer class="py-3">
-        <div class="container text-center">
-            <span class="text-muted">
-                Sistema de Cadastro • EMGEA • {{ current_year }}
-            </span>
-        </div>
-    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
