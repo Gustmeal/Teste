@@ -1,0 +1,378 @@
+/* Variáveis de tema baseadas na imagem do Power BI */
+:root {
+  /* Cores principais */
+  --primary-color: #5b6fb5;      /* Azul do cabeçalho */
+  --secondary-color: #595959;    /* Cinza escuro */
+  --card-gray: #7a7a7a;          /* Cinza dos cards */
+  --card-purple: #b3a2f7;        /* Roxo dos cards */
+  --card-green: #c1f576;         /* Verde dos cards */
+  --bg-color: #f0f0f0;           /* Fundo geral */
+  --card-bg: #ffffff;            /* Fundo dos cards */
+  --text-color: #333333;         /* Cor do texto principal */
+  --text-muted: #666666;         /* Cor do texto secundário */
+  --border-color: rgba(0, 0, 0, 0.1);
+  --table-header-bg: #f5f5f5;    /* Fundo do cabeçalho da tabela */
+  --table-border: #dddddd;       /* Borda da tabela */
+  --shadow-color: rgba(0, 0, 0, 0.15);
+  --border-radius: 8px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 5px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 5px 15px rgba(0, 0, 0, 0.1);
+  --transition: all 0.3s ease;
+}
+
+/* Tema escuro (mantemos para referência) */
+[data-theme="dark"] {
+  --primary-color: #6c7dd0;      /* Azul mais claro */
+  --secondary-color: #a0a0a0;    /* Cinza mais claro */
+  --card-gray: #555555;          /* Cinza escuro */
+  --card-purple: #9985e6;        /* Roxo mais escuro */
+  --card-green: #a0d456;         /* Verde mais escuro */
+  --bg-color: #1e293b;
+  --card-bg: #0f172a;
+  --text-color: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --table-header-bg: #2e3a4f;
+  --table-border: #3a4a65;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Estilo base */
+body {
+  background-color: var(--bg-color);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  color: var(--text-color);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.5;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.container {
+  flex: 1;
+  padding-bottom: 80px;
+}
+
+/* Navbar customização - Power BI style */
+.navbar {
+  box-shadow: var(--shadow-md);
+  padding: 0.8rem 0;
+  background-color: var(--primary-color) !important;
+}
+
+.navbar-brand {
+  font-weight: 600;
+  font-size: 1.3rem;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+  padding: 0.5rem 0.8rem;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Estilo de cards - baseado na imagem do Power BI */
+.card {
+  border: none;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  transition: var(--transition);
+  overflow: hidden;
+  background-color: var(--card-bg);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-3px);
+}
+
+.card-header {
+  font-weight: 600;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.card-header.bg-primary {
+  background: var(--primary-color) !important;
+}
+
+/* Cards da página inicial */
+.home-card {
+  height: 100%;
+  transition: all 0.3s ease;
+}
+
+.home-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.home-card .card-body {
+  padding: 2rem;
+}
+
+.home-card h3 {
+  color: var(--primary-color);
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* Botões no estilo Power BI */
+.btn {
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  transition: var(--transition);
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: #4959a0;  /* Um pouco mais escuro */
+  border-color: #4959a0;
+  transform: translateY(-1px);
+}
+
+.btn-success {
+  background-color: var(--card-green);
+  border-color: var(--card-green);
+  color: #333;
+}
+
+.btn-success:hover {
+  background-color: #a0d456;
+  border-color: #a0d456;
+  color: #333;
+  transform: translateY(-1px);
+}
+
+.btn-outline-warning {
+  color: #8667d9;
+  border-color: var(--card-purple);
+}
+
+.btn-outline-warning:hover {
+  background-color: var(--card-purple);
+  color: #333;
+}
+
+.btn-outline-danger {
+  color: #dc2626;
+  border-color: #ef4444;
+}
+
+.btn-outline-danger:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* Tabelas no estilo Power BI */
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  color: var(--text-color);
+}
+
+.table-responsive {
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  background-color: var(--card-bg);
+}
+
+.table-hover tbody tr:hover {
+  background-color: rgba(179, 162, 247, 0.1);  /* Leve tom roxo ao passar o mouse */
+}
+
+.table th, .table td {
+  padding: 0.8rem 1rem;
+  vertical-align: middle;
+  border-color: var(--table-border);
+}
+
+.table thead {
+  background-color: var(--table-header-bg);
+}
+
+.table thead th {
+  font-weight: 600;
+  color: var(--text-color);
+  border-bottom: 1px solid var(--table-border);
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--table-border);
+}
+
+/* Formulários */
+.form-control, .form-select {
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  transition: var(--transition);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--card-purple);
+  box-shadow: 0 0 0 0.25rem rgba(179, 162, 247, 0.25);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+}
+
+.form-label {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+/* Alertas */
+.alert {
+  border-radius: var(--border-radius);
+  border: none;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.alert-success {
+  background-color: rgba(193, 245, 118, 0.2);
+  color: #2f6f1f;
+}
+
+.alert-danger {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+}
+
+.alert-warning {
+  background-color: rgba(179, 162, 247, 0.15);
+  color: #5538c8;
+}
+
+/* Modals */
+.modal-content {
+  border-radius: var(--border-radius);
+  border: none;
+  box-shadow: var(--shadow-lg);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border-color);
+  padding: 1.25rem;
+}
+
+.modal-header.bg-danger {
+  background-color: var(--card-purple) !important;
+  color: #333;
+}
+
+/* Pesquisa */
+.search-container {
+  position: relative;
+  margin-bottom: 1.5rem;
+}
+
+.search-input {
+  padding-left: 2.5rem;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  transition: var(--transition);
+  width: 100%;
+  padding: 0.6rem 0.75rem 0.6rem 2.5rem;
+  background-color: var(--card-bg);
+  color: var(--text-color);
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--secondary-color);
+  opacity: 0.7;
+}
+
+.search-input:focus {
+  border-color: var(--card-purple);
+  box-shadow: 0 0 0 0.25rem rgba(179, 162, 247, 0.25);
+}
+
+.search-input:focus + .search-icon {
+  color: var(--card-purple);
+}
+
+/* Footer */
+footer {
+  padding: 1.5rem 0;
+  background-color: var(--card-bg);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  margin-top: auto;
+}
+
+/* Botão de alternar tema */
+.theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background-color: var(--card-purple);
+  color: #333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  z-index: 1000;
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}
+
+.theme-toggle i {
+  font-size: 1.5rem;
+  margin-right: 0;
+}
+
+/* Animações */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.main-content {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Adaptações para tema escuro */
+[data-theme="dark"] .btn-success {
+  color: #222;
+}
+
+[data-theme="dark"] .btn-outline-warning:hover {
+  color: #222;
+}
+
+.text-muted {
+  color: var(--text-muted) !important;
+}

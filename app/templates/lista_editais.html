@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold"><i class="fas fa-file-alt"></i> Editais Cadastrados</h1>
+        <a href="{{ url_for('edital.novo_edital') }}" class="btn btn-success">
+            <i class="fas fa-plus-circle"></i> Novo Edital
+        </a>
+    </div>
+
+    <!-- Adicionar barra de pesquisa -->
+    <div class="search-container mb-4">
+        <input type="text" id="editaisSearch" class="form-control search-input" placeholder="Pesquisar editais...">
+        <i class="fas fa-search search-icon"></i>
+    </div>
+
+    <div class="card shadow">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="editaisTable">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Ano</th>
+                        <th>Descrição</th>
+                        <th>Criação</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for edital in editais %}
+                    <tr>
+                        <td class="fw-bold">{{ edital.NU_EDITAL }}</td>
+                        <td>{{ edital.ANO }}</td>
+                        <td>{{ edital.DESCRICAO }}</td>
+                        <td>{{ edital.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('edital.editar_edital', id=edital.ID) }}"
+                               class="btn btn-sm btn-outline-warning me-1">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <button class="btn btn-sm btn-outline-danger"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalExclusao{{ edital.ID }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+
+                    <!-- Modal de Confirmação -->
+                    <div class="modal fade" id="modalExclusao{{ edital.ID }}">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header bg-danger text-white">
+                                    <h5 class="modal-title">Confirmar Exclusão</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="mb-0">Deseja arquivar o edital <strong>{{ edital.NU_EDITAL }}</strong>?</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                    <a href="{{ url_for('edital.excluir_edital', id=edital.ID) }}"
+                                       class="btn btn-danger">Confirmar</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-3"></i>
+                            <p class="mb-0">Nenhum edital cadastrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div class="card shadow-lg mx-auto" style="max-width: 600px;">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0">
+                <i class="fas fa-calendar-plus"></i>
+                {% if periodo %}Editar{% else %}Novo{% endif %} Período
+            </h3>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Edital <span class="text-danger">*</span></label>
+                    <select class="form-select" name="edital" required>
+                        {% for edital in editais %}
+                            <option value="{{ edital.NU_EDITAL }}"
+                                {% if periodo and periodo.edital.NU_EDITAL == edital.NU_EDITAL %}selected{% endif %}>
+                                {{ edital.NU_EDITAL }} - {{ edital.DESCRICAO }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Data Início <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="dt_inicio"
+                           value="{{ periodo.DT_INICIO.strftime('%Y-%m-%d') if periodo }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Data Término <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="dt_fim"
+                           value="{{ periodo.DT_FIM.strftime('%Y-%m-%d') if periodo }}" required>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('periodo.lista_periodos') }}" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        {% if periodo %}
+                            <i class="fas fa-save"></i> Salvar
+                        {% else %}
+                            <i class="fas fa-check-circle"></i> Cadastrar
+                        {% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+{% endblock %}
