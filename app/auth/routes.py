@@ -36,6 +36,44 @@ def login():
     return render_template('auth/login.html')
 
 
+@auth_bp.route('/registrar', methods=['GET', 'POST'])
+def registrar():
+    if current_user.is_authenticated:
+        return redirect(url_for('edital.index'))
+
+    if request.method == 'POST':
+        try:
+            email = request.form['email']
+
+            # Verificar se o e-mail já existe
+            usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
+            if usuario_existente:
+                flash('Este e-mail já está cadastrado.', 'danger')
+                return render_template('auth/registrar.html')
+
+            novo_usuario = Usuario(
+                NOME=request.form['nome'],
+                EMAIL=email,
+                PERFIL='usuario'  # Por padrão, novos registros são usuários comuns
+            )
+            novo_usuario.set_senha(request.form['senha'])
+
+            db.session.add(novo_usuario)
+            db.session.commit()
+
+            # Fazer login automático após o registro
+            user_login = UserLogin(novo_usuario.ID, novo_usuario.EMAIL, novo_usuario.NOME, novo_usuario.PERFIL)
+            login_user(user_login)
+
+            flash('Conta criada com sucesso!', 'success')
+            return redirect(url_for('edital.index'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao criar conta: {str(e)}', 'danger')
+
+    return render_template('auth/registrar.html')
+
+
 @auth_bp.route('/logout')
 @login_required
 def logout():

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Sistema de Editais</title>
+    <title>Criar Conta - Sistema de Editais</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         .login-container {
-            max-width: 400px;
-            margin: 80px auto;
+            max-width: 450px;
+            margin: 60px auto;
             background-color: rgba(255, 255, 255, 0.85);
             border-radius: 12px;
             padding: 30px;
@@ -24,7 +24,7 @@
 
         .login-logo {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .login-title {
@@ -37,7 +37,7 @@
         .login-input {
             border-radius: 50px;
             padding: 12px 20px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             border: 1px solid var(--border-color);
             background-color: rgba(255, 255, 255, 0.7);
         }
@@ -45,13 +45,6 @@
         .login-input:focus {
             box-shadow: 0 0 0 0.25rem rgba(108, 99, 255, 0.25);
             border-color: var(--primary-color);
-        }
-
-        .input-group-text {
-            border-radius: 0 50px 50px 0;
-            background-color: rgba(255, 255, 255, 0.7);
-            border: 1px solid var(--border-color);
-            border-left: none;
         }
 
         .login-btn {
@@ -74,22 +67,10 @@
             background-color: rgba(40, 40, 50, 0.9);
         }
 
-        [data-theme="dark"] .login-input,
-        [data-theme="dark"] .input-group-text {
+        [data-theme="dark"] .login-input {
             background-color: rgba(60, 60, 70, 0.7);
             border-color: rgba(255, 255, 255, 0.1);
             color: #e2e8f0;
-        }
-
-        .register-link {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        [data-theme="dark"] .register-link {
-            border-top-color: rgba(255, 255, 255, 0.1);
         }
     </style>
 </head>
@@ -98,7 +79,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show mx-auto mt-4" style="max-width: 400px;">
+                    <div class="alert alert-{{ category }} alert-dismissible fade show mx-auto mt-4" style="max-width: 450px;">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -110,31 +91,26 @@
             <div class="login-logo">
                 <h1 class="display-4 text-primary mb-0">emgea</h1>
             </div>
-            <h2 class="login-title">Acesso ao Sistema</h2>
-            <form method="POST" action="{{ url_for('auth.login') }}">
+            <h2 class="login-title">Criar Nova Conta</h2>
+            <form method="POST" action="{{ url_for('auth.registrar') }}">
                 <div class="mb-3">
-                    <input type="email" class="form-control login-input" name="email" placeholder="E-mail" required autofocus>
+                    <input type="text" class="form-control login-input" name="nome" placeholder="Nome completo" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <input type="email" class="form-control login-input" name="email" placeholder="E-mail" required>
                 </div>
                 <div class="mb-4">
-                    <div class="input-group">
-                        <input type="password" class="form-control login-input" id="senha" name="senha" placeholder="Senha" required>
-                        <span class="input-group-text" onclick="togglePassword()">
-                            <i class="fa fa-eye-slash" id="toggleIcon"></i>
-                        </span>
-                    </div>
+                    <input type="password" class="form-control login-input" name="senha" placeholder="Senha" required>
                 </div>
                 <div class="d-grid">
                     <button type="submit" class="btn btn-primary login-btn">
-                        Entrar <i class="fas fa-arrow-right ms-2"></i>
+                        Criar Conta <i class="fas fa-user-plus ms-2"></i>
                     </button>
                 </div>
             </form>
-
-            <div class="register-link">
-                <p class="mb-1 text-muted">Não tem uma conta?</p>
-                <a href="{{ url_for('auth.registrar') }}" class="btn btn-outline-primary">
-                    <i class="fas fa-user-plus me-1"></i> Criar Conta
-                </a>
+            <div class="text-center mt-3">
+                <p class="mb-0 text-muted">Já tem uma conta?</p>
+                <a href="{{ url_for('auth.login') }}" class="text-primary fw-bold">Fazer Login</a>
             </div>
         </div>
     </div>
@@ -151,21 +127,6 @@
     <div class="theme-toggle" id="themeToggle">
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
-
-    <script>
-        function togglePassword() {
-            const passwordInput = document.getElementById('senha');
-            const toggleIcon = document.getElementById('toggleIcon');
-
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleIcon.className = 'fa fa-eye';
-            } else {
-                passwordInput.type = 'password';
-                toggleIcon.className = 'fa fa-eye-slash';
-            }
-        }
-    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
