@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container">
+    <a href="{{ url_for('edital.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Usuários do Sistema</h1>
+        <a href="{{ url_for('auth.novo_usuario') }}" class="btn btn-light">
+            <i class="fas fa-plus"></i> Novo Usuário
+        </a>
+    </div>
+
+    <!-- Barra de pesquisa -->
+    <div class="search-container mb-4">
+        <input type="text" id="usuariosSearch" class="form-control search-input" placeholder="Pesquisar usuários">
+        <i class="fas fa-search search-icon"></i>
+    </div>
+
+    <div class="card shadow">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="usuariosTable">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>E-mail</th>
+                        <th>Perfil</th>
+                        <th>Status</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for usuario in usuarios %}
+                    <tr>
+                        <td class="fw-bold">{{ usuario.NOME }}</td>
+                        <td>{{ usuario.EMAIL }}</td>
+                        <td>
+                            {% if usuario.PERFIL == 'admin' %}
+                            <span class="badge bg-primary">Administrador</span>
+                            {% else %}
+                            <span class="badge bg-info text-dark">Usuário</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if usuario.ATIVO %}
+                            <span class="badge bg-success">Ativo</span>
+                            {% else %}
+                            <span class="badge bg-danger">Inativo</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('auth.editar_usuario', id=usuario.ID) }}"
+                               class="btn btn-sm btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="javascript:void(0);"
+                               onclick="if(confirm('Deseja remover o usuário {{ usuario.NOME }}?')) location.href='{{ url_for('auth.excluir_usuario', id=usuario.ID) }}';"
+                               class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">
+                            <i class="fas fa-users fa-2x mb-3"></i>
+                            <p class="mb-0">Nenhum usuário cadastrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

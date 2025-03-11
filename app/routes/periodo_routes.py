@@ -3,17 +3,23 @@ from app.models.periodo import PeriodoAvaliacao
 from app.models.edital import Edital
 from app import db
 from datetime import datetime
+from flask_login import login_required
 
 periodo_bp = Blueprint('periodo', __name__)
 
+@periodo_bp.context_processor
+def inject_current_year():
+    return {'current_year': datetime.utcnow().year}
 
 @periodo_bp.route('/periodos')
+@login_required
 def lista_periodos():
     periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
     return render_template('lista_periodos.html', periodos=periodos)
 
 
 @periodo_bp.route('/periodos/novo', methods=['GET', 'POST'])
+@login_required
 def novo_periodo():
     editais = Edital.query.filter(Edital.DELETED_AT == None).all()
 
@@ -58,6 +64,7 @@ def novo_periodo():
 
 
 @periodo_bp.route('/periodos/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
 def editar_periodo(id):
     periodo = PeriodoAvaliacao.query.get_or_404(id)
     editais = Edital.query.filter(Edital.DELETED_AT == None).all()
@@ -94,6 +101,7 @@ def editar_periodo(id):
 
 
 @periodo_bp.route('/periodos/excluir/<int:id>')
+@login_required
 def excluir_periodo(id):
     try:
         periodo = PeriodoAvaliacao.query.get_or_404(id)

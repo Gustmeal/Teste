@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('auth.lista_usuarios') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    {% if usuario %}Editar Usuário{% else %}Novo Usuário{% endif %}
+                </h3>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Nome <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="nome"
+                               value="{{ usuario.NOME if usuario }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">E-mail <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" name="email"
+                               value="{{ usuario.EMAIL if usuario }}"
+                               {% if usuario %}readonly{% endif %} required>
+                        {% if usuario %}
+                        <small class="text-muted">O e-mail não pode ser alterado após o cadastro.</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Senha {% if not usuario %}<span class="text-danger">*</span>{% endif %}</label>
+                        <input type="password" class="form-control" name="senha"
+                               {% if not usuario %}required{% endif %}>
+                        {% if usuario %}
+                        <small class="text-muted">Deixe em branco para manter a senha atual.</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Perfil <span class="text-danger">*</span></label>
+                        <select class="form-select" name="perfil" required>
+                            <option value="usuario" {% if usuario and usuario.PERFIL == 'usuario' %}selected{% endif %}>
+                                Usuário Padrão
+                            </option>
+                            <option value="admin" {% if usuario and usuario.PERFIL == 'admin' %}selected{% endif %}>
+                                Administrador
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('auth.lista_usuarios') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            {% if usuario %}Salvar{% else %}Cadastrar{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

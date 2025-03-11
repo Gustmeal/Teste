@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container">
+    <a href="{{ url_for('edital.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h3 class="mb-0" style="color: white !important; font-weight: 600;">Meu Perfil</h3>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Nome</label>
+                    <input type="text" class="form-control" name="nome" value="{{ usuario.NOME }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">E-mail</label>
+                    <input type="email" class="form-control" value="{{ usuario.EMAIL }}" readonly>
+                    <small class="text-muted">O e-mail não pode ser alterado.</small>
+                </div>
+
+                <hr class="my-4">
+                <h5 class="mb-3">Alterar Senha</h5>
+
+                <div class="mb-3">
+                    <label class="form-label">Senha Atual</label>
+                    <input type="password" class="form-control" name="senha_atual">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Nova Senha</label>
+                    <input type="password" class="form-control" name="nova_senha">
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-success">
+                        Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, redirect, url_for, request, flash
 from app.models.edital import Edital
 from app import db
 from datetime import datetime
+from flask_login import login_required
 
 edital_bp = Blueprint('edital', __name__)
 
@@ -10,15 +11,18 @@ def inject_current_year():
     return {'current_year': datetime.utcnow().year}
 
 @edital_bp.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @edital_bp.route('/editais')
+@login_required
 def lista_editais():
     editais = Edital.query.filter(Edital.DELETED_AT == None).all()
     return render_template('lista_editais.html', editais=editais)
 
 @edital_bp.route('/editais/novo', methods=['GET', 'POST'])
+@login_required
 def novo_edital():
     if request.method == 'POST':
         try:
@@ -37,6 +41,7 @@ def novo_edital():
     return render_template('form_edital.html')
 
 @edital_bp.route('/editais/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
 def editar_edital(id):
     edital = Edital.query.get_or_404(id)
     if request.method == 'POST':
@@ -53,6 +58,7 @@ def editar_edital(id):
     return render_template('form_edital.html', edital=edital)
 
 @edital_bp.route('/editais/excluir/<int:id>')
+@login_required
 def excluir_edital(id):
     try:
         edital = Edital.query.get_or_404(id)
