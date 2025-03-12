@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('edital.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Logs de Auditoria</h1>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('audit.index') }}" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Usuário</label>
+                    <select name="usuario_id" class="form-select">
+                        <option value="">Todos</option>
+                        {% for usuario in usuarios %}
+                        <option value="{{ usuario.ID }}" {% if usuario_id == usuario.ID|string %}selected{% endif %}>
+                            {{ usuario.NOME }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Entidade</label>
+                    <select name="entidade" class="form-select">
+                        <option value="">Todas</option>
+                        <option value="edital" {% if entidade == 'edital' %}selected{% endif %}>Edital</option>
+                        <option value="periodo" {% if entidade == 'periodo' %}selected{% endif %}>Período</option>
+                        <option value="usuario" {% if entidade == 'usuario' %}selected{% endif %}>Usuário</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Ação</label>
+                    <select name="acao" class="form-select">
+                        <option value="">Todas</option>
+                        <option value="criar" {% if acao == 'criar' %}selected{% endif %}>Criação</option>
+                        <option value="editar" {% if acao == 'editar' %}selected{% endif %}>Edição</option>
+                        <option value="excluir" {% if acao == 'excluir' %}selected{% endif %}>Exclusão</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Data inicial</label>
+                    <input type="date" name="data_inicio" class="form-control" value="{{ data_inicio }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Data final</label>
+                    <input type="date" name="data_fim" class="form-control" value="{{ data_fim }}">
+                </div>
+                <div class="col-12 text-end">
+                    <a href="{{ url_for('audit.index') }}" class="btn btn-secondary me-2">Limpar</a>
+                    <button type="submit" class="btn btn-primary">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela de logs -->
+    <div class="card shadow">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="auditTable">
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Usuário</th>
+                        <th>Ação</th>
+                        <th>Entidade</th>
+                        <th>Descrição</th>
+                        <th class="text-center">Detalhes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.DATA.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                        <td>{{ log.USUARIO_NOME }}</td>
+                        <td>
+                            {% if log.ACAO == 'criar' %}
+                            <span class="badge bg-success">Criação</span>
+                            {% elif log.ACAO == 'editar' %}
+                            <span class="badge bg-warning text-dark">Edição</span>
+                            {% elif log.ACAO == 'excluir' %}
+                            <span class="badge bg-danger">Exclusão</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ log.ACAO }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.ENTIDADE == 'edital' %}
+                            <span class="badge bg-info text-dark">Edital</span>
+                            {% elif log.ENTIDADE == 'periodo' %}
+                            <span class="badge bg-primary">Período</span>
+                            {% elif log.ENTIDADE == 'usuario' %}
+                            <span class="badge bg-dark">Usuário</span>
+                            {% else %}
+                            <span class="badge bg-secondary">{{ log.ENTIDADE }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.DESCRICAO }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('audit.detalhes', id=log.ID) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-search"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted">
+                            <i class="fas fa-history fa-2x mb-3"></i>
+                            <p class="mb-0">Nenhum log de auditoria encontrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

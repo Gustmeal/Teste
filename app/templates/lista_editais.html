@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container">
+<div class="editais-container fade-in">
     <a href="{{ url_for('edital.index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <div class="page-title-bar">
-        <h1>Editais Cadastrados</h1>
-        <a href="{{ url_for('edital.novo_edital') }}" class="btn btn-light">
-            <i class="fas fa-plus"></i> Novo Edital
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Editais Cadastrados</h1>
+        <a href="{{ url_for('edital.novo_edital') }}" class="btn btn-success">
+            + Novo Edital
         </a>
     </div>
 
@@ -20,7 +20,7 @@
     </div>
 
     <div class="card shadow">
-        <div class="table-responsive">
+        <div class="table-responsive" data-loading="true">
             <table class="table table-hover align-middle mb-0" id="editaisTable">
                 <thead>
                     <tr>
@@ -33,7 +33,7 @@
                 </thead>
                 <tbody>
                     {% for edital in editais %}
-                    <tr>
+                    <tr data-id="{{ edital.ID }}">
                         <td class="fw-bold">{{ edital.NU_EDITAL }}</td>
                         <td>{{ edital.ANO }}</td>
                         <td>{{ edital.DESCRICAO }}</td>
@@ -44,7 +44,7 @@
                                 <i class="fas fa-edit"></i>
                             </a>
                             <a href="javascript:void(0);"
-                               onclick="if(confirm('Deseja arquivar o edital {{ edital.NU_EDITAL }}?')) location.href='{{ url_for('edital.excluir_edital', id=edital.ID) }}';"
+                               onclick="confirmarExclusao({{ edital.ID }}, '{{ edital.NU_EDITAL }}');"
                                class="btn btn-sm btn-outline-danger">
                                 <i class="fas fa-trash"></i>
                             </a>
@@ -63,4 +63,142 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de confirmação para exclusão -->
+<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja arquivar o edital <span id="editalNumero" class="fw-bold"></span>?</p>
+                <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" id="btnConfirmarExclusao" class="btn btn-danger">
+                    <span class="btn-text">Sim, Arquivar</span>
+                    <span class="spinner d-none">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        Processando...
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
+        const btnConfirmar = document.getElementById('btnConfirmarExclusao');
+        let editalId = null;
+
+        // Função para mostrar toast de notificação
+        function showToast(message, type = 'success') {
+            const toastContainer = document.getElementById('toastContainer');
+
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            `;
+
+            toastContainer.appendChild(toast);
+
+            const bsToast = new bootstrap.Toast(toast, {
+                animation: true,
+                autohide: true,
+                delay: 3000
+            });
+
+            bsToast.show();
+
+            toast.addEventListener('hidden.bs.toast', function() {
+                toast.remove();
+            });
+        }
+
+        // Configurar a exclusão do edital
+        window.confirmarExclusao = function(id, numero) {
+            document.getElementById('editalNumero').textContent = numero;
+            editalId = id;
+            modal.show();
+        };
+
+        // Manipular o clique de confirmação
+        btnConfirmar.addEventListener('click', function() {
+            const btnText = btnConfirmar.querySelector('.btn-text');
+            const spinner = btnConfirmar.querySelector('.spinner');
+
+            btnText.classList.add('d-none');
+            spinner.classList.remove('d-none');
+            btnConfirmar.disabled = true;
+
+            // Fazer a requisição AJAX para excluir o edital
+            fetch(`/editais/excluir/${editalId}`, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                modal.hide();
+
+                if (data.success) {
+                    // Remover a linha da tabela com animação
+                    const row = document.querySelector(`tr[data-id="${editalId}"]`);
+                    if (row) {
+                        row.style.transition = 'all 0.5s';
+                        row.style.opacity = '0';
+                        row.style.transform = 'translateX(20px)';
+
+                        setTimeout(() => {
+                            row.remove();
+
+                            // Verificar se a tabela ficou vazia
+                            const tbody = document.querySelector('#editaisTable tbody');
+                            if (tbody.childElementCount === 0) {
+                                const emptyRow = document.createElement('tr');
+                                emptyRow.innerHTML = `
+                                    <td colspan="5" class="text-center py-4 text-muted">
+                                        <i class="fas fa-inbox fa-2x mb-3"></i>
+                                        <p class="mb-0">Nenhum edital cadastrado</p>
+                                    </td>
+                                `;
+                                tbody.appendChild(emptyRow);
+                            }
+                        }, 500);
+                    }
+
+                    showToast(data.message, 'success');
+                } else {
+                    showToast(data.message, 'danger');
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+                showToast('Erro ao processar a solicitação.', 'danger');
+            })
+            .finally(() => {
+                btnText.classList.remove('d-none');
+                spinner.classList.add('d-none');
+                btnConfirmar.disabled = false;
+            });
+        });
+    });
+</script>
 {% endblock %}

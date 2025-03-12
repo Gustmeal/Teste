@@ -5,7 +5,7 @@ import secrets
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 
-    # String de conexão (ajuste o nome do banco se necessário)
+    # String de conexão
     SQLALCHEMY_DATABASE_URI = (
         "mssql+pyodbc://@AMON/BDDASHBOARDBI?"
         "driver=ODBC+Driver+18+for+SQL+Server"

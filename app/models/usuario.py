@@ -29,5 +29,19 @@ class Usuario(db.Model):
     def is_admin(self):
         return self.PERFIL == 'admin'
 
+    @staticmethod
+    def validar_email(email):
+        """Valida se o email é institucional e não está em uso."""
+        # Verificar formato
+        if not email.endswith('@emgea.gov.br'):
+            return False, "Por favor, utilize seu email institucional (@emgea.gov.br)."
+
+        # Verificar se já existe
+        usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
+        if usuario_existente:
+            return False, "Este e-mail já está cadastrado."
+
+        return True, ""
+
     def __repr__(self):
         return f'<Usuario {self.EMAIL}>'

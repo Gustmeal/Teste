@@ -9,7 +9,7 @@
         <h1>{% if edital %}Editar Edital{% else %}Novo Edital{% endif %}</h1>
     </div>
 
-    <div class="form-container">
+    <div class="form-container fade-in">
         <div class="card shadow">
             <div class="card-header bg-primary text-white">
                 <h3 class="mb-0">
@@ -17,7 +17,7 @@
                 </h3>
             </div>
             <div class="card-body p-4">
-                <form method="POST">
+                <form method="POST" id="editalForm">
                     <div class="mb-3">
                         <label class="form-label">Número do Edital <span class="text-danger">*</span></label>
                         <input type="number" class="form-control" name="nu_edital"
@@ -41,12 +41,32 @@
                         <a href="{{ url_for('edital.lista_editais') }}" class="btn btn-secondary">
                             Cancelar
                         </a>
-                        <button type="submit" class="btn btn-success">
-                            {% if edital %}Salvar{% else %}Cadastrar{% endif %}
+                        <button type="submit" class="btn btn-success submit-btn">
+                            <span class="btn-text">{% if edital %}Salvar{% else %}Cadastrar{% endif %}</span>
+                            <span class="spinner d-none">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Processando...
+                            </span>
                         </button>
                     </div>
                 </form>
             </div>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('editalForm');
+
+            form.addEventListener('submit', function(e) {
+                const submitBtn = this.querySelector('.submit-btn');
+                const btnText = submitBtn.querySelector('.btn-text');
+                const spinner = submitBtn.querySelector('.spinner');
+
+                btnText.classList.add('d-none');
+                spinner.classList.remove('d-none');
+                submitBtn.disabled = true;
+            });
+        });
+    </script>
 {% endblock %}

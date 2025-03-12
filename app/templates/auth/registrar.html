@@ -97,7 +97,11 @@
                     <input type="text" class="form-control login-input" name="nome" placeholder="Nome completo" required autofocus>
                 </div>
                 <div class="mb-3">
-                    <input type="email" class="form-control login-input" name="email" placeholder="E-mail" required>
+                    <input type="email" class="form-control login-input" name="email"
+                           pattern="[a-zA-Z0-9._%+-]+@emgea\.gov\.br$"
+                           title="Por favor, utilize seu email institucional (@emgea.gov.br)"
+                           placeholder="E-mail institucional (@emgea.gov.br)" required>
+                    <small class="text-muted">Use seu email institucional @emgea.gov.br</small>
                 </div>
                 <div class="mb-4">
                     <input type="password" class="form-control login-input" name="senha" placeholder="Senha" required>

@@ -45,6 +45,11 @@ def registrar():
         try:
             email = request.form['email']
 
+            # Verificar se é um email institucional
+            if not email.endswith('@emgea.gov.br'):
+                flash('Por favor, utilize seu email institucional (@emgea.gov.br).', 'danger')
+                return render_template('auth/registrar.html')
+
             # Verificar se o e-mail já existe
             usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
             if usuario_existente:
@@ -101,6 +106,11 @@ def novo_usuario():
     if request.method == 'POST':
         try:
             email = request.form['email']
+
+            # Verificar se é um email institucional
+            if not email.endswith('@emgea.gov.br'):
+                flash('Por favor, utilize um email institucional (@emgea.gov.br).', 'danger')
+                return render_template('auth/form_usuario.html')
 
             # Verificar se o e-mail já existe
             usuario_existente = Usuario.query.filter_by(EMAIL=email).first()

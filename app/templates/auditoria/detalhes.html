@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('audit.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Detalhes do Log</h1>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Informações Gerais</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Data e Hora:</label>
+                    <p>{{ log.DATA.strftime('%d/%m/%Y %H:%M:%S') }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Usuário:</label>
+                    <p>{{ log.USUARIO_NOME }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Ação:</label>
+                    <p>
+                        {% if log.ACAO == 'criar' %}
+                        <span class="badge bg-success">Criação</span>
+                        {% elif log.ACAO == 'editar' %}
+                        <span class="badge bg-warning text-dark">Edição</span>
+                        {% elif log.ACAO == 'excluir' %}
+                        <span class="badge bg-danger">Exclusão</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ log.ACAO }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Entidade:</label>
+                    <p>
+                        {% if log.ENTIDADE == 'edital' %}
+                        <span class="badge bg-info text-dark">Edital</span>
+                        {% elif log.ENTIDADE == 'periodo' %}
+                        <span class="badge bg-primary">Período</span>
+                        {% elif log.ENTIDADE == 'usuario' %}
+                        <span class="badge bg-dark">Usuário</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ log.ENTIDADE }}</span>
+                        {% endif %}
+                        ID: {{ log.ENTIDADE_ID }}
+                    </p>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">Descrição:</label>
+                    <p>{{ log.DESCRICAO }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Endereço IP:</label>
+                    <p>{{ log.IP }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if log.DADOS_ANTIGOS or log.DADOS_NOVOS %}
+    <div class="row">
+        {% if log.DADOS_ANTIGOS %}
+        <div class="col-md-6">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Dados Anteriores</h5>
+                </div>
+                <div class="card-body">
+                    <pre class="bg-light p-3 rounded">{{ log.DADOS_ANTIGOS }}</pre>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if log.DADOS_NOVOS %}
+        <div class="col-md-{% if log.DADOS_ANTIGOS %}6{% else %}12{% endif %}">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Dados Novos</h5>
+                </div>
+                <div class="card-body">
+                    <pre class="bg-light p-3 rounded">{{ log.DADOS_NOVOS }}</pre>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

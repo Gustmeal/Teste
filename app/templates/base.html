@@ -49,6 +49,9 @@
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}">
                                 <i class="fas fa-users me-2"></i> Gerenciar Usuários
                             </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('audit.index') }}">
+                                <i class="fas fa-history me-2"></i> Logs de Auditoria
+                            </a></li>
                             {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
@@ -96,7 +99,13 @@
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
 
+    <!-- Container para toasts -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="toastContainer"></div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
 </body>
 </html>

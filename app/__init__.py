@@ -28,6 +28,9 @@ def create_app():
     from app.auth.routes import auth_bp
     app.register_blueprint(auth_bp)
 
+    from app.routes.audit_routes import audit_bp
+    app.register_blueprint(audit_bp)
+
     # Redirecionar a rota raiz para o login se o usuário não estiver autenticado
     @app.route('/')
     def index():
