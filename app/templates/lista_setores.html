@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setores da Empresa - Sistema de Editais</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Variáveis de tema */
+        :root {
+            --primary-color: #6c63ff;
+            --secondary-color: #595959;
+            --accent-color: #7c73ff;
+            --text-color: #333333;
+            --text-light: #ffffff;
+            --text-muted: #666666;
+            --card-bg: rgba(255, 255, 255, 0.85);
+            --card-header: #6c63ff;
+            --button-color: #6c63ff;
+            --border-color: rgba(0, 0, 0, 0.1);
+            --table-header-bg: rgba(108, 99, 255, 0.8);
+            --table-header-text: #ffffff;
+            --table-border: rgba(221, 221, 221, 0.5);
+            --shadow-color: rgba(0, 0, 0, 0.15);
+            --border-radius: 8px;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 2px 5px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 5px 15px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        /* Estilo base */
+        body {
+            background: url('https://i.imgur.com/3hXKpvP.jpg') no-repeat center center fixed;
+            background-size: cover;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.5;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            flex: 1;
+            padding-bottom: 80px;
+            margin-top: 30px;
+        }
+
+        /* Navbar customização */
+        .navbar {
+            background-color: transparent !important;
+            box-shadow: none;
+            padding: 1rem 0;
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            letter-spacing: 0.5px;
+            color: #0d47a1 !important;
+            font-weight: 800;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .navbar-brand .brand-text {
+            color: var(--primary-color) !important;
+            text-shadow: none;
+        }
+
+        /* Editais container */
+        .editais-container {
+            background-color: rgba(255, 255, 255, 0.85);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--shadow-md);
+            backdrop-filter: blur(10px);
+        }
+
+        .editais-container h1 {
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            text-shadow: none;
+            font-weight: 700;
+            font-size: 2.2rem;
+        }
+
+        /* Botão voltar */
+        .btn-back {
+            display: inline-flex;
+            align-items: center;
+            color: #ffffff;
+            background-color: var(--button-color);
+            border: none;
+            padding: 0.5rem 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 50px;
+            transition: all 0.3s;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-decoration: none;
+        }
+
+        .btn-back:hover {
+            background-color: #5b52e5;
+            color: #ffffff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-back i {
+            margin-right: 8px;
+        }
+
+        .header-with-back {
+            margin-bottom: 0.25rem;
+            color: var(--primary-color) !important;
+            text-shadow: none !important;
+        }
+
+        /* Cards */
+        .card {
+            border: none;
+            border-radius: var(--border-radius);
+            background-color: var(--card-bg);
+            box-shadow: var(--shadow-md);
+            transition: var(--transition);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* Setores específicos */
+        .border-left-1 { border-left: 4px solid #4e73df; }
+        .border-left-2 { border-left: 4px solid #1cc88a; }
+        .border-left-3 { border-left: 4px solid #f6c23e; }
+        .border-left-4 { border-left: 4px solid #e74a3b; }
+        .border-left-5 { border-left: 4px solid #36b9cc; }
+        .border-left-6 { border-left: 4px solid #6f42c1; }
+
+        .setor-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+        }
+
+        .setor-btn {
+            transition: all 0.3s ease;
+        }
+
+        .setor-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .setor-item {
+            transition: all 0.3s ease;
+        }
+
+        .setores-grid {
+            min-height: 400px;
+        }
+
+        /* Search */
+        .search-container {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-input {
+            padding-left: 2.5rem;
+            border-radius: var(--border-radius);
+            border: 1px solid var(--border-color);
+            transition: var(--transition);
+            width: 100%;
+            padding: 0.6rem 0.75rem 0.6rem 2.5rem;
+            background-color: rgba(255, 255, 255, 0.9);
+            color: var(--text-color);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--secondary-color);
+            opacity: 0.7;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.25rem rgba(108, 99, 255, 0.25);
+        }
+
+        /* Footer */
+        footer {
+            padding: 1.5rem 0;
+            background-color: transparent;
+            color: rgba(255, 255, 255, 1);
+            margin-top: auto;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            font-weight: 500;
+        }
+
+        footer .container {
+            padding-bottom: 0;
+        }
+
+        /* Animações */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100;
+            padding: 0;
+            width: 280px;
+            background-color: rgba(255, 255, 255, 0.85);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+            transform: translateX(-100%);
+            backdrop-filter: blur(10px);
+        }
+
+        .sidebar.show {
+            transform: translateX(0);
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar-content {
+            padding: 1rem 0;
+            overflow-y: auto;
+            max-height: calc(100vh - 100px);
+        }
+
+        .sidebar-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-menu a {
+            display: block;
+            padding: 0.75rem 1.5rem;
+            color: var(--text-color);
+            text-decoration: none;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+
+        .sidebar-menu a:hover, .sidebar-menu a.active {
+            background-color: rgba(108, 99, 255, 0.1);
+            color: var(--primary-color);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .sidebar-menu i {
+            margin-right: 10px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 99;
+            display: none;
+        }
+
+        .sidebar-close {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            color: var(--text-color);
+            cursor: pointer;
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            top: 70px;
+            left: 20px;
+            z-index: 90;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s;
+        }
+
+        .sidebar-toggle:hover {
+            background-color: #5b52e5;
+            transform: scale(1.05);
+        }
+
+        /* Theme toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: var(--shadow-md);
+            z-index: 1000;
+            transition: var(--transition);
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .theme-toggle i {
+            font-size: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Abrir Menu">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="#" class="sidebar-logo">
+                <img src="https://i.imgur.com/YPgPZUO.png" alt="Logo EMGEA" height="40">
+                <h4 class="mt-2 text-primary">Sistema de Editais</h4>
+            </a>
+            <button class="sidebar-close" id="sidebarClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="sidebar-content">
+            <ul class="sidebar-menu">
+                <li>
+                    <a href="#" class="active">
+                        <i class="fas fa-home"></i> Início
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <i class="fas fa-file-alt"></i> Editais
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <i class="fas fa-calendar-alt"></i> Períodos
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <i class="fas fa-chart-line"></i> Metas de Avaliação
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <i class="fas fa-sitemap"></i> Setores
+                    </a>
+                </li>
+
+                <li class="mt-3">
+                    <hr class="dropdown-divider mx-3">
+                </li>
+
+                <li>
+                    <a href="#">
+                        <i class="fas fa-user"></i> Meu Perfil
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#">
+                        <i class="fas fa-users"></i> Gerenciar Usuários
+                    </a>
+                </li>
+                <li>
+                    <a href="#">
+                        <i class="fas fa-history"></i> Logs de Auditoria
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#">
+                        <i class="fas fa-sign-out-alt"></i> Sair
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <img src="https://i.imgur.com/YPgPZUO.png" alt="Logo EMGEA" height="30" class="me-2">
+                <span class="brand-text">emgea</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-1"></i> Usuário Demonstração
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="#">
+                                <i class="fas fa-user me-2"></i> Meu Perfil
+                            </a></li>
+                            <li><a class="dropdown-item" href="#">
+                                <i class="fas fa-users me-2"></i> Gerenciar Usuários
+                            </a></li>
+                            <li><a class="dropdown-item" href="#">
+                                <i class="fas fa-history me-2"></i> Logs de Auditoria
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#">
+                                <i class="fas fa-sign-out-alt me-2"></i> Sair
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container main-content">
+        <div class="editais-container fade-in">
+            <a href="#" class="btn-back">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="fw-bold header-with-back">Setores da Empresa</h1>
+            </div>
+
+            <div class="card shadow mb-4">
+                <div class="card-body">
+                    <p class="lead">Selecione um setor para visualizar seus dashboards e relatórios.</p>
+                    <div class="search-container mb-4">
+                        <input type="text" id="setoresSearch" class="form-control search-input" placeholder="Pesquisar setores">
+                        <i class="fas fa-search search-icon"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-4 mt-2 setores-grid">
+                <!-- Setor 1 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-1">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #4e73df">
+                                    <i class="fas fa-money-bill-wave"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Meta Arrecadação</h4>
+                            </div>
+                            <p class="text-muted mb-3">Análise de metas de arrecadação e resultados</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #4e73df; border-color: #4e73df;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setor 2 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-2">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #1cc88a">
+                                    <i class="fas fa-phone-volume"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Meta Acionamento</h4>
+                            </div>
+                            <p class="text-muted mb-3">Monitoramento de acionamentos e estratégias</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #1cc88a; border-color: #1cc88a;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setor 3 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-3">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #f6c23e">
+                                    <i class="fas fa-file-invoice-dollar"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Meta Liquidação</h4>
+                            </div>
+                            <p class="text-muted mb-3">Controle de processos de liquidação</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #f6c23e; border-color: #f6c23e;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setor 4 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-4">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #e74a3b">
+                                    <i class="fas fa-award"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Meta Bonificação</h4>
+                            </div>
+                            <p class="text-muted mb-3">Gerenciamento de bonificações e métricas</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #e74a3b; border-color: #e74a3b;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setor 5 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-5">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #36b9cc">
+                                    <i class="fas fa-calendar-alt"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Competência</h4>
+                            </div>
+                            <p class="text-muted mb-3">Análise por período de competência</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #36b9cc; border-color: #36b9cc;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Setor 6 -->
+                <div class="col-md-6 col-lg-4 setor-item">
+                    <div class="card shadow h-100 border-left-6">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="setor-icon" style="background-color: #6f42c1">
+                                    <i class="fas fa-building"></i>
+                                </div>
+                                <h4 class="ms-3 mb-0">Empresas</h4>
+                            </div>
+                            <p class="text-muted mb-3">Visão consolidada por empresa</p>
+                            <hr>
+                            <div class="text-center mt-3">
+                                <a href="#" class="btn btn-primary w-100 setor-btn" style="background-color: #6f42c1; border-color: #6f42c1;">
+                                    <i class="fas fa-chart-bar me-2"></i> Ver Dashboards
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="py-3">
+        <div class="container text-center">
+            <span>
+                Sistema de Cadastro • 2025
+            </span>
+        </div>
+    </footer>
+
+    <!-- Botão de alternância de tema -->
+    <div class="theme-toggle" id="themeToggle">
+        <i id="themeIcon" class="fas fa-moon"></i>
+    </div>
+
+    <!-- Modal para exibir mensagem de desenvolvimento -->
+    <div class="modal fade" id="emDesenvolvimentoModal" tabindex="-1" aria-labelledby="emDesenvolvimentoModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="emDesenvolvimentoModalLabel">Função em Desenvolvimento</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <i class="fas fa-tools fa-4x text-muted mb-3"></i>
+                    <h4>Estamos trabalhando nisso!</h4>
+                    <p class="mb-0">Esta funcionalidade está em desenvolvimento e estará disponível em breve.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Filtro de busca
+            const searchInput = document.getElementById('setoresSearch');
+            const setorItems = document.querySelectorAll('.setor-item');
+
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+
+                setorItems.forEach(item => {
+                    const nome = item.querySelector('h4').textContent.toLowerCase();
+                    const descricao = item.querySelector('p').textContent.toLowerCase();
+
+                    if (nome.includes(searchTerm) || descricao.includes(searchTerm)) {
+                        item.style.display = '';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            });
+
+            // Modal de "em desenvolvimento"
+            const setorBtns = document.querySelectorAll('.setor-btn');
+            const modal = new bootstrap.Modal(document.getElementById('emDesenvolvimentoModal'));
+
+            setorBtns.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    modal.show();
+                });
+            });
+
+            // Efeito de hover nos cards
+            setorItems.forEach(item => {
+                const card = item.querySelector('.card');
+
+                item.addEventListener('mouseenter', function() {
+                    card.style.transform = 'translateY(-10px)';
+                });
+
+                item.addEventListener('mouseleave', function() {
+                    card.style.transform = '';
+                });
+            });
+
+            // Gerenciar sidebar
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebarClose = document.getElementById('sidebarClose');
+            const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.add('show');
+                sidebarBackdrop.style.display = 'block';
+            });
+
+            sidebarClose.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarBackdrop.style.display = 'none';
+            });
+
+            sidebarBackdrop.addEventListener('click', function() {
+                sidebar.classList.remove('show');
+                sidebarBackdrop.style.display = 'none';
+            });
+
+            // Tema
+            const themeToggle = document.getElementById('themeToggle');
+            const themeIcon = document.getElementById('themeIcon');
+
+            themeToggle.addEventListener('click', function() {
+                if (themeIcon.classList.contains('fa-moon')) {
+                    themeIcon.classList.remove('fa-moon');
+                    themeIcon.classList.add('fa-sun');
+                } else {
+                    themeIcon.classList.remove('fa-sun');
+                    themeIcon.classList.add('fa-moon');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

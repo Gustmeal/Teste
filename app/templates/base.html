@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Editais</title>
+    <title>GEINC-EMGEA</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,21 +11,87 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-        .navbar-brand {
-            color: #0d47a1 !important;
-            font-weight: 800;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-        }
-
-        .user-dropdown {
-            color: #0d47a1 !important;
-            font-weight: 600;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-        }
-    </style>
 </head>
 <body>
+    <!-- Sidebar Toggle Button -->
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Abrir Menu">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <a href="{{ url_for('edital.index') }}" class="sidebar-logo">
+                <img src="{{ url_for('static', filename='img/logo_em.png') }}" alt="Logo EMGEA" height="40">
+                <h4 class="mt-2 text-primary">Sistema de Credenciamento</h4>
+            </a>
+            <button class="sidebar-close" id="sidebarClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="sidebar-content">
+            <ul class="sidebar-menu">
+                <li>
+                    <a href="{{ url_for('edital.index') }}" {% if request.endpoint == 'edital.index' %}class="active"{% endif %}>
+                        <i class="fas fa-home"></i> Início
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('edital.lista_editais') }}" {% if 'edital.lista_editais' in request.endpoint %}class="active"{% endif %}>
+                        <i class="fas fa-file-alt"></i> Editais
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('periodo.lista_periodos') }}" {% if 'periodo.lista_periodos' in request.endpoint %}class="active"{% endif %}>
+                        <i class="fas fa-calendar-alt"></i> Períodos
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('meta.lista_metas') }}" {% if 'meta.lista_metas' in request.endpoint %}class="active"{% endif %}>
+                        <i class="fas fa-chart-line"></i> Metas de Avaliação
+                    </a>
+                </li>
+                <li>
+                    <a href="#" onclick="showDevelopmentMessage(event)">
+                        <i class="fas fa-sitemap"></i> Setores
+                    </a>
+                </li>
+
+                <li class="mt-3">
+                    <hr class="dropdown-divider mx-3">
+                </li>
+
+                <li>
+                    <a href="{{ url_for('auth.perfil') }}" {% if request.endpoint == 'auth.perfil' %}class="active"{% endif %}>
+                        <i class="fas fa-user"></i> Meu Perfil
+                    </a>
+                </li>
+
+                {% if current_user.perfil == 'admin' %}
+                <li>
+                    <a href="{{ url_for('auth.lista_usuarios') }}" {% if request.endpoint == 'auth.lista_usuarios' %}class="active"{% endif %}>
+                        <i class="fas fa-users"></i> Gerenciar Usuários
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('audit.index') }}" {% if request.endpoint == 'audit.index' %}class="active"{% endif %}>
+                        <i class="fas fa-history"></i> Logs de Auditoria
+                    </a>
+                </li>
+                {% endif %}
+
+                <li>
+                    <a href="{{ url_for('auth.logout') }}">
+                        <i class="fas fa-sign-out-alt"></i> Sair
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('edital.index') }}">
@@ -108,5 +174,85 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+
+    <!-- Script do Sidebar -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const sidebarClose = document.getElementById('sidebarClose');
+            const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+            function openSidebar() {
+                sidebar.classList.add('show');
+                sidebarBackdrop.style.display = 'block';
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeSidebar() {
+                sidebar.classList.remove('show');
+                sidebarBackdrop.style.display = 'none';
+                document.body.style.overflow = '';
+            }
+
+            sidebarToggle.addEventListener('click', openSidebar);
+            sidebarClose.addEventListener('click', closeSidebar);
+            sidebarBackdrop.addEventListener('click', closeSidebar);
+
+            // Fechar o sidebar quando pressionar ESC
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && sidebar.classList.contains('show')) {
+                    closeSidebar();
+                }
+            });
+
+            // Verificar links ativos no menu
+            const currentUrl = window.location.pathname;
+            const sidebarLinks = document.querySelectorAll('.sidebar-menu a');
+
+            sidebarLinks.forEach(link => {
+                if (link.getAttribute('href') === currentUrl) {
+                    link.classList.add('active');
+                }
+            });
+        });
+
+        // Função para mostrar mensagem de funcionalidade em desenvolvimento
+        function showDevelopmentMessage(e) {
+            e.preventDefault();
+
+            // Criar modal dinamicamente se ele não existir
+            if (!document.getElementById('emDesenvolvimentoModal')) {
+                const modalHTML = `
+                <div class="modal fade" id="emDesenvolvimentoModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title">Função em Desenvolvimento</h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body text-center py-4">
+                                <i class="fas fa-tools fa-4x text-muted mb-3"></i>
+                                <h4>Estamos trabalhando nisso!</h4>
+                                <p class="mb-0">A visualização de setores está em desenvolvimento e estará disponível em breve.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+
+                // Adicionar o modal ao DOM
+                const modalContainer = document.createElement('div');
+                modalContainer.innerHTML = modalHTML;
+                document.body.appendChild(modalContainer);
+            }
+
+            // Mostrar o modal
+            const modal = new bootstrap.Modal(document.getElementById('emDesenvolvimentoModal'));
+            modal.show();
+        }
+    </script>
 </body>
 </html>
