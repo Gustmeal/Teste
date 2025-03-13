@@ -40,8 +40,8 @@ body > .container h1,
 body > .container h2:not(.card h2),
 body > .container h3:not(.card h3),
 body > .container p:not(.card p) {
-  color: #ffffff;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  color: var(--primary-color);
+  text-shadow: none;
   font-weight: 600;
 }
 
@@ -129,8 +129,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .card-header.bg-primary {
-  background: var(--card-header) !important;
-  color: white;
+  background: white !important;
+  color: var(--primary-color);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* Cards da página inicial */
@@ -293,11 +294,23 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Títulos na página de listagem */
 .editais-container h1 {
-  color: #ffffff;
+  color: var(--primary-color);
   margin-bottom: 1.5rem;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  text-shadow: none;
   font-weight: 700;
   font-size: 2.2rem;
+}
+
+/* Header com back especial */
+.header-with-back {
+  color: var(--primary-color) !important;
+  text-shadow: none !important;
+}
+
+/* Todos os títulos h1 na mesma cor */
+h1.fw-bold {
+  color: var(--primary-color) !important;
+  text-shadow: none !important;
 }
 
 /* Footer */
@@ -392,19 +405,21 @@ footer .container {
   display: inline-flex;
   align-items: center;
   color: #ffffff;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: var(--button-color); /* Mesma cor dos outros botões (roxo/lilás) */
   border: none;
   padding: 0.5rem 1rem;
   margin-bottom: 0.75rem;
   border-radius: 50px;
   transition: all 0.3s;
-  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .btn-back:hover {
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: #5b52e5; /* Tom mais escuro no hover (mesmo dos outros botões) */
   color: #ffffff;
   transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
 
 .btn-back i {
@@ -441,7 +456,7 @@ footer .container {
 }
 
 [data-theme="dark"] .card-header.bg-primary {
-  background-color: #6359dd !important;
+  background-color: #1e1e28 !important;
 }
 
 [data-theme="dark"] .table {
@@ -716,4 +731,22 @@ body::before {
 }
 .fade-enter, .fade-leave-to {
   opacity: 0;
+}
+
+/* Ajuste para esconder títulos fora dos cards em páginas de formulário */
+.page-title-bar {
+  display: none;
+}
+
+/* Estilo melhorado para o cabeçalho do card em formulários */
+.form-container .card-header {
+  padding: 1.2rem 1.5rem;
+}
+
+.form-container .card-header h1 {
+  color: var(--primary-color);
+  margin-bottom: 0;
+  font-weight: 700;
+  font-size: 2.2rem;
+  text-shadow: none;
 }

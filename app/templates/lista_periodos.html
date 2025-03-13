@@ -24,33 +24,44 @@
             <table class="table table-hover align-middle mb-0" id="periodosTable">
                 <thead>
                     <tr>
+                        <th>Período</th>
                         <th>Edital</th>
                         <th>Início</th>
                         <th>Término</th>
+                        <th class="text-center">Empresas</th>
                         <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for periodo in periodos %}
                     <tr data-id="{{ periodo.ID }}">
+                        <td class="fw-bold">{{ periodo.ID_PERIODO }}</td>
                         <td>{{ periodo.edital.NU_EDITAL }} - {{ periodo.edital.DESCRICAO }}</td>
                         <td>{{ periodo.DT_INICIO.strftime('%d/%m/%Y') }}</td>
                         <td>{{ periodo.DT_FIM.strftime('%d/%m/%Y') }}</td>
                         <td class="text-center">
+                            {% set count = periodo.empresas|selectattr('DELETED_AT', 'equalto', None)|list|length %}
+                            <span class="badge bg-info text-dark">{{ count }}</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('empresa.lista_empresas', periodo_id=periodo.ID) }}"
+                               class="btn btn-sm btn-outline-info me-1" title="Ver Empresas Participantes">
+                                <i class="fas fa-building"></i>
+                            </a>
                             <a href="{{ url_for('periodo.editar_periodo', id=periodo.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1">
+                               class="btn btn-sm btn-outline-primary me-1" title="Editar Período">
                                 <i class="fas fa-edit"></i>
                             </a>
                             <a href="javascript:void(0);"
                                onclick="confirmarExclusao({{ periodo.ID }}, '{{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}');"
-                               class="btn btn-sm btn-outline-danger">
+                               class="btn btn-sm btn-outline-danger" title="Arquivar Período">
                                 <i class="fas fa-trash"></i>
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="4" class="text-center py-4 text-muted">
+                        <td colspan="6" class="text-center py-4 text-muted">
                             <i class="fas fa-inbox fa-2x mb-3"></i>
                             <p class="mb-0">Nenhum período cadastrado</p>
                         </td>
