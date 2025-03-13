@@ -60,11 +60,21 @@ body > .container p:not(.card p) {
 .navbar-brand {
   font-weight: 700;
   font-size: 1.5rem;
-  color: #ffffff !important;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
   letter-spacing: 0.5px;
 }
 
+.navbar-brand .brand-text {
+  color: var(--primary-color) !important;
+  text-shadow: none;
+}
+
+.user-dropdown {
+  color: var(--primary-color) !important;
+  font-weight: 600;
+  text-shadow: none;
+}
 .navbar-dark .navbar-nav .nav-link {
   color: rgba(255, 255, 255, 0.85);
   font-weight: 500;
