@@ -50,6 +50,11 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('limite.lista_limites') }}" {% if 'limite.lista_limites' in request.endpoint %}class="active"{% endif %}>
+                        <i class="fas fa-balance-scale"></i> Limites de Distribuição
+                     </a>
+                </li>
+                <li>
                     <a href="{{ url_for('meta.lista_metas') }}" {% if 'meta.lista_metas' in request.endpoint %}class="active"{% endif %}>
                         <i class="fas fa-chart-line"></i> Metas de Avaliação
                     </a>

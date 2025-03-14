@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h1 class="mb-0">
+                    {% if limite %}Editar Limite de Distribuição{% else %}Novo Limite de Distribuição{% endif %}
+                </h1>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Edital <span class="text-danger">*</span></label>
+                        <select class="form-select" name="edital_id" required>
+                            {% for edital in editais %}
+                                <option value="{{ edital.ID }}"
+                                    {% if limite and limite.ID_EDITAL == edital.ID %}selected{% endif %}>
+                                    {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Período <span class="text-danger">*</span></label>
+                        <select class="form-select" name="periodo_id" required>
+                            {% for periodo in periodos %}
+                                <option value="{{ periodo.ID }}"
+                                    {% if limite and limite.ID_PERIODO == periodo.ID %}selected{% endif %}>
+                                    {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Empresa <span class="text-danger">*</span></label>
+                        <select class="form-select" name="empresa_id" required>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.ID_EMPRESA }}"
+                                    {% if limite and limite.ID_EMPRESA == empresa.ID_EMPRESA %}selected{% endif %}>
+                                    {% if empresa.NO_EMPRESA_ABREVIADA %}
+                                        {{ empresa.NO_EMPRESA_ABREVIADA }} - {{ empresa.NO_EMPRESA }}
+                                    {% else %}
+                                        {{ empresa.NO_EMPRESA }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Código de Critério de Seleção <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="cod_criterio"
+                               value="{{ limite.COD_CRITERIO_SELECAO if limite }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Quantidade Máxima</label>
+                        <input type="number" class="form-control" name="qtde_maxima"
+                               value="{{ limite.QTDE_MAXIMA if limite }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Valor Máximo</label>
+                        <input type="number" class="form-control" name="valor_maximo" step="0.01"
+                               value="{{ limite.VALOR_MAXIMO if limite }}">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Percentual Final (%)</label>
+                        <input type="number" class="form-control" name="percentual_final" step="0.01"
+                               value="{{ limite.PERCENTUAL_FINAL if limite }}">
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('limite.lista_limites') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            {% if limite %}Salvar{% else %}Cadastrar{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

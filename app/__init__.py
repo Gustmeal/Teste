@@ -34,9 +34,13 @@ def create_app():
     from app.routes.empresa_routes import empresa_bp
     app.register_blueprint(empresa_bp)
 
-    # Registrar novo blueprint para metas de avaliação
+    # Registrar blueprint para metas de avaliação
     from app.routes.meta_routes import meta_bp
     app.register_blueprint(meta_bp)
+
+    # Registrar blueprint para limites de distribuição
+    from app.routes.limite_routes import limite_bp
+    app.register_blueprint(limite_bp)
 
     # Redirecionar a rota raiz para o login se o usuário não estiver autenticado
     @app.route('/')

@@ -23,13 +23,17 @@ def index():
     from app.models.periodo import PeriodoAvaliacao
     periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).count()
 
+    # Contar limites ativos - NOVO
+    from app.models.limite_distribuicao import LimiteDistribuicao
+    limites = LimiteDistribuicao.query.filter(LimiteDistribuicao.DELETED_AT == None).count()
+
     # Contar usuários ativos (apenas para administradores)
     usuarios = 0
     if current_user.perfil == 'admin':
         from app.models.usuario import Usuario
         usuarios = Usuario.query.filter(Usuario.DELETED_AT == None, Usuario.ATIVO == True).count()
 
-    return render_template('index.html', editais=editais, periodos=periodos, usuarios=usuarios)
+    return render_template('index.html', editais=editais, periodos=periodos, limites=limites, usuarios=usuarios)
 
 
 @edital_bp.route('/editais')

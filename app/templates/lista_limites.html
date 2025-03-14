@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('edital.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Limites de Distribuição</h1>
+        <a href="{{ url_for('limite.novo_limite') }}" class="btn btn-success">
+            + Novo Limite
+        </a>
+    </div>
+
+    <!-- Barra de pesquisa -->
+    <div class="search-container mb-4">
+        <input type="text" id="limitesSearch" class="form-control search-input" placeholder="Pesquisar limites">
+        <i class="fas fa-search search-icon"></i>
+    </div>
+
+    <div class="card shadow">
+        <div class="table-responsive" data-loading="true">
+            <table class="table table-hover align-middle mb-0" id="limitesTable">
+                <thead>
+                    <tr>
+                        <th>Edital</th>
+                        <th>Período</th>
+                        <th>Empresa</th>
+                        <th>Critério</th>
+                        <th>Qtde. Máxima</th>
+                        <th>Valor Máximo</th>
+                        <th>Percentual</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for limite in limites %}
+                    <tr data-id="{{ limite.ID }}">
+                        <td>{{ limite.edital.NU_EDITAL }}/{{ limite.edital.ANO }}</td>
+                        <td>{{ limite.periodo.ID_PERIODO }}</td>
+                        <td>
+                            {% if limite.empresa_nome_abreviado %}
+                                {{ limite.empresa_nome_abreviado }}
+                            {% else %}
+                                {{ limite.empresa_nome }}
+                            {% endif %}
+                        </td>
+                        <td>{{ limite.COD_CRITERIO_SELECAO }}</td>
+                        <td>{{ limite.QTDE_MAXIMA if limite.QTDE_MAXIMA else "-" }}</td>
+                        <td>{{ "%.2f"|format(limite.VALOR_MAXIMO|float) if limite.VALOR_MAXIMO else "-" }}</td>
+                        <td>{{ "%.2f"|format(limite.PERCENTUAL_FINAL|float) if limite.PERCENTUAL_FINAL else "-" }}%</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('limite.editar_limite', id=limite.ID) }}"
+                               class="btn btn-sm btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="javascript:void(0);"
+                               onclick="confirmarExclusao({{ limite.ID }});"
+                               class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-3"></i>
+                            <p class="mb-0">Nenhum limite de distribuição cadastrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação para exclusão -->
+<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja remover este limite de distribuição?</p>
+                <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">Sim, Remover</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        setupTableFilter('limitesSearch', 'limitesTable');
+
+        // Configurar a exclusão do limite
+        window.confirmarExclusao = function(id) {
+            document.getElementById('btnConfirmarExclusao').href = "{{ url_for('limite.excluir_limite', id=0) }}".replace('0', id);
+            const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
+            modal.show();
+        };
+    });
+</script>
+{% endblock %}
