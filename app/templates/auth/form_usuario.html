@@ -49,10 +49,22 @@
                             <option value="usuario" {% if usuario and usuario.PERFIL == 'usuario' %}selected{% endif %}>
                                 Usuário Padrão
                             </option>
+                            <option value="moderador" {% if usuario and usuario.PERFIL == 'moderador' %}selected{% endif %}>
+                                Moderador
+                            </option>
+                            {% if current_user.perfil == 'admin' %}
                             <option value="admin" {% if usuario and usuario.PERFIL == 'admin' %}selected{% endif %}>
                                 Administrador
                             </option>
+                            {% endif %}
                         </select>
+                        <small class="text-muted">
+                            {% if current_user.perfil == 'admin' %}
+                            Como administrador, você pode atribuir qualquer perfil.
+                            {% else %}
+                            Apenas administradores podem criar ou promover usuários para o perfil de Administrador.
+                            {% endif %}
+                        </small>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">

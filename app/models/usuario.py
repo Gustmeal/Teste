@@ -12,7 +12,7 @@ class Usuario(db.Model):
     EMAIL = db.Column(db.String(100), unique=True, nullable=False)
     SENHA_HASH = db.Column(db.String(255), nullable=False)
     ATIVO = db.Column(db.Boolean, default=True)
-    PERFIL = db.Column(db.String(20), default='usuario')  # 'admin', 'usuario'
+    PERFIL = db.Column(db.String(20), default='usuario')  # 'admin', 'moderador', 'usuario'
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
@@ -28,6 +28,9 @@ class Usuario(db.Model):
 
     def is_admin(self):
         return self.PERFIL == 'admin'
+
+    def is_moderador(self):
+        return self.PERFIL == 'moderador'
 
     @staticmethod
     def validar_email(email):

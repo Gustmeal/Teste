@@ -3,7 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from app.models.usuario import Usuario
 from app import db
 from datetime import datetime
-from app.auth.utils import UserLogin
+from app.auth.utils import UserLogin, admin_required, admin_or_moderador_required
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -89,20 +89,16 @@ def logout():
 
 @auth_bp.route('/usuarios')
 @login_required
+@admin_or_moderador_required
 def lista_usuarios():
-    from app.auth.utils import admin_required
-    admin_required(lambda: None)()
-
     usuarios = Usuario.query.filter(Usuario.DELETED_AT == None).all()
     return render_template('auth/lista_usuarios.html', usuarios=usuarios)
 
 
 @auth_bp.route('/usuarios/novo', methods=['GET', 'POST'])
 @login_required
+@admin_or_moderador_required
 def novo_usuario():
-    from app.auth.utils import admin_required
-    admin_required(lambda: None)()
-
     if request.method == 'POST':
         try:
             email = request.form['email']
@@ -116,6 +112,11 @@ def novo_usuario():
             usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
             if usuario_existente:
                 flash('Este e-mail já está cadastrado.', 'danger')
+                return render_template('auth/form_usuario.html')
+
+            # Restrição: Apenas administradores podem criar outros administradores
+            if request.form['perfil'] == 'admin' and current_user.perfil != 'admin':
+                flash('Apenas administradores podem criar contas de administrador.', 'danger')
                 return render_template('auth/form_usuario.html')
 
             novo_usuario = Usuario(
@@ -138,16 +139,26 @@ def novo_usuario():
 
 @auth_bp.route('/usuarios/editar/<int:id>', methods=['GET', 'POST'])
 @login_required
+@admin_or_moderador_required
 def editar_usuario(id):
-    from app.auth.utils import admin_required
-    admin_required(lambda: None)()
-
     usuario = Usuario.query.get_or_404(id)
+
+    # Apenas admins podem editar outros admins
+    if usuario.PERFIL == 'admin' and current_user.perfil != 'admin':
+        flash('Apenas administradores podem editar contas de administrador.', 'danger')
+        return redirect(url_for('auth.lista_usuarios'))
 
     if request.method == 'POST':
         try:
             usuario.NOME = request.form['nome']
-            usuario.PERFIL = request.form['perfil']
+
+            # Restrição: Apenas administradores podem promover para admin
+            novo_perfil = request.form['perfil']
+            if novo_perfil == 'admin' and current_user.perfil != 'admin':
+                flash('Apenas administradores podem promover usuários a administradores.', 'danger')
+                return render_template('auth/form_usuario.html', usuario=usuario)
+
+            usuario.PERFIL = novo_perfil
 
             # Verifica se a senha foi alterada
             nova_senha = request.form.get('senha')
@@ -166,12 +177,21 @@ def editar_usuario(id):
 
 @auth_bp.route('/usuarios/excluir/<int:id>')
 @login_required
+@admin_or_moderador_required
 def excluir_usuario(id):
-    from app.auth.utils import admin_required
-    admin_required(lambda: None)()
-
     try:
         usuario = Usuario.query.get_or_404(id)
+
+        # Apenas admins podem excluir outros admins
+        if usuario.PERFIL == 'admin' and current_user.perfil != 'admin':
+            flash('Apenas administradores podem excluir contas de administrador.', 'danger')
+            return redirect(url_for('auth.lista_usuarios'))
+
+        # Impedir exclusão do próprio usuário
+        if usuario.ID == current_user.id:
+            flash('Você não pode excluir sua própria conta.', 'danger')
+            return redirect(url_for('auth.lista_usuarios'))
+
         usuario.DELETED_AT = datetime.utcnow()
         db.session.commit()
         flash('Usuário removido!', 'warning')

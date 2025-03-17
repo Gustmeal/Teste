@@ -39,6 +39,8 @@
                         <td>
                             {% if usuario.PERFIL == 'admin' %}
                             <span class="badge bg-primary">Administrador</span>
+                            {% elif usuario.PERFIL == 'moderador' %}
+                            <span class="badge bg-success">Moderador</span>
                             {% else %}
                             <span class="badge bg-info text-dark">Usuário</span>
                             {% endif %}

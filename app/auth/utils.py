@@ -20,6 +20,15 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_or_moderador_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or (current_user.perfil != 'admin' and current_user.perfil != 'moderador'):
+            flash('Acesso restrito. Você precisa ser um administrador ou moderador.', 'danger')
+            return redirect(url_for('auth.login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def init_login_manager(app):
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'

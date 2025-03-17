@@ -34,65 +34,25 @@
         </div>
         <div class="sidebar-content">
             <ul class="sidebar-menu">
-                <li>
-                    <a href="{{ url_for('edital.index') }}" {% if request.endpoint == 'edital.index' %}class="active"{% endif %}>
-                        <i class="fas fa-home"></i> Início
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ url_for('edital.lista_editais') }}" {% if 'edital.lista_editais' in request.endpoint %}class="active"{% endif %}>
-                        <i class="fas fa-file-alt"></i> Editais
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ url_for('periodo.lista_periodos') }}" {% if 'periodo.lista_periodos' in request.endpoint %}class="active"{% endif %}>
-                        <i class="fas fa-calendar-alt"></i> Períodos
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ url_for('limite.lista_limites') }}" {% if 'limite.lista_limites' in request.endpoint %}class="active"{% endif %}>
-                        <i class="fas fa-balance-scale"></i> Limites de Distribuição
-                     </a>
-                </li>
-                <li>
-                    <a href="{{ url_for('meta.lista_metas') }}" {% if 'meta.lista_metas' in request.endpoint %}class="active"{% endif %}>
-                        <i class="fas fa-chart-line"></i> Metas de Avaliação
-                    </a>
-                </li>
-                <li>
-                    <a href="#" onclick="showDevelopmentMessage(event)">
-                        <i class="fas fa-sitemap"></i> Dashboards
-                    </a>
-                </li>
+                <li><a href="{{ url_for('edital.index') }}"><i class="fas fa-home"></i> Início</a></li>
+                <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
+                <li><a href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt"></i> Períodos</a></li>
+                <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Limites de Distribuição</a></li>
+                <li><a href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line"></i> Metas de Avaliação</a></li>
+                <li><a href="#" onclick="showDevelopmentMessage(event)"><i class="fas fa-sitemap"></i> Dashboards</a></li>
 
                 <li class="mt-3">
                     <hr class="dropdown-divider mx-3">
                 </li>
 
-                <li>
-                    <a href="{{ url_for('auth.perfil') }}" {% if request.endpoint == 'auth.perfil' %}class="active"{% endif %}>
-                        <i class="fas fa-user"></i> Meu Perfil
-                    </a>
-                </li>
+                <li><a href="{{ url_for('auth.perfil') }}"><i class="fas fa-user"></i> Meu Perfil</a></li>
 
-                {% if current_user.perfil == 'admin' %}
-                <li>
-                    <a href="{{ url_for('auth.lista_usuarios') }}" {% if request.endpoint == 'auth.lista_usuarios' %}class="active"{% endif %}>
-                        <i class="fas fa-users"></i> Gerenciar Usuários
-                    </a>
-                </li>
-                <li>
-                    <a href="{{ url_for('audit.index') }}" {% if request.endpoint == 'audit.index' %}class="active"{% endif %}>
-                        <i class="fas fa-history"></i> Logs de Auditoria
-                    </a>
-                </li>
+                {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
+                <li><a href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users"></i> Gerenciar Usuários</a></li>
+                <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 {% endif %}
 
-                <li>
-                    <a href="{{ url_for('auth.logout') }}">
-                        <i class="fas fa-sign-out-alt"></i> Sair
-                    </a>
-                </li>
+                <li><a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
             </ul>
         </div>
     </div>
@@ -114,21 +74,13 @@
                             <i class="fas fa-user-circle me-1"></i> {{ current_user.nome }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('auth.perfil') }}">
-                                <i class="fas fa-user me-2"></i> Meu Perfil
-                            </a></li>
-                            {% if current_user.perfil == 'admin' %}
-                            <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}">
-                                <i class="fas fa-users me-2"></i> Gerenciar Usuários
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('audit.index') }}">
-                                <i class="fas fa-history me-2"></i> Logs de Auditoria
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.perfil') }}"><i class="fas fa-user me-2"></i> Meu Perfil</a></li>
+                            {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
+                            <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users me-2"></i> Gerenciar Usuários</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% endif %}
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
-                                <i class="fas fa-sign-out-alt me-2"></i> Sair
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Sair</a></li>
                         </ul>
                     </li>
                     {% else %}
@@ -160,9 +112,7 @@
 
     <footer class="py-3">
         <div class="container text-center">
-            <span>
-                Sistema de Cadastro • {{ current_year }}
-            </span>
+            <span>Sistema de Cadastro • {{ current_year }}</span>
         </div>
     </footer>
 
