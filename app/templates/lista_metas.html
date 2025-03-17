@@ -1,4 +1,3 @@
-<!-- app/templates/lista_metas.html -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -7,9 +6,17 @@
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
+   <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">Metas de Avaliação</h1>
-    </div>
+        <div>
+            <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-info me-2">
+                <i class="fas fa-list"></i> Visualizar Tudo
+            </a>
+            <a href="{{ url_for('meta.nova_meta') }}" class="btn btn-success">
+                + Nova Meta
+            </a>
+        </div>
+</div>
 
     <!-- Filtros -->
     <div class="card shadow mb-4">
@@ -81,7 +88,7 @@
     </div>
 
     <div class="card shadow">
-        <div class="table-responsive" data-loading="true">
+        <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="metasTable">
                 <thead>
                     <tr>
@@ -89,10 +96,11 @@
                         <th>Edital</th>
                         <th>Período</th>
                         <th>Empresa</th>
-                        <th>Meta Arrecadação</th>
-                        <th>Meta Acionamento</th>
-                        <th>Meta Liquidação</th>
-                        <th>Meta Bonificação</th>
+                        <th class="text-end">Meta Arrecadação</th>
+                        <th class="text-end">Meta Acionamento</th>
+                        <th class="text-end">Meta Liquidação</th>
+                        <th class="text-end">Meta Bonificação</th>
+                        <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -108,14 +116,25 @@
                                 {{ meta.empresa_nome }}
                             {% endif %}
                         </td>
-                        <td>{{ "%.2f"|format(meta.META_ARRECADACAO|float) if meta.META_ARRECADACAO else "-" }}</td>
-                        <td>{{ "%.2f"|format(meta.META_ACIONAMENTO|float) if meta.META_ACIONAMENTO else "-" }}</td>
-                        <td>{{ "%.2f"|format(meta.META_LIQUIDACAO|float) if meta.META_LIQUIDACAO else "-" }}</td>
-                        <td>{{ "%.2f"|format(meta.META_BONIFICACAO|float) if meta.META_BONIFICACAO else "-" }}</td>
+                        <td class="text-end">{{ meta.META_ARRECADACAO|br_currency if meta.META_ARRECADACAO else "-" }}</td>
+                        <td class="text-end">{{ meta.META_ACIONAMENTO|br_currency if meta.META_ACIONAMENTO else "-" }}</td>
+                        <td class="text-end">{{ meta.META_LIQUIDACAO|br_number if meta.META_LIQUIDACAO else "-" }}</td>
+                        <td class="text-end">{{ meta.META_BONIFICACAO|br_currency if meta.META_BONIFICACAO else "-" }}</td>
+                        <td class="text-center">
+                            <a href="{{ url_for('meta.editar_meta', id=meta.ID) }}"
+                               class="btn btn-sm btn-outline-primary me-1">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="javascript:void(0);"
+                               onclick="confirmarExclusao({{ meta.ID }}, '{{ meta.COMPETENCIA }}');"
+                               class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" class="text-center py-4 text-muted">
+                        <td colspan="9" class="text-center py-4 text-muted">
                             <i class="fas fa-chart-line fa-2x mb-3"></i>
                             <p class="mb-0">Nenhuma meta de avaliação encontrada</p>
                         </td>
@@ -127,11 +146,99 @@
     </div>
 </div>
 
+<!-- Estilos para ajustar o tamanho da tabela -->
+<style>
+    /* Compactar a tabela */
+    #metasTable {
+        font-size: 0.85rem;
+    }
+
+    #metasTable th,
+    #metasTable td {
+        padding: 0.5rem;
+    }
+
+    /* Diminuir o tamanho dos botões de ação */
+    #metasTable .btn-sm {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    /* Aumentar o tamanho do container */
+    .editais-container {
+        max-width: 100%;
+        padding: 0 0.5rem;
+    }
+
+    /* Permitir quebra de texto no cabeçalho */
+    #metasTable th {
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    /* Definir tamanhos específicos para colunas */
+    #metasTable th:nth-child(1) {
+        width: 9%;  /* Competência */
+    }
+    #metasTable th:nth-child(2) {
+        width: 8%;  /* Edital */
+    }
+    #metasTable th:nth-child(3) {
+        width: 7%;  /* Período */
+    }
+    #metasTable th:nth-child(4) {
+        width: 11%; /* Empresa */
+    }
+    #metasTable th:nth-child(5) {
+        width: 15%; /* Meta Arrecadação */
+    }
+    #metasTable th:nth-child(6) {
+        width: 15%; /* Meta Acionamento */
+    }
+    #metasTable th:nth-child(7) {
+        width: 12%; /* Meta Liquidação */
+    }
+    #metasTable th:nth-child(8) {
+        width: 15%; /* Meta Bonificação */
+    }
+    #metasTable th:nth-child(9) {
+        width: 8%;  /* Ações */
+    }
+</style>
+
+<!-- Modal de confirmação para exclusão -->
+<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja remover a meta de avaliação para <span id="metaCompetencia" class="fw-bold"></span>?</p>
+                <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">Sim, Remover</a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         setupTableFilter('metasSearch', 'metasTable');
 
-        // Armazenar os dados para filtros dinâmicos
+        // Configurar a exclusão da meta
+        window.confirmarExclusao = function(id, competencia) {
+            document.getElementById('metaCompetencia').textContent = competencia;
+            document.getElementById('btnConfirmarExclusao').href = "{{ url_for('meta.excluir_meta', id=0) }}".replace('0', id);
+            const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
+            modal.show();
+        };
+
+        // Inicializar filtros dinâmicos
         const relationships = {{ relationships|tojson }};
 
         // Elementos dos filtros

@@ -11,6 +11,17 @@ def create_app():
 
     db.init_app(app)
 
+    # Adicionar filtros personalizados
+    from app.utils.formatters import format_currency, format_number
+
+    @app.template_filter('br_currency')
+    def br_currency_filter(value):
+        return format_currency(value)
+
+    @app.template_filter('br_number')
+    def br_number_filter(value):
+        return format_number(value)
+
     # Inicializar Flask-Login
     from app.auth.utils import init_login_manager
     init_login_manager(app)

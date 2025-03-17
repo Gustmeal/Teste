@@ -23,9 +23,13 @@ def index():
     from app.models.periodo import PeriodoAvaliacao
     periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).count()
 
-    # Contar limites ativos - NOVO
+    # Contar limites ativos
     from app.models.limite_distribuicao import LimiteDistribuicao
     limites = LimiteDistribuicao.query.filter(LimiteDistribuicao.DELETED_AT == None).count()
+
+    # Contar metas ativas - NOVO
+    from app.models.meta_avaliacao import MetaAvaliacao
+    metas = MetaAvaliacao.query.filter(MetaAvaliacao.DELETED_AT == None).count()
 
     # Contar usuários ativos (apenas para administradores)
     usuarios = 0
@@ -33,7 +37,8 @@ def index():
         from app.models.usuario import Usuario
         usuarios = Usuario.query.filter(Usuario.DELETED_AT == None, Usuario.ATIVO == True).count()
 
-    return render_template('index.html', editais=editais, periodos=periodos, limites=limites, usuarios=usuarios)
+    return render_template('index.html', editais=editais, periodos=periodos, limites=limites, metas=metas,
+                           usuarios=usuarios)
 
 
 @edital_bp.route('/editais')

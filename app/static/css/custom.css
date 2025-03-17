@@ -1,0 +1,128 @@
+/* Estilo para células de dados numéricos */
+.table td.text-end,
+.table th.text-end {
+    text-align: right;
+    padding-right: 1rem;
+}
+
+/* Adicionar uma borda mais clara entre as células para melhorar a leitura */
+.table td, .table th {
+    border-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Melhorar o estilo de hover para linhas da tabela */
+.table-hover tbody tr:hover {
+    background-color: rgba(108, 99, 255, 0.08);
+}
+
+/* Formatação monetária para se destacar */
+.currency {
+    font-weight: 500;
+    color: #28a745;
+}
+
+/* Melhorar a aparência dos filtros */
+.form-container .card-header h1,
+.editais-container .card-header h5 {
+    color: white !important;
+}
+
+select.form-select {
+    background-position: right 0.75rem center;
+    background-size: 16px 12px;
+}
+
+/* Animação suave para filtros */
+.card.shadow {
+    transition: all 0.3s ease;
+}
+
+/* Adicionar cor de fundo mais suave para cabeçalhos de tabela */
+.table thead th {
+    background-color: rgba(108, 99, 255, 0.1);
+    border-bottom: none;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+}
+/* Remover sublinhado do botão voltar */
+.btn-back {
+    text-decoration: none !important;
+}
+
+/* Tabela para as metas de avaliação */
+.table td.text-end {
+    font-family: 'Courier New', monospace;
+    font-weight: 500;
+}
+
+/* Formatar valores monetários */
+.table td.text-end[data-currency="true"] {
+    color: #007E33;
+}
+
+/* Estilo para valores de metas */
+.meta-valor {
+    font-weight: 500;
+    color: #28a745;
+}
+
+/* Estilo para valores inteiros */
+.int-valor {
+    font-weight: 500;
+    color: #2196F3;
+}
+/* Garantir que os valores monetários fiquem corretamente alinhados */
+.text-end {
+    white-space: nowrap; /* Evita quebra de linha entre símbolo e valor */
+    font-family: 'Courier New', monospace; /* Fonte monoespaçada para alinhamento */
+}
+
+/* Remover sublinhado do botão voltar */
+.btn-back {
+    text-decoration: none !important;
+}
+
+/* Tabela para as metas de avaliação */
+.table td.text-end {
+    font-family: 'Courier New', monospace;
+    font-weight: 500;
+}
+
+/* Formatar valores monetários */
+.table td.text-end[data-currency="true"] {
+    color: #007E33;
+}
+
+/* Estilo para valores de metas */
+.meta-valor {
+    font-weight: 500;
+    color: #28a745;
+}
+
+/* Estilo para valores inteiros */
+.int-valor {
+    font-weight: 500;
+    color: #2196F3;
+}
+/* Estilo para o botão Visualizar Tudo */
+.btn-info {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+    color: white;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+    border-color: #117a8b;
+    color: white;
+}
+
+/* Garantir que os botões fiquem alinhados corretamente */
+.d-flex .btn {
+    display: inline-flex;
+    align-items: center;
+}
+
+.d-flex .btn i {
+    margin-right: 5px;
+}

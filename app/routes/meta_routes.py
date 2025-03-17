@@ -1,11 +1,12 @@
-from flask import Blueprint, render_template, request, jsonify
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
 from app.models.meta_avaliacao import MetaAvaliacao
 from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
 from app.models.empresa_participante import EmpresaParticipante
 from datetime import datetime
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app import db
+from app.utils.audit import registrar_log
 
 meta_bp = Blueprint('meta', __name__)
 
@@ -24,7 +25,7 @@ def lista_metas():
     empresa_id = request.args.get('empresa_id', type=int)
     competencia = request.args.get('competencia', type=str)
 
-    # Consulta base - usar join para garantir que temos acesso à empresa
+    # Consulta base
     query = db.session.query(MetaAvaliacao, EmpresaParticipante). \
         join(EmpresaParticipante, MetaAvaliacao.ID_EMPRESA == EmpresaParticipante.ID_EMPRESA). \
         filter(MetaAvaliacao.DELETED_AT == None, EmpresaParticipante.DELETED_AT == None)
@@ -42,12 +43,28 @@ def lista_metas():
     # Executar a consulta
     results = query.order_by(MetaAvaliacao.COMPETENCIA).all()
 
-    # Processar resultados para incluir dados da empresa
-    metas = []
+    # Usar um dicionário para eliminar duplicatas com base numa chave única
+    metas_dict = {}
     for meta, empresa in results:
+        # Criar uma chave única para cada combinação edital-período-empresa-competência
+        chave_unica = (meta.ID_EDITAL, meta.ID_PERIODO, meta.ID_EMPRESA, meta.COMPETENCIA)
+
+        # Se a chave já existir, pular (evita duplicatas)
+        if chave_unica in metas_dict:
+            continue
+
+        # Adicionar informações da empresa
         meta.empresa_nome = empresa.NO_EMPRESA
         meta.empresa_nome_abreviado = empresa.NO_EMPRESA_ABREVIADA
-        metas.append(meta)
+
+        # Adicionar ao dicionário
+        metas_dict[chave_unica] = meta
+
+    # Converter o dicionário de volta para lista
+    metas = list(metas_dict.values())
+
+    # Ordenar a lista de metas por competência
+    metas.sort(key=lambda m: m.COMPETENCIA)
 
     # Obter dados para os filtros - todos os dados
     editais = Edital.query.filter(Edital.DELETED_AT == None).all()
@@ -203,3 +220,240 @@ def metas_filtros():
         'empresas': empresas,
         'competencias': competencias
     })
+
+
+@meta_bp.route('/metas/nova', methods=['GET', 'POST'])
+@login_required
+def nova_meta():
+    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
+    empresas = EmpresaParticipante.query.filter(EmpresaParticipante.DELETED_AT == None).all()
+
+    # Verificar se há editais e períodos cadastrados
+    if not editais:
+        flash('Não há editais cadastrados. Cadastre um edital primeiro.', 'warning')
+        return redirect(url_for('edital.lista_editais'))
+
+    if not periodos:
+        flash('Não há períodos cadastrados. Cadastre um período primeiro.', 'warning')
+        return redirect(url_for('periodo.lista_periodos'))
+
+    if not empresas:
+        flash('Não há empresas cadastradas. Cadastre uma empresa primeiro.', 'warning')
+        return redirect(url_for('periodo.lista_periodos'))
+
+    if request.method == 'POST':
+        try:
+            edital_id = int(request.form['edital_id'])
+            periodo_id = int(request.form['periodo_id'])
+            empresa_id = int(request.form['empresa_id'])
+            competencia = request.form['competencia']
+
+            # Valores opcionais
+            meta_arrecadacao = request.form.get('meta_arrecadacao')
+            if meta_arrecadacao:
+                meta_arrecadacao = float(meta_arrecadacao)
+
+            meta_acionamento = request.form.get('meta_acionamento')
+            if meta_acionamento:
+                meta_acionamento = float(meta_acionamento)
+
+            meta_liquidacao = request.form.get('meta_liquidacao')
+            if meta_liquidacao:
+                meta_liquidacao = int(meta_liquidacao)
+
+            meta_bonificacao = request.form.get('meta_bonificacao')
+            if meta_bonificacao:
+                meta_bonificacao = float(meta_bonificacao)
+
+            # Buscar empresa correspondente para obter o ID_EMPRESA correto
+            empresa = EmpresaParticipante.query.get_or_404(empresa_id)
+
+            # Verificar se já existe meta para esta combinação
+            meta_existente = MetaAvaliacao.query.filter_by(
+                ID_EDITAL=edital_id,
+                ID_PERIODO=periodo_id,
+                ID_EMPRESA=empresa.ID_EMPRESA,
+                COMPETENCIA=competencia,
+                DELETED_AT=None
+            ).first()
+
+            if meta_existente:
+                flash('Já existe uma meta cadastrada com estes critérios.', 'danger')
+                return render_template('form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
+
+            nova_meta = MetaAvaliacao(
+                ID_EDITAL=edital_id,
+                ID_PERIODO=periodo_id,
+                ID_EMPRESA=empresa.ID_EMPRESA,
+                COMPETENCIA=competencia,
+                META_ARRECADACAO=meta_arrecadacao,
+                META_ACIONAMENTO=meta_acionamento,
+                META_LIQUIDACAO=meta_liquidacao,
+                META_BONIFICACAO=meta_bonificacao
+            )
+
+            db.session.add(nova_meta)
+            db.session.commit()
+
+            # Registrar log de auditoria
+            dados_novos = {
+                'id_edital': edital_id,
+                'id_periodo': periodo_id,
+                'id_empresa': empresa.ID_EMPRESA,
+                'competencia': competencia,
+                'meta_arrecadacao': meta_arrecadacao,
+                'meta_acionamento': meta_acionamento,
+                'meta_liquidacao': meta_liquidacao,
+                'meta_bonificacao': meta_bonificacao
+            }
+
+            registrar_log(
+                acao='criar',
+                entidade='meta',
+                entidade_id=nova_meta.ID,
+                descricao=f'Cadastro de meta de avaliação para {competencia}',
+                dados_novos=dados_novos
+            )
+
+            flash('Meta de avaliação cadastrada com sucesso!', 'success')
+            return redirect(url_for('meta.lista_metas'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro: {str(e)}', 'danger')
+
+    return render_template('form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
+
+
+@meta_bp.route('/metas/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_meta(id):
+    meta = MetaAvaliacao.query.get_or_404(id)
+    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
+    empresas = EmpresaParticipante.query.filter(EmpresaParticipante.DELETED_AT == None).all()
+
+    if request.method == 'POST':
+        try:
+            # Capturar dados antigos para auditoria
+            dados_antigos = {
+                'id_edital': meta.ID_EDITAL,
+                'id_periodo': meta.ID_PERIODO,
+                'id_empresa': meta.ID_EMPRESA,
+                'competencia': meta.COMPETENCIA,
+                'meta_arrecadacao': meta.META_ARRECADACAO,
+                'meta_acionamento': meta.META_ACIONAMENTO,
+                'meta_liquidacao': meta.META_LIQUIDACAO,
+                'meta_bonificacao': meta.META_BONIFICACAO
+            }
+
+            # Atualizar dados
+            meta.ID_EDITAL = int(request.form['edital_id'])
+            meta.ID_PERIODO = int(request.form['periodo_id'])
+
+            # Buscar empresa correspondente para obter o ID_EMPRESA correto
+            empresa_id = int(request.form['empresa_id'])
+            empresa = EmpresaParticipante.query.get_or_404(empresa_id)
+            meta.ID_EMPRESA = empresa.ID_EMPRESA
+
+            meta.COMPETENCIA = request.form['competencia']
+
+            # Valores opcionais
+            meta_arrecadacao = request.form.get('meta_arrecadacao')
+            if meta_arrecadacao:
+                meta.META_ARRECADACAO = float(meta_arrecadacao)
+            else:
+                meta.META_ARRECADACAO = None
+
+            meta_acionamento = request.form.get('meta_acionamento')
+            if meta_acionamento:
+                meta.META_ACIONAMENTO = float(meta_acionamento)
+            else:
+                meta.META_ACIONAMENTO = None
+
+            meta_liquidacao = request.form.get('meta_liquidacao')
+            if meta_liquidacao:
+                meta.META_LIQUIDACAO = int(meta_liquidacao)
+            else:
+                meta.META_LIQUIDACAO = None
+
+            meta_bonificacao = request.form.get('meta_bonificacao')
+            if meta_bonificacao:
+                meta.META_BONIFICACAO = float(meta_bonificacao)
+            else:
+                meta.META_BONIFICACAO = None
+
+            db.session.commit()
+
+            # Registrar log de auditoria
+            dados_novos = {
+                'id_edital': meta.ID_EDITAL,
+                'id_periodo': meta.ID_PERIODO,
+                'id_empresa': meta.ID_EMPRESA,
+                'competencia': meta.COMPETENCIA,
+                'meta_arrecadacao': meta.META_ARRECADACAO,
+                'meta_acionamento': meta.META_ACIONAMENTO,
+                'meta_liquidacao': meta.META_LIQUIDACAO,
+                'meta_bonificacao': meta.META_BONIFICACAO
+            }
+
+            registrar_log(
+                acao='editar',
+                entidade='meta',
+                entidade_id=meta.ID,
+                descricao=f'Edição de meta de avaliação para {meta.COMPETENCIA}',
+                dados_antigos=dados_antigos,
+                dados_novos=dados_novos
+            )
+
+            flash('Meta de avaliação atualizada com sucesso!', 'success')
+            return redirect(url_for('meta.lista_metas'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro: {str(e)}', 'danger')
+
+    return render_template('form_meta.html', meta=meta, editais=editais, periodos=periodos, empresas=empresas)
+
+
+@meta_bp.route('/metas/excluir/<int:id>')
+@login_required
+def excluir_meta(id):
+    try:
+        meta = MetaAvaliacao.query.get_or_404(id)
+
+        # Capturar dados para auditoria
+        dados_antigos = {
+            'id_edital': meta.ID_EDITAL,
+            'id_periodo': meta.ID_PERIODO,
+            'id_empresa': meta.ID_EMPRESA,
+            'competencia': meta.COMPETENCIA,
+            'meta_arrecadacao': meta.META_ARRECADACAO,
+            'meta_acionamento': meta.META_ACIONAMENTO,
+            'meta_liquidacao': meta.META_LIQUIDACAO,
+            'meta_bonificacao': meta.META_BONIFICACAO,
+            'deleted_at': None
+        }
+
+        meta.DELETED_AT = datetime.utcnow()
+        db.session.commit()
+
+        # Registrar log de auditoria
+        dados_novos = {'deleted_at': meta.DELETED_AT.strftime('%Y-%m-%d %H:%M:%S')}
+
+        registrar_log(
+            acao='excluir',
+            entidade='meta',
+            entidade_id=meta.ID,
+            descricao=f'Exclusão de meta de avaliação para {meta.COMPETENCIA}',
+            dados_antigos=dados_antigos,
+            dados_novos=dados_novos
+        )
+
+        flash('Meta de avaliação removida com sucesso!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro: {str(e)}', 'danger')
+
+    return redirect(url_for('meta.lista_metas'))
