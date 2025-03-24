@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container">
+    <a href="{{ url_for('feedback.visualizar_feedback', id=feedback.ID) }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h1 class="mb-0">Responder Feedback</h1>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="mb-0">{{ feedback.TITULO }}</h3>
+                </div>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-user me-2"></i> {{ feedback.usuario.NOME }}
+                    <i class="fas fa-clock ms-3 me-2"></i> {{ feedback.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                </p>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body bg-light">
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ feedback.MENSAGEM }}</p>
+                </div>
+            </div>
+
+            <form method="POST">
+                <div class="mb-4">
+                    <label class="form-label">Sua Resposta <span class="text-danger">*</span></label>
+                    <textarea class="form-control" name="resposta" rows="6"
+                              placeholder="Digite sua resposta..." required></textarea>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('feedback.visualizar_feedback', id=feedback.ID) }}" class="btn btn-secondary">
+                        Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        Enviar Resposta
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

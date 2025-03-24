@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('chat.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Conversa com {{ usuario.NOME }}</h1>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <div class="bg-white rounded-circle text-primary d-flex align-items-center justify-content-center me-2"
+                     style="width: 32px; height: 32px;">
+                    <i class="fas fa-user"></i>
+                </div>
+                <h5 class="mb-0">{{ usuario.NOME }}</h5>
+            </div>
+            <small>{{ 'Administrador' if usuario.PERFIL == 'admin' else 'Usuário' }}</small>
+        </div>
+        <div class="card-body">
+            <!-- Área de mensagens -->
+            <div id="mensagensContainer" class="mb-3" style="height: 400px; overflow-y: auto;">
+                {% if mensagens %}
+                {% for mensagem in mensagens %}
+                <div class="d-flex {% if mensagem.REMETENTE_ID == current_user.id %}justify-content-end{% else %}justify-content-start{% endif %} mb-2">
+                    <div class="card {% if mensagem.REMETENTE_ID == current_user.id %}bg-primary text-white{% else %}bg-light{% endif %}"
+                         style="max-width: 70%; border-radius: 12px;">
+                        <div class="card-body py-2 px-3">
+                            <p class="mb-1" style="white-space: pre-wrap;">{{ mensagem.CONTEUDO }}</p>
+                            <small class="{% if mensagem.REMETENTE_ID == current_user.id %}text-white-50{% else %}text-muted{% endif %}">
+                                {{ mensagem.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                                {% if mensagem.REMETENTE_ID == current_user.id %}
+                                {% if mensagem.LIDO %}
+                                <i class="fas fa-check-double ms-1" title="Lida em {{ mensagem.LIDO_AT.strftime('%d/%m/%Y %H:%M') }}"></i>
+                                {% else %}
+                                <i class="fas fa-check ms-1" title="Entregue"></i>
+                                {% endif %}
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-comments fa-3x mb-3"></i>
+                    <p class="mb-0">Ainda não há mensagens nesta conversa.<br>Envie a primeira mensagem abaixo!</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Formulário de envio -->
+            <form id="mensagemForm" class="d-flex">
+                <input type="hidden" name="destinatario_id" value="{{ usuario.ID }}">
+                <textarea name="conteudo" class="form-control me-2" rows="2" placeholder="Digite sua mensagem..." required></textarea>
+                <button type="submit" class="btn btn-primary" style="width: 100px;">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const mensagensContainer = document.getElementById('mensagensContainer');
+        const mensagemForm = document.getElementById('mensagemForm');
+        const ultimaMensagem = {{ mensagens[-1].ID if mensagens else 0 }};
+        let ultimoIdVerificado = ultimaMensagem;
+
+        // Rolar para o final das mensagens
+        mensagensContainer.scrollTop = mensagensContainer.scrollHeight;
+
+        // Enviar mensagem
+        mensagemForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const formData = new FormData(mensagemForm);
+            const conteudoTextarea = mensagemForm.querySelector('textarea[name="conteudo"]');
+            const conteudo = conteudoTextarea.value.trim();
+
+            if (!conteudo) return;
+
+            // Desabilitar o botão durante o envio
+            const submitBtn = mensagemForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+
+            fetch('{{ url_for("chat.enviar_mensagem") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Adicionar mensagem à conversa
+                    adicionarMensagem(data.mensagem);
+
+                    // Limpar o campo de texto
+                    conteudoTextarea.value = '';
+
+                    // Rolar para o final
+                    mensagensContainer.scrollTop = mensagensContainer.scrollHeight;
+
+                    // Atualizar último ID verificado
+                    ultimoIdVerificado = data.mensagem.id;
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Erro:', error);
+                alert('Erro ao enviar mensagem. Tente novamente.');
+            })
+            .finally(() => {
+                // Reativar o botão
+                submitBtn.disabled = false;
+                conteudoTextarea.focus();
+            });
+        });
+
+        // Função para adicionar mensagem à conversa
+        function adicionarMensagem(mensagem) {
+            const div = document.createElement('div');
+            div.className = `d-flex ${mensagem.is_mine ? 'justify-content-end' : 'justify-content-start'} mb-2`;
+
+            div.innerHTML = `
+                <div class="card ${mensagem.is_mine ? 'bg-primary text-white' : 'bg-light'}"
+                     style="max-width: 70%; border-radius: 12px;">
+                    <div class="card-body py-2 px-3">
+                        <p class="mb-1" style="white-space: pre-wrap;">${mensagem.conteudo}</p>
+                        <small class="${mensagem.is_mine ? 'text-white-50' : 'text-muted'}">
+                            ${mensagem.created_at}
+                            ${mensagem.is_mine ? '<i class="fas fa-check ms-1" title="Entregue"></i>' : ''}
+                        </small>
+                    </div>
+                </div>
+            `;
+
+            mensagensContainer.appendChild(div);
+        }
+
+        // Verificar novas mensagens periodicamente
+        function verificarNovasMensagens() {
+            fetch('{{ url_for("chat.verificar_novas_mensagens", usuario_id=usuario.ID) }}?ultimo_id=' + ultimoIdVerificado)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.mensagens.length > 0) {
+                    // Adicionar novas mensagens
+                    data.mensagens.forEach(mensagem => {
+                        adicionarMensagem(mensagem);
+                        ultimoIdVerificado = mensagem.id;
+                    });
+
+                    // Rolar para o final se estiver próximo do final
+                    const isScrolledToBottom = mensagensContainer.scrollHeight - mensagensContainer.clientHeight <= mensagensContainer.scrollTop + 100;
+                    if (isScrolledToBottom) {
+                        mensagensContainer.scrollTop = mensagensContainer.scrollHeight;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao verificar novas mensagens:', error);
+            });
+        }
+
+        // Verificar a cada 5 segundos
+        setInterval(verificarNovasMensagens, 5000);
+    });
+</script>
+{% endblock %}

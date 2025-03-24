@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container">
+    <a href="{{ url_for('feedback.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h1 class="mb-0">Novo Feedback</h1>
+        </div>
+        <div class="card-body p-4">
+            <p class="text-muted mb-4">
+                Compartilhe suas sugestões, ideias e feedback para ajudar a melhorar o sistema.
+                Nossa equipe analisa cada sugestão com atenção.
+            </p>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Título <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="titulo"
+                           placeholder="Ex: Sugestão para o módulo de empresas" required maxlength="100">
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">Mensagem <span class="text-danger">*</span></label>
+                    <textarea class="form-control" name="mensagem" rows="6"
+                              placeholder="Descreva sua sugestão ou feedback em detalhes..." required></textarea>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('feedback.index') }}" class="btn btn-secondary">
+                        Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        Enviar Feedback
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('edital.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Chat</h1>
+    </div>
+
+    <div class="row">
+        <!-- Lista de conversas -->
+        <div class="col-md-4">
+            <div class="card shadow h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Conversas</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% if current_user.perfil == 'usuario' and admins %}
+                        <div class="p-3 border-bottom">
+                            <h6 class="mb-2">Administradores</h6>
+                            {% for admin in admins %}
+                            <a href="{{ url_for('chat.conversa', usuario_id=admin.ID) }}"
+                               class="d-flex align-items-center text-decoration-none p-2 rounded hover-bg-light mb-1">
+                                <div class="bg-primary rounded-circle text-white d-flex align-items-center justify-content-center me-2"
+                                     style="width: 40px; height: 40px;">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0">{{ admin.NOME }}</h6>
+                                    <small class="text-muted">Administrador</small>
+                                </div>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        <div class="p-3">
+                            <h6 class="mb-2">Conversas Recentes</h6>
+                            {% if conversas %}
+                            {% for conversa in conversas %}
+                            <a href="{{ url_for('chat.conversa', usuario_id=conversa.usuario.ID) }}"
+                               class="d-flex align-items-center text-decoration-none p-2 rounded hover-bg-light mb-1 position-relative">
+                                <div class="bg-primary rounded-circle text-white d-flex align-items-center justify-content-center me-2"
+                                     style="width: 40px; height: 40px;">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div>
+                                    <h6 class="mb-0">{{ conversa.usuario.NOME }}</h6>
+                                    <small class="text-muted">
+                                        {{ conversa.ultima_data.strftime('%d/%m %H:%M') }}
+                                    </small>
+                                </div>
+                                {% if conversa.nao_lidas > 0 %}
+                                <span class="position-absolute top-0 end-0 badge rounded-pill bg-danger">
+                                    {{ conversa.nao_lidas }}
+                                </span>
+                                {% endif %}
+                            </a>
+                            {% endfor %}
+                            {% else %}
+                            <p class="text-muted text-center py-3 mb-0">
+                                <i class="fas fa-comments fa-2x mb-2"></i><br>
+                                Nenhuma conversa recente
+                            </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Área de chat (placeholder) -->
+        <div class="col-md-8">
+            <div class="card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column justify-content-center align-items-center text-center text-muted">
+                    <i class="fas fa-comments fa-4x mb-3"></i>
+                    <h4>Selecione uma conversa</h4>
+                    <p class="mb-0">Escolha um contato para iniciar ou continuar uma conversa.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .hover-bg-light:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+</style>
+{% endblock %}

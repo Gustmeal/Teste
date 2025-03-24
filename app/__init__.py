@@ -53,6 +53,14 @@ def create_app():
     from app.routes.limite_routes import limite_bp
     app.register_blueprint(limite_bp)
 
+    # Registrar blueprint para feedback
+    from app.routes.feedback_routes import feedback_bp
+    app.register_blueprint(feedback_bp)
+
+    # Registrar blueprint para chat
+    from app.routes.chat_routes import chat_bp
+    app.register_blueprint(chat_bp)
+
     # Redirecionar a rota raiz para o login se o usuário não estiver autenticado
     @app.route('/')
     def index():

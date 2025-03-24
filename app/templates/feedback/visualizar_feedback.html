@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container">
+    <a href="{{ url_for('feedback.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h1 class="mb-0">Visualizar Feedback</h1>
+        </div>
+        <div class="card-body p-4">
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="mb-0">{{ feedback.TITULO }}</h3>
+                    <div>
+                        {% if feedback.RESPONDIDO %}
+                        <span class="badge bg-success">Respondido</span>
+                        {% elif feedback.LIDO %}
+                        <span class="badge bg-warning text-dark">Lido</span>
+                        {% else %}
+                        <span class="badge bg-info text-dark">Novo</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-user me-2"></i> {{ feedback.usuario.NOME }}
+                    <i class="fas fa-clock ms-3 me-2"></i> {{ feedback.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                </p>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-body bg-light">
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ feedback.MENSAGEM }}</p>
+                </div>
+            </div>
+
+            {% if feedback.RESPONDIDO %}
+            <div class="mb-4">
+                <h5>Resposta:</h5>
+                <div class="card">
+                    <div class="card-body bg-light">
+                        <p class="mb-3" style="white-space: pre-wrap;">{{ feedback.RESPOSTA }}</p>
+                        <p class="text-muted mb-0">
+                            <i class="fas fa-user me-2"></i> {{ feedback.respondido_por_usuario.NOME }}
+                            <i class="fas fa-clock ms-3 me-2"></i> {{ feedback.RESPONDIDO_AT.strftime('%d/%m/%Y %H:%M') }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                {% if current_user.perfil in ['admin', 'moderador'] and not feedback.RESPONDIDO %}
+                <a href="{{ url_for('feedback.responder_feedback', id=feedback.ID) }}" class="btn btn-success">
+                    <i class="fas fa-reply me-2"></i> Responder
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
