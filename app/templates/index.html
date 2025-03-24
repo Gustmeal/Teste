@@ -2,12 +2,57 @@
 
 {% block content %}
 <div class="central-panel mt-5 fade-in">
-    <h1>SISTEMA DE CREDENCIAMENTO</h1>
+    <h1>Seja bem-vindo!</h1>
     <p class="text-secondary">Plataforma para gerenciamento de processos de credenciamento</p>
 
-    <h2 class="welcome-text text-primary mb-4">Seja bem-vindo!</h2>
+    <div class="row g-4 mt-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="fas fa-file-alt fa-2x text-primary me-3"></i>
+                    <div class="text-start">
+                        <h2 class="mb-0 counter" data-target="{{ editais|default(0) }}">{{ editais|default(0) }}</h2>
+                        <p class="mb-0 text-muted">Editais ativos</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="fas fa-calendar-alt fa-2x text-primary me-3"></i>
+                    <div class="text-start">
+                        <h2 class="mb-0 counter" data-target="{{ periodos|default(0) }}">{{ periodos|default(0) }}</h2>
+                        <p class="mb-0 text-muted">Períodos</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="fas fa-balance-scale fa-2x text-primary me-3"></i>
+                    <div class="text-start">
+                        <h2 class="mb-0 counter" data-target="{{ limites|default(0) }}">{{ limites|default(0) }}</h2>
+                        <p class="mb-0 text-muted">Limites</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm p-3">
+                <div class="d-flex align-items-center justify-content-center">
+                    <i class="fas fa-chart-line fa-2x text-primary me-3"></i>
+                    <div class="text-start">
+                        <h2 class="mb-0 counter" data-target="{{ metas|default(0) }}">{{ metas|default(0) }}</h2>
+                        <p class="mb-0 text-muted">Metas</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <div class="row justify-content-center g-4">
+    <div class="row justify-content-center g-4 mt-4">
         <!-- Primeira linha: Editais e Períodos -->
         <div class="col-md-6">
             <div class="card home-card shadow h-100 d-flex flex-column">
@@ -64,97 +109,5 @@
             </div>
         </div>
     </div>
-
-    <!-- Estatísticas animadas -->
-    <div class="mt-5">
-        <h4 class="text-center mb-4">Resumo do Sistema</h4>
-        <div class="row g-3 text-center">
-            <div class="col-md-3">
-                <div class="card shadow-sm p-3">
-                    <div class="d-flex align-items-center justify-content-center">
-                        <i class="fas fa-file-alt fa-2x text-primary me-3"></i>
-                        <div class="text-start">
-                            <h3 class="mb-0 counter" data-target="{{ editais|default(0) }}">0</h3>
-                            <p class="mb-0 text-muted">Editais Ativos</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card shadow-sm p-3">
-                    <div class="d-flex align-items-center justify-content-center">
-                        <i class="fas fa-calendar-alt fa-2x text-primary me-3"></i>
-                        <div class="text-start">
-                            <h3 class="mb-0 counter" data-target="{{ periodos|default(0) }}">0</h3>
-                            <p class="mb-0 text-muted">Períodos</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card shadow-sm p-3">
-                    <div class="d-flex align-items-center justify-content-center">
-                        <i class="fas fa-balance-scale fa-2x text-primary me-3"></i>
-                        <div class="text-start">
-                            <h3 class="mb-0 counter" data-target="{{ limites|default(0) }}">0</h3>
-                            <p class="mb-0 text-muted">Limites</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card shadow-sm p-3">
-                    <div class="d-flex align-items-center justify-content-center">
-                        <i class="fas fa-chart-line fa-2x text-primary me-3"></i>
-                        <div class="text-start">
-                            <h3 class="mb-0 counter" data-target="{{ metas|default(0) }}">0</h3>
-                            <p class="mb-0 text-muted">Metas</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% if current_user.perfil == 'admin' %}
-            <div class="col-md-3 mx-auto">
-                <div class="card shadow-sm p-3">
-                    <div class="d-flex align-items-center justify-content-center">
-                        <i class="fas fa-users fa-2x text-primary me-3"></i>
-                        <div class="text-start">
-                            <h3 class="mb-0 counter" data-target="{{ usuarios|default(0) }}">0</h3>
-                            <p class="mb-0 text-muted">Usuários</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
 </div>
-
-<script>
-    // Animação de contador
-    document.addEventListener('DOMContentLoaded', function() {
-        const counters = document.querySelectorAll('.counter');
-
-        counters.forEach(counter => {
-            const target = parseInt(counter.getAttribute('data-target'));
-            const duration = 1500; // em ms
-            const steps = 50;
-            const stepValue = target / steps;
-            const stepTime = duration / steps;
-            let current = 0;
-
-            const updateCounter = () => {
-                current += stepValue;
-                if (current > target) current = target;
-                counter.textContent = Math.floor(current);
-
-                if (current < target) {
-                    setTimeout(updateCounter, stepTime);
-                }
-            };
-
-            setTimeout(updateCounter, 300); // pequeno atraso para iniciar
-        });
-    });
-</script>
 {% endblock %}
