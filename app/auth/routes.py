@@ -16,7 +16,7 @@ def inject_current_year():
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('edital.index'))
+        return redirect(url_for('main.geinc_index'))
 
     if request.method == 'POST':
         email = request.form.get('email')
@@ -29,7 +29,7 @@ def login():
             login_user(user_login)
 
             next_page = request.args.get('next')
-            return redirect(next_page or url_for('edital.index'))
+            return redirect(next_page or url_for('main.geinc_index'))
         else:
             flash('Credenciais inválidas. Por favor, tente novamente.', 'danger')
 
@@ -39,7 +39,7 @@ def login():
 @auth_bp.route('/registrar', methods=['GET', 'POST'])
 def registrar():
     if current_user.is_authenticated:
-        return redirect(url_for('edital.index'))
+        return redirect(url_for('main.geinc_index'))
 
     if request.method == 'POST':
         try:
@@ -71,7 +71,7 @@ def registrar():
             login_user(user_login)
 
             flash('Conta criada com sucesso!', 'success')
-            return redirect(url_for('edital.index'))
+            return redirect(url_for('main.geinc_index'))
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao criar conta: {str(e)}', 'danger')
