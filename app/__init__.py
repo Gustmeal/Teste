@@ -29,12 +29,29 @@ def create_app():
     with app.app_context():
         db.create_all()
 
-    # Registrar blueprints
+    # Registrar blueprint para a página principal do GEINC
+    from app.routes.main_routes import main_bp
+    app.register_blueprint(main_bp)
+
+    # Registrar o blueprint principal do credenciamento
+    from app.routes.credenciamento_routes import credenciamento_bp
+    app.register_blueprint(credenciamento_bp)
+
+    # Registrar os outros blueprints com prefixo
     from app.routes.edital_routes import edital_bp
     app.register_blueprint(edital_bp)
 
     from app.routes.periodo_routes import periodo_bp
     app.register_blueprint(periodo_bp)
+
+    from app.routes.meta_routes import meta_bp
+    app.register_blueprint(meta_bp)
+
+    from app.routes.limite_routes import limite_bp
+    app.register_blueprint(limite_bp)
+
+    from app.routes.empresa_routes import empresa_bp
+    app.register_blueprint(empresa_bp)
 
     from app.auth.routes import auth_bp
     app.register_blueprint(auth_bp)
@@ -42,26 +59,13 @@ def create_app():
     from app.routes.audit_routes import audit_bp
     app.register_blueprint(audit_bp)
 
-    from app.routes.empresa_routes import empresa_bp
-    app.register_blueprint(empresa_bp)
-
-    # Registrar blueprint para metas de avaliação
-    from app.routes.meta_routes import meta_bp
-    app.register_blueprint(meta_bp)
-
-    # Registrar blueprint para limites de distribuição
-    from app.routes.limite_routes import limite_bp
-    app.register_blueprint(limite_bp)
-
-    # Registrar blueprint para feedback
     from app.routes.feedback_routes import feedback_bp
     app.register_blueprint(feedback_bp)
 
-    # Registrar blueprint para chat
     from app.routes.chat_routes import chat_bp
     app.register_blueprint(chat_bp)
 
-    # Redirecionar a rota raiz para o login se o usuário não estiver autenticado
+    # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
         from flask import redirect, url_for
@@ -70,6 +74,6 @@ def create_app():
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login'))
 
-        return redirect(url_for('edital.index'))
+        return redirect(url_for('main.geinc_index'))
 
     return app

@@ -10,7 +10,7 @@ from flask_login import login_required
 from app.utils.audit import registrar_log
 from sqlalchemy import or_
 
-limite_bp = Blueprint('limite', __name__)
+limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
 
 @limite_bp.context_processor
@@ -68,7 +68,7 @@ def lista_limites():
     criterios = CriterioSelecao.query.filter(CriterioSelecao.DELETED_AT == None).all()
 
     return render_template(
-        'lista_limites.html',
+        'credenciamento/lista_limites.html',
         limites=limites,
         periodos=periodos,
         criterios=criterios,
@@ -129,7 +129,8 @@ def novo_limite():
 
             if limite_existente:
                 flash('Já existe um limite cadastrado com estes critérios.', 'danger')
-                return render_template('form_limite.html', editais=editais, periodos=periodos, empresas=empresas,
+                return render_template('credenciamento/form_limite.html', editais=editais, periodos=periodos,
+                                       empresas=empresas,
                                        criterios=criterios)
 
             novo_limite = LimiteDistribuicao(
@@ -171,7 +172,7 @@ def novo_limite():
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_limite.html', editais=editais, periodos=periodos, empresas=empresas,
+    return render_template('credenciamento/form_limite.html', editais=editais, periodos=periodos, empresas=empresas,
                            criterios=criterios)
 
 
@@ -222,9 +223,30 @@ def editar_limite(id):
             else:
                 limite.PERCENTUAL_FINAL = None
 
-            db.session.commit()
+            limite.UPDATED_AT = datetime.utcnow()
 
-            # Registrar log de auditoria
+            # Verificar se já existe limite para esta combinação (excluindo o próprio registro)
+            limite_existente = LimiteDistribuicao.query.filter(
+                LimiteDistribuicao.ID_EDITAL == limite.ID_EDITAL,
+                LimiteDistribuicao.ID_PERIODO == limite.ID_PERIODO,
+                LimiteDistribuicao.ID_EMPRESA == limite.ID_EMPRESA,
+                LimiteDistribuicao.COD_CRITERIO_SELECAO == limite.COD_CRITERIO_SELECAO,
+                LimiteDistribuicao.DELETED_AT == None,
+                LimiteDistribuicao.ID != id
+            ).first()
+
+            if limite_existente:
+                flash('Já existe um limite cadastrado com estes critérios.', 'danger')
+                return render_template(
+                    'credenciamento/form_limite.html',
+                    limite=limite,
+                    editais=editais,
+                    periodos=periodos,
+                    empresas=empresas,
+                    criterios=criterios
+                )
+
+            # Dados novos para auditoria
             dados_novos = {
                 'id_edital': limite.ID_EDITAL,
                 'id_periodo': limite.ID_PERIODO,
@@ -235,11 +257,14 @@ def editar_limite(id):
                 'percentual_final': limite.PERCENTUAL_FINAL
             }
 
+            db.session.commit()
+
+            # Registrar log de auditoria
             registrar_log(
                 acao='editar',
                 entidade='limite',
                 entidade_id=limite.ID,
-                descricao=f'Edição de limite de distribuição',
+                descricao=f'Atualização de limite de distribuição',
                 dados_antigos=dados_antigos,
                 dados_novos=dados_novos
             )
@@ -251,17 +276,23 @@ def editar_limite(id):
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_limite.html', limite=limite, editais=editais, periodos=periodos, empresas=empresas,
-                           criterios=criterios)
+    return render_template(
+        'credenciamento/form_limite.html',
+        limite=limite,
+        editais=editais,
+        periodos=periodos,
+        empresas=empresas,
+        criterios=criterios
+    )
 
 
-@limite_bp.route('/limites/excluir/<int:id>')
+@limite_bp.route('/limites/excluir/<int:id>', methods=['POST'])
 @login_required
 def excluir_limite(id):
-    try:
-        limite = LimiteDistribuicao.query.get_or_404(id)
+    limite = LimiteDistribuicao.query.get_or_404(id)
 
-        # Capturar dados para auditoria
+    try:
+        # Capturar dados antigos para auditoria
         dados_antigos = {
             'id_edital': limite.ID_EDITAL,
             'id_periodo': limite.ID_PERIODO,
@@ -269,28 +300,78 @@ def excluir_limite(id):
             'cod_criterio': limite.COD_CRITERIO_SELECAO,
             'qtde_maxima': limite.QTDE_MAXIMA,
             'valor_maximo': limite.VALOR_MAXIMO,
-            'percentual_final': limite.PERCENTUAL_FINAL,
-            'deleted_at': None
+            'percentual_final': limite.PERCENTUAL_FINAL
         }
 
+        # Soft delete - apenas marca como excluído
         limite.DELETED_AT = datetime.utcnow()
         db.session.commit()
 
         # Registrar log de auditoria
-        dados_novos = {'deleted_at': limite.DELETED_AT.strftime('%Y-%m-%d %H:%M:%S')}
-
         registrar_log(
             acao='excluir',
             entidade='limite',
             entidade_id=limite.ID,
             descricao=f'Exclusão de limite de distribuição',
-            dados_antigos=dados_antigos,
-            dados_novos=dados_novos
+            dados_antigos=dados_antigos
         )
 
-        flash('Limite de distribuição removido com sucesso!', 'success')
+        flash('Limite de distribuição excluído com sucesso!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Erro: {str(e)}', 'danger')
+        flash(f'Erro ao excluir limite de distribuição: {str(e)}', 'danger')
 
     return redirect(url_for('limite.lista_limites'))
+
+
+@limite_bp.route('/limites/filtrar', methods=['GET'])
+@login_required
+def filtrar_limites():
+    periodo_id = request.args.get('periodo_id', type=int)
+    criterio_id = request.args.get('criterio_id', type=int)
+
+    # Redirecionar para a lista com os parâmetros de filtro
+    return redirect(url_for('limite.lista_limites', periodo_id=periodo_id, criterio_id=criterio_id))
+
+
+@limite_bp.route('/limites/detalhe/<int:id>')
+@login_required
+def detalhe_limite(id):
+    # Consulta para obter o limite e a descrição do critério
+    resultado = db.session.query(
+        LimiteDistribuicao,
+        CriterioSelecao.DS_CRITERIO_SELECAO,
+        Edital.NU_EDITAL,
+        Edital.NU_ANO,
+        PeriodoAvaliacao.DT_INICIO,
+        PeriodoAvaliacao.DT_FIM,
+        EmpresaParticipante.NO_EMPRESA
+    ).outerjoin(
+        CriterioSelecao,
+        LimiteDistribuicao.COD_CRITERIO_SELECAO == CriterioSelecao.COD
+    ).outerjoin(
+        Edital,
+        LimiteDistribuicao.ID_EDITAL == Edital.ID
+    ).outerjoin(
+        PeriodoAvaliacao,
+        LimiteDistribuicao.ID_PERIODO == PeriodoAvaliacao.ID
+    ).outerjoin(
+        EmpresaParticipante,
+        LimiteDistribuicao.ID_EMPRESA == EmpresaParticipante.ID_EMPRESA
+    ).filter(
+        LimiteDistribuicao.ID == id,
+        LimiteDistribuicao.DELETED_AT == None
+    ).first_or_404()
+
+    limite, ds_criterio, nu_edital, nu_ano, dt_inicio, dt_fim, no_empresa = resultado
+
+    return render_template(
+        'credenciamento/detalhe_limite.html',
+        limite=limite,
+        ds_criterio=ds_criterio,
+        nu_edital=nu_edital,
+        nu_ano=nu_ano,
+        dt_inicio=dt_inicio,
+        dt_fim=dt_fim,
+        no_empresa=no_empresa
+    )

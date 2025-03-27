@@ -13,6 +13,24 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <style>
+        /* Estilo para links na barra de navegação superior */
+        .navbar-dark .navbar-nav .nav-link {
+            color: #0d47a1 !important;
+            font-weight: 600;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .navbar-dark .navbar-nav .nav-link:hover {
+            color: var(--primary-color) !important;
+        }
+
+        /* Melhorar visibilidade dos itens do menu dropdown */
+        .dropdown-menu {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+    </style>
 </head>
 <body>
     <!-- Sidebar Toggle Button -->
@@ -26,9 +44,9 @@
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <a href="{{ url_for('edital.index') }}" class="sidebar-logo">
+            <a href="{{ url_for('main.geinc_index') }}" class="sidebar-logo">
                 <img src="{{ url_for('static', filename='img/logo_em.png') }}" alt="Logo EMGEA" height="40">
-                <h4 class="mt-2 text-primary">Sistema de Credenciamento</h4>
+                <h4 class="mt-2 text-primary">Portal GEINC</h4>
             </a>
             <button class="sidebar-close" id="sidebarClose">
                 <i class="fas fa-times"></i>
@@ -36,15 +54,24 @@
         </div>
         <div class="sidebar-content">
             <ul class="sidebar-menu">
-                <li><a href="{{ url_for('edital.index') }}"><i class="fas fa-home"></i> Início</a></li>
-                <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
-                <li><a href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt"></i> Períodos</a></li>
-                <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Limites de Distribuição</a></li>
-                <li><a href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line"></i> Metas de Avaliação</a></li>
+                <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
+
+                <!-- Menu Credenciamento -->
+                <li class="sidebar-dropdown">
+                    <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Credenciamento <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
+                    <ul class="sidebar-submenu">
+                        <li><a href="{{ url_for('credenciamento.index') }}"><i class="fas fa-home"></i> Dashboard</a></li>
+                        <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
+                        <li><a href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt"></i> Períodos</a></li>
+                        <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Limites de Distribuição</a></li>
+                        <li><a href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line"></i> Metas de Avaliação</a></li>
+                        <li><a href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank"><i class="fas fa-book"></i> Manual do Usuário</a></li>
+                    </ul>
+                </li>
+
                 <li><a href="{{ url_for('feedback.index') }}"><i class="fas fa-comment-alt"></i> Feedback</a></li>
                 <li><a href="{{ url_for('chat.index') }}"><i class="fas fa-comments"></i> Chat</a></li>
-                <li><a href="#" onclick="showDevelopmentMessage(event)"><i class="fas fa-sitemap"></i> Dashboards</a></li>
-                <li><a href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank"><i class="fas fa-book"></i> Manual do Usuário</a></li>
+
                 <li class="mt-3">
                     <hr class="dropdown-divider mx-3">
                 </li>
@@ -63,7 +90,7 @@
 
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('edital.index') }}">
+            <a class="navbar-brand" href="{{ url_for('main.geinc_index') }}">
                 <img src="{{ url_for('static', filename='img/logo_em.png') }}" alt="Logo EMGEA" height="30" class="me-2">
                 <span class="brand-text">emgea</span>
             </a>
@@ -72,6 +99,39 @@
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('main.geinc_index') }}">
+                            <i class="fas fa-home me-1"></i> Início
+                        </a>
+                    </li>
+
+                    <!-- Menu Credenciamento -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="credenciamentoDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-file-contract me-1"></i> Credenciamento
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="credenciamentoDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('credenciamento.index') }}">
+                                <i class="fas fa-home me-2"></i> Dashboard
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('edital.lista_editais') }}">
+                                <i class="fas fa-file-alt me-2"></i> Editais
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('periodo.lista_periodos') }}">
+                                <i class="fas fa-calendar-alt me-2"></i> Períodos
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('limite.lista_limites') }}">
+                                <i class="fas fa-balance-scale me-2"></i> Limites
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('meta.lista_metas') }}">
+                                <i class="fas fa-chart-line me-2"></i> Metas
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank">
+                                <i class="fas fa-book me-2"></i> Manual do Usuário
+                            </a></li>
+                        </ul>
+                    </li>
+
                     {% if current_user.is_authenticated %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle user-dropdown" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
@@ -85,7 +145,6 @@
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users me-2"></i> Gerenciar Usuários</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% endif %}
-                            <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank"><i class="fas fa-book me-2"></i> Manual do Usuário</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Sair</a></li>
                         </ul>
@@ -119,7 +178,7 @@
 
     <footer class="py-3">
         <div class="container text-center">
-            <span>Sistema de Cadastro • {{ current_year }}</span>
+            <span>Portal GEINC • {{ current_year }}</span>
         </div>
     </footer>
 
@@ -144,6 +203,7 @@
             const sidebarToggle = document.getElementById('sidebarToggle');
             const sidebarClose = document.getElementById('sidebarClose');
             const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+            const sidebarDropdowns = document.querySelectorAll('.sidebar-dropdown');
 
             function openSidebar() {
                 sidebar.classList.add('show');
@@ -161,6 +221,29 @@
             sidebarClose.addEventListener('click', closeSidebar);
             sidebarBackdrop.addEventListener('click', closeSidebar);
 
+            // Controle dos dropdowns do sidebar
+            sidebarDropdowns.forEach(dropdown => {
+                const link = dropdown.querySelector('.has-dropdown');
+                const submenu = dropdown.querySelector('.sidebar-submenu');
+
+                // Inicialmente esconder os submenus
+                if (submenu) {
+                    submenu.style.display = 'none';
+                }
+
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if (submenu) {
+                        if (submenu.style.display === 'none') {submenu.style.display = 'block';
+                            link.classList.add('active');
+                        } else {
+                            submenu.style.display = 'none';
+                            link.classList.remove('active');
+                        }
+                    }
+                });
+            });
+
             // Fechar o sidebar quando pressionar ESC
             document.addEventListener('keydown', function(e) {
                 if (e.key === 'Escape' && sidebar.classList.contains('show')) {
@@ -175,6 +258,16 @@
             sidebarLinks.forEach(link => {
                 if (link.getAttribute('href') === currentUrl) {
                     link.classList.add('active');
+
+                    // Se for um submenu, abrir o dropdown pai
+                    const parentSubmenu = link.closest('.sidebar-submenu');
+                    if (parentSubmenu) {
+                        parentSubmenu.style.display = 'block';
+                        const parentDropdown = parentSubmenu.previousElementSibling;
+                        if (parentDropdown) {
+                            parentDropdown.classList.add('active');
+                        }
+                    }
                 }
             });
         });
@@ -196,7 +289,7 @@
                             <div class="modal-body text-center py-4">
                                 <i class="fas fa-tools fa-4x text-muted mb-3"></i>
                                 <h4>Estamos trabalhando nisso!</h4>
-                                <p class="mb-0">A visualização de setores está em desenvolvimento e estará disponível em breve.</p>
+                                <p class="mb-0">Esta funcionalidade está em desenvolvimento e estará disponível em breve.</p>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>

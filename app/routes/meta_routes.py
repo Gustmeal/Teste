@@ -8,7 +8,7 @@ from flask_login import login_required, current_user
 from app import db
 from app.utils.audit import registrar_log
 
-meta_bp = Blueprint('meta', __name__)
+meta_bp = Blueprint('meta', __name__, url_prefix='/credenciamento')
 
 
 @meta_bp.context_processor
@@ -142,7 +142,7 @@ def lista_metas():
             'competencia': rel.COMPETENCIA
         })
 
-    return render_template('lista_metas.html',
+    return render_template('credenciamento/lista_metas.html',
                            metas=metas,
                            editais=editais,
                            periodos=periodos,
@@ -280,7 +280,7 @@ def nova_meta():
 
             if meta_existente:
                 flash('Já existe uma meta cadastrada com estes critérios.', 'danger')
-                return render_template('form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
+                return render_template('credenciamento/form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
 
             nova_meta = MetaAvaliacao(
                 ID_EDITAL=edital_id,
@@ -323,7 +323,7 @@ def nova_meta():
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
+    return render_template('credenciamento/form_meta.html', editais=editais, periodos=periodos, empresas=empresas)
 
 
 @meta_bp.route('/metas/editar/<int:id>', methods=['GET', 'POST'])
@@ -414,7 +414,7 @@ def editar_meta(id):
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_meta.html', meta=meta, editais=editais, periodos=periodos, empresas=empresas)
+    return render_template('credenciamento/form_meta.html', meta=meta, editais=editais, periodos=periodos, empresas=empresas)
 
 
 @meta_bp.route('/metas/excluir/<int:id>')

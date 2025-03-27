@@ -7,7 +7,7 @@ from datetime import datetime
 from flask_login import login_required
 from app.utils.audit import registrar_log
 
-empresa_bp = Blueprint('empresa', __name__)
+empresa_bp = Blueprint('empresa', __name__, url_prefix='/credenciamento')
 
 
 @empresa_bp.context_processor
@@ -20,7 +20,7 @@ def inject_current_year():
 def lista_empresas(periodo_id):
     periodo = PeriodoAvaliacao.query.get_or_404(periodo_id)
     empresas = EmpresaParticipante.query.filter_by(ID_PERIODO=periodo_id, DELETED_AT=None).all()
-    return render_template('lista_empresas.html', periodo=periodo, empresas=empresas)
+    return render_template('credenciamento/lista_empresas.html', periodo=periodo, empresas=empresas)
 
 
 @empresa_bp.route('/periodos/<int:periodo_id>/empresas/nova', methods=['GET', 'POST'])
@@ -45,7 +45,7 @@ def nova_empresa(periodo_id):
 
             if empresa_existente:
                 flash(f'Empresa com ID {id_empresa} já cadastrada para este período.', 'danger')
-                return render_template('form_empresa.html', periodo=periodo, edital=edital)
+                return render_template('credenciamento/form_empresa.html', periodo=periodo, edital=edital)
 
             nova_empresa = EmpresaParticipante(
                 ID_EDITAL=edital.ID,
@@ -81,7 +81,7 @@ def nova_empresa(periodo_id):
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_empresa.html', periodo=periodo, edital=edital)
+    return render_template('credenciamento/form_empresa.html', periodo=periodo, edital=edital)
 
 
 @empresa_bp.route('/empresas/excluir/<int:id>')

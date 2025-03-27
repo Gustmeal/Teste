@@ -5,7 +5,7 @@ from datetime import datetime
 from flask_login import login_required, current_user
 from app.utils.audit import registrar_log
 
-edital_bp = Blueprint('edital', __name__)
+edital_bp = Blueprint('edital', __name__, url_prefix='/credenciamento')
 
 
 @edital_bp.context_processor
@@ -37,7 +37,7 @@ def index():
         from app.models.usuario import Usuario
         usuarios = Usuario.query.filter(Usuario.DELETED_AT == None, Usuario.ATIVO == True).count()
 
-    return render_template('index.html', editais=editais, periodos=periodos, limites=limites, metas=metas,
+    return render_template('credenciamento/index.html', editais=editais, periodos=periodos, limites=limites, metas=metas,
                            usuarios=usuarios)
 
 
@@ -45,7 +45,7 @@ def index():
 @login_required
 def lista_editais():
     editais = Edital.query.filter(Edital.DELETED_AT == None).all()
-    return render_template('lista_editais.html', editais=editais)
+    return render_template('credenciamento/lista_editais.html', editais=editais)
 
 
 @edital_bp.route('/editais/novo', methods=['GET', 'POST'])
@@ -80,7 +80,7 @@ def novo_edital():
         except Exception as e:
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
-    return render_template('form_edital.html')
+    return render_template('credenciamento/form_edital.html')
 
 
 @edital_bp.route('/editais/editar/<int:id>', methods=['GET', 'POST'])
@@ -122,7 +122,7 @@ def editar_edital(id):
         except Exception as e:
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
-    return render_template('form_edital.html', edital=edital)
+    return render_template('credenciamento/form_edital.html', edital=edital)
 
 
 @edital_bp.route('/editais/excluir/<int:id>', methods=['GET', 'POST'])

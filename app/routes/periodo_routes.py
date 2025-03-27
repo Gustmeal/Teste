@@ -6,7 +6,7 @@ from datetime import datetime
 from flask_login import login_required
 from app.utils.audit import registrar_log
 
-periodo_bp = Blueprint('periodo', __name__)
+periodo_bp = Blueprint('periodo', __name__, url_prefix='/credenciamento')
 
 
 @periodo_bp.context_processor
@@ -18,7 +18,7 @@ def inject_current_year():
 @login_required
 def lista_periodos():
     periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
-    return render_template('lista_periodos.html', periodos=periodos)
+    return render_template('credenciamento/lista_periodos.html', periodos=periodos)
 
 
 @periodo_bp.route('/periodos/novo', methods=['GET', 'POST'])
@@ -39,7 +39,7 @@ def novo_periodo():
 
             if not edital:
                 flash(f'Erro: Edital não encontrado.', 'danger')
-                return render_template('form_periodo.html', editais=editais)
+                return render_template('credenciamento/form_periodo.html', editais=editais)
 
             # Validar datas
             dt_inicio = datetime.strptime(request.form['dt_inicio'], '%Y-%m-%d')
@@ -47,7 +47,7 @@ def novo_periodo():
 
             if dt_inicio > dt_fim:
                 flash('Erro: A data de início não pode ser posterior à data de término.', 'danger')
-                return render_template('form_periodo.html', editais=editais)
+                return render_template('credenciamento/form_periodo.html', editais=editais)
 
             # Pegar o último ID_PERIODO e incrementar
             ultimo_periodo = PeriodoAvaliacao.query.order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
@@ -89,7 +89,7 @@ def novo_periodo():
             flash(f'Erro: {str(e)}', 'danger')
 
     # IMPORTANTE: Verifique se este template existe no diretório correto
-    return render_template('form_periodo.html', editais=editais)
+    return render_template('credenciamento/form_periodo.html', editais=editais)
 
 
 @periodo_bp.route('/periodos/editar/<int:id>', methods=['GET', 'POST'])
@@ -105,7 +105,7 @@ def editar_periodo(id):
 
             if not edital:
                 flash(f'Erro: Edital não encontrado.', 'danger')
-                return render_template('form_periodo.html', periodo=periodo, editais=editais)
+                return render_template('credenciamento/form_periodo.html', periodo=periodo, editais=editais)
 
             # Validar datas
             dt_inicio = datetime.strptime(request.form['dt_inicio'], '%Y-%m-%d')
@@ -113,7 +113,7 @@ def editar_periodo(id):
 
             if dt_inicio > dt_fim:
                 flash('Erro: A data de início não pode ser posterior à data de término.', 'danger')
-                return render_template('form_periodo.html', periodo=periodo, editais=editais)
+                return render_template('credenciamento/form_periodo.html', periodo=periodo, editais=editais)
 
             # Capturar dados antigos para auditoria
             dados_antigos = {
@@ -154,7 +154,7 @@ def editar_periodo(id):
             db.session.rollback()
             flash(f'Erro: {str(e)}', 'danger')
 
-    return render_template('form_periodo.html', periodo=periodo, editais=editais)
+    return render_template('credenciamento/form_periodo.html', periodo=periodo, editais=editais)
 
 
 @periodo_bp.route('/periodos/excluir/<int:id>')

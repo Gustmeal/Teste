@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <h1>Portal GEINC</h1>
+    <p class="text-secondary">Gerência de Inovação de Negócios e Controle - EMGEA</p>
+
+    <div class="row g-4 mt-5">
+        <!-- Card do Sistema de Credenciamento -->
+        <div class="col-md-6 mx-auto">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon credenciamento-color mx-auto">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <h3 class="system-title">Sistema de Credenciamento</h3>
+                    <p class="text-muted mb-4">
+                        Plataforma para gerenciamento de processos de credenciamento, editais e avaliação de empresas.
+                    </p>
+                    <a href="{{ url_for('credenciamento.index') }}" class="btn btn-access">
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .central-panel {
+        background-color: rgba(255, 255, 255, 0.85);
+        border-radius: 12px;
+        padding: 30px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        max-width: 800px;
+        margin: 0 auto;
+        text-align: center;
+        backdrop-filter: blur(10px);
+    }
+
+    .system-icon {
+        font-size: 2.5rem;
+        margin-bottom: 1.5rem;
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        line-height: 80px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+
+    .credenciamento-color {
+        background-color: #4e73df;
+    }
+
+    .system-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--primary-color);
+    }
+
+    .btn-access {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 0.75rem 2rem;
+        border-radius: 50px;
+        font-weight: 500;
+        border: none;
+        transition: all 0.3s;
+    }
+
+    .btn-access:hover {
+        background-color: #5b52e5;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+        color: white;
+    }
+</style>
+{% endblock %}

@@ -2,64 +2,73 @@
 
 {% block content %}
 <div class="editais-container fade-in">
-    <a href="{{ url_for('edital.index') }}" class="btn-back">
+    <a href="{{ url_for('credenciamento.index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-   <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Editais Cadastrados</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Períodos</h1>
         <div>
-            <a href="{{ url_for('edital.lista_editais') }}" class="btn btn-info me-2">
+            <a href="{{ url_for('periodo.lista_periodos') }}" class="btn btn-info me-2">
                 <i class="fas fa-list"></i> Visualizar Tudo
             </a>
-            <a href="{{ url_for('edital.novo_edital') }}" class="btn btn-success">
-                + Novo Edital
+            <a href="{{ url_for('periodo.novo_periodo') }}" class="btn btn-success">
+                + Novo Período
             </a>
-        </div>
+    </div>
 </div>
 
     <!-- Barra de pesquisa -->
     <div class="search-container mb-4">
-        <input type="text" id="editaisSearch" class="form-control search-input" placeholder="Pesquisar editais">
+        <input type="text" id="periodosSearch" class="form-control search-input" placeholder="Pesquisar períodos">
         <i class="fas fa-search search-icon"></i>
     </div>
 
     <div class="card shadow">
         <div class="table-responsive" data-loading="true">
-            <table class="table table-hover align-middle mb-0" id="editaisTable">
+            <table class="table table-hover align-middle mb-0" id="periodosTable">
                 <thead>
                     <tr>
-                        <th>Número</th>
-                        <th>Ano</th>
-                        <th>Descrição</th>
-                        <th>Criação</th>
+                        <th>Período</th>
+                        <th>Edital</th>
+                        <th>Início</th>
+                        <th>Término</th>
+                        <th class="text-center">Empresas</th>
                         <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for edital in editais %}
-                    <tr data-id="{{ edital.ID }}">
-                        <td class="fw-bold">{{ edital.NU_EDITAL }}</td>
-                        <td>{{ edital.ANO }}</td>
-                        <td>{{ edital.DESCRICAO }}</td>
-                        <td>{{ edital.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                    {% for periodo in periodos %}
+                    <tr data-id="{{ periodo.ID }}">
+                        <td class="fw-bold">{{ periodo.ID_PERIODO }}</td>
+                        <td>{{ periodo.edital.NU_EDITAL }} - {{ periodo.edital.DESCRICAO }}</td>
+                        <td>{{ periodo.DT_INICIO.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ periodo.DT_FIM.strftime('%d/%m/%Y') }}</td>
                         <td class="text-center">
-                            <a href="{{ url_for('edital.editar_edital', id=edital.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1">
+                            {% set count = periodo.empresas|selectattr('DELETED_AT', 'equalto', None)|list|length %}
+                            <span class="badge bg-info text-dark">{{ count }}</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('empresa.lista_empresas', periodo_id=periodo.ID) }}"
+                               class="btn btn-sm btn-outline-info me-1" title="Ver Empresas Participantes">
+                                <i class="fas fa-building"></i>
+                            </a>
+                            <a href="{{ url_for('periodo.editar_periodo', id=periodo.ID) }}"
+                               class="btn btn-sm btn-outline-primary me-1" title="Editar Período">
                                 <i class="fas fa-edit"></i>
                             </a>
                             <a href="javascript:void(0);"
-                               onclick="confirmarExclusao({{ edital.ID }}, '{{ edital.NU_EDITAL }}');"
-                               class="btn btn-sm btn-outline-danger">
+                               onclick="confirmarExclusao({{ periodo.ID }}, '{{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}');"
+                               class="btn btn-sm btn-outline-danger" title="Arquivar Período">
                                 <i class="fas fa-trash"></i>
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-4 text-muted">
+                        <td colspan="6" class="text-center py-4 text-muted">
                             <i class="fas fa-inbox fa-2x mb-3"></i>
-                            <p class="mb-0">Nenhum edital cadastrado</p>
+                            <p class="mb-0">Nenhum período cadastrado</p>
                         </td>
                     </tr>
                     {% endfor %}
@@ -78,7 +87,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Tem certeza que deseja arquivar o edital <span id="editalNumero" class="fw-bold"></span>?</p>
+                <p>Tem certeza que deseja arquivar o período <span id="periodoInfo" class="fw-bold"></span>?</p>
                 <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
             </div>
             <div class="modal-footer">
@@ -99,7 +108,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
         const btnConfirmar = document.getElementById('btnConfirmarExclusao');
-        let editalId = null;
+        let periodoId = null;
 
         // Função para mostrar toast de notificação
         function showToast(message, type = 'success') {
@@ -135,10 +144,10 @@
             });
         }
 
-        // Configurar a exclusão do edital
-        window.confirmarExclusao = function(id, numero) {
-            document.getElementById('editalNumero').textContent = numero;
-            editalId = id;
+        // Configurar a exclusão do período
+        window.confirmarExclusao = function(id, info) {
+            document.getElementById('periodoInfo').textContent = info;
+            periodoId = id;
             modal.show();
         };
 
@@ -151,58 +160,8 @@
             spinner.classList.remove('d-none');
             btnConfirmar.disabled = true;
 
-            // Fazer a requisição AJAX para excluir o edital
-            fetch(`/editais/excluir/${editalId}`, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                modal.hide();
-
-                if (data.success) {
-                    // Remover a linha da tabela com animação
-                    const row = document.querySelector(`tr[data-id="${editalId}"]`);
-                    if (row) {
-                        row.style.transition = 'all 0.5s';
-                        row.style.opacity = '0';
-                        row.style.transform = 'translateX(20px)';
-
-                        setTimeout(() => {
-                            row.remove();
-
-                            // Verificar se a tabela ficou vazia
-                            const tbody = document.querySelector('#editaisTable tbody');
-                            if (tbody.childElementCount === 0) {
-                                const emptyRow = document.createElement('tr');
-                                emptyRow.innerHTML = `
-                                    <td colspan="5" class="text-center py-4 text-muted">
-                                        <i class="fas fa-inbox fa-2x mb-3"></i>
-                                        <p class="mb-0">Nenhum edital cadastrado</p>
-                                    </td>
-                                `;
-                                tbody.appendChild(emptyRow);
-                            }
-                        }, 500);
-                    }
-
-                    showToast(data.message, 'success');
-                } else {
-                    showToast(data.message, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Erro:', error);
-                showToast('Erro ao processar a solicitação.', 'danger');
-            })
-            .finally(() => {
-                btnText.classList.remove('d-none');
-                spinner.classList.add('d-none');
-                btnConfirmar.disabled = false;
-            });
+            // Redirecionar para a URL de exclusão
+            window.location.href = "{{ url_for('periodo.excluir_periodo', id='0') }}".replace('0', periodoId);
         });
     });
 </script>
