@@ -9,6 +9,8 @@ class Feedback(db.Model):
     USUARIO_ID = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB000_USUARIOS.ID'), nullable=False)
     TITULO = db.Column(db.String(100), nullable=False)
     MENSAGEM = db.Column(db.Text, nullable=False)
+    # Removemos a coluna SISTEMA por enquanto
+    # SISTEMA = db.Column(db.String(50), nullable=True)
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     LIDO = db.Column(db.Boolean, default=False)
     RESPONDIDO = db.Column(db.Boolean, default=False)

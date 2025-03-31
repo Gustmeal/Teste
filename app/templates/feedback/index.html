@@ -15,6 +15,31 @@
         </div>
     </div>
 
+    <!-- Filtro por sistema -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('feedback.index') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Filtrar por Sistema</label>
+                    <select name="sistema" class="form-select">
+                        <option value="">Todos os Sistemas</option>
+                        {% for sistema in todos_sistemas %}
+                            <option value="{{ sistema.id }}" {% if sistema_filtro == sistema.id %}selected{% endif %}>
+                                {{ sistema.nome }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                </div>
+                <div class="col-md-2">
+                    <a href="{{ url_for('feedback.index') }}" class="btn btn-outline-secondary w-100">Limpar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Barra de pesquisa -->
     <div class="search-container mb-4">
         <input type="text" id="feedbackSearch" class="form-control search-input" placeholder="Pesquisar feedback">
@@ -26,6 +51,7 @@
             <table class="table table-hover align-middle mb-0" id="feedbackTable">
                 <thead>
                     <tr>
+                        <th>Sistema</th>
                         <th>Título</th>
                         <th>Data</th>
                         {% if current_user.perfil in ['admin', 'moderador'] %}
@@ -38,6 +64,7 @@
                 <tbody>
                     {% for feedback in feedbacks %}
                     <tr>
+                        <td><span class="badge bg-info">{{ feedback.SISTEMA_NOME }}</span></td>
                         <td class="fw-bold">{{ feedback.TITULO }}</td>
                         <td>{{ feedback.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
                         {% if current_user.perfil in ['admin', 'moderador'] %}
@@ -67,7 +94,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="{% if current_user.perfil in ['admin', 'moderador'] %}5{% else %}4{% endif %}" class="text-center py-4 text-muted">
+                        <td colspan="{% if current_user.perfil in ['admin', 'moderador'] %}6{% else %}5{% endif %}" class="text-center py-4 text-muted">
                             <i class="fas fa-comments fa-2x mb-3"></i>
                             <p class="mb-0">Nenhum feedback encontrado</p>
                         </td>

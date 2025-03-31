@@ -18,6 +18,17 @@
 
             <form method="POST">
                 <div class="mb-3">
+                    <label class="form-label">Sistema <span class="text-danger">*</span></label>
+                    <select class="form-select" name="sistema" required>
+                        <option value="credenciamento" selected>Sistema de Credenciamento</option>
+                        <option value="dashboards">Dashboards Power BI</option>
+                        <!-- Novos sistemas podem ser adicionados aqui quando forem criados -->
+                    </select>
+                    <small class="text-muted">Selecione o sistema ao qual este feedback se refere</small>
+                    <!-- Nota: Esta seleção está temporariamente desabilitada no backend -->
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">Título <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" name="titulo"
                            placeholder="Ex: Sugestão para o módulo de empresas" required maxlength="100">
