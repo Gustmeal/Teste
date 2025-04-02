@@ -7,8 +7,6 @@ from datetime import datetime
 from flask_login import login_required, current_user
 from app.utils.audit import registrar_log
 import logging
-import pyodbc
-from config import Config
 
 # Configurar logging
 logging.basicConfig(level=logging.DEBUG)
@@ -81,8 +79,7 @@ def nova_empresa(periodo_id):
                                        empresas_existentes=empresas_existentes,
                                        condicoes=condicoes)
 
-            # MÉTODO 1: SQLAlchemy ORM
-            logger.debug("Tentando salvar via SQLAlchemy ORM...")
+            # Criar e salvar a nova empresa participante
             nova_empresa = EmpresaParticipante(
                 ID_EDITAL=edital.ID,
                 ID_PERIODO=periodo_id,
@@ -92,42 +89,10 @@ def nova_empresa(periodo_id):
                 DS_CONDICAO=ds_condicao
             )
 
+            # Salvar no banco de dados via ORM
             db.session.add(nova_empresa)
             db.session.commit()
             logger.debug(f"Empresa salva via ORM com ID: {nova_empresa.ID}")
-
-            # MÉTODO 2: Inserção direta via SQL (fallback)
-            try:
-                logger.debug("Tentando inserção direta via SQL como fallback...")
-                conn_string = Config.SQLALCHEMY_DATABASE_URI.replace('mssql+pyodbc://', '')
-                conn = pyodbc.connect('DRIVER={ODBC Driver 18 for SQL Server};' + conn_string)
-                cursor = conn.cursor()
-
-                # Preparar a consulta SQL de inserção
-                sql = """
-                INSERT INTO DEV.DCA_TB002_EMPRESAS_PARTICIPANTES 
-                (ID_EDITAL, ID_PERIODO, ID_EMPRESA, NO_EMPRESA, NO_EMPRESA_ABREVIADA, DS_CONDICAO, CREATED_AT) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """
-
-                # Executar a consulta
-                cursor.execute(sql,
-                               edital.ID,
-                               periodo_id,
-                               id_empresa,
-                               nome_empresa,
-                               nome_abreviado,
-                               ds_condicao,
-                               datetime.utcnow())
-                conn.commit()
-                logger.debug("Inserção direta via SQL bem-sucedida")
-
-                # Fechar conexão
-                cursor.close()
-                conn.close()
-            except Exception as sql_error:
-                logger.error(f"Erro na inserção direta: {str(sql_error)}")
-                # Não interrompe o fluxo, pois o ORM já pode ter funcionado
 
             # Registrar log de auditoria
             dados_novos = {
