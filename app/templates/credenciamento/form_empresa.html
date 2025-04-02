@@ -28,52 +28,24 @@
                 </div>
 
                 <form method="POST">
-                    <!-- Seleção de empresa existente -->
                     <div class="mb-3">
-                        <label class="form-label">Empresa <span class="text-danger">*</span></label>
-                        <select class="form-select" id="empresa_existente" name="empresa_existente" required>
-                            <option value="">-- Selecione uma empresa --</option>
-                            {% for empresa in empresas_existentes %}
-                                <option value="{{ empresa[0] }}"
-                                        data-nome="{{ empresa[1] }}"
-                                        data-abreviado="{{ empresa[2] or '' }}">
-                                    {% if empresa[2] %}
-                                        {{ empresa[2] }} - {{ empresa[1] }}
-                                    {% else %}
-                                        {{ empresa[1] }}
-                                    {% endif %}
-                                </option>
-                            {% endfor %}
-                        </select>
+                        <label class="form-label">ID da Empresa <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="id_empresa" required>
                     </div>
 
-                    <!-- Campo oculto para ID da empresa -->
-                    <input type="hidden" id="id_empresa" name="id_empresa">
+                    <div class="mb-3">
+                        <label class="form-label">Nome da Empresa <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="nome_empresa" maxlength="100" required>
+                    </div>
 
-                    <!-- Campo oculto para nome da empresa -->
-                    <input type="hidden" id="nome_empresa" name="nome_empresa">
-
-                    <!-- Campo oculto para nome abreviado -->
-                    <input type="hidden" id="nome_abreviado" name="nome_abreviado">
+                    <div class="mb-3">
+                        <label class="form-label">Nome Abreviado</label>
+                        <input type="text" class="form-control" name="nome_abreviado" maxlength="30">
+                    </div>
 
                     <div class="mb-4">
                         <label class="form-label">Condição</label>
-                        <select class="form-select" id="ds_condicao" name="ds_condicao">
-                            <option value="">-- Selecione uma condição ou digite uma nova --</option>
-                            {% for condicao in condicoes %}
-                                <option value="{{ condicao }}">{{ condicao }}</option>
-                            {% endfor %}
-                        </select>
-                        <div class="mt-2">
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="custom_condicao_check">
-                                <label class="form-check-label" for="custom_condicao_check">
-                                    Outra condição (personalizada)
-                                </label>
-                            </div>
-                            <input type="text" class="form-control mt-2" id="custom_condicao"
-                                   style="display: none;" maxlength="50" placeholder="Digite a condição personalizada">
-                        </div>
+                        <input type="text" class="form-control" name="ds_condicao" maxlength="50">
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -88,98 +60,4 @@
             </div>
         </div>
     </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const empresaSelect = document.getElementById('empresa_existente');
-            const idEmpresaInput = document.getElementById('id_empresa');
-            const nomeEmpresaInput = document.getElementById('nome_empresa');
-            const nomeAbreviadoInput = document.getElementById('nome_abreviado');
-
-            // Campos de condição
-            const dsCondicaoSelect = document.getElementById('ds_condicao');
-            const customCondicaoCheck = document.getElementById('custom_condicao_check');
-            const customCondicaoInput = document.getElementById('custom_condicao');
-
-            // Quando selecionar uma empresa existente
-            empresaSelect.addEventListener('change', function() {
-                if (this.value) {
-                    const option = this.options[this.selectedIndex];
-                    const id = this.value;
-                    const nome = option.dataset.nome;
-                    const abreviado = option.dataset.abreviado;
-
-                    // Preencher os campos automaticamente
-                    idEmpresaInput.value = id;
-                    nomeEmpresaInput.value = nome;
-                    nomeAbreviadoInput.value = abreviado;
-                } else {
-                    // Limpar os campos
-                    idEmpresaInput.value = '';
-                    nomeEmpresaInput.value = '';
-                    nomeAbreviadoInput.value = '';
-                }
-            });
-
-            // Controle para condição personalizada
-            customCondicaoCheck.addEventListener('change', function() {
-                if (this.checked) {
-                    dsCondicaoSelect.disabled = true;
-                    customCondicaoInput.style.display = 'block';
-
-                    // Transferir o valor atual do select para o input personalizado
-                    if (dsCondicaoSelect.value) {
-                        customCondicaoInput.value = dsCondicaoSelect.value;
-                    }
-                } else {
-                    dsCondicaoSelect.disabled = false;
-                    customCondicaoInput.style.display = 'none';
-                }
-            });
-
-            // Transferir o valor da condição personalizada para o select antes do envio
-            document.querySelector('form').addEventListener('submit', function(e) {
-                // Validar se uma empresa foi selecionada
-                if (!idEmpresaInput.value) {
-                    e.preventDefault();
-                    alert('Por favor, selecione uma empresa.');
-                    return false;
-                }
-
-                if (customCondicaoCheck.checked && customCondicaoInput.value) {
-                    dsCondicaoSelect.disabled = false;
-
-                    // Verificar se a opção já existe
-                    let optionExists = false;
-                    for (let i = 0; i < dsCondicaoSelect.options.length; i++) {
-                        if (dsCondicaoSelect.options[i].value === customCondicaoInput.value) {
-                            dsCondicaoSelect.selectedIndex = i;
-                            optionExists = true;
-                            break;
-                        }
-                    }
-
-                    // Se não existir, criar nova opção
-                    if (!optionExists) {
-                        const newOption = document.createElement('option');
-                        newOption.value = customCondicaoInput.value;
-                        newOption.text = customCondicaoInput.value;
-                        dsCondicaoSelect.add(newOption);
-                        dsCondicaoSelect.selectedIndex = dsCondicaoSelect.options.length - 1;
-                    }
-                }
-            });
-
-            // Também permitir digitar no select de condições
-            dsCondicaoSelect.addEventListener('keyup', function(e) {
-                // Se o usuário estiver digitando, habilitar a condição personalizada
-                if (e.target.value && e.target.value !== e.target.selectedOptions[0]?.value) {
-                    customCondicaoCheck.checked = true;
-                    customCondicaoInput.style.display = 'block';
-                    customCondicaoInput.value = e.target.value;
-                    this.disabled = true;
-                }
-            });
-        });
-    </script>
 {% endblock %}

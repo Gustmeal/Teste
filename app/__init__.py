@@ -65,16 +65,6 @@ def create_app():
     from app.routes.chat_routes import chat_bp
     app.register_blueprint(chat_bp)
 
-    from app.routes.feedback_routes import feedback_bp
-    app.register_blueprint(feedback_bp)
-
-    from app.routes.chat_routes import chat_bp
-    app.register_blueprint(chat_bp)
-
-    # Registrar o blueprint da API
-    from app.routes.api_routes import api_bp
-    app.register_blueprint(api_bp)
-
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
