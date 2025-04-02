@@ -56,9 +56,9 @@
             <ul class="sidebar-menu">
                 <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
 
-                <!-- Menu Credenciamento -->
+                <!-- Menu Assessoria de Cobranças -->
                 <li class="sidebar-dropdown">
-                    <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Credenciamento <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
+                    <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Assessoria de Cobranças <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
                     <ul class="sidebar-submenu">
                         <li><a href="{{ url_for('credenciamento.index') }}"><i class="fas fa-home"></i> Dashboard</a></li>
                         <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
@@ -105,10 +105,10 @@
                         </a>
                     </li>
 
-                    <!-- Menu Credenciamento -->
+                    <!-- Menu Assessoria de Cobranças -->
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="credenciamentoDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-file-contract me-1"></i> Credenciamento
+                            <i class="fas fa-file-contract me-1"></i> Assessoria de Cobranças
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="credenciamentoDropdown">
                             <li><a class="dropdown-item" href="{{ url_for('credenciamento.index') }}">
@@ -126,6 +126,11 @@
                             <li><a class="dropdown-item" href="{{ url_for('meta.lista_metas') }}">
                                 <i class="fas fa-chart-line me-2"></i> Metas
                             </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="empresasCadastradasItem">
+                                <i class="fas fa-building me-2"></i> Empresas Cadastradas
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank">
                                 <i class="fas fa-book me-2"></i> Manual do Usuário
                             </a></li>
@@ -190,6 +195,63 @@
     <!-- Container para toasts -->
     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
         <div id="toastContainer"></div>
+    </div>
+
+    <!-- Modal para exibir mensagem de desenvolvimento -->
+    <div class="modal fade" id="emDesenvolvimentoModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Função em Desenvolvimento</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center py-4">
+                    <i class="fas fa-tools fa-4x text-muted mb-3"></i>
+                    <h4>Estamos trabalhando nisso!</h4>
+                    <p class="mb-0">Esta funcionalidade está em desenvolvimento e estará disponível em breve.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para mostrar empresas cadastradas -->
+    <div class="modal fade" id="empresasCadastradasModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Empresas Cadastradas</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                    <div class="mb-3">
+                        <input type="text" class="form-control" id="empresasSearch" placeholder="Pesquisar empresas...">
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped" id="empresasTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Nome</th>
+                                    <th>Nome Abreviado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="empresasList">
+                                <!-- Será preenchido via JavaScript -->
+                                <tr>
+                                    <td colspan="3" class="text-center">Carregando...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -307,6 +369,112 @@
             // Mostrar o modal
             const modal = new bootstrap.Modal(document.getElementById('emDesenvolvimentoModal'));
             modal.show();
+        }
+
+        // Função para carregar e mostrar empresas cadastradas
+        document.addEventListener('DOMContentLoaded', function() {
+            // Botão para mostrar empresas cadastradas
+            const empresasCadastradasBtn = document.getElementById('empresasCadastradasItem');
+            if (empresasCadastradasBtn) {
+                empresasCadastradasBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+
+                    // Mostrar o modal
+                    const modal = new bootstrap.Modal(document.getElementById('empresasCadastradasModal'));
+                    modal.show();
+
+                    // Carregar empresas
+                    carregarEmpresas();
+                });
+            }
+
+            // Campo de pesquisa na listagem de empresas
+            const empresasSearch = document.getElementById('empresasSearch');
+            if (empresasSearch) {
+                empresasSearch.addEventListener('input', function() {
+                    filtrarEmpresas(this.value);
+                });
+            }
+        });
+
+        // Função para carregar empresas
+        function carregarEmpresas() {
+            const empresasList = document.getElementById('empresasList');
+            if (!empresasList) return;
+
+            empresasList.innerHTML = '<tr><td colspan="3" class="text-center">Carregando...</td></tr>';
+
+            // Buscar empresas únicas da tabela de empresas participantes
+            fetch('/api/empresas')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Erro ao carregar empresas: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        exibirEmpresas(data.empresas);
+                    } else {
+                        empresasList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Erro ao carregar empresas: ' + data.message + '</td></tr>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Erro:', error);
+                    empresasList.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Erro ao carregar dados: ' + error.message + '</td></tr>';
+                });
+        }
+
+        // Função para exibir empresas na tabela
+        function exibirEmpresas(empresas) {
+            const empresasList = document.getElementById('empresasList');
+            if (!empresasList) return;
+
+            if (empresas.length === 0) {
+                empresasList.innerHTML = '<tr><td colspan="3" class="text-center">Nenhuma empresa cadastrada</td></tr>';
+                return;
+            }
+
+            // Limpar a tabela
+            empresasList.innerHTML = '';
+
+            // Adicionar cada empresa
+            empresas.forEach(empresa => {
+                const row = document.createElement('tr');
+                row.dataset.id = empresa.id_empresa;
+                row.dataset.nome = empresa.nome;
+                row.dataset.abreviado = empresa.nome_abreviado || '';
+
+                row.innerHTML = `
+                    <td>${empresa.id_empresa}</td>
+                    <td>${empresa.nome}</td>
+                    <td>${empresa.nome_abreviado || '-'}</td>
+                `;
+
+                empresasList.appendChild(row);
+            });
+        }
+
+        // Função para filtrar empresas na tabela
+        function filtrarEmpresas(termo) {
+            const rows = document.querySelectorAll('#empresasList tr');
+            const termoBusca = termo.toLowerCase();
+
+            rows.forEach(row => {
+                const id = row.dataset.id || '';
+                const nome = row.dataset.nome || '';
+                const abreviado = row.dataset.abreviado || '';
+
+                if (
+                    id.toLowerCase().includes(termoBusca) ||
+                    nome.toLowerCase().includes(termoBusca) ||
+                    abreviado.toLowerCase().includes(termoBusca)
+                ) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
         }
     </script>
 </body>

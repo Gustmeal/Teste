@@ -53,8 +53,17 @@ def lista_editais():
 def novo_edital():
     if request.method == 'POST':
         try:
+            nu_edital = request.form['nu_edital']
+
+            # Verificar se já existe um edital com esse número
+            edital_existente = Edital.query.filter_by(NU_EDITAL=nu_edital, DELETED_AT=None).first()
+            if edital_existente:
+                flash(f'Erro: O número de Edital {nu_edital} já está sendo utilizado. Por favor, escolha outro número.',
+                      'danger')
+                return render_template('credenciamento/form_edital.html')
+
             novo_edital = Edital(
-                NU_EDITAL=request.form['nu_edital'],
+                NU_EDITAL=nu_edital,
                 ANO=request.form['ano'],
                 DESCRICAO=request.form['descricao']
             )

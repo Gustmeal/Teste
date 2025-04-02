@@ -8,11 +8,10 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">Empresas Participantes</h1>
-        <div class="d-flex align-items-center">
-            <a href="{{ url_for('empresa.nova_empresa', periodo_id=periodo.ID) }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Nova Empresa
-            </a>
-        </div>
+        <a href="{{ url_for('empresa.nova_empresa', periodo_id=periodo.ID) }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Nova Empresa
+        </a>
+    </div>
 
     <!-- Informações do período -->
     <div class="card shadow mb-4">
@@ -41,26 +40,26 @@
     </div>
 
     <div class="card shadow">
-        <div class="table-responsive" data-loading="true">
+        <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="empresasTable">
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Nome da Empresa</th>
-                        <th>Nome Abreviado</th>
-                        <th>Condição</th>
-                        <th>Data de Cadastro</th>
-                        <th class="text-center">Ações</th>
+                        <th style="width: 10%;">ID</th>
+                        <th style="width: 35%;">Nome da Empresa</th>
+                        <th style="width: 15%;">Nome Abreviado</th>
+                        <th style="width: 15%;">Condição</th>
+                        <th style="width: 15%;">Data de Cadastro</th>
+                        <th style="width: 10%;" class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for empresa in empresas %}
                     <tr>
-                        <td>{{ empresa.ID_EMPRESA }}</td>
-                        <td class="fw-bold">{{ empresa.NO_EMPRESA }}</td>
-                        <td>{{ empresa.NO_EMPRESA_ABREVIADA }}</td>
-                        <td>{{ empresa.DS_CONDICAO }}</td>
-                        <td>{{ empresa.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td class="text-id">{{ empresa.ID_EMPRESA }}</td>
+                        <td class="text-nome-empresa">{{ empresa.NO_EMPRESA }}</td>
+                        <td class="text-abreviado">{{ empresa.NO_EMPRESA_ABREVIADA }}</td>
+                        <td class="text-condicao">{{ empresa.DS_CONDICAO }}</td>
+                        <td class="text-data">{{ empresa.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
                         <td class="text-center">
                             <a href="javascript:void(0);"
                                onclick="confirmarExclusao({{ empresa.ID }}, '{{ empresa.NO_EMPRESA }}');"
@@ -103,11 +102,90 @@
     </div>
 </div>
 
+<style>
+    /* Estilos para a tabela de empresas - abordagem fixa de layout */
+    #empresasTable {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    #empresasTable th,
+    #empresasTable td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Classes para cada tipo de célula */
+    .text-id {
+        width: 10%;
+        font-family: monospace;
+    }
+
+    .text-nome-empresa {
+        width: 35%;
+        font-weight: bold;
+    }
+
+    .text-abreviado {
+        width: 15%;
+    }
+
+    .text-condicao {
+        width: 15%;
+    }
+
+    .text-data {
+        width: 15%;
+        white-space: nowrap;
+    }
+
+    /* Tooltip para mostrar texto completo */
+    .text-nome-empresa {
+        position: relative;
+        cursor: help;
+    }
+
+    .text-nome-empresa:hover::after {
+        content: attr(title);
+        position: absolute;
+        left: 0;
+        top: 100%;
+        z-index: 1;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        white-space: normal;
+        max-width: 300px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+</style>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        setupTableFilter('empresasSearch', 'empresasTable');
+        // Configurar filtro de pesquisa
+        const searchInput = document.getElementById('empresasSearch');
+        const rows = document.querySelectorAll('#empresasTable tbody tr');
 
-        // Configurar a exclusão da empresa
+        if (searchInput) {
+            searchInput.addEventListener('keyup', function() {
+                const term = this.value.toLowerCase();
+
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(term) ? '' : 'none';
+                });
+            });
+        }
+
+        // Adicionar título para mostrar texto completo nas células
+        const cells = document.querySelectorAll('.text-nome-empresa, .text-abreviado, .text-condicao');
+        cells.forEach(cell => {
+            cell.title = cell.textContent.trim();
+        });
+
+        // Configurar a exclusão
         window.confirmarExclusao = function(id, nome) {
             document.getElementById('empresaNome').textContent = nome;
             document.getElementById('btnConfirmarExclusao').href = "{{ url_for('empresa.excluir_empresa', id=0) }}".replace('0', id);
