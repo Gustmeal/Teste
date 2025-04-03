@@ -29,23 +29,31 @@
 
                 <form method="POST">
                     <div class="mb-3">
-                        <label class="form-label">ID da Empresa <span class="text-danger">*</span></label>
-                        <input type="number" class="form-control" name="id_empresa" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Nome da Empresa <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="nome_empresa" maxlength="100" required>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Nome Abreviado</label>
-                        <input type="text" class="form-control" name="nome_abreviado" maxlength="30">
+                        <label class="form-label">Empresa <span class="text-danger">*</span></label>
+                        <select class="form-select" name="id_empresa" required>
+                            <option value="">Selecione uma empresa</option>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.pkEmpresaResponsavelCobranca }}">
+                                    {% if empresa.NO_ABREVIADO_EMPRESA %}
+                                        {{ empresa.NO_ABREVIADO_EMPRESA }} - {{ empresa.nmEmpresaResponsavelCobranca }}
+                                    {% else %}
+                                        {{ empresa.nmEmpresaResponsavelCobranca }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Selecione a empresa participante do período</small>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label">Condição</label>
-                        <input type="text" class="form-control" name="ds_condicao" maxlength="50">
+                        <label class="form-label">Condição <span class="text-danger">*</span></label>
+                        <select class="form-select" name="ds_condicao" required>
+                            <option value="">Selecione uma condição</option>
+                            {% for condicao in condicoes %}
+                                <option value="{{ condicao }}">{{ condicao }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Selecione a condição da empresa para este período</small>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">

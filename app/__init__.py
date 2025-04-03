@@ -27,6 +27,19 @@ def create_app():
     init_login_manager(app)
 
     with app.app_context():
+        # Importar todos os modelos antes de criar as tabelas
+        from app.models.usuario import Usuario
+        from app.models.edital import Edital
+        from app.models.periodo import PeriodoAvaliacao
+        from app.models.empresa_participante import EmpresaParticipante
+        from app.models.empresa_responsavel import EmpresaResponsavel
+        from app.models.criterio_selecao import CriterioSelecao
+        from app.models.limite_distribuicao import LimiteDistribuicao
+        from app.models.meta_avaliacao import MetaAvaliacao
+        from app.models.audit_log import AuditLog
+        from app.models.feedback import Feedback
+        from app.models.mensagem import Mensagem
+
         db.create_all()
 
     # Registrar blueprint para a página principal do GEINC
