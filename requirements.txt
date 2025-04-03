@@ -9,3 +9,5 @@ SQLAlchemy==1.4.41
 fpdf==1.7.2
 xlsxwriter==3.0.9
 Flask-Login==0.6.2
+XlsxWriter==3.0.9
+fpdf==1.7.2

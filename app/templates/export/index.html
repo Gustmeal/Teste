@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('credenciamento.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Sistema de Exportação</h1>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Exportar Dados do Sistema</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('export.gerar_relatorio') }}">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Sistema <span class="text-danger">*</span></label>
+                        <select class="form-select" id="sistemaSelect" name="sistema" required>
+                            <option value="">Selecione um sistema</option>
+                            {% for sistema in sistemas %}
+                            <option value="{{ sistema.id }}">{{ sistema.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Módulo <span class="text-danger">*</span></label>
+                        <select class="form-select" id="moduloSelect" name="modulo" required disabled>
+                            <option value="">Selecione o sistema primeiro</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Formato <span class="text-danger">*</span></label>
+                        <select class="form-select" name="formato" required>
+                            <option value="">Selecione o formato</option>
+                            <option value="excel">Excel (.xlsx)</option>
+                            <option value="pdf">PDF (.pdf)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-download me-2"></i> Gerar Exportação
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Instruções</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5><i class="fas fa-file-excel text-success me-2"></i> Exportação para Excel</h5>
+                    <ul class="text-muted">
+                        <li>Formato de planilha compatível com Microsoft Excel</li>
+                        <li>Ideal para análise de dados e filtragem</li>
+                        <li>Permite modificações e cálculos adicionais</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h5><i class="fas fa-file-pdf text-danger me-2"></i> Exportação para PDF</h5>
+                    <ul class="text-muted">
+                        <li>Formato para visualização e impressão</li>
+                        <li>Ideal para envio por email e compartilhamento</li>
+                        <li>Preserva a formatação exata independente do dispositivo</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const sistemaSelect = document.getElementById('sistemaSelect');
+        const moduloSelect = document.getElementById('moduloSelect');
+
+        // Mapeamento de sistemas e módulos
+        const sistemas = {{ sistemas|tojson }};
+
+        // Função para atualizar as opções do módulo
+        function atualizarModulos() {
+            const sistemaId = sistemaSelect.value;
+
+            // Limpar select de módulos
+            moduloSelect.innerHTML = '';
+
+            if (!sistemaId) {
+                moduloSelect.disabled = true;
+                moduloSelect.innerHTML = '<option value="">Selecione o sistema primeiro</option>';
+                return;
+            }
+
+            // Encontrar o sistema selecionado
+            const sistemaSelecionado = sistemas.find(s => s.id === sistemaId);
+            if (!sistemaSelecionado) return;
+
+            // Habilitar o select
+            moduloSelect.disabled = false;
+
+            // Adicionar opção padrão
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Selecione um módulo';
+            moduloSelect.appendChild(defaultOption);
+
+            // Adicionar opções de módulos
+            sistemaSelecionado.modulos.forEach(modulo => {
+                const option = document.createElement('option');
+                option.value = modulo.id;
+                option.textContent = modulo.nome;
+                moduloSelect.appendChild(option);
+            });
+        }
+
+        // Eventos de mudança no select
+        sistemaSelect.addEventListener('change', atualizarModulos);
+    });
+</script>
+{% endblock %}
