@@ -208,4 +208,21 @@
         });
     });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const convertBtn = document.getElementById('convertBtn');
+
+    if (form && convertBtn) {
+        form.addEventListener('submit', function() {
+            // Restaurar o botão após 3 segundos (tempo suficiente para o download iniciar)
+            setTimeout(function() {
+                convertBtn.innerHTML = '<i class="fas fa-sync-alt me-2"></i> Converter';
+                convertBtn.classList.remove('btn-loading');
+                convertBtn.disabled = false;
+            }, 3000);
+        });
+    }
+});
+</script>
 {% endblock %}

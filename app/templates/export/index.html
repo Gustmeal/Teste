@@ -127,4 +127,29 @@
         sistemaSelect.addEventListener('change', atualizarModulos);
     });
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const exportBtn = document.querySelector('button[type="submit"]');
+
+    if (form && exportBtn) {
+        form.addEventListener('submit', function() {
+            // Guardar o texto original do botão
+            const originalText = exportBtn.innerHTML;
+
+            // Atualizar aparência do botão para indicar processamento
+            exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processando...';
+            exportBtn.classList.add('btn-loading');
+            exportBtn.disabled = true;
+
+            // Restaurar o botão após 3 segundos (tempo suficiente para o download iniciar)
+            setTimeout(function() {
+                exportBtn.innerHTML = originalText;
+                exportBtn.classList.remove('btn-loading');
+                exportBtn.disabled = false;
+            }, 3000);
+        });
+    }
+});
+</script>
 {% endblock %}
