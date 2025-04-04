@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Conversor de Documentos</h1>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Converter Arquivos</h5>
+        </div>
+        <div class="card-body p-4">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i> Suporta arquivos grandes de até 5.000 páginas.
+            </div>
+
+            <form action="{{ url_for('converter.convert') }}" method="POST" enctype="multipart/form-data" class="mt-4">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="file" class="form-label">Selecione o arquivo</label>
+                        <input class="form-control" type="file" id="file" name="file" required accept=".docx,.doc,.pdf,.xlsx,.xls">
+                        <div class="form-text">Formatos suportados: Word (.docx, .doc), PDF (.pdf), Excel (.xlsx, .xls)</div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="conversion_type" class="form-label">Tipo de conversão</label>
+                        <select class="form-select" id="conversion_type" name="conversion_type" required>
+                            <option value="" selected disabled>Selecione o tipo de conversão</option>
+                            <option value="word_to_pdf">Word para PDF</option>
+                            <option value="word_to_excel">Word para Excel</option>
+                            <option value="pdf_to_excel">PDF para Excel</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary" id="convertBtn">
+                        <i class="fas fa-sync-alt me-2"></i> Converter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Instruções de Uso</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="feature-card text-center p-3">
+                        <div class="icon-wrapper mb-3">
+                            <i class="fas fa-file-word text-primary fa-3x"></i>
+                            <i class="fas fa-arrow-right mx-2"></i>
+                            <i class="fas fa-file-pdf text-danger fa-3x"></i>
+                        </div>
+                        <h5>Word para PDF</h5>
+                        <p class="text-muted mb-0">Converte documentos do Word para formato PDF mantendo a formatação original.</p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="feature-card text-center p-3">
+                        <div class="icon-wrapper mb-3">
+                            <i class="fas fa-file-word text-primary fa-3x"></i>
+                            <i class="fas fa-arrow-right mx-2"></i>
+                            <i class="fas fa-file-excel text-success fa-3x"></i>
+                        </div>
+                        <h5>Word para Excel</h5>
+                        <p class="text-muted mb-0">Extrai texto e tabelas de documentos Word para planilhas Excel estruturadas.</p>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="feature-card text-center p-3">
+                        <div class="icon-wrapper mb-3">
+                            <i class="fas fa-file-pdf text-danger fa-3x"></i>
+                            <i class="fas fa-arrow-right mx-2"></i>
+                            <i class="fas fa-file-excel text-success fa-3x"></i>
+                        </div>
+                        <h5>PDF para Excel</h5>
+                        <p class="text-muted mb-0">Extrai dados de arquivos PDF para planilhas Excel para análise e edição.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <h5 class="mb-3">Como usar:</h5>
+                <ol>
+                    <li>Selecione o arquivo que deseja converter (Word, PDF ou Excel)</li>
+                    <li>Escolha o tipo de conversão desejado</li>
+                    <li>Clique em "Converter" e aguarde o processamento</li>
+                    <li>O download do arquivo convertido iniciará automaticamente</li>
+                </ol>
+
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i> <strong>Nota:</strong> A qualidade da conversão pode variar dependendo da complexidade do documento original. Para arquivos muito grandes, o processo pode levar mais tempo.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .feature-card {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        transition: all 0.3s;
+        height: 100%;
+    }
+
+    .feature-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .icon-wrapper {
+        color: #6c63ff;
+    }
+
+    /* Animação de loading para o botão */
+    .btn-loading {
+        position: relative;
+        pointer-events: none;
+    }
+
+    .btn-loading:after {
+        content: "";
+        display: inline-block;
+        width: 1rem;
+        height: 1rem;
+        vertical-align: text-bottom;
+        border: 0.2em solid currentColor;
+        border-right-color: transparent;
+        border-radius: 50%;
+        animation: spinner-border .75s linear infinite;
+        margin-left: 0.5rem;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        const convertBtn = document.getElementById('convertBtn');
+        const fileInput = document.getElementById('file');
+        const conversionType = document.getElementById('conversion_type');
+
+        form.addEventListener('submit', function(e) {
+            // Validar tipo de arquivo x tipo de conversão
+            const fileName = fileInput.value.toLowerCase();
+            const selectedConversion = conversionType.value;
+
+            // Verificações de compatibilidade
+            if (selectedConversion === 'word_to_pdf' || selectedConversion === 'word_to_excel') {
+                if (!fileName.endsWith('.docx') && !fileName.endsWith('.doc')) {
+                    e.preventDefault();
+                    alert('Por favor, selecione um arquivo Word (.docx ou .doc) para esta conversão.');
+                    return;
+                }
+            } else if (selectedConversion === 'pdf_to_excel') {
+                if (!fileName.endsWith('.pdf')) {
+                    e.preventDefault();
+                    alert('Por favor, selecione um arquivo PDF para esta conversão.');
+                    return;
+                }
+            }
+
+            // Adicionar efeito de loading ao botão
+            convertBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Processando...';
+            convertBtn.classList.add('btn-loading');
+            convertBtn.disabled = true;
+        });
+
+        // Atualizar tipos de conversão disponíveis com base no arquivo selecionado
+        fileInput.addEventListener('change', function() {
+            const fileName = this.value.toLowerCase();
+
+            // Resetar as opções
+            conversionType.innerHTML = '<option value="" selected disabled>Selecione o tipo de conversão</option>';
+
+            // Adicionar opções relevantes
+            if (fileName.endsWith('.docx') || fileName.endsWith('.doc')) {
+                // Opções para Word
+                const options = [
+                    {value: 'word_to_pdf', text: 'Word para PDF'},
+                    {value: 'word_to_excel', text: 'Word para Excel'}
+                ];
+
+                options.forEach(option => {
+                    const opt = document.createElement('option');
+                    opt.value = option.value;
+                    opt.textContent = option.text;
+                    conversionType.appendChild(opt);
+                });
+            } else if (fileName.endsWith('.pdf')) {
+                // Opções para PDF
+                const opt = document.createElement('option');
+                opt.value = 'pdf_to_excel';
+                opt.textContent = 'PDF para Excel';
+                conversionType.appendChild(opt);
+            }
+        });
+    });
+</script>
+{% endblock %}

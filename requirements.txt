@@ -11,3 +11,10 @@ xlsxwriter==3.0.9
 Flask-Login==0.6.2
 XlsxWriter==3.0.9
 fpdf==1.7.2
+python-docx==0.8.11
+docx2pdf==0.1.8
+mammoth==1.6.0
+PyPDF2==3.0.1
+openpyxl==3.1.2
+pandas==2.0.3
+xlsxwriter==3.1.2
