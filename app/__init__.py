@@ -33,13 +33,12 @@ def create_app():
         from app.models.periodo import PeriodoAvaliacao
         from app.models.empresa_participante import EmpresaParticipante
         from app.models.empresa_responsavel import EmpresaResponsavel
-        from app.models.criterio_distribuicao import CriterioDistribuicao
+        from app.models.criterio_selecao import CriterioSelecao
         from app.models.limite_distribuicao import LimiteDistribuicao
         from app.models.meta_avaliacao import MetaAvaliacao
         from app.models.audit_log import AuditLog
         from app.models.feedback import Feedback
         from app.models.mensagem import Mensagem
-        from app.models.contrato_distribuivel import ContratoDistribuivel, ContratoArrastavel, Distribuicao
 
         db.create_all()
 
@@ -61,15 +60,8 @@ def create_app():
     from app.routes.meta_routes import meta_bp
     app.register_blueprint(meta_bp)
 
-    # Manter ambos os routes - limites e distribuição
     from app.routes.limite_routes import limite_bp
     app.register_blueprint(limite_bp)
-
-    from app.routes.distribuicao_routes import distribuicao_bp
-    app.register_blueprint(distribuicao_bp)
-
-    from app.routes.criterio_routes import criterio_bp
-    app.register_blueprint(criterio_bp)
 
     from app.routes.empresa_routes import empresa_bp
     app.register_blueprint(empresa_bp)

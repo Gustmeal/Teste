@@ -19,9 +19,9 @@ def index():
     from app.models.periodo import PeriodoAvaliacao
     periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).count()
 
-    # Contar critérios de distribuição ativos
-    from app.models.criterio_distribuicao import CriterioDistribuicao
-    criterios = CriterioDistribuicao.query.filter(CriterioDistribuicao.DELETED_AT == None).count()
+    # Contar limites ativos
+    from app.models.limite_distribuicao import LimiteDistribuicao
+    limites = LimiteDistribuicao.query.filter(LimiteDistribuicao.DELETED_AT == None).count()
 
     # Contar metas ativas
     from app.models.meta_avaliacao import MetaAvaliacao
@@ -33,4 +33,4 @@ def index():
         from app.models.usuario import Usuario
         usuarios = Usuario.query.filter(Usuario.DELETED_AT == None, Usuario.ATIVO == True).count()
 
-    return render_template('credenciamento/index.html', editais=editais, periodos=periodos, criterios=criterios, metas=metas, usuarios=usuarios)
+    return render_template('credenciamento/index.html', editais=editais, periodos=periodos, limites=limites, metas=metas, usuarios=usuarios)

@@ -48,7 +48,7 @@ def nova_empresa(periodo_id):
     empresas_responsaveis = EmpresaResponsavel.query.order_by(EmpresaResponsavel.nmEmpresaResponsavelCobranca).all()
 
     # Lista de opções para o campo condição
-    condicoes = ["NOVA", "PERMANECE","DESCREDENCIADA"]
+    condicoes = ["NOVA", "PERMANECE"]
 
     if request.method == 'POST':
         try:
