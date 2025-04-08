@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('distribuicao.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Resultado da Distribuição</h1>
+        <div>
+            <a href="{{ url_for('distribuicao.exportar_distribuicao', data_ref=data_ref.strftime('%Y-%m-%d'), periodo_id=periodo.ID, criterio_id=criterio.COD) }}" class="btn btn-success">
+                <i class="fas fa-file-export me-2"></i> Exportar TXT
+            </a>
+        </div>
+    </div>
+
+    <!-- Informações da Distribuição -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Informações da Distribuição</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Data Referência:</label>
+                    <p>{{ data_ref.strftime('%d/%m/%Y %H:%M') }}</p>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Edital:</label>
+                    <p>{{ periodo.edital.NU_EDITAL }}/{{ periodo.edital.ANO }}</p>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Período:</label>
+                    <p>{{ periodo.ID_PERIODO }} ({{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }})</p>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Critério:</label>
+                    <p>{{ criterio.COD }} - {{ criterio.DS_CRITERIO_SELECAO }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estatísticas por Empresa -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Estatísticas por Empresa</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Código Empresa</th>
+                            <th class="text-end">Total Contratos</th>
+                            <th class="text-end">Valor Total (R$)</th>
+                            <th class="text-end">Percentual (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set total_geral_contratos = namespace(value=0) %}
+                        {% set total_geral_valor = namespace(value=0) %}
+
+                        {% for cod_empresa, total_contratos, valor_total in estatisticas %}
+                            {% set total_geral_contratos.value = total_geral_contratos.value + total_contratos %}
+                            {% set total_geral_valor.value = total_geral_valor.value + valor_total %}
+                        {% endfor %}
+
+                        {% for cod_empresa, total_contratos, valor_total in estatisticas %}
+                        <tr>
+                            <td>{{ cod_empresa }}</td>
+                            <td class="text-end">{{ total_contratos|br_number }}</td>
+                            <td class="text-end">{{ valor_total|br_currency }}</td>
+                            <td class="text-end">
+                                {{ ((total_contratos / total_geral_contratos.value) * 100)|round(2) }}%
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-primary">
+                        <tr>
+                            <th>Total Geral</th>
+                            <th class="text-end">{{ total_geral_contratos.value|br_number }}</th>
+                            <th class="text-end">{{ total_geral_valor.value|br_currency }}</th>
+                            <th class="text-end">100.00%</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Amostra de Contratos Distribuídos -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Amostra de Contratos Distribuídos ({{ distribuicoes|length }} de {{ total_registros }})</h5>
+        </div>
+        <div class="card-body">
+            <!-- Barra de pesquisa -->
+            <div class="search-container mb-4">
+                <input type="text" id="contratosSearch" class="form-control search-input" placeholder="Pesquisar contratos">
+                <i class="fas fa-search search-icon"></i>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="contratosTable">
+                    <thead>
+                        <tr>
+                            <th>Contrato ID</th>
+                            <th>CPF/CNPJ</th>
+                            <th>Empresa Cobrança</th>
+                            <th class="text-end">Valor Saldo Devedor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dist in distribuicoes %}
+                        <tr>
+                            <td>{{ dist.FkContratoSISCTR }}</td>
+                            <td>{{ dist.NR_CPF_CNPJ }}</td>
+                            <td>{{ dist.COD_EMPRESA_COBRANCA }}</td>
+                            <td class="text-end">{{ dist.VR_SD_DEVEDOR|br_currency }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center py-4 text-muted">
+                                <i class="fas fa-inbox fa-2x mb-3"></i>
+                                <p class="mb-0">Nenhum contrato distribuído</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if total_registros > distribuicoes|length %}
+            <div class="alert alert-info mt-3">
+                <i class="fas fa-info-circle me-2"></i>
+                Exibindo apenas uma amostra dos primeiros {{ distribuicoes|length }} contratos de um total de {{ total_registros }}.
+                Para visualizar todos os contratos, faça o download do arquivo completo.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Configurar filtro para a tabela de contratos
+        setupTableFilter('contratosSearch', 'contratosTable');
+    });
+</script>
+{% endblock %}

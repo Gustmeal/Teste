@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('credenciamento.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Distribuição de Contratos</h1>
+        <div>
+            <a href="{{ url_for('criterio.lista_criterios') }}" class="btn btn-info me-2">
+                <i class="fas fa-filter"></i> Critérios de Distribuição
+            </a>
+            <a href="{{ url_for('distribuicao.nova_distribuicao') }}" class="btn btn-success">
+                <i class="fas fa-random"></i> Nova Distribuição
+            </a>
+            <a href="{{ url_for('distribuicao.redistribuicao') }}" class="btn btn-primary">
+                <i class="fas fa-exchange-alt"></i> Redistribuição
+            </a>
+        </div>
+    </div>
+
+    <!-- Histórico de distribuições -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Histórico de Distribuições</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="historicoTable">
+                    <thead>
+                        <tr>
+                            <th>Data Referência</th>
+                            <th>Edital</th>
+                            <th>Período</th>
+                            <th>Critério</th>
+                            <th class="text-end">Total Contratos</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for total_contratos, dt_ref, id_edital, id_periodo, cod_criterio, ds_criterio, nu_edital in distribuicoes %}
+                        <tr>
+                            <td>{{ dt_ref.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>{{ nu_edital }}</td>
+                            <td>{{ id_periodo }}</td>
+                            <td>{{ cod_criterio }} - {{ ds_criterio or "Critério sem descrição" }}</td>
+                            <td class="text-end">{{ total_contratos|br_number }}</td>
+                            <td class="text-center">
+                                <a href="{{ url_for('distribuicao.visualizar_distribuicao', data_ref=dt_ref.strftime('%Y-%m-%d'), periodo_id=id_periodo, criterio_id=cod_criterio) }}"
+                                   class="btn btn-sm btn-outline-primary me-1" title="Visualizar Distribuição">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ url_for('distribuicao.exportar_distribuicao', data_ref=dt_ref.strftime('%Y-%m-%d'), periodo_id=id_periodo, criterio_id=cod_criterio) }}"
+                                   class="btn btn-sm btn-outline-success" title="Exportar Distribuição">
+                                    <i class="fas fa-file-export"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="fas fa-random fa-2x mb-3"></i>
+                                <p class="mb-0">Nenhuma distribuição realizada</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informações sobre critérios -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Critérios de Distribuição</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="mb-4">
+                        <h5><i class="fas fa-info-circle text-primary me-2"></i> Distribuição Inicial</h5>
+                        <p class="text-muted mb-0">
+                            A distribuição inicial de contratos é realizada considerando o resultado da
+                            participação na arrecadação das empresas no período anterior. O processo identifica
+                            contratos com acordos vigentes e aplica regras específicas conforme cada situação.
+                        </p>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="mb-4">
+                        <h5><i class="fas fa-exchange-alt text-primary me-2"></i> Redistribuição</h5>
+                        <p class="text-muted mb-0">
+                            A redistribuição é realizada quando ocorre a desistência ou descredenciamento de uma
+                            empresa de assessoria durante o período avaliativo. Os contratos são redistribuídos
+                            para as empresas remanescentes seguindo critérios específicos.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    <h5 class="mb-3">Critérios Registrados</h5>
+                    <div class="row">
+                        {% for criterio in criterios %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card border-left-primary h-100">
+                                <div class="card-body py-2 px-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="badge bg-primary me-2">{{ criterio.COD }}</div>
+                                        <div>{{ criterio.DS_CRITERIO_SELECAO }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="col-12">
+                            <p class="text-muted text-center">
+                                Nenhum critério de distribuição cadastrado.
+                                <a href="{{ url_for('criterio.novo_criterio') }}">Cadastrar novo critério</a>
+                            </p>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .border-left-primary {
+        border-left: 4px solid var(--primary-color);
+    }
+</style>
+{% endblock %}
