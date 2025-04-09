@@ -57,15 +57,16 @@
                 <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
 
                 <!-- Menu Credenciamento -->
+                <!-- Menu Credenciamento/Assessoria de Cobranças na sidebar -->
                 <li class="sidebar-dropdown">
                     <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Assessoria de Cobranças <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
                     <ul class="sidebar-submenu">
                         <li><a href="{{ url_for('credenciamento.index') }}"><i class="fas fa-home"></i> Dashboard</a></li>
                         <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
                         <li><a href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt"></i> Períodos</a></li>
-                        <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Regras de Distribuição</a></li>
+                        <li><a href="{{ url_for('criterio.lista_criterios') }}"><i class="fas fa-list-ol"></i> Critérios de Distribuição</a></li>
+                        <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Limites de Distribuição</a></li>
                         <li><a href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line"></i> Metas de Avaliação</a></li>
-                        <li><a href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank"><i class="fas fa-book"></i> Manual do Usuário</a></li>
                     </ul>
                 </li>
 
@@ -122,7 +123,10 @@
                                 <i class="fas fa-calendar-alt me-2"></i> Períodos
                             </a></li>
                             <li><a class="dropdown-item" href="{{ url_for('limite.lista_limites') }}">
-                                <i class="fas fa-balance-scale me-2"></i> Regras de Distribuição
+                                <i class="fas fa-balance-scale me-2"></i> Limites de Distribuição
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('criterio.lista_criterios') }}">
+                                <i class="fas fa-list-ol me-2"></i> Critérios de Distribuição
                             </a></li>
                             <li><a class="dropdown-item" href="{{ url_for('meta.lista_metas') }}">
                                 <i class="fas fa-chart-line me-2"></i> Metas

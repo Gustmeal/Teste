@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('criterio_distribuicao.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container fade-in">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h1 class="mb-0">
+                    {% if criterio %}Editar Critério de Distribuição{% else %}Novo Critério de Distribuição{% endif %}
+                </h1>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Código do Critério <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="cod_criterio"
+                               value="{{ criterio.COD_CRITERIO if criterio }}" required>
+                        <small class="text-muted">Um identificador numérico único para o critério</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Descrição do Critério <span class="text-danger">*</span></label>
+                        <textarea class="form-control" name="descricao" rows="3"
+                                  maxlength="255" required>{{ criterio.DESCRICAO if criterio }}</textarea>
+                        <small class="text-muted">Descreva o critério de distribuição em detalhes</small>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('criterio_distribuicao.index') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            {% if criterio %}Salvar{% else %}Cadastrar{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -45,7 +45,26 @@ def nova_empresa(periodo_id):
     edital = Edital.query.get(periodo.ID_EDITAL)
 
     # Obter todas as empresas disponíveis para o dropdown
-    empresas_responsaveis = EmpresaResponsavel.query.order_by(EmpresaResponsavel.nmEmpresaResponsavelCobranca).all()
+    try:
+        empresas_responsaveis = EmpresaResponsavel.query.order_by(EmpresaResponsavel.nmEmpresaResponsavelCobranca).all()
+
+        # Para debug - adicione este código temporariamente
+        print(f"Total de empresas encontradas: {len(empresas_responsaveis)}")
+        for empresa in empresas_responsaveis[:5]:  # Mostrar apenas as 5 primeiras para não encher o log
+            print(f"Empresa: {empresa.pkEmpresaResponsavelCobranca} - {empresa.nmEmpresaResponsavelCobranca}")
+
+        if not empresas_responsaveis:
+            print("AVISO: Nenhuma empresa responsável encontrada na tabela!")
+            # Tente verificar se a tabela existe e tem dados
+            from sqlalchemy import text
+            with db.engine.connect() as connection:
+                result = connection.execute(text("SELECT COUNT(*) FROM BDG.PAR002_EMPRESA_RESPONSAVEL_COBRANCA"))
+                count = result.scalar()
+                print(f"Total de registros na tabela: {count}")
+    except Exception as e:
+        print(f"ERRO ao buscar empresas responsáveis: {str(e)}")
+        empresas_responsaveis = []
+        flash(f"Erro ao carregar empresas responsáveis: {str(e)}", "danger")
 
     # Lista de opções para o campo condição
     condicoes = ["NOVA", "PERMANECE"]
@@ -160,3 +179,30 @@ def excluir_empresa(id):
         flash(f'Erro: {str(e)}', 'danger')
 
     return redirect(url_for('empresa.lista_empresas', periodo_id=periodo_id))
+
+
+@empresa_bp.route('/teste-empresas')
+@login_required
+def teste_empresas():
+    try:
+        from flask import jsonify
+        empresas = EmpresaResponsavel.query.limit(10).all()
+        resultado = [
+            {
+                'id': empresa.pkEmpresaResponsavelCobranca,
+                'nome': empresa.nmEmpresaResponsavelCobranca,
+                'abreviado': empresa.NO_ABREVIADO_EMPRESA
+            }
+            for empresa in empresas
+        ]
+        return jsonify({
+            'sucesso': True,
+            'mensagem': f'Encontradas {len(empresas)} empresas',
+            'empresas': resultado
+        })
+    except Exception as e:
+        return jsonify({
+            'sucesso': False,
+            'mensagem': f'Erro: {str(e)}',
+            'erro_detalhado': repr(e)
+        })

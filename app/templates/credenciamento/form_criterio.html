@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('criterio.lista_criterios') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container fade-in">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h1 class="mb-0">
+                    {% if criterio %}Editar Critério{% else %}Novo Critério{% endif %}
+                </h1>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" id="criterioForm">
+                    <div class="mb-3">
+                        <label class="form-label">Código do Critério <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" name="codigo"
+                               value="{{ criterio.COD if criterio }}" required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label">Descrição do Critério <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="descricao"
+                               value="{{ criterio.DS_CRITERIO_SELECAO if criterio }}" maxlength="100" required>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('criterio.lista_criterios') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success submit-btn">
+                            <span class="btn-text">{% if criterio %}Salvar{% else %}Cadastrar{% endif %}</span>
+                            <span class="spinner d-none">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Processando...
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('criterioForm');
+
+            form.addEventListener('submit', function(e) {
+                const submitBtn = this.querySelector('.submit-btn');
+                const btnText = submitBtn.querySelector('.btn-text');
+                const spinner = submitBtn.querySelector('.spinner');
+
+                btnText.classList.add('d-none');
+                spinner.classList.remove('d-none');
+                submitBtn.disabled = true;
+            });
+        });
+    </script>
+{% endblock %}

@@ -34,7 +34,7 @@
                     <i class="fas fa-balance-scale fa-2x text-primary me-3"></i>
                     <div class="text-start">
                         <h2 class="mb-0 counter" data-target="{{ limites|default(0) }}">{{ limites|default(0) }}</h2>
-                        <p class="mb-0 text-muted">Regras de Distribuição</p>
+                        <p class="mb-0 text-muted">Limite de Distribuição</p>
                     </div>
                 </div>
             </div>
@@ -81,13 +81,26 @@
             </div>
         </div>
 
-        <!-- Segunda linha: Limites e Metas -->
-        <div class="col-md-6">
+        <!-- Segunda linha: Critérios, Limites e Metas -->
+        <div class="col-md-4">
             <div class="card home-card shadow h-100 d-flex flex-column">
                 <div class="card-body d-flex flex-column">
-                    <h3>Regras de Distribuição</h3>
+                    <h3>Critérios de Distribuição</h3>
                     <p class="text-muted mb-4 flex-grow-1">
-                        Defina Regras de distribuição para os editais, períodos e empresas.
+                        Cadastre os critérios utilizados na distribuição de processos.
+                    </p>
+                    <a href="{{ url_for('criterio.lista_criterios') }}" class="btn btn-access mt-auto">
+                        Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column">
+                    <h3>Limites de Distribuição</h3>
+                    <p class="text-muted mb-4 flex-grow-1">
+                        Defina Limites de distribuição para os editais, períodos e empresas.
                     </p>
                     <a href="{{ url_for('limite.lista_limites') }}" class="btn btn-access mt-auto">
                         Acessar
@@ -95,7 +108,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card home-card shadow h-100 d-flex flex-column">
                 <div class="card-body d-flex flex-column">
                     <h3>Metas de Avaliação</h3>

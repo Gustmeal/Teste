@@ -86,6 +86,10 @@ def create_app():
     from app.routes.converter_routes import converter_bp
     app.register_blueprint(converter_bp)
 
+    # Registrar o blueprint de critérios
+    from app.routes.criterio_routes import criterio_bp
+    app.register_blueprint(criterio_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
