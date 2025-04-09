@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Análise para Geração de Limites</h1>
+    </div>
+
+    <!-- Informações do Edital e Período -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Informações do Edital e Período</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="fw-bold">Edital:</h6>
+                    <p>{{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}</p>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="fw-bold">Período:</h6>
+                    <p>{{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}</p>
+                </div>
+            </div>
+
+            {% if periodo_anterior %}
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-info-circle me-2"></i> Os cálculos serão baseados no período anterior: {{ periodo_anterior.ID_PERIODO }} - {{ periodo_anterior.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo_anterior.DT_FIM.strftime('%d/%m/%Y') }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- TODAS AS EMPRESAS SÃO PERMANECE -->
+    {% if todas_permanece and resultados_calculo %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">PARTICIPAÇÃO NA ARRECADAÇÃO SE TODAS AS EMPRESAS PERMANECEM</h5>
+        </div>
+           <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">ARRECADAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">% ARRECADAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">AJUSTE</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">%FINAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in resultados_calculo[:-1] %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="text-warning fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                            <td class="text-end">{{ "{:.2f}".format(item.pct_arrecadacao) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(item.ajuste) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
+                        </tr>
+                        {% endfor %}
+                        <!-- Linha de total -->
+                        {% set total = resultados_calculo[-1] %}
+                        <tr class="fw-bold">
+                            <td></td>
+                            <td>{{ total.empresa }}</td>
+                            <td></td>
+                            <td class="text-end">R$ {{ "{:,.2f}".format(total.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                            <td class="text-end">{{ "{:.2f}".format(total.pct_arrecadacao) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(total.ajuste) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="alert alert-info mt-3">
+                <p class="mb-0"><strong>Nota:</strong> O percentual calculado foi truncado com duas casas decimais sem arredondamento.
+                Foi realizado ajuste, acrescentando 0.01% ao percentual de cada empresa (do maior para o menor valor de arrecadação),
+                até que a soma dos percentuais alcançasse exatamente 100.00%.</p>
+            </div>
+
+            <div class="text-center mt-4">
+                <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#salvarLimitesModal">
+                    <i class="fas fa-save me-2"></i>
+                    Salvar Limites de Distribuição
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para confirmar salvamento -->
+    <div class="modal fade" id="salvarLimitesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">Confirmar Salvamento dos Limites</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Deseja salvar os limites de distribuição calculados para todas as empresas?</p>
+                    <p class="mb-0 text-muted">Esta ação irá cadastrar um novo limite para cada empresa com o percentual final calculado.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" id="btnConfirmarSalvamento">
+                        <i class="fas fa-save me-2"></i> Confirmar e Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- TODAS AS EMPRESAS SÃO NOVAS -->
+    {% if todas_novas %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Cálculo 3.3.2</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-info-circle fa-2x me-3"></i>
+                    <div>
+                        <p class="mb-0">Todas as empresas foram identificadas como NOVAS.</p>
+                    </div>
+                </div>
+            </div>
+            <p class="mt-3 text-center">O cálculo para empresas novas está em desenvolvimento e será implementado em breve.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- EMPRESAS MISTAS (PERMANECE + NOVAS) -->
+    {% if alguma_permanece and not todas_permanece %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Utilizar o cálculo 3.3.3</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-info-circle fa-2x me-3"></i>
+                    <div>
+                        <p class="mb-0">Foram identificadas empresas com condições mistas (algumas PERMANECE, outras NOVAS).</p>
+                    </div>
+                </div>
+            </div>
+            <p class="mt-3 text-center">O cálculo para empresas mistas está em desenvolvimento e será implementado em breve.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* Estilo específico para a tabela de cálculos */
+    .table thead th {
+        text-align: center;
+        vertical-align: middle;
+        background-color: #f8f9fa;
+    }
+
+    .table th, .table td {
+        padding: 0.5rem;
+    }
+
+    .text-warning {
+        color: #fd7e14 !important;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Implementar lógica para salvar os limites quando o botão for clicado
+        const btnConfirmarSalvamento = document.getElementById('btnConfirmarSalvamento');
+
+        if (btnConfirmarSalvamento) {
+            btnConfirmarSalvamento.addEventListener('click', function() {
+                // Aqui implementaria a lógica para salvar os limites via AJAX
+                // Por enquanto, vamos apenas redirecionar para a lista de limites
+                window.location.href = "{{ url_for('limite.lista_limites') }}";
+            });
+        }
+    });
+</script>
+{% endblock %}

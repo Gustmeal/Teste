@@ -8,7 +8,9 @@ from app import db
 from datetime import datetime
 from flask_login import login_required
 from app.utils.audit import registrar_log
-from sqlalchemy import or_
+from sqlalchemy import or_, func, text
+import pandas as pd
+import numpy as np
 
 limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
@@ -75,6 +77,209 @@ def lista_limites():
         filtro_periodo_id=periodo_id,
         filtro_criterio_id=criterio_id
     )
+
+
+def truncate_decimal(value, decimal_places=2):
+    """Trunca o valor para o número especificado de casas decimais sem arredondamento."""
+    factor = 10 ** decimal_places
+    return int(value * factor) / factor
+
+
+@limite_bp.route('/limites/analise')
+@login_required
+def analise_limites():
+    try:
+        # Obter o edital mais recente
+        ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+
+        if not ultimo_edital:
+            flash('Não foram encontrados editais cadastrados.', 'warning')
+            return redirect(url_for('edital.lista_editais'))
+
+        # Obter o período mais recente
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.DELETED_AT == None,
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        if not ultimo_periodo:
+            flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
+            return redirect(url_for('periodo.lista_periodos'))
+
+        # Buscar empresas participantes do último período
+        empresas = EmpresaParticipante.query.filter(
+            EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
+            EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.DELETED_AT == None
+        ).all()
+
+        if not empresas:
+            flash('Não foram encontradas empresas participantes para o período atual.', 'warning')
+            return redirect(url_for('empresa.lista_empresas', periodo_id=ultimo_periodo.ID))
+
+        # Analisar condições das empresas
+        todas_permanece = all(empresa.DS_CONDICAO == 'PERMANECE' for empresa in empresas)
+        todas_novas = all(empresa.DS_CONDICAO == 'NOVA' for empresa in empresas)
+        alguma_permanece = any(empresa.DS_CONDICAO == 'PERMANECE' for empresa in empresas)
+
+        # Período anterior para cálculos
+        periodo_anterior = None
+        if ultimo_periodo.ID_PERIODO > 1:
+            periodo_anterior = PeriodoAvaliacao.query.filter(
+                PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+                PeriodoAvaliacao.ID_PERIODO < ultimo_periodo.ID_PERIODO,
+                PeriodoAvaliacao.DELETED_AT == None
+            ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        # Resultados do cálculo
+        resultados_calculo = []
+
+        # Se todas as empresas são PERMANECE, aplicar o cálculo 3.3.1
+        if todas_permanece:
+            # Verificar se há período anterior para cálculos
+            if periodo_anterior:
+                # Criar conexão direta com o banco para executar o SQL raw
+                with db.engine.connect() as connection:
+                    # SQL adaptado do exemplo fornecido
+                    sql = text("""
+                    WITH Percentuais AS (
+                        SELECT DISTINCT
+                            REE.CO_EMPRESA_COBRANCA
+                            , REE.NO_ABREVIADO_EMPRESA
+                            , TT_VR_ARRECADACAO_TOTAL = SUM(REE.[VR_ARRECADACAO_TOTAL])
+                            , ROUND((SUM(REE.VR_ARRECADACAO_TOTAL) * 1.0 /
+                              SUM(SUM(REE.[VR_ARRECADACAO_TOTAL]))  OVER ()) * 100, 2) AS Percentual
+                        FROM
+                            BDG.COM_TB062_REMUNERACAO_ESTIMADA AS REE
+                            INNER JOIN [DEV].[DCA_TB001_PERIODO_AVALIACAO] AS PEA
+                                ON PEA.ID_EDITAL = :id_edital_anterior
+                                AND PEA.ID_PERIODO = :id_periodo_anterior
+                            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EPA
+                                ON EPA.ID_EDITAL = :id_edital
+                                AND EPA.ID_PERIODO = :id_periodo
+                                AND EPA.ID_EMPRESA = REE.CO_EMPRESA_COBRANCA
+                                AND EPA.DS_CONDICAO = 'PERMANECE'
+                        WHERE
+                            REE.DT_ARRECADACAO BETWEEN PEA.[DT_INICIO] AND PEA.[DT_FIM]
+                        GROUP BY
+                            REE.CO_EMPRESA_COBRANCA
+                            , REE.NO_ABREVIADO_EMPRESA
+                    ),
+                    Ajuste AS (
+                        SELECT
+                            CO_EMPRESA_COBRANCA
+                            , NO_ABREVIADO_EMPRESA
+                            , TT_VR_ARRECADACAO_TOTAL
+                            , Percentual
+                            , SomaPercentuais = SUM(Percentual) OVER ()
+                        FROM
+                            Percentuais
+                    )
+                    SELECT
+                        ID_EMPRESA = CO_EMPRESA_COBRANCA
+                        , NO_ABREVIADO_EMPRESA
+                        , PercentualCorrigido =
+                            CASE
+                                WHEN RANK() OVER (ORDER BY Percentual DESC) = 1
+                                    THEN Percentual + (100.00 - SomaPercentuais)
+                                ELSE Percentual
+                            END
+                        , VR_ARRECADACAO = TT_VR_ARRECADACAO_TOTAL
+                    FROM
+                        Ajuste
+                    ORDER BY
+                        VR_ARRECADACAO DESC
+                    """).bindparams(
+                        id_edital=ultimo_edital.ID,
+                        id_periodo=ultimo_periodo.ID_PERIODO,
+                        id_edital_anterior=ultimo_edital.ID,  # ou usar outro valor se tiver edital anterior
+                        id_periodo_anterior=periodo_anterior.ID_PERIODO
+                    )
+
+                    # Executar a consulta
+                    result = connection.execute(sql)
+
+                    # Processar resultados
+                    rows = result.fetchall()
+
+                    # Estrutura para armazenar os resultados
+                    dados = []
+                    total_arrecadacao = 0
+
+                    # Processar cada linha de resultado
+                    for idx, row in enumerate(rows):
+                        id_empresa = row[0]
+                        nome_abreviado = row[1]
+                        percentual_corrigido = float(row[2])
+                        arrecadacao = float(row[3])
+
+                        # Calcular o percentual truncado manualmente
+                        percentual_sem_correcao = truncate_decimal(arrecadacao * 100 / sum(float(r[3]) for r in rows))
+
+                        # Calcular ajuste
+                        ajuste = truncate_decimal(percentual_corrigido - percentual_sem_correcao)
+
+                        # Buscar a situação da empresa
+                        empresa = next((e for e in empresas if e.ID_EMPRESA == id_empresa), None)
+                        situacao = empresa.DS_CONDICAO if empresa else 'PERMANECE'
+
+                        # Adicionar informações da empresa
+                        dados.append({
+                            'idx': idx + 1,
+                            'id_empresa': id_empresa,
+                            'empresa': nome_abreviado,
+                            'situacao': situacao,
+                            'arrecadacao': arrecadacao,
+                            'pct_arrecadacao': percentual_sem_correcao,
+                            'ajuste': ajuste,
+                            'pct_final': percentual_corrigido
+                        })
+
+                        total_arrecadacao += arrecadacao
+
+                    # Calcular totais
+                    total_pct_arrecadacao = sum(item['pct_arrecadacao'] for item in dados)
+                    total_ajuste = sum(item['ajuste'] for item in dados)
+                    total_pct_final = sum(item['pct_final'] for item in dados)
+
+                    # Adicionar linha de total
+                    dados.append({
+                        'idx': 'TOTAL',
+                        'id_empresa': '',
+                        'empresa': 'TOTAL',
+                        'situacao': '',
+                        'arrecadacao': total_arrecadacao,
+                        'pct_arrecadacao': total_pct_arrecadacao,
+                        'ajuste': total_ajuste,
+                        'pct_final': total_pct_final
+                    })
+
+                    resultados_calculo = dados
+            else:
+                flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
+        elif todas_novas:
+            # Cálculo 3.3.2 será implementado posteriormente
+            pass
+        elif alguma_permanece:
+            # Cálculo 3.3.3 será implementado posteriormente
+            pass
+
+        # Renderizar o template com os resultados da análise
+        return render_template(
+            'credenciamento/analise_limite.html',
+            edital=ultimo_edital,
+            periodo=ultimo_periodo,
+            periodo_anterior=periodo_anterior,
+            empresas=empresas,
+            todas_permanece=todas_permanece,
+            todas_novas=todas_novas,
+            alguma_permanece=alguma_permanece,
+            resultados_calculo=resultados_calculo
+        )
+
+    except Exception as e:
+        flash(f'Erro durante a análise: {str(e)}', 'danger')
+        return redirect(url_for('limite.lista_limites'))
 
 
 @limite_bp.route('/limites/novo', methods=['GET', 'POST'])
@@ -342,7 +547,7 @@ def detalhe_limite(id):
         LimiteDistribuicao,
         CriterioSelecao.DS_CRITERIO_SELECAO,
         Edital.NU_EDITAL,
-        Edital.NU_ANO,
+        Edital.ANO,
         PeriodoAvaliacao.DT_INICIO,
         PeriodoAvaliacao.DT_FIM,
         EmpresaParticipante.NO_EMPRESA

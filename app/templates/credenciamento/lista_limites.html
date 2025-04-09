@@ -12,7 +12,7 @@
             <a href="{{ url_for('limite.lista_limites') }}" class="btn btn-info me-2">
                 <i class="fas fa-list"></i> Visualizar Tudo
             </a>
-            <a href="{{ url_for('limite.novo_limite') }}" class="btn btn-success">
+            <a href="{{ url_for('limite.analise_limites') }}" class="btn btn-success">
                 + Novo Limite
             </a>
         </div>
@@ -91,7 +91,7 @@
                         <td>{{ limite.criterio_descricao }}</td>
                         <td class="text-end">{{ limite.QTDE_MAXIMA|br_number if limite.QTDE_MAXIMA else "-" }}</td>
                         <td class="text-end">{{ limite.VALOR_MAXIMO|br_currency if limite.VALOR_MAXIMO else "-" }}</td>
-                        <td class="text-end">{{ (limite.PERCENTUAL_FINAL|float)|string + "%" if limite.PERCENTUAL_FINAL else "-" }}</td>
+                       <td class="text-end">{{ (limite.PERCENTUAL_FINAL|float)|string + "%" if limite.PERCENTUAL_FINAL else "-" }}</td>
                         <td class="text-center">
                             <a href="{{ url_for('limite.editar_limite', id=limite.ID) }}"
                                class="btn btn-sm btn-outline-primary me-1">
