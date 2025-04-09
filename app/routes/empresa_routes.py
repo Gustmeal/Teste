@@ -67,7 +67,7 @@ def nova_empresa(periodo_id):
         flash(f"Erro ao carregar empresas responsáveis: {str(e)}", "danger")
 
     # Lista de opções para o campo condição
-    condicoes = ["NOVA", "PERMANECE"]
+    condicoes = ["NOVA", "PERMANECE", "DESCREDENCIADA"]
 
     if request.method == 'POST':
         try:
