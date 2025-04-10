@@ -41,20 +41,20 @@
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0">PARTICIPAÇÃO NA ARRECADAÇÃO SE TODAS AS EMPRESAS PERMANECEM</h5>
         </div>
-           <div class="table-responsive">
-                <table class="table table-bordered table-hover">
-                    <thead>
-                        <tr>
-                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">ARRECADAÇÃO</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">% ARRECADAÇÃO</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">AJUSTE</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;">%FINAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+       <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <tr>
+                        <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">ARRECADAÇÃO</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">% ARRECADAÇÃO</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">AJUSTE</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">%FINAL</th>
+                    </tr>
+                </thead>
+                <tbody>
                         {% for item in resultados_calculo[:-1] %}
                         <tr>
                             <td>{{ item.idx }}</td>

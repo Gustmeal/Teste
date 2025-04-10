@@ -138,123 +138,153 @@ def analise_limites():
         if todas_permanece:
             # Verificar se há período anterior para cálculos
             if periodo_anterior:
-                # Criar conexão direta com o banco para executar o SQL raw
-                with db.engine.connect() as connection:
-                    # SQL adaptado do exemplo fornecido
-                    sql = text("""
-                    WITH Percentuais AS (
-                        SELECT DISTINCT
-                            REE.CO_EMPRESA_COBRANCA
-                            , REE.NO_ABREVIADO_EMPRESA
-                            , TT_VR_ARRECADACAO_TOTAL = SUM(REE.[VR_ARRECADACAO_TOTAL])
-                            , ROUND((SUM(REE.VR_ARRECADACAO_TOTAL) * 1.0 /
-                              SUM(SUM(REE.[VR_ARRECADACAO_TOTAL]))  OVER ()) * 100, 2) AS Percentual
-                        FROM
-                            BDG.COM_TB062_REMUNERACAO_ESTIMADA AS REE
-                            INNER JOIN [DEV].[DCA_TB001_PERIODO_AVALIACAO] AS PEA
-                                ON PEA.ID_EDITAL = :id_edital_anterior
-                                AND PEA.ID_PERIODO = :id_periodo_anterior
-                            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EPA
-                                ON EPA.ID_EDITAL = :id_edital
-                                AND EPA.ID_PERIODO = :id_periodo
-                                AND EPA.ID_EMPRESA = REE.CO_EMPRESA_COBRANCA
-                                AND EPA.DS_CONDICAO = 'PERMANECE'
-                        WHERE
-                            REE.DT_ARRECADACAO BETWEEN PEA.[DT_INICIO] AND PEA.[DT_FIM]
-                        GROUP BY
-                            REE.CO_EMPRESA_COBRANCA
-                            , REE.NO_ABREVIADO_EMPRESA
-                    ),
-                    Ajuste AS (
-                        SELECT
-                            CO_EMPRESA_COBRANCA
-                            , NO_ABREVIADO_EMPRESA
-                            , TT_VR_ARRECADACAO_TOTAL
-                            , Percentual
-                            , SomaPercentuais = SUM(Percentual) OVER ()
-                        FROM
-                            Percentuais
-                    )
-                    SELECT
-                        ID_EMPRESA = CO_EMPRESA_COBRANCA
-                        , NO_ABREVIADO_EMPRESA
-                        , PercentualCorrigido =
-                            CASE
-                                WHEN RANK() OVER (ORDER BY Percentual DESC) = 1
-                                    THEN Percentual + (100.00 - SomaPercentuais)
-                                ELSE Percentual
-                            END
-                        , VR_ARRECADACAO = TT_VR_ARRECADACAO_TOTAL
-                    FROM
-                        Ajuste
-                    ORDER BY
-                        VR_ARRECADACAO DESC
-                    """).bindparams(
-                        id_edital=ultimo_edital.ID,
-                        id_periodo=ultimo_periodo.ID_PERIODO,
-                        id_edital_anterior=ultimo_edital.ID,  # ou usar outro valor se tiver edital anterior
-                        id_periodo_anterior=periodo_anterior.ID_PERIODO
-                    )
+                try:
+                    # Criar conexão direta com o banco para obter os dados de arrecadação
+                    with db.engine.connect() as connection:
+                        # Consulta para obter arrecadação das empresas no período anterior
+                        sql = text("""
+                        SELECT 
+                            EP.ID_EMPRESA,
+                            EP.NO_EMPRESA,
+                            EP.NO_EMPRESA_ABREVIADA,
+                            EP.DS_CONDICAO,
+                            -- Buscar dados de arrecadação da tabela real
+                            COALESCE(REE.VR_ARRECADACAO, 0) AS VR_ARRECADACAO
+                        FROM 
+                            DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
+                        LEFT JOIN (
+                            SELECT 
+                                REE.CO_EMPRESA_COBRANCA,
+                                SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO
+                            FROM 
+                                BDG.COM_TB062_REMUNERACAO_ESTIMADA AS REE
+                            WHERE 
+                                REE.DT_ARRECADACAO BETWEEN :data_inicio AND :data_fim
+                            GROUP BY 
+                                REE.CO_EMPRESA_COBRANCA
+                        ) AS REE ON EP.ID_EMPRESA = REE.CO_EMPRESA_COBRANCA
+                        WHERE 
+                            EP.ID_EDITAL = :id_edital 
+                            AND EP.ID_PERIODO = :id_periodo 
+                            AND EP.DS_CONDICAO = 'PERMANECE'
+                            AND EP.DELETED_AT IS NULL
+                        ORDER BY
+                            VR_ARRECADACAO DESC
+                        """).bindparams(
+                            id_edital=ultimo_edital.ID,
+                            id_periodo=ultimo_periodo.ID_PERIODO,
+                            data_inicio=periodo_anterior.DT_INICIO,
+                            data_fim=periodo_anterior.DT_FIM
+                        )
 
-                    # Executar a consulta
-                    result = connection.execute(sql)
+                        # Executar a consulta
+                        result = connection.execute(sql)
+                        rows = result.fetchall()
 
-                    # Processar resultados
-                    rows = result.fetchall()
+                        if not rows:
+                            flash('Não foram encontrados dados de arrecadação para o período anterior.', 'warning')
+                            return redirect(url_for('limite.lista_limites'))
 
-                    # Estrutura para armazenar os resultados
-                    dados = []
-                    total_arrecadacao = 0
+                        # Processar dados da arrecadação real
+                        dados_arrecadacao = []
+                        for row in rows:
+                            dados_arrecadacao.append({
+                                'id_empresa': row[0],
+                                'nome': row[1],
+                                'nome_abreviado': row[2] or (row[1][0] if row[1] else ''),
+                                'situacao': row[3],
+                                'arrecadacao': float(row[4]) if row[4] else 0.0
+                            })
 
-                    # Processar cada linha de resultado
-                    for idx, row in enumerate(rows):
-                        id_empresa = row[0]
-                        nome_abreviado = row[1]
-                        percentual_corrigido = float(row[2])
-                        arrecadacao = float(row[3])
+                        # Ordenar por arrecadação (maior para menor)
+                        dados_arrecadacao.sort(key=lambda x: x['arrecadacao'], reverse=True)
 
-                        # Calcular o percentual truncado manualmente
-                        percentual_sem_correcao = truncate_decimal(arrecadacao * 100 / sum(float(r[3]) for r in rows))
+                        # Calcular total de arrecadação
+                        total_arrecadacao = sum(item['arrecadacao'] for item in dados_arrecadacao)
 
-                        # Calcular ajuste
-                        ajuste = truncate_decimal(percentual_corrigido - percentual_sem_correcao)
+                        # Calcular percentuais (truncados, sem arredondamento)
+                        dados_processados = []
+                        for idx, item in enumerate(dados_arrecadacao):
+                            # Calcular percentual bruto e truncar para duas casas decimais
+                            pct_arrecadacao = truncate_decimal((item['arrecadacao'] / total_arrecadacao) * 100)
 
-                        # Buscar a situação da empresa
-                        empresa = next((e for e in empresas if e.ID_EMPRESA == id_empresa), None)
-                        situacao = empresa.DS_CONDICAO if empresa else 'PERMANECE'
+                            # Adicionar dados processados
+                            dados_processados.append({
+                                'idx': idx + 1,
+                                'id_empresa': item['id_empresa'],
+                                'empresa': item['nome_abreviado'],
+                                'situacao': item['situacao'],
+                                'arrecadacao': item['arrecadacao'],
+                                'pct_arrecadacao': pct_arrecadacao,
+                                'ajuste': 0.00,  # Será atualizado depois
+                                'pct_final': pct_arrecadacao  # Será atualizado depois
+                            })
 
-                        # Adicionar informações da empresa
-                        dados.append({
-                            'idx': idx + 1,
-                            'id_empresa': id_empresa,
-                            'empresa': nome_abreviado,
-                            'situacao': situacao,
-                            'arrecadacao': arrecadacao,
-                            'pct_arrecadacao': percentual_sem_correcao,
-                            'ajuste': ajuste,
-                            'pct_final': percentual_corrigido
+                        # Calcular a soma dos percentuais truncados
+                        soma_percentuais = sum(item['pct_arrecadacao'] for item in dados_processados)
+
+                        # Calcular quanto falta para chegar a 100%
+                        diferenca = truncate_decimal(100.00 - soma_percentuais)
+
+                        # Aplicar ajuste de 0.01% às empresas com maior arrecadação até chegar exatamente a 100%
+                        if diferenca > 0:
+                            # Quantas empresas precisam ser ajustadas inicialmente (um "ciclo" completo de empresas)
+                            ajuste_por_empresa = 0.01
+                            num_ciclos_completos = int(diferenca / (ajuste_por_empresa * len(dados_processados)))
+                            ajustes_restantes = int(
+                                (diferenca % (ajuste_por_empresa * len(dados_processados))) / ajuste_por_empresa)
+
+                            # Aplicar ajustes para ciclos completos (todas as empresas recebem ajuste)
+                            if num_ciclos_completos > 0:
+                                for i in range(len(dados_processados)):
+                                    dados_processados[i]['ajuste'] = num_ciclos_completos * ajuste_por_empresa
+                                    dados_processados[i]['pct_final'] = truncate_decimal(
+                                        dados_processados[i]['pct_arrecadacao'] + dados_processados[i]['ajuste'])
+
+                            # Aplicar ajustes restantes (apenas algumas empresas recebem ajuste adicional)
+                            for i in range(ajustes_restantes):
+                                # O índice será sempre menor que o número de empresas
+                                indice = i % len(dados_processados)
+                                dados_processados[indice]['ajuste'] += ajuste_por_empresa
+                                dados_processados[indice]['pct_final'] = truncate_decimal(
+                                    dados_processados[indice]['pct_arrecadacao'] + dados_processados[indice]['ajuste'])
+
+                            # Recalcular totais
+                            total_pct_arrecadacao = sum(item['pct_arrecadacao'] for item in dados_processados)
+                            total_ajuste = sum(item['ajuste'] for item in dados_processados)
+                            total_pct_final = sum(item['pct_final'] for item in dados_processados)
+
+                            # Verificar se o total final é exatamente 100%
+                            if total_pct_final != 100.00:
+                                # Se ainda não for exatamente 100%, ajustar a primeira empresa
+                                diferenca_restante = 100.00 - total_pct_final
+                                dados_processados[0]['pct_final'] = truncate_decimal(
+                                    dados_processados[0]['pct_final'] + diferenca_restante)
+                                dados_processados[0]['ajuste'] = truncate_decimal(
+                                    dados_processados[0]['ajuste'] + diferenca_restante)
+
+                                # Recalcular totais finais
+                                total_ajuste = sum(item['ajuste'] for item in dados_processados)
+                                total_pct_final = sum(item['pct_final'] for item in dados_processados)
+
+                        # Adicionar linha de total
+                        dados_processados.append({
+                            'idx': 'TOTAL',
+                            'id_empresa': '',
+                            'empresa': 'TOTAL',
+                            'situacao': '',
+                            'arrecadacao': total_arrecadacao,
+                            'pct_arrecadacao': total_pct_arrecadacao,
+                            'ajuste': total_ajuste,
+                            'pct_final': total_pct_final
                         })
 
-                        total_arrecadacao += arrecadacao
+                        resultados_calculo = dados_processados
 
-                    # Calcular totais
-                    total_pct_arrecadacao = sum(item['pct_arrecadacao'] for item in dados)
-                    total_ajuste = sum(item['ajuste'] for item in dados)
-                    total_pct_final = sum(item['pct_final'] for item in dados)
-
-                    # Adicionar linha de total
-                    dados.append({
-                        'idx': 'TOTAL',
-                        'id_empresa': '',
-                        'empresa': 'TOTAL',
-                        'situacao': '',
-                        'arrecadacao': total_arrecadacao,
-                        'pct_arrecadacao': total_pct_arrecadacao,
-                        'ajuste': total_ajuste,
-                        'pct_final': total_pct_final
-                    })
-
-                    resultados_calculo = dados
+                except Exception as e:
+                    flash(f'Erro ao processar cálculo: {str(e)}', 'danger')
+                    print(f"Erro detalhado: {e}")
+                    return redirect(url_for('limite.lista_limites'))
             else:
                 flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
         elif todas_novas:
@@ -263,6 +293,25 @@ def analise_limites():
         elif alguma_permanece:
             # Cálculo 3.3.3 será implementado posteriormente
             pass
+
+        # Renderizar o template com os resultados da análise
+        return render_template(
+            'credenciamento/analise_limite.html',
+            edital=ultimo_edital,
+            periodo=ultimo_periodo,
+            periodo_anterior=periodo_anterior,
+            empresas=empresas,
+            todas_permanece=todas_permanece,
+            todas_novas=todas_novas,
+            alguma_permanece=alguma_permanece,
+            resultados_calculo=resultados_calculo
+        )
+
+    except Exception as e:
+        flash(f'Erro durante a análise: {str(e)}', 'danger')
+        return redirect(url_for('limite.lista_limites'))
+
+
 
         # Renderizar o template com os resultados da análise
         return render_template(
