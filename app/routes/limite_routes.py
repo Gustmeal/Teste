@@ -4,9 +4,10 @@ from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
 from app.models.empresa_participante import EmpresaParticipante
 from app.models.criterio_selecao import CriterioSelecao
+from app.models.audit_log import AuditLog
 from app import db
 from datetime import datetime
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.utils.audit import registrar_log
 from sqlalchemy import or_, func, text
 import pandas as pd
@@ -18,6 +19,12 @@ limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 @limite_bp.context_processor
 def inject_current_year():
     return {'current_year': datetime.utcnow().year}
+
+
+def truncate_decimal(value, decimal_places=2):
+    """Trunca o valor para o número especificado de casas decimais sem arredondamento."""
+    factor = 10 ** decimal_places
+    return int(value * factor) / factor
 
 
 @limite_bp.route('/limites')
@@ -52,11 +59,40 @@ def lista_limites():
     # Processar resultados para incluir dados da empresa e descrição do critério
     limites = []
     for limite, ds_criterio in results:
-        # Buscar informações da empresa
-        empresa = EmpresaParticipante.query.filter_by(ID_EMPRESA=limite.ID_EMPRESA, DELETED_AT=None).first()
-        if empresa:
-            limite.empresa_nome = empresa.NO_EMPRESA
-            limite.empresa_nome_abreviado = empresa.NO_EMPRESA_ABREVIADA
+        # Para cada limite, buscar todas as ocorrências da empresa (não apenas uma)
+        empresas = EmpresaParticipante.query.filter_by(ID_EMPRESA=limite.ID_EMPRESA).all()
+
+        empresa_nome = None
+        empresa_nome_abreviado = None
+
+        # Se encontrou alguma empresa, usar os dados dela
+        if empresas:
+            for empresa in empresas:
+                if empresa.NO_EMPRESA:
+                    empresa_nome = empresa.NO_EMPRESA
+                    empresa_nome_abreviado = empresa.NO_EMPRESA_ABREVIADA
+                    break
+
+        # Se não encontrou na tabela de participantes, buscar na tabela complementar (se existir)
+        if not empresa_nome:
+            try:
+                # Opcional: Tentar buscar em outra tabela se disponível
+                from app.models.empresa_responsavel import EmpresaResponsavel
+                empresa_resp = EmpresaResponsavel.query.filter_by(
+                    pkEmpresaResponsavelCobranca=limite.ID_EMPRESA
+                ).first()
+
+                if empresa_resp:
+                    empresa_nome = empresa_resp.nmEmpresaResponsavelCobranca
+                    empresa_nome_abreviado = empresa_resp.NO_ABREVIADO_EMPRESA
+            except:
+                # Em caso de erro ou tabela não disponível, usar ID como nome
+                empresa_nome = f"Empresa ID {limite.ID_EMPRESA}"
+                empresa_nome_abreviado = f"ID {limite.ID_EMPRESA}"
+
+        # Armazenar informações da empresa no objeto limite
+        limite.empresa_nome = empresa_nome or f"Empresa ID {limite.ID_EMPRESA}"
+        limite.empresa_nome_abreviado = empresa_nome_abreviado
 
         # Adicionar descrição do critério
         limite.criterio_descricao = ds_criterio if ds_criterio else f"Critério {limite.COD_CRITERIO_SELECAO}"
@@ -79,16 +115,78 @@ def lista_limites():
     )
 
 
-def truncate_decimal(value, decimal_places=2):
-    """Trunca o valor para o número especificado de casas decimais sem arredondamento."""
-    factor = 10 ** decimal_places
-    return int(value * factor) / factor
+def selecionar_contratos():
+    """
+    Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
+    Usa as tabelas do Banco de Dados Gerencial (BDG).
+    Retorna a quantidade de contratos selecionados.
+    """
+    try:
+        # Usar uma conexão direta para executar o SQL
+        with db.engine.connect() as connection:
+            try:
+                # Primeiro, limpar a tabela de distribuíveis
+                truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+                connection.execute(truncate_sql)
+
+
+                # Em seguida, inserir os contratos selecionados
+                insert_sql = text("""
+                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                SELECT
+                    ECA.fkContratoSISCTR
+                    , CON.NR_CPF_CNPJ
+                    , SIT.VR_SD_DEVEDOR
+                    , CREATED_AT = GETDATE()
+                    , UPDATED_AT = NULL
+                    , DELETED_AT = NULL
+                FROM 
+                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                
+                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                
+                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                
+                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                WHERE
+                    SIT.[fkSituacaoCredito] = 1
+                    AND SDJ.fkContratoSISCTR IS NULL""")
+
+                connection.execute(insert_sql)
+
+
+                # Contar quantos contratos foram selecionados
+                count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
+                result = connection.execute(count_sql)
+                num_contratos = result.scalar()
+
+
+                return num_contratos
+
+            except Exception as e:
+                print(f"Erro durante a execução das consultas SQL: {str(e)}")
+                # Log mais detalhado caso ocorra erro
+                import traceback
+                print(traceback.format_exc())
+                raise
+
+    except Exception as e:
+        print(f"Erro na seleção de contratos: {str(e)}")
+        db.session.rollback()
+        return 0
 
 
 @limite_bp.route('/limites/analise')
 @login_required
 def analise_limites():
     try:
+        # Primeiro, selecionar os contratos distribuíveis
+        num_contratos = selecionar_contratos()
+        print(f"Contratos selecionados: {num_contratos}")
+
         # Obter o edital mais recente
         ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
 
@@ -274,7 +372,7 @@ def analise_limites():
                             'empresa': 'TOTAL',
                             'situacao': '',
                             'arrecadacao': total_arrecadacao,
-                            'pct_arrecadacao': total_pct_arrecadacao,
+                            'pct_arrecadacao': soma_percentuais,
                             'ajuste': total_ajuste,
                             'pct_final': total_pct_final
                         })
@@ -284,6 +382,8 @@ def analise_limites():
                 except Exception as e:
                     flash(f'Erro ao processar cálculo: {str(e)}', 'danger')
                     print(f"Erro detalhado: {e}")
+                    import traceback
+                    print(traceback.format_exc())
                     return redirect(url_for('limite.lista_limites'))
             else:
                 flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
@@ -304,31 +404,144 @@ def analise_limites():
             todas_permanece=todas_permanece,
             todas_novas=todas_novas,
             alguma_permanece=alguma_permanece,
-            resultados_calculo=resultados_calculo
+            resultados_calculo=resultados_calculo,
+            num_contratos=num_contratos  # Passar o número de contratos para o template
         )
 
     except Exception as e:
         flash(f'Erro durante a análise: {str(e)}', 'danger')
+        import traceback
+        print(traceback.format_exc())
         return redirect(url_for('limite.lista_limites'))
 
 
+@limite_bp.route('/limites/salvar', methods=['POST'])
+@login_required
+def salvar_limites():
+    try:
+        # Obter dados do formulário
+        edital_id = request.form.get('edital_id', type=int)
+        periodo_id = request.form.get('periodo_id', type=int)
+        data_apuracao = datetime.now()  # Data atual como data de apuração
 
-        # Renderizar o template com os resultados da análise
-        return render_template(
-            'credenciamento/analise_limite.html',
-            edital=ultimo_edital,
-            periodo=ultimo_periodo,
-            periodo_anterior=periodo_anterior,
-            empresas=empresas,
-            todas_permanece=todas_permanece,
-            todas_novas=todas_novas,
-            alguma_permanece=alguma_permanece,
-            resultados_calculo=resultados_calculo
-        )
+        # Obter dados das empresas e seus percentuais calculados
+        empresas_data = request.form.getlist('empresa_id[]')
+        percentuais = request.form.getlist('percentual_final[]')
+        arrecadacoes = request.form.getlist('arrecadacao[]')
+
+        # Verificar se os arrays têm o mesmo tamanho
+        if len(empresas_data) != len(percentuais) or len(empresas_data) != len(arrecadacoes):
+            flash('Erro: Dados inconsistentes. Por favor, tente novamente.', 'danger')
+            return redirect(url_for('limite.analise_limites'))
+
+        # Verificar se há dados
+        if not empresas_data:
+            flash('Erro: Nenhum dado recebido para salvamento.', 'danger')
+            return redirect(url_for('limite.analise_limites'))
+
+        # Critério fixo conforme orientação
+        cod_criterio = 7  # "Distribuição Percentual Global"
+
+        # Excluir limites existentes com mesmo critério para este edital/período/empresas
+        for empresa_id in empresas_data:
+            limite_existente = LimiteDistribuicao.query.filter_by(
+                ID_EDITAL=edital_id,
+                ID_PERIODO=periodo_id,
+                ID_EMPRESA=empresa_id,
+                COD_CRITERIO_SELECAO=cod_criterio,
+                DELETED_AT=None
+            ).first()
+
+            if limite_existente:
+                limite_existente.DELETED_AT = datetime.utcnow()
+
+                # Registrar log de exclusão do limite existente
+                registrar_log(
+                    acao='excluir',
+                    entidade='limite',
+                    entidade_id=limite_existente.ID,
+                    descricao=f'Exclusão automática de limite existente para atualização',
+                    dados_antigos={
+                        'id_edital': limite_existente.ID_EDITAL,
+                        'id_periodo': limite_existente.ID_PERIODO,
+                        'id_empresa': limite_existente.ID_EMPRESA,
+                        'cod_criterio': limite_existente.COD_CRITERIO_SELECAO,
+                        'percentual_final': limite_existente.PERCENTUAL_FINAL
+                    }
+                )
+
+        # Commit para confirmar as exclusões
+        db.session.commit()
+
+        # Criar novos registros de limite
+        limites_criados = 0
+        for i in range(len(empresas_data)):
+            # Criar novo limite com os dados do cálculo
+            novo_limite = LimiteDistribuicao(
+                ID_EDITAL=edital_id,
+                ID_PERIODO=periodo_id,
+                ID_EMPRESA=int(empresas_data[i]),
+                COD_CRITERIO_SELECAO=cod_criterio,
+                QTDE_MAXIMA=None,  # NULL conforme orientação
+                VALOR_MAXIMO=None,  # NULL conforme orientação
+                PERCENTUAL_FINAL=float(percentuais[i])
+            )
+
+            db.session.add(novo_limite)
+            limites_criados += 1
+
+            # Registrar log de auditoria para cada limite criado
+            registrar_log(
+                acao='criar',
+                entidade='limite',
+                entidade_id=0,  # Será atualizado após o commit
+                descricao=f'Criação automática de limite de distribuição por cálculo',
+                dados_novos={
+                    'id_edital': edital_id,
+                    'id_periodo': periodo_id,
+                    'id_empresa': int(empresas_data[i]),
+                    'cod_criterio': cod_criterio,
+                    'percentual_final': float(percentuais[i]),
+                    'arrecadacao_referencia': float(arrecadacoes[i]) if arrecadacoes[i] else 0
+                }
+            )
+
+        # Commit para salvar todos os limites
+        db.session.commit()
+
+        # Atualizar IDs dos logs após o commit (opcional, mas ideal para manter rastreabilidade completa)
+        for i in range(len(empresas_data)):
+            limite = LimiteDistribuicao.query.filter_by(
+                ID_EDITAL=edital_id,
+                ID_PERIODO=periodo_id,
+                ID_EMPRESA=int(empresas_data[i]),
+                COD_CRITERIO_SELECAO=cod_criterio,
+                DELETED_AT=None
+            ).first()
+
+            if limite:
+                # Atualizar o log com o ID correto
+                log = AuditLog.query.filter_by(
+                    ENTIDADE='limite',
+                    ACAO='criar',
+                    ENTIDADE_ID=0,
+                    USUARIO_ID=current_user.id
+                ).order_by(AuditLog.DATA.desc()).first()
+
+                if log:
+                    log.ENTIDADE_ID = limite.ID
+
+        # Commit final para atualizar os logs
+        db.session.commit()
+
+        flash(f'Limites de distribuição salvos com sucesso! Total: {limites_criados} registros.', 'success')
+        return redirect(url_for('limite.lista_limites'))
 
     except Exception as e:
-        flash(f'Erro durante a análise: {str(e)}', 'danger')
-        return redirect(url_for('limite.lista_limites'))
+        db.session.rollback()
+        flash(f'Erro ao salvar limites: {str(e)}', 'danger')
+        print(f"Erro detalhado ao salvar limites: {e}")
+        return redirect(url_for('limite.analise_limites'))
 
 
 @limite_bp.route('/limites/novo', methods=['GET', 'POST'])
@@ -536,9 +749,7 @@ def editar_limite(id):
         editais=editais,
         periodos=periodos,
         empresas=empresas,
-        criterios=criterios
-    )
-
+        criterios=criterios)
 
 @limite_bp.route('/limites/excluir/<int:id>', methods=['POST'])
 @login_required

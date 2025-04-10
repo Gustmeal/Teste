@@ -35,6 +35,24 @@
         </div>
     </div>
 
+    <!-- Contratos Selecionados para Distribuição - Sempre visível -->
+    <div class="card shadow mb-4 sticky-top" style="top: 20px; z-index: 100;">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Contratos Selecionados para Distribuição</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center">
+                <div class="me-3">
+                    <i class="fas fa-file-contract fa-3x text-success"></i>
+                </div>
+                <div>
+                    <h3 class="mb-1">{{ "{:,}".format(num_contratos).replace(',', '.') }}</h3>
+                    <p class="mb-0 text-muted">Contratos selecionados para distribuição conforme critérios definidos.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- TODAS AS EMPRESAS SÃO PERMANECE -->
     {% if todas_permanece and resultados_calculo %}
     <div class="card shadow mb-4">
@@ -93,6 +111,23 @@
                     Salvar Limites de Distribuição
                 </button>
             </div>
+
+            <!-- Formulário oculto para envio dos dados calculados -->
+            <form id="formSalvarLimites" action="{{ url_for('limite.salvar_limites') }}" method="POST" style="display: none;">
+                <input type="hidden" name="edital_id" value="{{ edital.ID }}">
+                <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
+
+                <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
+                <div id="camposEmpresasContainer">
+                    {% for item in resultados_calculo %}
+                        {% if item.idx != 'TOTAL' and item.idx %}
+                            <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
+                            <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
+                            <input type="hidden" name="arrecadacao[]" value="{{ item.arrecadacao }}">
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </form>
         </div>
     </div>
 
@@ -111,7 +146,11 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                     <button type="button" class="btn btn-success" id="btnConfirmarSalvamento">
-                        <i class="fas fa-save me-2"></i> Confirmar e Salvar
+                        <i class="fas fa-save me-2"></i> <span class="btn-text">Confirmar e Salvar</span>
+                        <span class="spinner d-none">
+                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                            Processando...
+                        </span>
                     </button>
                 </div>
             </div>
@@ -175,18 +214,51 @@
     .text-warning {
         color: #fd7e14 !important;
     }
+
+    /* Estilo para o card fixo de contratos */
+    .sticky-top {
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+    }
+
+    .sticky-top:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+    }
 </style>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Implementar lógica para salvar os limites quando o botão for clicado
         const btnConfirmarSalvamento = document.getElementById('btnConfirmarSalvamento');
+        const formSalvarLimites = document.getElementById('formSalvarLimites');
+        const modal = new bootstrap.Modal(document.getElementById('salvarLimitesModal'));
 
-        if (btnConfirmarSalvamento) {
+        if (btnConfirmarSalvamento && formSalvarLimites) {
             btnConfirmarSalvamento.addEventListener('click', function() {
-                // Aqui implementaria a lógica para salvar os limites via AJAX
-                // Por enquanto, vamos apenas redirecionar para a lista de limites
-                window.location.href = "{{ url_for('limite.lista_limites') }}";
+                // Alterar aparência do botão para indicar processamento
+                const btnText = btnConfirmarSalvamento.querySelector('.btn-text');
+                const spinner = btnConfirmarSalvamento.querySelector('.spinner');
+
+                btnText.classList.add('d-none');
+                spinner.classList.remove('d-none');
+                btnConfirmarSalvamento.disabled = true;
+
+                // Contar quantos registros serão criados
+                const empresas = formSalvarLimites.querySelectorAll('input[name="empresa_id[]"]');
+                console.log(`Enviando formulário com ${empresas.length} limites de distribuição`);
+
+                // Enviar o formulário
+                formSalvarLimites.submit();
+
+                // Fechar o modal após o envio
+                setTimeout(() => {
+                    modal.hide();
+                    
+                    // Exibir um toast ou notificação indicando que o processamento está em andamento
+                    if (typeof showToast === 'function') {
+                        showToast('Processando limites de distribuição...', 'info');
+                    }
+                }, 500);
             });
         }
     });
