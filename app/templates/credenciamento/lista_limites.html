@@ -16,7 +16,7 @@
                 + Novo Limite
             </a>
         </div>
-</div>
+    </div>
 
     <!-- Filtros -->
     <div class="card shadow mb-4">
@@ -80,7 +80,7 @@
                     {% for limite in limites %}
                     <tr data-id="{{ limite.ID }}">
                         <td>{{ limite.edital.NU_EDITAL }}/{{ limite.edital.ANO }}</td>
-                        <td>{{ limite.periodo.ID_PERIODO }}</td>
+                        <td>{{ limite.ID_PERIODO }}</td>
                         <td>
                             {% if limite.empresa_nome_abreviado %}
                                 {{ limite.empresa_nome_abreviado }}
@@ -91,7 +91,7 @@
                         <td>{{ limite.criterio_descricao }}</td>
                         <td class="text-end">{{ limite.QTDE_MAXIMA|br_number if limite.QTDE_MAXIMA else "-" }}</td>
                         <td class="text-end">{{ limite.VALOR_MAXIMO|br_currency if limite.VALOR_MAXIMO else "-" }}</td>
-                       <td class="text-end">{{ (limite.PERCENTUAL_FINAL|float)|string + "%" if limite.PERCENTUAL_FINAL else "-" }}</td>
+                        <td class="text-end">{{ (limite.PERCENTUAL_FINAL|float)|string + "%" if limite.PERCENTUAL_FINAL else "-" }}</td>
                         <td class="text-center">
                             <a href="{{ url_for('limite.editar_limite', id=limite.ID) }}"
                                class="btn btn-sm btn-outline-primary me-1">
@@ -142,7 +142,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         setupTableFilter('limitesSearch', 'limitesTable');
 
-        // Configurar a exclusão do limite
         window.confirmarExclusao = function(id) {
             document.getElementById('btnConfirmarExclusao').href = "{{ url_for('limite.excluir_limite', id=0) }}".replace('0', id);
             const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));

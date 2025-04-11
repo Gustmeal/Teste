@@ -128,41 +128,90 @@
                     {% endfor %}
                 </div>
             </form>
-        </div>
-    </div>
-
-    <!-- Modal para confirmar salvamento -->
-    <div class="modal fade" id="salvarLimitesModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title">Confirmar Salvamento dos Limites</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <p>Deseja salvar os limites de distribuição calculados para todas as empresas?</p>
-                    <p class="mb-0 text-muted">Esta ação irá cadastrar um novo limite para cada empresa com o percentual final calculado.</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-success" id="btnConfirmarSalvamento">
-                        <i class="fas fa-save me-2"></i> <span class="btn-text">Confirmar e Salvar</span>
-                        <span class="spinner d-none">
-                            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                            Processando...
-                        </span>
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
     {% endif %}
 
     <!-- TODAS AS EMPRESAS SÃO NOVAS -->
-    {% if todas_novas %}
+    {% if todas_novas and resultados_calculo %}
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Cálculo 3.3.2</h5>
+            <h5 class="mb-0">DISTRIBUIÇÃO IGUALITÁRIA PARA EMPRESAS NOVAS</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover">
+                <thead>
+                    <tr>
+                        <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">CONTRATOS</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">% BASE</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">AJUSTE</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">%FINAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in resultados_calculo[:-1] %}
+                    <tr>
+                        <td>{{ item.idx }}</td>
+                        <td>{{ item.empresa }}</td>
+                        <td class="text-success fw-bold">{{ item.situacao }}</td>
+                        <td class="text-end">{{ item.contratos|br_number if item.contratos else "-" }}</td>
+                        <td class="text-end">{{ "{:.2f}".format(item.pct_distribuicao) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(item.ajuste) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
+                    </tr>
+                    {% endfor %}
+                    <!-- Linha de total -->
+                    {% set total = resultados_calculo[-1] %}
+                    <tr class="fw-bold">
+                        <td></td>
+                        <td>{{ total.empresa }}</td>
+                        <td></td>
+                        <td class="text-end">{{ total.contratos|br_number if total.contratos else "-" }}</td>
+                        <td class="text-end">{{ "{:.2f}".format(total.pct_distribuicao) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(total.ajuste) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-info mt-3 mx-3">
+            <p class="mb-0"><strong>Nota:</strong> Como todas as empresas são novas, a distribuição é igualitária.
+            Os contratos foram divididos igualmente entre as {{ resultados_calculo|length - 1 }} empresas, resultando em
+            {{ 100.0 / (resultados_calculo|length - 1) | float | round(2, 'floor') }}% inicial para cada uma.
+            Foi realizado ajuste aleatório de 0.01% para cada empresa até que a soma dos percentuais alcançasse exatamente 100.00%.</p>
+        </div>
+
+        <div class="text-center mt-4 mb-4">
+            <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#salvarLimitesModal">
+                <i class="fas fa-save me-2"></i>
+                Salvar Limites de Distribuição
+            </button>
+        </div>
+
+        <!-- Formulário oculto para envio dos dados calculados -->
+        <form id="formSalvarLimites" action="{{ url_for('limite.salvar_limites') }}" method="POST" style="display: none;">
+            <input type="hidden" name="edital_id" value="{{ edital.ID }}">
+            <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
+
+            <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
+            <div id="camposEmpresasContainer">
+                {% for item in resultados_calculo %}
+                    {% if item.idx != 'TOTAL' and item.idx %}
+                        <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
+                        <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
+                        <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </form>
+    </div>
+    {% elif todas_novas %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">DISTRIBUIÇÃO IGUALITÁRIA PARA EMPRESAS NOVAS</h5>
         </div>
         <div class="card-body">
             <div class="alert alert-info">
@@ -173,7 +222,7 @@
                     </div>
                 </div>
             </div>
-            <p class="mt-3 text-center">O cálculo para empresas novas está em desenvolvimento e será implementado em breve.</p>
+            <p class="mt-3 text-center">Erro ao realizar o cálculo para empresas novas. Verifique se há contratos selecionados para distribuição.</p>
         </div>
     </div>
     {% endif %}
@@ -197,6 +246,32 @@
         </div>
     </div>
     {% endif %}
+</div>
+
+<!-- Modal de confirmação para salvamento -->
+<div class="modal fade" id="salvarLimitesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Confirmar Salvamento dos Limites</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Deseja salvar os limites de distribuição calculados para todas as empresas?</p>
+                <p class="mb-0 text-muted">Esta ação irá cadastrar um novo limite para cada empresa com o percentual final calculado.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btnConfirmarSalvamento">
+                    <i class="fas fa-save me-2"></i> <span class="btn-text">Confirmar e Salvar</span>
+                    <span class="spinner d-none">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        Processando...
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -253,7 +328,7 @@
                 // Fechar o modal após o envio
                 setTimeout(() => {
                     modal.hide();
-                    
+
                     // Exibir um toast ou notificação indicando que o processamento está em andamento
                     if (typeof showToast === 'function') {
                         showToast('Processando limites de distribuição...', 'info');
