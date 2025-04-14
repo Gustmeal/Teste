@@ -238,18 +238,19 @@
             <h6 class="fw-bold mb-3">Figura 3: Cálculo do percentual das empresas que ficam</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-bordered table-sm">
-                    <thead class="table-primary">
+                    <thead>
                         <tr>
-                            <th>#</th>
-                            <th>EMPRESA</th>
-                            <th>SITUAÇÃO</th>
-                            <th class="text-end">ARRECADAÇÃO</th>
-                            <th class="text-end">% ARRECADAÇÃO</th>
-                            <th class="text-end">% REDISTRIBUIÇÃO</th>
-                            <th class="text-end">% NOVO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">ARRECADAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% ARRECADAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% REDISTRIBUIÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% NOVO</th>
                         </tr>
                     </thead>
                     <tbody>
+                        <!-- Empresas que PERMANECEM -->
                         {% for item in resultados_calculo %}
                             {% if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
                             <tr>
@@ -263,12 +264,58 @@
                             </tr>
                             {% endif %}
                         {% endfor %}
+
+                        <!-- Empresas que SAEM -->
+                        {% for item in resultados_calculo %}
+                            {% if item.situacao == 'SAI' and item.idx != 'TOTAL' %}
+                            <tr>
+                                <td>{{ item.idx }}</td>
+                                <td>{{ item.empresa }}</td>
+                                <td class="text-danger fw-bold">{{ item.situacao }}</td>
+                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao else "-" }}</td>
+                                <td class="text-end">{{ "{:.2f}%".format(item.pct_original|default(0)) }}</td>
+                                <td class="text-end">-</td>
+                                <td class="text-end">-</td>
+                            </tr>
+                            {% endif %}
+                        {% endfor %}
+
+                        <!-- Linha de total -->
                         <tr class="table-secondary fw-bold">
-                            <td colspan="3">TOTAL EMPRESAS QUE FICAM</td>
-                            <td class="text-end">{{ total_arrecadacao_permanece|br_currency }}</td>
-                            <td class="text-end">{{ "{:.2f}%".format(total_pct_original_permanece) }}</td>
+                            <td colspan="3">TOTAL</td>
+                            {% if total_arrecadacao is defined %}
+                            <td class="text-end">{{ total_arrecadacao|br_currency }}</td>
+                            {% else %}
+                            <td class="text-end">-</td>
+                            {% endif %}
+
+                            <td class="text-end">100,00%</td>
+
+                            {% if total_redistribuicao is defined %}
                             <td class="text-end">{{ "{:.2f}%".format(total_redistribuicao) }}</td>
+                            {% else %}
+                            <td class="text-end">-</td>
+                            {% endif %}
+
+                            {% if total_pct_distribuicao_permanece is defined %}
                             <td class="text-end">{{ "{:.2f}%".format(total_pct_distribuicao_permanece) }}</td>
+                            {% else %}
+                            <td class="text-end">-</td>
+                            {% endif %}
+                        </tr>
+
+                        <!-- Linha para informações adicionais -->
+                        <tr class="table-info">
+                            <td colspan="2">(A) Soma % das empresas que saem</td>
+                            <td colspan="5" class="text-end">{{ "{:.2f}%".format(total_pct_original_saem) }}</td>
+                        </tr>
+                        <tr class="table-info">
+                            <td colspan="2">(B) Quantidade de empresas que permanecem</td>
+                            <td colspan="5" class="text-end">{{ qtde_empresas_permanece }}</td>
+                        </tr>
+                        <tr class="table-info">
+                            <td colspan="2">(C) % a ser redistribuído igualitariamente (A/B)</td>
+                            <td colspan="5" class="text-end">{{ "{:.2f}%".format(total_redistribuicao / qtde_empresas_permanece) }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -278,12 +325,12 @@
             <h6 class="fw-bold mb-3">Figura 4: Contratos distribuíveis por situação da empresa</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-bordered table-sm">
-                    <thead class="table-primary">
+                    <thead>
                         <tr>
-                            <th>#</th>
-                            <th>SITUAÇÃO</th>
-                            <th class="text-end">QTDE EMPRESAS</th>
-                            <th class="text-end">QTDE CONTRATOS</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">QTDE EMPRESAS</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">QTDE CONTRATOS</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -317,14 +364,14 @@
             <h6 class="fw-bold mb-3">Figura 5: Distribuição da quantidade para empresas que permanecem</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-bordered table-sm">
-                    <thead class="table-primary">
+                    <thead>
                         <tr>
-                            <th>#</th>
-                            <th>EMPRESA</th>
-                            <th>SITUAÇÃO</th>
-                            <th class="text-end">%NOVO</th>
-                            <th class="text-end">QTDE CONTRATOS</th>
-                            <th class="text-end">AJUSTE</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">%NOVO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">QTDE CONTRATOS</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">AJUSTE</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -342,7 +389,11 @@
                         {% endfor %}
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
+                            {% if total_pct_distribuicao_permanece is defined %}
                             <td class="text-end">{{ "{:.2f}%".format(total_pct_distribuicao_permanece) }}</td>
+                            {% else %}
+                            <td class="text-end">0.00%</td>
+                            {% endif %}
                             <td class="text-end">{{ qtde_contratos_permanece|br_number }}</td>
                             <td></td>
                         </tr>
@@ -354,14 +405,14 @@
             <h6 class="fw-bold mb-3">Figura 6: Cálculo do percentual final de distribuição</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-bordered table-sm">
-                    <thead class="table-primary">
+                    <thead>
                         <tr>
-                            <th>#</th>
-                            <th>EMPRESA</th>
-                            <th>SITUAÇÃO</th>
-                            <th class="text-end">QTDE CONTRATOS</th>
-                            <th class="text-end">%</th>
-                            <th class="text-end">AJUSTE</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">QTDE CONTRATOS</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">%</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">AJUSTE</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -380,7 +431,7 @@
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
                             <td class="text-end">{{ num_contratos|br_number }}</td>
-                            <td class="text-end">{{ "99.98%" if ajuste_necessario else "100.00%" }}</td>
+                            <td class="text-end">{{ "99.98%" if ajuste_necessario is defined and ajuste_necessario else "100.00%" }}</td>
                             <td class="text-end">{{ "{:+.2f}".format(total_ajuste) if total_ajuste > 0 else "" }}</td>
                         </tr>
                     </tbody>
@@ -391,13 +442,13 @@
             <h6 class="fw-bold mb-3">Resultado Final com Ajustes</h6>
             <div class="table-responsive mb-4">
                 <table class="table table-bordered table-sm">
-                    <thead class="table-primary">
+                    <thead>
                         <tr>
-                            <th>#</th>
-                            <th>EMPRESA</th>
-                            <th>SITUAÇÃO</th>
-                            <th class="text-end">QTDE CONTRATOS</th>
-                            <th class="text-end">% FINAL</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">#</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">QTDE CONTRATOS</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% FINAL</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -536,7 +587,6 @@
         if (btnConfirmarSalvamento && formSalvarLimites) {
             btnConfirmarSalvamento.addEventListener('click', function() {
                 // Alterar aparência do botão para indicar processamento
-                const btnText = btn// Alterar aparência do botão para indicar processamento
                 const btnText = btnConfirmarSalvamento.querySelector('.btn-text');
                 const spinner = btnConfirmarSalvamento.querySelector('.spinner');
 
