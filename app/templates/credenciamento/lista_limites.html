@@ -30,7 +30,7 @@
                     <select name="periodo_id" class="form-select">
                         <option value="">Todos</option>
                         {% for periodo in periodos %}
-                        <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
+                        <option value="{{ periodo.ID_PERIODO }}" {% if filtro_periodo_id == periodo.ID_PERIODO %}selected{% endif %}>
                             {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
                         </option>
                         {% endfor %}
