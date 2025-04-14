@@ -35,7 +35,7 @@
         </div>
     </div>
 
-    <!-- Contratos Selecionados para Distribuição - Sempre visível -->
+    <!-- Contratos Selecionados para Distribuição -->
     <div class="card shadow mb-4 sticky-top" style="top: 20px; z-index: 100;">
         <div class="card-header bg-success text-white">
             <h5 class="mb-0">Contratos Selecionados para Distribuição</h5>
@@ -59,77 +59,71 @@
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0">PARTICIPAÇÃO NA ARRECADAÇÃO SE TODAS AS EMPRESAS PERMANECEM</h5>
         </div>
-       <div class="table-responsive">
+        <div class="table-responsive">
             <table class="table table-bordered table-hover">
                 <thead>
                     <tr>
                         <th style="background-color: #6c63ff !important; color: white !important;">#</th>
                         <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
                         <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
-                        <th style="background-color: #6c63ff !important; color: white !important;">ARRECADAÇÃO</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">ARRECADAÇÃO (R$)</th>
                         <th style="background-color: #6c63ff !important; color: white !important;">% ARRECADAÇÃO</th>
                         <th style="background-color: #6c63ff !important; color: white !important;">AJUSTE</th>
-                        <th style="background-color: #6c63ff !important; color: white !important;">%FINAL</th>
+                        <th style="background-color: #6c63ff !important; color: white !important;">% FINAL</th>
                     </tr>
                 </thead>
                 <tbody>
-                        {% for item in resultados_calculo[:-1] %}
-                        <tr>
-                            <td>{{ item.idx }}</td>
-                            <td>{{ item.empresa }}</td>
-                            <td class="text-warning fw-bold">{{ item.situacao }}</td>
-                            <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
-                            <td class="text-end">{{ "{:.2f}".format(item.pct_arrecadacao) }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
-                        </tr>
-                        {% endfor %}
-                        <!-- Linha de total -->
-                        {% set total = resultados_calculo[-1] %}
-                        <tr class="fw-bold">
-                            <td></td>
-                            <td>{{ total.empresa }}</td>
-                            <td></td>
-                            <td class="text-end">R$ {{ "{:,.2f}".format(total.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
-                            <td class="text-end">{{ "{:.2f}".format(total.pct_arrecadacao) }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="alert alert-info mt-3">
-                <p class="mb-0"><strong>Nota:</strong> O percentual calculado foi truncado com duas casas decimais sem arredondamento.
-                Foi realizado ajuste, acrescentando 0.01% ao percentual de cada empresa (do maior para o menor valor de arrecadação),
-                até que a soma dos percentuais alcançasse exatamente 100.00%.</p>
-            </div>
-
-            <div class="text-center mt-4">
-                <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#salvarLimitesModal">
-                    <i class="fas fa-save me-2"></i>
-                    Salvar Limites de Distribuição
-                </button>
-            </div>
-
-            <!-- Formulário oculto para envio dos dados calculados -->
-            <form id="formSalvarLimites" action="{{ url_for('limite.salvar_limites') }}" method="POST" style="display: none;">
-                <input type="hidden" name="edital_id" value="{{ edital.ID }}">
-                <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
-
-
-                <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
-                <div id="camposEmpresasContainer">
-                    {% for item in resultados_calculo %}
-                        {% if item.idx != 'TOTAL' and item.idx %}
-                            <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
-                            <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
-                            <input type="hidden" name="arrecadacao[]" value="{{ item.arrecadacao }}">
-                            <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
-                        {% endif %}
+                    {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                    <tr>
+                        <td>{{ item.idx }}</td>
+                        <td>{{ item.empresa }}</td>
+                        <td class="text-warning fw-bold">{{ item.situacao }}</td>
+                        <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.pct_arrecadacao) }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(item.pct_final) }}%</td>
+                    </tr>
                     {% endfor %}
-                </div>
-            </form>
+                    <!-- Linha de total -->
+                    {% set total = resultados_calculo|selectattr('idx', 'equalto', 'TOTAL')|first %}
+                    <tr class="fw-bold">
+                        <td></td>
+                        <td>{{ total.empresa }}</td>
+                        <td></td>
+                        <td class="text-end">R$ {{ "{:,.2f}".format(total.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                        <td class="text-end">{{ "%.2f"|format(total.pct_arrecadacao) }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(total.pct_final) }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-info mt-3">
+            <p class="mb-0"><strong>Nota:</strong> O percentual calculado foi truncado com duas casas decimais sem arredondamento.
+            Foi realizado ajuste, acrescentando 0.01% ao percentual de cada empresa (do maior para o menor valor de arrecadação),
+            até que a soma dos percentuais alcançasse exatamente 100.00%.</p>
+        </div>
+
+        <div class="text-center mt-4">
+            <button type="button" class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#salvarLimitesModal">
+                <i class="fas fa-save me-2"></i>
+                Salvar Limites de Distribuição
+            </button>
+        </div>
+
+        <!-- Formulário oculto para envio dos dados calculados -->
+        <form id="formSalvarLimites" action="{{ url_for('limite.salvar_limites') }}" method="POST" style="display: none;">
+            <input type="hidden" name="edital_id" value="{{ edital.ID }}">
+            <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
+
+            {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
+                <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
+                <input type="hidden" name="arrecadacao[]" value="{{ item.arrecadacao }}">
+                <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
+            {% endfor %}
+        </form>
     </div>
     {% endif %}
 
@@ -153,27 +147,27 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for item in resultados_calculo[:-1] %}
+                    {% for item in resultados_calculo if item.idx != 'TOTAL' %}
                     <tr>
                         <td>{{ item.idx }}</td>
                         <td>{{ item.empresa }}</td>
                         <td class="text-success fw-bold">{{ item.situacao }}</td>
-                        <td class="text-end">{{ item.contratos|br_number if item.contratos else "-" }}</td>
-                        <td class="text-end">{{ "{:.2f}".format(item.pct_distribuicao) }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
+                        <td class="text-end">{{ item.contratos|int|format }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.pct_distribuicao) }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(item.pct_final) }}%</td>
                     </tr>
                     {% endfor %}
                     <!-- Linha de total -->
-                    {% set total = resultados_calculo[-1] %}
+                    {% set total = resultados_calculo|selectattr('idx', 'equalto', 'TOTAL')|first %}
                     <tr class="fw-bold">
                         <td></td>
                         <td>{{ total.empresa }}</td>
                         <td></td>
-                        <td class="text-end">{{ total.contratos|br_number if total.contratos else "-" }}</td>
-                        <td class="text-end">{{ "{:.2f}".format(total.pct_distribuicao) }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
+                        <td class="text-end">{{ total.contratos|int|format }}</td>
+                        <td class="text-end">{{ "%.2f"|format(total.pct_distribuicao) }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(total.pct_final) }}%</td>
                     </tr>
                 </tbody>
             </table>
@@ -181,8 +175,8 @@
 
         <div class="alert alert-info mt-3 mx-3">
             <p class="mb-0"><strong>Nota:</strong> Como todas as empresas são novas, a distribuição é igualitária.
-            Os contratos foram divididos igualmente entre as {{ resultados_calculo|length - 1 }} empresas, resultando em
-            {{ 100.0 / (resultados_calculo|length - 1) | float | round(2, 'floor') }}% inicial para cada uma.
+            Os contratos foram divididos igualmente entre as {{ (resultados_calculo|length - 1) }} empresas, resultando em
+            {{ (100.0 / (resultados_calculo|length - 1))|round(2, 'floor') }}% inicial para cada uma.
             Foi realizado ajuste aleatório de 0.01% para cada empresa até que a soma dos percentuais alcançasse exatamente 100.00%.</p>
         </div>
 
@@ -198,19 +192,12 @@
             <input type="hidden" name="edital_id" value="{{ edital.ID }}">
             <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
 
-
-
-            <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
-            <div id="camposEmpresasContainer">
-                {% for item in resultados_calculo %}
-                    {% if item.idx != 'TOTAL' and item.idx %}
-                        <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
-                        <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
-                        <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
-                        <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
-                    {% endif %}
-                {% endfor %}
-            </div>
+            {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
+                <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
+                <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
+                <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
+            {% endfor %}
         </form>
     </div>
     {% elif todas_novas %}
@@ -248,7 +235,7 @@
                             <th style="background-color: #6c63ff !important; color: white !important;">#</th>
                             <th style="background-color: #6c63ff !important; color: white !important;">EMPRESA</th>
                             <th style="background-color: #6c63ff !important; color: white !important;">SITUAÇÃO</th>
-                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">ARRECADAÇÃO</th>
+                            <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">ARRECADAÇÃO (R$)</th>
                             <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% ARRECADAÇÃO</th>
                             <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% REDISTRIBUIÇÃO</th>
                             <th style="background-color: #6c63ff !important; color: white !important;" class="text-end">% NOVO</th>
@@ -256,63 +243,44 @@
                     </thead>
                     <tbody>
                         <!-- Empresas que PERMANECEM -->
-                        {% for item in resultados_calculo %}
-                            {% if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
-                            <tr>
-                                <td>{{ item.idx }}</td>
-                                <td>{{ item.empresa }}</td>
-                                <td class="text-warning fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao is defined else "-" }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format(item.pct_original|default(0)) }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format(item.pct_adicional|default(0)) }}</td>
-                                <td class="text-end fw-bold">{{ "{:.2f}%".format(item.pct_distribuicao|default(0)) }}</td>
-                            </tr>
-                            {% endif %}
+                        {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="text-warning fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                            <td class="text-end">{{ "%.2f"|format(item.pct_original) }}%</td>
+                            <td class="text-end">{{ "%.2f"|format(item.pct_adicional) }}%</td>
+                            <td class="text-end fw-bold">{{ "%.2f"|format(item.pct_distribuicao) }}%</td>
+                        </tr>
                         {% endfor %}
 
                         <!-- Empresas que SAEM -->
-                        {% for item in resultados_calculo %}
-                            {% if item.situacao == 'SAI' and item.idx != 'TOTAL' %}
-                            <tr>
-                                <td>{{ item.idx }}</td>
-                                <td>{{ item.empresa }}</td>
-                                <td class="text-danger fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao is defined else "-" }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format(item.pct_original|default(0)) }}</td>
-                                <td class="text-end">-</td>
-                                <td class="text-end">-</td>
-                            </tr>
-                            {% endif %}
+                        {% for item in resultados_calculo if item.situacao == 'SAI' and item.idx != 'TOTAL' %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="text-danger fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
+                            <td class="text-end">{{ "%.2f"|format(item.pct_original) }}%</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">-</td>
+                        </tr>
                         {% endfor %}
 
                         <!-- Linha de total -->
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
-                            {% if total_arrecadacao is defined %}
-                            <td class="text-end">{{ total_arrecadacao|br_currency }}</td>
-                            {% else %}
-                            <td class="text-end">-</td>
-                            {% endif %}
-
+                            <td class="text-end">R$ {{ "{:,.2f}".format(total_arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
                             <td class="text-end">100,00%</td>
-
-                            {% if total_redistribuicao is defined %}
-                            <td class="text-end">{{ "{:.2f}%".format(total_redistribuicao) }}</td>
-                            {% else %}
-                            <td class="text-end">-</td>
-                            {% endif %}
-
-                            {% if total_pct_distribuicao_permanece is defined %}
-                            <td class="text-end">{{ "{:.2f}%".format(total_pct_distribuicao_permanece) }}</td>
-                            {% else %}
-                            <td class="text-end">-</td>
-                            {% endif %}
+                            <td class="text-end">{{ "%.2f"|format(total_redistribuicao) }}%</td>
+                            <td class="text-end">{{ "%.2f"|format(total_pct_distribuicao_permanece) }}%</td>
                         </tr>
 
                         <!-- Linha para informações adicionais -->
                         <tr class="table-info">
                             <td colspan="2">(A) Soma % das empresas que saem</td>
-                            <td colspan="5" class="text-end">{{ "{:.2f}%".format(total_pct_original_saem) }}</td>
+                            <td colspan="5" class="text-end">{{ "%.2f"|format(total_pct_original_saem) }}%</td>
                         </tr>
                         <tr class="table-info">
                             <td colspan="2">(B) Quantidade de empresas que permanecem</td>
@@ -320,7 +288,7 @@
                         </tr>
                         <tr class="table-info">
                             <td colspan="2">(C) % a ser redistribuído igualitariamente (A/B)</td>
-                            <td colspan="5" class="text-end">{{ "{:.2f}%".format(total_redistribuicao / qtde_empresas_permanece) }}</td>
+                            <td colspan="5" class="text-end">{{ "%.2f"|format(total_redistribuicao / qtde_empresas_permanece) }}%</td>
                         </tr>
                     </tbody>
                 </table>
@@ -343,26 +311,26 @@
                             <td>1</td>
                             <td>PERMANECEM</td>
                             <td class="text-end">{{ qtde_empresas_permanece }}</td>
-                            <td class="text-end">{{ qtde_contratos_permanece|br_number }}</td>
+                            <td class="text-end">{{ qtde_contratos_permanece|int|format }}</td>
                         </tr>
                         <tr>
                             <td>2</td>
                             <td>NOVAS</td>
                             <td class="text-end">{{ qtde_empresas_novas }}</td>
-                            <td class="text-end">{{ qtde_contratos_novas|br_number }}</td>
+                            <td class="text-end">{{ qtde_contratos_novas|int|format }}</td>
                         </tr>
                         <tr class="table-secondary fw-bold">
                             <td colspan="2">TOTAL</td>
                             <td class="text-end">{{ qtde_empresas_total }}</td>
-                            <td class="text-end">{{ num_contratos|br_number }}</td>
+                            <td class="text-end">{{ num_contratos|int|format }}</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <div class="alert alert-info mb-4">
-                <p class="mb-0">Total de contratos distribuíveis: <strong>{{ num_contratos|br_number }}</strong></p>
+                <p class="mb-0">Total de contratos distribuíveis: <strong>{{ num_contratos|int|format }}</strong></p>
                 <p class="mb-0">Total de empresas participantes: <strong>{{ qtde_empresas_total }}</strong></p>
-                <p class="mb-0">Quantidade de contratos por empresa: <strong>{{ (num_contratos / qtde_empresas_total)|int|br_number }}</strong></p>
+                <p class="mb-0">Quantidade de contratos por empresa: <strong>{{ (num_contratos / qtde_empresas_total)|int|format }}</strong></p>
             </div>
 
             <!-- Figura 5: Distribuição da quantidade para empresas que permanecem -->
@@ -380,26 +348,20 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in resultados_calculo %}
-                            {% if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
-                            <tr>
-                                <td>{{ item.idx }}</td>
-                                <td>{{ item.empresa }}</td>
-                                <td class="text-warning fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format(item.pct_distribuicao|default(0)) }}</td>
-                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "-" }}</td>
-                                <td class="text-end">{{ "+1" if item.ajuste_contratos is defined and item.ajuste_contratos > 0 else "" }}</td>
-                            </tr>
-                            {% endif %}
+                        {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="text-warning fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">{{ "%.2f"|format(item.pct_distribuicao) }}%</td>
+                            <td class="text-end">{{ item.contratos|int|format }}</td>
+                            <td class="text-end">{{ "+1" if item.ajuste_contratos is defined and item.ajuste_contratos > 0 else "" }}</td>
+                        </tr>
                         {% endfor %}
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
-                            {% if total_pct_distribuicao_permanece is defined %}
-                            <td class="text-end">{{ "{:.2f}%".format(total_pct_distribuicao_permanece) }}</td>
-                            {% else %}
-                            <td class="text-end">0.00%</td>
-                            {% endif %}
-                            <td class="text-end">{{ qtde_contratos_permanece|br_number }}</td>
+                            <td class="text-end">{{ "%.2f"|format(total_pct_distribuicao_permanece) }}%</td>
+                            <td class="text-end">{{ qtde_contratos_permanece|int|format }}</td>
                             <td></td>
                         </tr>
                     </tbody>
@@ -421,23 +383,21 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in resultados_calculo %}
-                            {% if item.idx != 'TOTAL' %}
-                            <tr>
-                                <td>{{ item.idx }}</td>
-                                <td>{{ item.empresa }}</td>
-                                <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "0" }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format((item.contratos / num_contratos) * 100) if item.contratos is defined and num_contratos > 0 else "0.00%" }}</td>
-                                <td class="text-end">{{ "{:+.2f}".format(item.ajuste) if item.ajuste is defined and item.ajuste != 0 else "" }}</td>
-                            </tr>
-                            {% endif %}
+                        {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">{{ item.contratos|int|format }}</td>
+                            <td class="text-end">{{ "%.2f"|format((item.contratos / num_contratos) * 100) if num_contratos > 0 else "0.00" }}%</td>
+                            <td class="text-end">{{ "%+.2f"|format(item.ajuste) if item.ajuste is defined and item.ajuste != 0 else "" }}</td>
+                        </tr>
                         {% endfor %}
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
-                            <td class="text-end">{{ num_contratos|br_number }}</td>
-                            <td class="text-end">{{ "99.98%" if ajuste_necessario is defined and ajuste_necessario else "100.00%" }}</td>
-                            <td class="text-end">{{ "{:+.2f}".format(total_ajuste) if total_ajuste is defined and total_ajuste > 0 else "" }}</td>
+                            <td class="text-end">{{ num_contratos|int|format }}</td>
+                            <td class="text-end">{{ "99.98%" if ajuste_necessario else "100.00%" }}</td>
+                            <td class="text-end">{{ "%+.2f"|format(total_ajuste) if total_ajuste is defined and total_ajuste > 0 else "" }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -457,20 +417,18 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in resultados_calculo %}
-                            {% if item.idx != 'TOTAL' %}
-                            <tr>
-                                <td>{{ item.idx }}</td>
-                                <td>{{ item.empresa }}</td>
-                                <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "-" }}</td>
-                                <td class="text-end fw-bold">{{ "{:.2f}%".format(item.pct_final) if item.pct_final is defined else "0.00%" }}</td>
-                            </tr>
-                            {% endif %}
+                        {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                        <tr>
+                            <td>{{ item.idx }}</td>
+                            <td>{{ item.empresa }}</td>
+                            <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
+                            <td class="text-end">{{ item.contratos|int|format }}</td>
+                            <td class="text-end fw-bold">{{ "%.2f"|format(item.pct_final) }}%</td>
+                        </tr>
                         {% endfor %}
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
-                            <td class="text-end">{{ num_contratos|br_number }}</td>
+                            <td class="text-end">{{ num_contratos|int|format }}</td>
                             <td class="text-end">100.00%</td>
                         </tr>
                     </tbody>
@@ -493,25 +451,18 @@
                 <input type="hidden" name="edital_id" value="{{ edital.ID }}">
                 <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
 
-
-
-                <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
-                <div id="camposEmpresasContainer">
-                    {% for item in resultados_calculo %}
-                        {% if item.idx != 'TOTAL' and item.idx %}
-                            <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
-                            <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
-                            <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
-                            <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
-                        {% endif %}
-                    {% endfor %}
-                </div>
+                {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+                    <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
+                    <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
+                    <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
+                    <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
+                {% endfor %}
             </form>
         </div>
     </div>
     {% endif %}
 
-    <!-- EMPRESAS MISTAS (PERMANECE + NOVAS) -->
+    <!-- EMPRESAS MISTAS (PERMANECE + NOVAS) - SEM RESULTADOS -->
     {% if alguma_permanece and not todas_permanece and not resultados_calculo %}
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">

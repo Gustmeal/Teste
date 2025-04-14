@@ -4,14 +4,11 @@ from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
 from app.models.empresa_participante import EmpresaParticipante
 from app.models.criterio_selecao import CriterioSelecao
-from app.models.audit_log import AuditLog
 from app import db
 from datetime import datetime
-from flask_login import login_required, current_user
+from flask_login import login_required
 from app.utils.audit import registrar_log
 from sqlalchemy import or_, func, text
-import pandas as pd
-import numpy as np
 
 limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
@@ -27,9 +24,326 @@ def truncate_decimal(value, decimal_places=2):
     return int(value * factor) / factor
 
 
-def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
+@limite_bp.route('/limites')
+@login_required
+def lista_limites():
+    from sqlalchemy.orm import joinedload
+
+    periodo_id = request.args.get('periodo_id', type=int)
+    criterio_id = request.args.get('criterio_id', type=int)
+
+    query = db.session.query(
+        LimiteDistribuicao,
+        CriterioSelecao.DS_CRITERIO_SELECAO
+    ).outerjoin(
+        CriterioSelecao,
+        LimiteDistribuicao.COD_CRITERIO_SELECAO == CriterioSelecao.COD
+    ).options(
+        joinedload(LimiteDistribuicao.periodo),
+        joinedload(LimiteDistribuicao.edital)
+    ).filter(
+        LimiteDistribuicao.DELETED_AT == None,
+        or_(CriterioSelecao.DELETED_AT == None, CriterioSelecao.DELETED_AT.is_(None))
+    )
+
+    if periodo_id:
+        query = query.filter(LimiteDistribuicao.ID_PERIODO == periodo_id)
+
+    if criterio_id:
+        query = query.filter(LimiteDistribuicao.COD_CRITERIO_SELECAO == criterio_id)
+
+    results = query.all()
+
+    limites = []
+    for limite, ds_criterio in results:
+        # Obter nome da empresa
+        empresas = EmpresaParticipante.query.filter_by(ID_EMPRESA=limite.ID_EMPRESA).all()
+        empresa_nome = None
+        empresa_nome_abreviado = None
+        if empresas:
+            for empresa in empresas:
+                if empresa.NO_EMPRESA:
+                    empresa_nome = empresa.NO_EMPRESA
+                    empresa_nome_abreviado = empresa.NO_EMPRESA_ABREVIADA
+                    break
+
+        if not empresa_nome:
+            try:
+                from app.models.empresa_responsavel import EmpresaResponsavel
+                empresa_resp = EmpresaResponsavel.query.filter_by(
+                    pkEmpresaResponsavelCobranca=limite.ID_EMPRESA).first()
+                if empresa_resp:
+                    empresa_nome = empresa_resp.nmEmpresaResponsavelCobranca
+                    empresa_nome_abreviado = empresa_resp.NO_ABREVIADO_EMPRESA
+            except:
+                empresa_nome = f"Empresa ID {limite.ID_EMPRESA}"
+                empresa_nome_abreviado = f"ID {limite.ID_EMPRESA}"
+
+        limite.empresa_nome = empresa_nome
+        limite.empresa_nome_abreviado = empresa_nome_abreviado
+        limite.criterio_descricao = ds_criterio if ds_criterio else f"Critério {limite.COD_CRITERIO_SELECAO}"
+
+        limites.append(limite)
+
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
+    criterios = CriterioSelecao.query.filter(CriterioSelecao.DELETED_AT == None).all()
+
+    return render_template(
+        'credenciamento/lista_limites.html',
+        limites=limites,
+        periodos=periodos,
+        criterios=criterios,
+        filtro_periodo_id=periodo_id,
+        filtro_criterio_id=criterio_id
+    )
+
+
+def selecionar_contratos():
     """
-    Realiza o cálculo dos limites de distribuição quando há empresas que permanecem e empresas novas.
+    Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
+    Usa as tabelas do Banco de Dados Gerencial (BDG).
+    Retorna a quantidade de contratos selecionados.
+    """
+    try:
+        # Usar uma conexão direta para executar o SQL
+        with db.engine.connect() as connection:
+            try:
+                # Primeiro, limpar a tabela de distribuíveis
+                truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+                connection.execute(truncate_sql)
+
+                # Em seguida, inserir os contratos selecionados
+                insert_sql = text("""
+                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                SELECT
+                    ECA.fkContratoSISCTR
+                    , CON.NR_CPF_CNPJ
+                    , SIT.VR_SD_DEVEDOR
+                    , CREATED_AT = GETDATE()
+                    , UPDATED_AT = NULL
+                    , DELETED_AT = NULL
+                FROM 
+                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+
+                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+
+                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+
+                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                WHERE
+                    SIT.[fkSituacaoCredito] = 1
+                    AND SDJ.fkContratoSISCTR IS NULL""")
+
+                connection.execute(insert_sql)
+
+                # Contar quantos contratos foram selecionados
+                count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
+                result = connection.execute(count_sql)
+                num_contratos = result.scalar()
+
+                return num_contratos
+
+            except Exception as e:
+                print(f"Erro durante a execução das consultas SQL: {str(e)}")
+                # Log mais detalhado caso ocorra erro
+                import traceback
+                print(traceback.format_exc())
+                raise
+
+    except Exception as e:
+        print(f"Erro na seleção de contratos: {str(e)}")
+        db.session.rollback()
+        return 0
+
+
+def calcular_limites_empresas_permanece(ultimo_edital, ultimo_periodo, periodo_anterior):
+    """
+    Realiza o cálculo dos limites de distribuição quando todas as empresas permanecem.
+
+    Args:
+        ultimo_edital: Objeto Edital com o último edital
+        ultimo_periodo: Objeto PeriodoAvaliacao com o último período
+        periodo_anterior: Objeto PeriodoAvaliacao com o período anterior
+
+    Returns:
+        dict: Dicionário com os resultados do cálculo e metadados
+    """
+    try:
+        # Obter os contratos distribuíveis
+        num_contratos = selecionar_contratos()
+        if num_contratos <= 0:
+            return None
+
+        # Buscar empresas participantes
+        empresas = EmpresaParticipante.query.filter(
+            EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
+            EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.DELETED_AT == None
+        ).all()
+
+        if not empresas:
+            return None
+
+        # Buscar dados de arrecadação do período anterior
+        with db.engine.connect() as connection:
+            # Query para obter arrecadação das empresas no período anterior
+            sql = text("""
+            SELECT 
+                EP.ID_EMPRESA,
+                EP.NO_EMPRESA,
+                EP.NO_EMPRESA_ABREVIADA,
+                EP.DS_CONDICAO,
+                -- Obter dados de arrecadação da tabela real
+                COALESCE(REE.VR_ARRECADACAO, 0) AS VR_ARRECADACAO
+            FROM 
+                DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
+            LEFT JOIN (
+                SELECT 
+                    REE.CO_EMPRESA_COBRANCA,
+                    SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO
+                FROM 
+                    BDG.COM_TB062_REMUNERACAO_ESTIMADA AS REE
+                WHERE 
+                    REE.DT_ARRECADACAO BETWEEN :data_inicio AND :data_fim
+                GROUP BY 
+                    REE.CO_EMPRESA_COBRANCA
+            ) AS REE ON EP.ID_EMPRESA = REE.CO_EMPRESA_COBRANCA
+            WHERE 
+                EP.ID_EDITAL = :id_edital 
+                AND EP.ID_PERIODO = :id_periodo 
+                AND EP.DS_CONDICAO = 'PERMANECE'
+                AND EP.DELETED_AT IS NULL
+            ORDER BY
+                VR_ARRECADACAO DESC
+            """).bindparams(
+                id_edital=ultimo_edital.ID,
+                id_periodo=ultimo_periodo.ID_PERIODO,
+                data_inicio=periodo_anterior.DT_INICIO,
+                data_fim=periodo_anterior.DT_FIM
+            )
+
+            # Executar a consulta
+            result = connection.execute(sql)
+            rows = result.fetchall()
+
+            if not rows:
+                return None
+
+            # Processar dados de arrecadação reais
+            dados_arrecadacao = []
+            for row in rows:
+                dados_arrecadacao.append({
+                    'id_empresa': row[0],
+                    'nome': row[1],
+                    'nome_abreviado': row[2] or (row[1][:3] if row[1] else ''),
+                    'situacao': row[3],
+                    'arrecadacao': float(row[4]) if row[4] else 0.0
+                })
+
+            # Ordenar por arrecadação (maior para menor)
+            dados_arrecadacao.sort(key=lambda x: x['arrecadacao'], reverse=True)
+
+            # Calcular arrecadação total
+            total_arrecadacao = sum(item['arrecadacao'] for item in dados_arrecadacao)
+
+            # Calcular percentuais (truncados, sem arredondamento)
+            dados_processados = []
+            for idx, item in enumerate(dados_arrecadacao):
+                # Calcular percentual bruto e truncar para duas casas decimais
+                pct_arrecadacao = truncate_decimal((item['arrecadacao'] / total_arrecadacao) * 100)
+
+                # Adicionar dados processados
+                dados_processados.append({
+                    'idx': idx + 1,
+                    'id_empresa': item['id_empresa'],
+                    'empresa': item['nome_abreviado'],
+                    'situacao': item['situacao'],
+                    'arrecadacao': item['arrecadacao'],
+                    'pct_arrecadacao': pct_arrecadacao,
+                    'ajuste': 0.00,  # Será atualizado posteriormente
+                    'pct_final': pct_arrecadacao  # Será atualizado posteriormente
+                })
+
+            # Calcular a soma dos percentuais truncados
+            soma_percentuais = sum(item['pct_arrecadacao'] for item in dados_processados)
+
+            # Calcular quanto falta para chegar a 100%
+            diferenca = truncate_decimal(100.00 - soma_percentuais)
+
+            # Aplicar ajuste de 0,01% às empresas com maior arrecadação até chegar exatamente a 100%
+            if diferenca > 0:
+                # Quantas empresas precisam ser ajustadas inicialmente (um "ciclo" completo de empresas)
+                ajuste_por_empresa = 0.01
+                num_ciclos_completos = int(diferenca / (ajuste_por_empresa * len(dados_processados)))
+                ajustes_restantes = int(
+                    (diferenca % (ajuste_por_empresa * len(dados_processados))) / ajuste_por_empresa)
+
+                # Aplicar ajustes para ciclos completos (todas as empresas recebem ajuste)
+                if num_ciclos_completos > 0:
+                    for i in range(len(dados_processados)):
+                        dados_processados[i]['ajuste'] = num_ciclos_completos * ajuste_por_empresa
+                        dados_processados[i]['pct_final'] = truncate_decimal(
+                            dados_processados[i]['pct_arrecadacao'] + dados_processados[i]['ajuste'])
+
+                # Aplicar ajustes restantes (apenas algumas empresas recebem ajuste adicional)
+                for i in range(ajustes_restantes):
+                    # O índice sempre será menor que o número de empresas
+                    indice = i % len(dados_processados)
+                    dados_processados[indice]['ajuste'] += ajuste_por_empresa
+                    dados_processados[indice]['pct_final'] = truncate_decimal(
+                        dados_processados[indice]['pct_arrecadacao'] + dados_processados[indice]['ajuste'])
+
+                # Recalcular totais
+                total_pct_arrecadacao = sum(item['pct_arrecadacao'] for item in dados_processados)
+                total_ajuste = sum(item['ajuste'] for item in dados_processados)
+                total_pct_final = sum(item['pct_final'] for item in dados_processados)
+
+                # Verificar se o total final é exatamente 100%
+                if total_pct_final != 100.00:
+                    # Se ainda não for exatamente 100%, ajustar a primeira empresa
+                    diferenca_restante = 100.00 - total_pct_final
+                    dados_processados[0]['pct_final'] = truncate_decimal(
+                        dados_processados[0]['pct_final'] + diferenca_restante)
+                    dados_processados[0]['ajuste'] = truncate_decimal(
+                        dados_processados[0]['ajuste'] + diferenca_restante)
+
+                    # Recalcular totais finais
+                    total_ajuste = sum(item['ajuste'] for item in dados_processados)
+                    total_pct_final = sum(item['pct_final'] for item in dados_processados)
+
+            # Adicionar linha de total
+            dados_processados.append({
+                'idx': 'TOTAL',
+                'id_empresa': '',
+                'empresa': 'TOTAL',
+                'situacao': '',
+                'arrecadacao': total_arrecadacao,
+                'pct_arrecadacao': soma_percentuais,
+                'ajuste': total_ajuste if 'total_ajuste' in locals() else 0.00,
+                'pct_final': total_pct_final if 'total_pct_final' in locals() else soma_percentuais
+            })
+
+            # Retornar resultados e metadados
+            return {
+                'resultados': dados_processados,
+                'num_contratos': num_contratos,
+                'tipo_calculo': 'permanece'
+            }
+
+    except Exception as e:
+        print(f"Erro no cálculo para empresas permanece: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return None
+
+
+def calcular_limites_empresas_novas(ultimo_edital, ultimo_periodo, empresas):
+    """
+    Realiza o cálculo dos limites de distribuição quando todas as empresas são novas.
+    Neste caso, os contratos são distribuídos igualitariamente entre as empresas.
 
     Args:
         ultimo_edital: Objeto Edital com o último edital
@@ -37,7 +351,137 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
         empresas: Lista de objetos EmpresaParticipante das empresas
 
     Returns:
-        Lista de dicionários com os dados calculados para cada empresa
+        dict: Dicionário com os resultados do cálculo e metadados
+    """
+    try:
+        # Obter o número de contratos distribuíveis
+        num_contratos = selecionar_contratos()
+        if num_contratos <= 0:
+            return None
+
+        # Número de empresas participantes
+        qtde_empresas = len(empresas)
+        if qtde_empresas <= 0:
+            return None
+
+        # Calcular o percentual base para cada empresa (truncado para duas casas sem arredondamento)
+        percentual_base = truncate_decimal(100.00 / qtde_empresas)
+
+        # Calcular a diferença que precisa ser distribuída
+        total_percentual_base = percentual_base * qtde_empresas
+        diferenca = truncate_decimal(100.00 - total_percentual_base)
+
+        # Preparar dados para retorno
+        resultados = []
+
+        # Primeiro, criar a lista de empresas com percentual base
+        for idx, empresa in enumerate(empresas):
+            resultados.append({
+                'idx': idx + 1,
+                'id_empresa': empresa.ID_EMPRESA,
+                'empresa': empresa.NO_EMPRESA_ABREVIADA or empresa.NO_EMPRESA,
+                'situacao': empresa.DS_CONDICAO,
+                'contratos': num_contratos // qtde_empresas,  # Divisão inteira
+                'pct_distribuicao': percentual_base,
+                'ajuste': 0.00,
+                'pct_final': percentual_base
+            })
+
+        # Nova abordagem: manter um contador de quantos incrementos cada empresa recebeu
+        # e distribuir os incrementos de forma equilibrada
+        contador_ajustes = [0] * len(resultados)
+        incremento = 0.01
+        incrementos_totais_necessarios = int(diferenca / incremento)
+
+        # Usar um algoritmo estrito de nivelamento
+        for _ in range(incrementos_totais_necessarios):
+            # Encontrar o menor valor atual no contador
+            menor_contador = min(contador_ajustes)
+
+            # Coletar todos os índices com este valor
+            indices_candidatos = []
+            for i, valor in enumerate(contador_ajustes):
+                if valor == menor_contador:
+                    indices_candidatos.append(i)
+
+            # Escolher aleatoriamente um dos índices candidatos
+            from random import choice
+            indice_escolhido = choice(indices_candidatos)
+
+            # Aplicar o incremento
+            contador_ajustes[indice_escolhido] += 1
+            resultados[indice_escolhido]['ajuste'] = contador_ajustes[indice_escolhido] * incremento
+            resultados[indice_escolhido]['pct_final'] = percentual_base + resultados[indice_escolhido]['ajuste']
+
+        # Verificação CRÍTICA: Garantir que a soma seja EXATAMENTE 100.00%
+        soma_pct_final = sum(item['pct_final'] for item in resultados)
+
+        # Se não for exatamente 100.00%, fazer ajuste adicional
+        if abs(soma_pct_final - 100.00) >= 0.001:  # Usando uma pequena tolerância
+            # Calcular diferença exata
+            diferenca_final = 100.00 - soma_pct_final
+
+            # Arredondar para exatamente 0.01 se estiver próximo
+            if abs(diferenca_final - 0.01) < 0.001:
+                diferenca_final = 0.01
+
+            # Encontrar a empresa com menos incrementos para adicionar a diferença
+            menor_contador_final = min(contador_ajustes)
+            indices_menor_final = [i for i, v in enumerate(contador_ajustes) if v == menor_contador_final]
+            indice_ajuste_final = choice(indices_menor_final)
+
+            # Aplicar o ajuste final
+            resultados[indice_ajuste_final]['ajuste'] += diferenca_final
+            resultados[indice_ajuste_final]['pct_final'] = truncate_decimal(
+                percentual_base + resultados[indice_ajuste_final]['ajuste']
+            )
+
+        # Calcular totais finais
+        total_pct_distribuicao = sum(item['pct_distribuicao'] for item in resultados)
+        total_ajuste = sum(item['ajuste'] for item in resultados)
+        total_pct_final = sum(item['pct_final'] for item in resultados)
+
+        # Forçar o total para exatamente 100.00%
+        total_pct_final = 100.00
+
+        # Adicionar linha de total
+        resultados.append({
+            'idx': 'TOTAL',
+            'id_empresa': '',
+            'empresa': 'TOTAL',
+            'situacao': '',
+            'contratos': num_contratos,
+            'pct_distribuicao': total_pct_distribuicao,
+            'ajuste': total_ajuste,
+            'pct_final': total_pct_final
+        })
+
+        # Retornar resultados e metadados
+        return {
+            'resultados': resultados,
+            'num_contratos': num_contratos,
+            'tipo_calculo': 'novas'
+        }
+
+    except Exception as e:
+        print(f"Erro no cálculo para empresas novas: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return None
+
+
+def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_anterior, empresas):
+    """
+    Realiza o cálculo dos limites de distribuição quando há empresas que permanecem e empresas novas.
+
+    Args:
+        ultimo_edital: Objeto Edital com o último edital
+        ultimo_periodo: Objeto PeriodoAvaliacao com o último período
+        periodo_anterior: Objeto PeriodoAvaliacao com o período anterior
+        empresas: Lista de objetos EmpresaParticipante das empresas
+
+    Returns:
+        dict: Dicionário com os resultados do cálculo e metadados
     """
     try:
         # Obter o número de contratos distribuíveis
@@ -49,18 +493,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
         empresas_permanece = [emp for emp in empresas if emp.DS_CONDICAO == 'PERMANECE']
         empresas_novas = [emp for emp in empresas if emp.DS_CONDICAO == 'NOVA']
 
-        # Verificar período anterior
-        periodo_anterior = PeriodoAvaliacao.query.filter(
-            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
-            PeriodoAvaliacao.ID_PERIODO < ultimo_periodo.ID_PERIODO,
-            PeriodoAvaliacao.DELETED_AT == None
-        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
-
-        if not periodo_anterior:
-            return None
-
-        # 1. Calcular percentual das empresas que permanecem
-        # Buscar dados de arrecadação do período anterior
+        # 1. Calcular percentual das empresas que permanecem com base no período anterior
         with db.engine.connect() as connection:
             # Buscar TODAS as empresas do período anterior, incluindo as que saem
             sql_todas_empresas = text("""
@@ -101,7 +534,6 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
                 id_empresa = row[0]
                 nome = row[1]
                 nome_abreviado = row[2]
-                condicao_anterior = row[3]
                 arrecadacao = float(row[4]) if row[4] else 0.0
 
                 # Determinar a situação atual da empresa
@@ -130,7 +562,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
             # Separar empresas que saem (estavam no período anterior mas não estão em empresas_permanece)
             empresas_saem = {}
             for id_emp, emp in todas_empresas_anteriores.items():
-                if not any(e.ID_EMPRESA == id_emp for e in empresas_permanece):
+                if emp['situacao'] == 'SAI':
                     empresas_saem[id_emp] = emp
 
             # Calcular o total de percentual das empresas que saem
@@ -285,7 +717,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
                 'ajuste': total_ajuste
             })
 
-            # Calcular totais para o template
+            # Calcular totais para metadados
             qtde_empresas_permanece = len(empresas_permanece)
             qtde_empresas_novas = len(empresas_novas)
             qtde_empresas_saem = len(empresas_saem)
@@ -298,14 +730,10 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
 
             total_pct_original_saem = sum(item.get('pct_original', 0) for item in dados_saem)
 
-            ajuste_necessario = abs(
-                sum(item.get('pct_final', 0) for item in todos_dados if item.get('idx') != 'TOTAL') - 100.0) > 0.001
+            ajuste_necessario = abs(soma_pct - 100.0) > 0.001
 
-            # Retornar os resultados e as variáveis para o template
-            return {
-                'resultados': todos_dados,
-                'todas_empresas_anteriores': todas_empresas_anteriores,
-                'empresas_saem': empresas_saem,
+            # Montar dicionário de metadados
+            metadados = {
                 'qtde_empresas_permanece': qtde_empresas_permanece,
                 'qtde_empresas_novas': qtde_empresas_novas,
                 'qtde_empresas_saem': qtde_empresas_saem,
@@ -320,7 +748,15 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
                 'total_pct_distribuicao_permanece': total_pct_distribuicao_permanece,
                 'ajuste_necessario': ajuste_necessario,
                 'total_ajuste': total_ajuste,
-                'num_contratos': num_contratos
+                'pct_adicional_por_empresa': pct_adicional_por_empresa
+            }
+
+            # Retornar os resultados e metadados
+            return {
+                'resultados': todos_dados,
+                'metadados': metadados,
+                'num_contratos': num_contratos,
+                'tipo_calculo': 'mistas'
             }
 
     except Exception as e:
@@ -329,295 +765,11 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas):
         print(traceback.format_exc())
         return None
 
-def calcular_limites_empresas_novas(ultimo_edital, ultimo_periodo, empresas):
-    """
-    Realiza o cálculo dos limites de distribuição quando todas as empresas são novas.
-    Neste caso, os contratos são distribuídos igualitariamente entre as empresas.
-
-    Args:
-        ultimo_edital: Objeto Edital com o último edital
-        ultimo_periodo: Objeto PeriodoAvaliacao com o último período
-        empresas: Lista de objetos EmpresaParticipante das empresas
-
-    Returns:
-        Lista de dicionários com os dados calculados para cada empresa
-    """
-    try:
-        # Obter o número de contratos distribuíveis
-        num_contratos = selecionar_contratos()
-        if num_contratos <= 0:
-            return []
-
-        # Número de empresas participantes
-        qtde_empresas = len(empresas)
-        if qtde_empresas <= 0:
-            return []
-
-        # Calcular o percentual base para cada empresa (truncado para duas casas sem arredondamento)
-        percentual_base = truncate_decimal(100.00 / qtde_empresas)
-
-        # Calcular a diferença que precisa ser distribuída
-        total_percentual_base = percentual_base * qtde_empresas
-        diferenca = truncate_decimal(100.00 - total_percentual_base)
-
-        # Preparar dados para retorno
-        resultados = []
-
-        # Primeiro, criar a lista de empresas com percentual base
-        for idx, empresa in enumerate(empresas):
-            resultados.append({
-                'idx': idx + 1,
-                'id_empresa': empresa.ID_EMPRESA,
-                'empresa': empresa.NO_EMPRESA_ABREVIADA or empresa.NO_EMPRESA,
-                'situacao': empresa.DS_CONDICAO,
-                'contratos': num_contratos // qtde_empresas,  # Divisão inteira
-                'pct_distribuicao': percentual_base,
-                'ajuste': 0.00,
-                'pct_final': percentual_base
-            })
-
-        # Nova abordagem: manter um contador de quantos incrementos cada empresa recebeu
-        # e distribuir os incrementos de forma equilibrada
-        contador_ajustes = [0] * len(resultados)
-        incremento = 0.01
-        incrementos_totais_necessarios = int(diferenca / incremento)
-
-        # Usar um algoritmo estrito de nivelamento
-        for _ in range(incrementos_totais_necessarios):
-            # Encontrar o menor valor atual no contador
-            menor_contador = min(contador_ajustes)
-
-            # Coletar todos os índices com este valor
-            indices_candidatos = []
-            for i, valor in enumerate(contador_ajustes):
-                if valor == menor_contador:
-                    indices_candidatos.append(i)
-
-            # Escolher aleatoriamente um dos índices candidatos
-            from random import choice
-            indice_escolhido = choice(indices_candidatos)
-
-            # Aplicar o incremento
-            contador_ajustes[indice_escolhido] += 1
-            resultados[indice_escolhido]['ajuste'] = contador_ajustes[indice_escolhido] * incremento
-            resultados[indice_escolhido]['pct_final'] = percentual_base + resultados[indice_escolhido]['ajuste']
-
-        # Verificação CRÍTICA: Garantir que a soma seja EXATAMENTE 100.00%
-        soma_pct_final = sum(item['pct_final'] for item in resultados)
-
-        # Se não for exatamente 100.00%, fazer ajuste adicional
-        if abs(soma_pct_final - 100.00) >= 0.001:  # Usando uma pequena tolerância
-            # Calcular diferença exata
-            diferenca_final = 100.00 - soma_pct_final
-
-            # Arredondar para exatamente 0.01 se estiver próximo
-            if abs(diferenca_final - 0.01) < 0.001:
-                diferenca_final = 0.01
-
-            # Encontrar a empresa com menos incrementos para adicionar a diferença
-            menor_contador_final = min(contador_ajustes)
-            indices_menor_final = [i for i, v in enumerate(contador_ajustes) if v == menor_contador_final]
-            indice_ajuste_final = choice(indices_menor_final)
-
-            # Aplicar o ajuste final
-            resultados[indice_ajuste_final]['ajuste'] += diferenca_final
-            resultados[indice_ajuste_final]['pct_final'] = truncate_decimal(
-                percentual_base + resultados[indice_ajuste_final]['ajuste']
-            )
-
-            # VERIFICAÇÃO IMPORTANTE: Verificar a soma novamente para garantir 100.00%
-            nova_soma = sum(item['pct_final'] for item in resultados)
-            if abs(nova_soma - 100.00) >= 0.001:
-                # Se ainda não for exatamente 100.00%, fazer um ajuste direto final
-                # Escolher qualquer empresa e forçar o valor correto
-                indice_final = 0
-
-                # Calcular quanto falta para 100.00% exato
-                diferenca_absoluta = 100.00 - nova_soma
-
-                # Calcular o valor final correto para esta empresa
-                valor_final_correto = resultados[indice_final]['pct_final'] + diferenca_absoluta
-
-                # Atualizar o ajuste com base no novo valor final
-                resultados[indice_final]['ajuste'] = valor_final_correto - percentual_base
-                resultados[indice_final]['pct_final'] = valor_final_correto
-
-        # Calcular totais finais
-        total_pct_distribuicao = sum(item['pct_distribuicao'] for item in resultados)
-        total_ajuste = sum(item['ajuste'] for item in resultados)
-        total_pct_final = sum(item['pct_final'] for item in resultados)
-
-        # Forçar o total para exatamente 100.00%
-        total_pct_final = 100.00
-
-        # Adicionar linha de total
-        resultados.append({
-            'idx': 'TOTAL',
-            'id_empresa': '',
-            'empresa': 'TOTAL',
-            'situacao': '',
-            'contratos': num_contratos,
-            'pct_distribuicao': total_pct_distribuicao,
-            'ajuste': total_ajuste,
-            'pct_final': total_pct_final
-        })
-
-        return resultados
-
-    except Exception as e:
-        print(f"Erro no cálculo para empresas novas: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        return []
-
-
-
-@limite_bp.route('/limites')
-@login_required
-def lista_limites():
-    from sqlalchemy.orm import joinedload
-
-    periodo_id = request.args.get('periodo_id', type=int)
-    criterio_id = request.args.get('criterio_id', type=int)
-
-    query = db.session.query(
-        LimiteDistribuicao,
-        CriterioSelecao.DS_CRITERIO_SELECAO
-    ).outerjoin(
-        CriterioSelecao,
-        LimiteDistribuicao.COD_CRITERIO_SELECAO == CriterioSelecao.COD
-    ).options(
-        joinedload(LimiteDistribuicao.periodo),
-        joinedload(LimiteDistribuicao.edital)
-    ).filter(
-        LimiteDistribuicao.DELETED_AT == None,
-        or_(CriterioSelecao.DELETED_AT == None, CriterioSelecao.DELETED_AT.is_(None))
-    )
-
-    if periodo_id:
-        query = query.filter(LimiteDistribuicao.ID_PERIODO == periodo_id)
-
-    if criterio_id:
-        query = query.filter(LimiteDistribuicao.COD_CRITERIO_SELECAO == criterio_id)
-
-    results = query.all()
-
-    limites = []
-    for limite, ds_criterio in results:
-        # Obter nome da empresa
-        empresas = EmpresaParticipante.query.filter_by(ID_EMPRESA=limite.ID_EMPRESA).all()
-        empresa_nome = None
-        empresa_nome_abreviado = None
-        if empresas:
-            for empresa in empresas:
-                if empresa.NO_EMPRESA:
-                    empresa_nome = empresa.NO_EMPRESA
-                    empresa_nome_abreviado = empresa.NO_EMPRESA_ABREVIADA
-                    break
-
-        if not empresa_nome:
-            try:
-                from app.models.empresa_responsavel import EmpresaResponsavel
-                empresa_resp = EmpresaResponsavel.query.filter_by(pkEmpresaResponsavelCobranca=limite.ID_EMPRESA).first()
-                if empresa_resp:
-                    empresa_nome = empresa_resp.nmEmpresaResponsavelCobranca
-                    empresa_nome_abreviado = empresa_resp.NO_ABREVIADO_EMPRESA
-            except:
-                empresa_nome = f"Empresa ID {limite.ID_EMPRESA}"
-                empresa_nome_abreviado = f"ID {limite.ID_EMPRESA}"
-
-        limite.empresa_nome = empresa_nome
-        limite.empresa_nome_abreviado = empresa_nome_abreviado
-        limite.criterio_descricao = ds_criterio if ds_criterio else f"Critério {limite.COD_CRITERIO_SELECAO}"
-
-        limites.append(limite)
-
-    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
-    criterios = CriterioSelecao.query.filter(CriterioSelecao.DELETED_AT == None).all()
-
-    return render_template(
-        'credenciamento/lista_limites.html',
-        limites=limites,
-        periodos=periodos,
-        criterios=criterios,
-        filtro_periodo_id=periodo_id,
-        filtro_criterio_id=criterio_id
-    )
-
-
-
-def selecionar_contratos():
-    """
-    Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
-    Usa as tabelas do Banco de Dados Gerencial (BDG).
-    Retorna a quantidade de contratos selecionados.
-    """
-    try:
-        # Usar uma conexão direta para executar o SQL
-        with db.engine.connect() as connection:
-            try:
-                # Primeiro, limpar a tabela de distribuíveis
-                truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
-                connection.execute(truncate_sql)
-                
-
-                # Em seguida, inserir os contratos selecionados
-                insert_sql = text("""
-                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                SELECT
-                    ECA.fkContratoSISCTR
-                    , CON.NR_CPF_CNPJ
-                    , SIT.VR_SD_DEVEDOR
-                    , CREATED_AT = GETDATE()
-                    , UPDATED_AT = NULL
-                    , DELETED_AT = NULL
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL""")
-
-                connection.execute(insert_sql)
-
-
-                # Contar quantos contratos foram selecionados
-                count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
-                result = connection.execute(count_sql)
-                num_contratos = result.scalar()
-                print(f"Total de contratos selecionados: {num_contratos}")
-
-                return num_contratos
-
-            except Exception as e:
-                print(f"Erro durante a execução das consultas SQL: {str(e)}")
-                # Log mais detalhado caso ocorra erro
-                import traceback
-                print(traceback.format_exc())
-                raise
-
-    except Exception as e:
-        print(f"Erro na seleção de contratos: {str(e)}")
-        db.session.rollback()
-        return 0
-
 
 @limite_bp.route('/limites/analise')
 @login_required
 def analise_limites():
     try:
-        # Primeiro, selecionar os contratos distribuíveis
-        num_contratos = selecionar_contratos()
-        print(f"Contratos selecionados: {num_contratos}")
-
         # Obter o edital mais recente
         ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
 
@@ -651,7 +803,7 @@ def analise_limites():
         todas_novas = all(empresa.DS_CONDICAO == 'NOVA' for empresa in empresas)
         alguma_permanece = any(empresa.DS_CONDICAO == 'PERMANECE' for empresa in empresas)
 
-        # Período anterior para cálculos
+        # Obter período anterior para os cálculos
         periodo_anterior = None
         if ultimo_periodo.ID_PERIODO > 1:
             periodo_anterior = PeriodoAvaliacao.query.filter(
@@ -660,268 +812,63 @@ def analise_limites():
                 PeriodoAvaliacao.DELETED_AT == None
             ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
 
-        # Resultados do cálculo
-        resultados_calculo = []
+        # Variáveis default
+        resultado_calculo = None
+        num_contratos = selecionar_contratos()
 
-        # Inicializar variáveis com valores padrão para evitar erros de indefinido no template
-        qtde_empresas_permanece = 0
-        qtde_empresas_novas = 0
-        qtde_empresas_saem = 0
-        qtde_empresas_total = 0
-        qtde_contratos_permanece = 0
-        qtde_contratos_novas = 0
-        total_arrecadacao_permanece = 0
-        total_arrecadacao = 0
-        total_pct_original_permanece = 0
-        total_pct_original_saem = 0
-        total_redistribuicao = 0
-        total_pct_distribuicao_permanece = 0
-        ajuste_necessario = False
-        total_ajuste = 0
-        todas_empresas_anteriores = {}
-        empresas_saem = {}
-
-        # If all companies are PERMANECE, apply calculation 3.3.1
+        # Realizar cálculos conforme a condição das empresas
         if todas_permanece:
-            # Check if there's a previous period for calculations
             if periodo_anterior:
-                try:
-                    # Create direct connection to the database to get collection data
-                    with db.engine.connect() as connection:
-                        # Query to get collection for companies in the previous period
-                        sql = text("""
-                        SELECT 
-                            EP.ID_EMPRESA,
-                            EP.NO_EMPRESA,
-                            EP.NO_EMPRESA_ABREVIADA,
-                            EP.DS_CONDICAO,
-                            -- Get collection data from the real table
-                            COALESCE(REE.VR_ARRECADACAO, 0) AS VR_ARRECADACAO
-                        FROM 
-                            DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
-                        LEFT JOIN (
-                            SELECT 
-                                REE.CO_EMPRESA_COBRANCA,
-                                SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO
-                            FROM 
-                                BDG.COM_TB062_REMUNERACAO_ESTIMADA AS REE
-                            WHERE 
-                                REE.DT_ARRECADACAO BETWEEN :data_inicio AND :data_fim
-                            GROUP BY 
-                                REE.CO_EMPRESA_COBRANCA
-                        ) AS REE ON EP.ID_EMPRESA = REE.CO_EMPRESA_COBRANCA
-                        WHERE 
-                            EP.ID_EDITAL = :id_edital 
-                            AND EP.ID_PERIODO = :id_periodo 
-                            AND EP.DS_CONDICAO = 'PERMANECE'
-                            AND EP.DELETED_AT IS NULL
-                        ORDER BY
-                            VR_ARRECADACAO DESC
-                        """).bindparams(
-                            id_edital=ultimo_edital.ID,
-                            id_periodo=ultimo_periodo.ID_PERIODO,
-                            data_inicio=periodo_anterior.DT_INICIO,
-                            data_fim=periodo_anterior.DT_FIM
-                        )
-
-                        # Execute the query
-                        result = connection.execute(sql)
-                        rows = result.fetchall()
-
-                        if not rows:
-                            flash('Não foram encontrados dados de arrecadação para o período anterior.', 'warning')
-                            return redirect(url_for('limite.lista_limites'))
-
-                        # Process real collection data
-                        dados_arrecadacao = []
-                        for row in rows:
-                            dados_arrecadacao.append({
-                                'id_empresa': row[0],
-                                'nome': row[1],
-                                'nome_abreviado': row[2] or (row[1][0] if row[1] else ''),
-                                'situacao': row[3],
-                                'arrecadacao': float(row[4]) if row[4] else 0.0
-                            })
-
-                        # Sort by collection (highest to lowest)
-                        dados_arrecadacao.sort(key=lambda x: x['arrecadacao'], reverse=True)
-
-                        # Calculate total collection
-                        total_arrecadacao = sum(item['arrecadacao'] for item in dados_arrecadacao)
-
-                        # Calculate percentages (truncated, without rounding)
-                        dados_processados = []
-                        for idx, item in enumerate(dados_arrecadacao):
-                            # Calculate raw percentage and truncate to two decimal places
-                            pct_arrecadacao = truncate_decimal((item['arrecadacao'] / total_arrecadacao) * 100)
-
-                            # Add processed data
-                            dados_processados.append({
-                                'idx': idx + 1,
-                                'id_empresa': item['id_empresa'],
-                                'empresa': item['nome_abreviado'],
-                                'situacao': item['situacao'],
-                                'arrecadacao': item['arrecadacao'],
-                                'pct_arrecadacao': pct_arrecadacao,
-                                'ajuste': 0.00,  # Will be updated later
-                                'pct_final': pct_arrecadacao  # Will be updated later
-                            })
-
-                        # Calculate the sum of truncated percentages
-                        soma_percentuais = sum(item['pct_arrecadacao'] for item in dados_processados)
-
-                        # Calculate how much is missing to reach 100%
-                        diferenca = truncate_decimal(100.00 - soma_percentuais)
-
-                        # Apply 0.01% adjustment to companies with highest collection until reaching exactly 100%
-                        if diferenca > 0:
-                            # How many companies need to be adjusted initially (a complete "cycle" of companies)
-                            ajuste_por_empresa = 0.01
-                            num_ciclos_completos = int(diferenca / (ajuste_por_empresa * len(dados_processados)))
-                            ajustes_restantes = int(
-                                (diferenca % (ajuste_por_empresa * len(dados_processados))) / ajuste_por_empresa)
-
-                            # Apply adjustments for complete cycles (all companies receive adjustment)
-                            if num_ciclos_completos > 0:
-                                for i in range(len(dados_processados)):
-                                    dados_processados[i]['ajuste'] = num_ciclos_completos * ajuste_por_empresa
-                                    dados_processados[i]['pct_final'] = truncate_decimal(
-                                        dados_processados[i]['pct_arrecadacao'] + dados_processados[i]['ajuste'])
-
-                            # Apply remaining adjustments (only some companies receive additional adjustment)
-                            for i in range(ajustes_restantes):
-                                # The index will always be less than the number of companies
-                                indice = i % len(dados_processados)
-                                dados_processados[indice]['ajuste'] += ajuste_por_empresa
-                                dados_processados[indice]['pct_final'] = truncate_decimal(
-                                    dados_processados[indice]['pct_arrecadacao'] + dados_processados[indice]['ajuste'])
-
-                            # Recalculate totals
-                            total_pct_arrecadacao = sum(item['pct_arrecadacao'] for item in dados_processados)
-                            total_ajuste = sum(item['ajuste'] for item in dados_processados)
-                            total_pct_final = sum(item['pct_final'] for item in dados_processados)
-
-                            # Check if the final total is exactly 100%
-                            if total_pct_final != 100.00:
-                                # If still not exactly 100%, adjust the first company
-                                diferenca_restante = 100.00 - total_pct_final
-                                dados_processados[0]['pct_final'] = truncate_decimal(
-                                    dados_processados[0]['pct_final'] + diferenca_restante)
-                                dados_processados[0]['ajuste'] = truncate_decimal(
-                                    dados_processados[0]['ajuste'] + diferenca_restante)
-
-                                # Recalculate final totals
-                                total_ajuste = sum(item['ajuste'] for item in dados_processados)
-                                total_pct_final = sum(item['pct_final'] for item in dados_processados)
-
-                        # Add total row
-                        dados_processados.append({
-                            'idx': 'TOTAL',
-                            'id_empresa': '',
-                            'empresa': 'TOTAL',
-                            'situacao': '',
-                            'arrecadacao': total_arrecadacao,
-                            'pct_arrecadacao': soma_percentuais,
-                            'ajuste': total_ajuste,
-                            'pct_final': total_pct_final
-                        })
-
-                        resultados_calculo = dados_processados
-
-                except Exception as e:
-                    flash(f'Erro ao processar cálculo: {str(e)}', 'danger')
-                    print(f"Erro detalhado: {e}")
-                    import traceback
-                    print(traceback.format_exc())
-                    return redirect(url_for('limite.lista_limites'))
+                resultado_calculo = calcular_limites_empresas_permanece(
+                    ultimo_edital, ultimo_periodo, periodo_anterior)
             else:
                 flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
         elif todas_novas:
-            try:
-                # Perform calculation for equal distribution
-                resultados_calculo = calcular_limites_empresas_novas(ultimo_edital, ultimo_periodo, empresas)
+            resultado_calculo = calcular_limites_empresas_novas(
+                ultimo_edital, ultimo_periodo, empresas)
+        elif alguma_permanece:
+            # Empresas mistas (PERMANECE + NOVAS)
+            if periodo_anterior:
+                resultado_calculo = calcular_limites_empresas_mistas(
+                    ultimo_edital, ultimo_periodo, periodo_anterior, empresas)
+            else:
+                flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
 
-                if not resultados_calculo:
-                    flash('Não foi possível calcular a distribuição para empresas novas.', 'warning')
-            except Exception as e:
-                flash(f'Erro ao processar cálculo para empresas novas: {str(e)}', 'danger')
-                print(f"Erro detalhado: {e}")
-                import traceback
-                print(traceback.format_exc())
-                return redirect(url_for('limite.lista_limites'))
-        elif alguma_permanece and not todas_permanece:
-            try:
-                # Perform calculation for mixed companies
-                resultado = calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, empresas)
+        if not resultado_calculo:
+            # Se não for possível calcular, redirecionar com mensagem
+            flash('Não foi possível realizar o cálculo dos limites.', 'warning')
+            return redirect(url_for('limite.lista_limites'))
 
-                if not resultado or not resultado.get('resultados'):
-                    flash('Não foi possível calcular a distribuição para empresas mistas.', 'warning')
-                else:
-                    resultados_calculo = resultado['resultados']
-                    todas_empresas_anteriores = resultado.get('todas_empresas_anteriores', {})
-                    empresas_saem = resultado.get('empresas_saem', {})
-                    qtde_empresas_permanece = resultado['qtde_empresas_permanece']
-                    qtde_empresas_novas = resultado['qtde_empresas_novas']
-                    qtde_empresas_saem = resultado.get('qtde_empresas_saem', 0)
-                    qtde_empresas_total = resultado['qtde_empresas_total']
-                    qtde_contratos_permanece = resultado['qtde_contratos_permanece']
-                    qtde_contratos_novas = resultado['qtde_contratos_novas']
-                    total_arrecadacao_permanece = resultado['total_arrecadacao_permanece']
-                    total_arrecadacao = resultado.get('total_arrecadacao', 0)
-                    total_pct_original_permanece = resultado['total_pct_original_permanece']
-                    total_pct_original_saem = resultado.get('total_pct_original_saem', 0)
-                    total_redistribuicao = resultado['total_redistribuicao']
-                    total_pct_distribuicao_permanece = resultado['total_pct_distribuicao_permanece']
-                    ajuste_necessario = resultado['ajuste_necessario']
-                    total_ajuste = resultado['total_ajuste']
+        # Extrair dados do resultado do cálculo
+        resultados_calculo = resultado_calculo.get('resultados', [])
+        tipo_calculo = resultado_calculo.get('tipo_calculo', '')
+        metadados = resultado_calculo.get('metadados', {})
+        num_contratos = resultado_calculo.get('num_contratos', 0)
 
-                    # If the number of contracts is not defined in num_contratos, use the one from the result
-                    if 'num_contratos' in resultado:
-                        num_contratos = resultado['num_contratos']
-            except Exception as e:
-                flash(f'Erro ao processar cálculo para empresas mistas: {str(e)}', 'danger')
-                print(f"Erro detalhado: {e}")
-                import traceback
-                print(traceback.format_exc())
-                return redirect(url_for('limite.lista_limites'))
+        # Preparar dados para o template
+        dados_template = {
+            'edital': ultimo_edital,
+            'periodo': ultimo_periodo,
+            'periodo_anterior': periodo_anterior,
+            'empresas': empresas,
+            'todas_permanece': todas_permanece,
+            'todas_novas': todas_novas,
+            'alguma_permanece': alguma_permanece,
+            'resultados_calculo': resultados_calculo,
+            'num_contratos': num_contratos
+        }
 
-        # Render the template with analysis results
-        return render_template(
-            'credenciamento/analise_limite.html',
-            edital=ultimo_edital,
-            periodo=ultimo_periodo,
-            periodo_anterior=periodo_anterior,
-            empresas=empresas,
-            todas_permanece=todas_permanece,
-            todas_novas=todas_novas,
-            alguma_permanece=alguma_permanece,
-            resultados_calculo=resultados_calculo,
-            num_contratos=num_contratos,  # Passar o número de contratos para o template
-            qtde_empresas_permanece=qtde_empresas_permanece,
-            qtde_empresas_novas=qtde_empresas_novas,
-            qtde_empresas_saem=qtde_empresas_saem,
-            qtde_empresas_total=qtde_empresas_total,
-            qtde_contratos_permanece=qtde_contratos_permanece,
-            qtde_contratos_novas=qtde_contratos_novas,
-            total_arrecadacao_permanece=total_arrecadacao_permanece,
-            total_arrecadacao=total_arrecadacao,
-            total_pct_original_permanece=total_pct_original_permanece,
-            total_pct_original_saem=total_pct_original_saem,
-            total_redistribuicao=total_redistribuicao,
-            total_pct_distribuicao_permanece=total_pct_distribuicao_permanece,
-            ajuste_necessario=ajuste_necessario,
-            total_ajuste=total_ajuste,
-            todas_empresas_anteriores=todas_empresas_anteriores,
-            empresas_saem=empresas_saem
-        )
+        # Adicionar metadados específicos conforme o tipo de cálculo
+        if tipo_calculo == 'mistas':
+            dados_template.update(metadados)
+
+        return render_template('credenciamento/analise_limite.html', **dados_template)
 
     except Exception as e:
         flash(f'Erro durante a análise: {str(e)}', 'danger')
         import traceback
         print(traceback.format_exc())
         return redirect(url_for('limite.lista_limites'))
-
-
 
 
 @limite_bp.route('/limites/salvar', methods=['POST'])
@@ -950,9 +897,9 @@ def salvar_limites():
         # Obter dados do formulário
         empresas_data = request.form.getlist('empresa_id[]')
         percentuais = request.form.getlist('percentual_final[]')
-        situacoes = request.form.getlist('situacao[]')  # NOVO
+        situacoes = request.form.getlist('situacao[]')
 
-        if len(empresas_data) != len(percentuais):
+        if len(empresas_data) != len(percentuais) or len(empresas_data) != len(situacoes):
             flash('Erro: Dados inconsistentes.', 'danger')
             return redirect(url_for('limite.analise_limites'))
 
@@ -993,6 +940,15 @@ def salvar_limites():
 
         db.session.commit()
 
+        # Registrar log de auditoria
+        registrar_log(
+            acao='criar',
+            entidade='limite',
+            entidade_id=0,  # Não temos um ID único para o conjunto
+            descricao=f'Criação de {limites_criados} limites de distribuição a partir da análise',
+            dados_novos={'total_limites': limites_criados}
+        )
+
         flash(f'Limites salvos com sucesso. Total: {limites_criados}', 'success')
         return redirect(url_for('limite.lista_limites'))
 
@@ -1001,8 +957,6 @@ def salvar_limites():
         flash(f'Erro ao salvar limites: {str(e)}', 'danger')
         print(f"Erro detalhado: {e}")
         return redirect(url_for('limite.analise_limites'))
-
-
 
 
 @limite_bp.route('/limites/novo', methods=['GET', 'POST'])
@@ -1058,8 +1012,7 @@ def novo_limite():
             if limite_existente:
                 flash('Já existe um limite cadastrado com estes critérios.', 'danger')
                 return render_template('credenciamento/form_limite.html', editais=editais, periodos=periodos,
-                                       empresas=empresas,
-                                       criterios=criterios)
+                                       empresas=empresas, criterios=criterios)
 
             novo_limite = LimiteDistribuicao(
                 ID_EDITAL=edital_id,
