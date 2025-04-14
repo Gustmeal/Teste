@@ -80,7 +80,7 @@
                             <td class="text-warning fw-bold">{{ item.situacao }}</td>
                             <td class="text-end">R$ {{ "{:,.2f}".format(item.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
                             <td class="text-end">{{ "{:.2f}".format(item.pct_arrecadacao) }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(item.ajuste) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
                             <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
                         </tr>
                         {% endfor %}
@@ -92,7 +92,7 @@
                             <td></td>
                             <td class="text-end">R$ {{ "{:,.2f}".format(total.arrecadacao).replace(',', ' ').replace('.', ',').replace(' ', '.') }}</td>
                             <td class="text-end">{{ "{:.2f}".format(total.pct_arrecadacao) }}%</td>
-                            <td class="text-end">{{ "{:.2f}".format(total.ajuste) }}%</td>
+                            <td class="text-end">{{ "{:.2f}".format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
                             <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
                         </tr>
                     </tbody>
@@ -117,6 +117,7 @@
                 <input type="hidden" name="edital_id" value="{{ edital.ID }}">
                 <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
 
+
                 <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
                 <div id="camposEmpresasContainer">
                     {% for item in resultados_calculo %}
@@ -124,6 +125,7 @@
                             <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
                             <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
                             <input type="hidden" name="arrecadacao[]" value="{{ item.arrecadacao }}">
+                            <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
                         {% endif %}
                     {% endfor %}
                 </div>
@@ -158,7 +160,7 @@
                         <td class="text-success fw-bold">{{ item.situacao }}</td>
                         <td class="text-end">{{ item.contratos|br_number if item.contratos else "-" }}</td>
                         <td class="text-end">{{ "{:.2f}".format(item.pct_distribuicao) }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(item.ajuste) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(item.ajuste) if item.ajuste is defined else "0.00" }}%</td>
                         <td class="text-end">{{ "{:.2f}".format(item.pct_final) }}%</td>
                     </tr>
                     {% endfor %}
@@ -170,7 +172,7 @@
                         <td></td>
                         <td class="text-end">{{ total.contratos|br_number if total.contratos else "-" }}</td>
                         <td class="text-end">{{ "{:.2f}".format(total.pct_distribuicao) }}%</td>
-                        <td class="text-end">{{ "{:.2f}".format(total.ajuste) }}%</td>
+                        <td class="text-end">{{ "{:.2f}".format(total.ajuste) if total.ajuste is defined else "0.00" }}%</td>
                         <td class="text-end">{{ "{:.2f}".format(total.pct_final) }}%</td>
                     </tr>
                 </tbody>
@@ -196,6 +198,8 @@
             <input type="hidden" name="edital_id" value="{{ edital.ID }}">
             <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
 
+
+
             <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
             <div id="camposEmpresasContainer">
                 {% for item in resultados_calculo %}
@@ -203,6 +207,7 @@
                         <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
                         <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
                         <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
+                        <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
                     {% endif %}
                 {% endfor %}
             </div>
@@ -257,7 +262,7 @@
                                 <td>{{ item.idx }}</td>
                                 <td>{{ item.empresa }}</td>
                                 <td class="text-warning fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao else "-" }}</td>
+                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao is defined else "-" }}</td>
                                 <td class="text-end">{{ "{:.2f}%".format(item.pct_original|default(0)) }}</td>
                                 <td class="text-end">{{ "{:.2f}%".format(item.pct_adicional|default(0)) }}</td>
                                 <td class="text-end fw-bold">{{ "{:.2f}%".format(item.pct_distribuicao|default(0)) }}</td>
@@ -272,7 +277,7 @@
                                 <td>{{ item.idx }}</td>
                                 <td>{{ item.empresa }}</td>
                                 <td class="text-danger fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao else "-" }}</td>
+                                <td class="text-end">{{ item.arrecadacao|br_currency if item.arrecadacao is defined else "-" }}</td>
                                 <td class="text-end">{{ "{:.2f}%".format(item.pct_original|default(0)) }}</td>
                                 <td class="text-end">-</td>
                                 <td class="text-end">-</td>
@@ -382,8 +387,8 @@
                                 <td>{{ item.empresa }}</td>
                                 <td class="text-warning fw-bold">{{ item.situacao }}</td>
                                 <td class="text-end">{{ "{:.2f}%".format(item.pct_distribuicao|default(0)) }}</td>
-                                <td class="text-end">{{ item.contratos|br_number }}</td>
-                                <td class="text-end">{{ "+1" if item.ajuste_contratos > 0 else "" }}</td>
+                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "-" }}</td>
+                                <td class="text-end">{{ "+1" if item.ajuste_contratos is defined and item.ajuste_contratos > 0 else "" }}</td>
                             </tr>
                             {% endif %}
                         {% endfor %}
@@ -422,9 +427,9 @@
                                 <td>{{ item.idx }}</td>
                                 <td>{{ item.empresa }}</td>
                                 <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.contratos|br_number }}</td>
-                                <td class="text-end">{{ "{:.2f}%".format((item.contratos / num_contratos) * 100) }}</td>
-                                <td class="text-end">{{ "{:+.2f}".format(item.ajuste) if item.ajuste != 0 else "" }}</td>
+                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "0" }}</td>
+                                <td class="text-end">{{ "{:.2f}%".format((item.contratos / num_contratos) * 100) if item.contratos is defined and num_contratos > 0 else "0.00%" }}</td>
+                                <td class="text-end">{{ "{:+.2f}".format(item.ajuste) if item.ajuste is defined and item.ajuste != 0 else "" }}</td>
                             </tr>
                             {% endif %}
                         {% endfor %}
@@ -432,7 +437,7 @@
                             <td colspan="3">TOTAL</td>
                             <td class="text-end">{{ num_contratos|br_number }}</td>
                             <td class="text-end">{{ "99.98%" if ajuste_necessario is defined and ajuste_necessario else "100.00%" }}</td>
-                            <td class="text-end">{{ "{:+.2f}".format(total_ajuste) if total_ajuste > 0 else "" }}</td>
+                            <td class="text-end">{{ "{:+.2f}".format(total_ajuste) if total_ajuste is defined and total_ajuste > 0 else "" }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -458,15 +463,15 @@
                                 <td>{{ item.idx }}</td>
                                 <td>{{ item.empresa }}</td>
                                 <td class="{% if item.situacao == 'PERMANECE' %}text-warning{% else %}text-success{% endif %} fw-bold">{{ item.situacao }}</td>
-                                <td class="text-end">{{ item.contratos|br_number }}</td>
-                                <td class="text-end fw-bold">{{ "{:.2f}%".format(item.pct_final) }}</td>
+                                <td class="text-end">{{ item.contratos|br_number if item.contratos is defined else "-" }}</td>
+                                <td class="text-end fw-bold">{{ "{:.2f}%".format(item.pct_final) if item.pct_final is defined else "0.00%" }}</td>
                             </tr>
                             {% endif %}
                         {% endfor %}
                         <tr class="table-secondary fw-bold">
                             <td colspan="3">TOTAL</td>
                             <td class="text-end">{{ num_contratos|br_number }}</td>
-                            <td class="text-end">{{ "100.00%" }}</td>
+                            <td class="text-end">100.00%</td>
                         </tr>
                     </tbody>
                 </table>
@@ -488,6 +493,8 @@
                 <input type="hidden" name="edital_id" value="{{ edital.ID }}">
                 <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
 
+
+
                 <!-- Os campos abaixo serão preenchidos via JavaScript ao clicar em confirmar -->
                 <div id="camposEmpresasContainer">
                     {% for item in resultados_calculo %}
@@ -495,6 +502,7 @@
                             <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
                             <input type="hidden" name="percentual_final[]" value="{{ item.pct_final }}">
                             <input type="hidden" name="contratos[]" value="{{ item.contratos }}">
+                            <input type="hidden" name="situacao[]" value="{{ item.situacao }}">
                         {% endif %}
                     {% endfor %}
                 </div>

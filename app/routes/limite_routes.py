@@ -947,9 +947,10 @@ def salvar_limites():
                 print(f"Erro ao buscar DT_APURACAO: {str(e)}")
                 dt_apuracao = datetime.now().date()
 
-        # Obter dados enviados do formulário
+        # Obter dados do formulário
         empresas_data = request.form.getlist('empresa_id[]')
         percentuais = request.form.getlist('percentual_final[]')
+        situacoes = request.form.getlist('situacao[]')  # NOVO
 
         if len(empresas_data) != len(percentuais):
             flash('Erro: Dados inconsistentes.', 'danger')
@@ -961,17 +962,22 @@ def salvar_limites():
 
         cod_criterio = 7  # critério fixo
 
-        # EXCLUSÃO FÍSICA dos limites anteriores para o mesmo edital/período/critério
+        # Excluir limites anteriores para o mesmo edital/período/critério
         db.session.query(LimiteDistribuicao).filter(
             LimiteDistribuicao.ID_EDITAL == edital_id,
             LimiteDistribuicao.ID_PERIODO == periodo_id,
-            LimiteDistribuicao.COD_CRITERIO_SELECAO == cod_criterio
+            LimiteDistribuicao.COD_CRITERIO_SELECAO == cod_criterio,
+            LimiteDistribuicao.DELETED_AT == None
         ).delete(synchronize_session=False)
         db.session.commit()
 
-        # INSERIR novos limites recebidos do formulário
+        # Inserir os novos limites
         limites_criados = 0
         for i in range(len(empresas_data)):
+            if situacoes[i].upper() == 'SAI':
+                continue
+            percentual = float(percentuais[i]) if percentuais[i] else 0.0
+
             novo_limite = LimiteDistribuicao(
                 ID_EDITAL=edital_id,
                 ID_PERIODO=periodo_id,
@@ -980,7 +986,7 @@ def salvar_limites():
                 DT_APURACAO=dt_apuracao,
                 QTDE_MAXIMA=None,
                 VALOR_MAXIMO=None,
-                PERCENTUAL_FINAL=float(percentuais[i])
+                PERCENTUAL_FINAL=percentual
             )
             db.session.add(novo_limite)
             limites_criados += 1
@@ -995,6 +1001,7 @@ def salvar_limites():
         flash(f'Erro ao salvar limites: {str(e)}', 'danger')
         print(f"Erro detalhado: {e}")
         return redirect(url_for('limite.analise_limites'))
+
 
 
 
