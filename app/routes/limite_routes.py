@@ -477,11 +477,10 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
     Args:
         ultimo_edital: Objeto Edital com o último edital
         ultimo_periodo: Objeto PeriodoAvaliacao com o último período
-        periodo_anterior: Objeto PeriodoAvaliacao com o período anterior
         empresas: Lista de objetos EmpresaParticipante das empresas
 
     Returns:
-        dict: Dicionário com os resultados do cálculo e metadados
+        Dicionário com os dados calculados para cada empresa e variáveis adicionais para o template
     """
     try:
         # Obter o número de contratos distribuíveis
@@ -493,9 +492,20 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
         empresas_permanece = [emp for emp in empresas if emp.DS_CONDICAO == 'PERMANECE']
         empresas_novas = [emp for emp in empresas if emp.DS_CONDICAO == 'NOVA']
 
-        # 1. Calcular percentual das empresas que permanecem com base no período anterior
+        # Verificar período anterior
+        periodo_anterior = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+            PeriodoAvaliacao.ID_PERIODO < ultimo_periodo.ID_PERIODO,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        if not periodo_anterior:
+            return None
+
+        # 1. Calcular percentual das empresas que permanecem
+        # Buscar dados de arrecadação do período anterior
         with db.engine.connect() as connection:
-            # Buscar TODAS as empresas do período anterior, incluindo as que saem
+            # Buscar TODAS as empresas do período anterior, incluindo as que são descredenciadas
             sql_todas_empresas = text("""
             SELECT 
                 EP.ID_EMPRESA,
@@ -534,10 +544,11 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                 id_empresa = row[0]
                 nome = row[1]
                 nome_abreviado = row[2]
+                condicao_anterior = row[3]
                 arrecadacao = float(row[4]) if row[4] else 0.0
 
                 # Determinar a situação atual da empresa
-                situacao = 'SAI'  # Por padrão, consideramos que a empresa saiu
+                situacao = 'DESCREDENCIADA'  # Por padrão, consideramos que a empresa foi descredenciada
                 for emp in empresas_permanece:
                     if emp.ID_EMPRESA == id_empresa:
                         situacao = 'PERMANECE'
@@ -554,22 +565,27 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
             # Calcular total de arrecadação do período anterior
             total_arrecadacao = sum(e['arrecadacao'] for e in todas_empresas_anteriores.values())
 
+            # Inicializar variável para evitar erro se não existirem empresas descredenciadas
+            total_pct_original_descredenciadas = 0.0
+
             # Calcular percentual de cada empresa no período anterior
             for emp in todas_empresas_anteriores.values():
                 emp['pct_arrecadacao'] = truncate_decimal(
                     (emp['arrecadacao'] / total_arrecadacao) * 100) if total_arrecadacao > 0 else 0.0
 
-            # Separar empresas que saem (estavam no período anterior mas não estão em empresas_permanece)
-            empresas_saem = {}
+            # Separar empresas que são descredenciadas (estavam no período anterior mas não estão em empresas_permanece)
+            empresas_descredenciadas = {}
             for id_emp, emp in todas_empresas_anteriores.items():
-                if emp['situacao'] == 'SAI':
-                    empresas_saem[id_emp] = emp
+                if not any(e.ID_EMPRESA == id_emp for e in empresas_permanece):
+                    empresas_descredenciadas[id_emp] = emp
 
-            # Calcular o total de percentual das empresas que saem
-            pct_empresas_saem = sum(emp['pct_arrecadacao'] for emp in empresas_saem.values())
+            # Calcular o total de percentual das empresas que são descredenciadas
+            pct_empresas_descredenciadas = sum(emp['pct_arrecadacao'] for emp in empresas_descredenciadas.values())
+            total_pct_original_descredenciadas = pct_empresas_descredenciadas  # Para usar no template
 
-            # Distribuir o percentual das empresas que saem entre as que permanecem
-            pct_adicional_por_empresa = pct_empresas_saem / len(empresas_permanece) if empresas_permanece else 0.0
+            # Distribuir o percentual das empresas que são descredenciadas entre as que permanecem
+            pct_adicional_por_empresa = pct_empresas_descredenciadas / len(
+                empresas_permanece) if empresas_permanece else 0.0
 
             # Calcular novo percentual para empresas que permanecem
             dados_permanece = []
@@ -645,17 +661,18 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     'pct_adicional': 0.0,
                     'pct_distribuicao': 0.0,
                     'contratos': contratos,
-                    'ajuste_contratos': 0
+                    'ajuste_contratos': 0,
+                    'arrecadacao': 0.0  # Empresas novas não têm arrecadação
                 })
 
-            # 5. Adicionar empresas que saem à lista de resultados
-            dados_saem = []
-            for i, (id_emp, emp) in enumerate(empresas_saem.items()):
-                dados_saem.append({
+            # 5. Adicionar empresas que são descredenciadas à lista de resultados
+            dados_descredenciadas = []
+            for i, (id_emp, emp) in enumerate(empresas_descredenciadas.items()):
+                dados_descredenciadas.append({
                     'idx': len(dados_permanece) + len(dados_novas) + i + 1,
                     'id_empresa': id_emp,
                     'empresa': emp['nome_abreviado'] or emp['nome'],
-                    'situacao': 'SAI',
+                    'situacao': 'DESCREDENCIADA',
                     'pct_original': emp['pct_arrecadacao'],
                     'pct_adicional': 0.0,
                     'pct_distribuicao': 0.0,
@@ -678,18 +695,32 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
 
             # Ajustar para garantir soma 100%
             if diferenca > 0:
-                # Ordenar por contratos (maior para menor)
-                todos_dados.sort(key=lambda x: x['contratos'], reverse=True)
-
                 ajuste_unitario = 0.01
                 ajustes_necessarios = int(diferenca / ajuste_unitario)
 
-                # Distribuir ajustes
-                for i in range(ajustes_necessarios):
-                    indice = i % len(todos_dados)
-                    todos_dados[indice]['ajuste'] += ajuste_unitario
-                    todos_dados[indice]['pct_final'] += ajuste_unitario
+                ids_permanece = [item['id_empresa'] for item in todos_dados if item['situacao'] == 'PERMANECE']
+                ids_novas = [item['id_empresa'] for item in todos_dados if item['situacao'] == 'NOVA']
 
+                while ajustes_necessarios > 0:
+                    for id_emp in ids_permanece:
+                        if ajustes_necessarios == 0:
+                            break
+                        for item in todos_dados:
+                            if item['id_empresa'] == id_emp:
+                                item['ajuste'] += ajuste_unitario
+                                item['pct_final'] += ajuste_unitario
+                                ajustes_necessarios -= 1
+                                break
+
+                    for id_emp in ids_novas:
+                        if ajustes_necessarios == 0:
+                            break
+                        for item in todos_dados:
+                            if item['id_empresa'] == id_emp:
+                                item['ajuste'] += ajuste_unitario
+                                item['pct_final'] += ajuste_unitario
+                                ajustes_necessarios -= 1
+                                break
             # Calcular totais finais
             total_pct_final = sum(item['pct_final'] for item in todos_dados)
             total_ajuste = sum(item['ajuste'] for item in todos_dados)
@@ -697,14 +728,18 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
             # Forçar o total para exatamente 100.00%
             if abs(total_pct_final - 100.00) >= 0.01:
                 diferenca_final = 100.00 - total_pct_final
-                # Ajustar na primeira empresa
-                todos_dados[0]['ajuste'] += diferenca_final
-                todos_dados[0]['pct_final'] += diferenca_final
+                # Ajustar na primeira empresa PERMANECE com maior arrecadação
+                for item in sorted(dados_permanece, key=lambda x: x['arrecadacao'], reverse=True):
+                    item['ajuste'] += diferenca_final
+                    item['pct_final'] += diferenca_final
+                    break
+
+                # Recalcular total
                 total_pct_final = 100.00
                 total_ajuste = sum(item['ajuste'] for item in todos_dados)
 
-            # Adicionar empresas que saem aos dados finais
-            todos_dados.extend(dados_saem)
+            # Adicionar empresas que são descredenciadas aos dados finais
+            todos_dados.extend(dados_descredenciadas)
 
             # Adicionar linha de totais
             todos_dados.append({
@@ -717,10 +752,10 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                 'ajuste': total_ajuste
             })
 
-            # Calcular totais para metadados
+            # Calcular totais para o template
             qtde_empresas_permanece = len(empresas_permanece)
             qtde_empresas_novas = len(empresas_novas)
-            qtde_empresas_saem = len(empresas_saem)
+            qtde_empresas_descredenciadas = len(empresas_descredenciadas)
             qtde_empresas_total = qtde_empresas_permanece + qtde_empresas_novas
 
             total_arrecadacao_permanece = sum(item.get('arrecadacao', 0) for item in dados_permanece)
@@ -728,35 +763,29 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
             total_redistribuicao = sum(item.get('pct_adicional', 0) for item in dados_permanece)
             total_pct_distribuicao_permanece = sum(item.get('pct_distribuicao', 0) for item in dados_permanece)
 
-            total_pct_original_saem = sum(item.get('pct_original', 0) for item in dados_saem)
+            ajuste_necessario = abs(
+                sum(item.get('pct_final', 0) for item in todos_dados if item.get('idx') != 'TOTAL') - 100.0) > 0.001
 
-            ajuste_necessario = abs(soma_pct - 100.0) > 0.001
-
-            # Montar dicionário de metadados
-            metadados = {
+            # Retornar os resultados e as variáveis para o template
+            return {
+                'resultados': todos_dados,
+                'todas_empresas_anteriores': todas_empresas_anteriores,
+                'empresas_descredenciadas': empresas_descredenciadas,
                 'qtde_empresas_permanece': qtde_empresas_permanece,
                 'qtde_empresas_novas': qtde_empresas_novas,
-                'qtde_empresas_saem': qtde_empresas_saem,
+                'qtde_empresas_descredenciadas': qtde_empresas_descredenciadas,
                 'qtde_empresas_total': qtde_empresas_total,
                 'qtde_contratos_permanece': qtde_contratos_permanece,
                 'qtde_contratos_novas': qtde_contratos_novas,
                 'total_arrecadacao_permanece': total_arrecadacao_permanece,
                 'total_arrecadacao': total_arrecadacao,
                 'total_pct_original_permanece': total_pct_original_permanece,
-                'total_pct_original_saem': total_pct_original_saem,
+                'total_pct_original_descredenciadas': total_pct_original_descredenciadas,
                 'total_redistribuicao': total_redistribuicao,
                 'total_pct_distribuicao_permanece': total_pct_distribuicao_permanece,
                 'ajuste_necessario': ajuste_necessario,
                 'total_ajuste': total_ajuste,
-                'pct_adicional_por_empresa': pct_adicional_por_empresa
-            }
-
-            # Retornar os resultados e metadados
-            return {
-                'resultados': todos_dados,
-                'metadados': metadados,
-                'num_contratos': num_contratos,
-                'tipo_calculo': 'mistas'
+                'num_contratos': num_contratos
             }
 
     except Exception as e:
@@ -855,7 +884,8 @@ def analise_limites():
             'todas_novas': todas_novas,
             'alguma_permanece': alguma_permanece,
             'resultados_calculo': resultados_calculo,
-            'num_contratos': num_contratos
+            'num_contratos': num_contratos,
+            'tipo_calculo': tipo_calculo
         }
 
         # Adicionar metadados específicos conforme o tipo de cálculo
