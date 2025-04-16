@@ -570,7 +570,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                 arrecadacao = float(row[4]) if row[4] else 0.0
 
                 # Determinar a situação atual da empresa
-                situacao = 'SAI'  # Por padrão, consideramos que a empresa saiu
+                situacao = 'DESCREDENCIADO'  # Por padrão, consideramos que a empresa saiu
                 for emp in empresas_permanece:
                     if emp.ID_EMPRESA == id_empresa:
                         situacao = 'PERMANECE'
@@ -596,8 +596,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                 emp['pct_arrecadacao'] = truncate_decimal((emp['arrecadacao'] / total_arrecadacao) * 100)
 
             # 3. Identificar empresas que saem e calcular o percentual total a redistribuir
-            empresas_que_saem = {id_emp: emp for id_emp, emp in todas_empresas_anteriores.items()
-                                 if emp['situacao'] in ['SAI', 'DESCREDENCIADO']}
+            empresas_que_saem = {id_emp: emp for id_emp, emp in todas_empresas_anteriores.items() if emp['situacao'] == 'DESCREDENCIADO'}
 
             # ✅ Adiciona lista de empresas descredenciadas para exibir no template
             empresas_descredenciadas = []
@@ -712,7 +711,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     'idx': len(resultados_combinados) + 1,
                     'id_empresa': id_emp,
                     'empresa': emp['nome_abreviado'] or emp['nome'],
-                    'situacao': 'SAI',
+                    'situacao': 'DESCREDENCIADO',
                     'pct_original': emp['pct_arrecadacao'],
                     'arrecadacao': emp['arrecadacao'],
                     'contratos': 0,
@@ -965,7 +964,7 @@ def salvar_limites():
         # Inserir os novos limites
         limites_criados = 0
         for i in range(len(empresas_data)):
-            if situacoes[i].upper() == 'SAI':
+            if situacoes[i].upper() == 'DESCREDENCIADO':
                 continue
             percentual = float(percentuais[i]) if percentuais[i] else 0.0
 
