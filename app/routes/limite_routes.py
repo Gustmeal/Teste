@@ -9,6 +9,8 @@ from datetime import datetime
 from flask_login import login_required
 from app.utils.audit import registrar_log
 from sqlalchemy import or_, func, text
+import math
+
 
 limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
@@ -18,33 +20,10 @@ def inject_current_year():
     return {'current_year': datetime.utcnow().year}
 
 
-def truncate_decimal(value, decimal_places=2):
-    """
-    Trunca o valor para o número especificado de casas decimais sem arredondamento.
+def truncate_decimal(valor, casas=2):
+    fator = 10 ** casas
+    return math.floor(valor * fator) / fator
 
-    Args:
-        value: Valor a ser truncado
-        decimal_places: Número de casas decimais (padrão: 2)
-
-    Returns:
-        float: Valor truncado
-    """
-    if value is None:
-        return 0.0
-
-    # Converter para string e separar a parte inteira da decimal
-    str_value = str(float(value))
-    if '.' in str_value:
-        int_part, dec_part = str_value.split('.')
-        # Truncar a parte decimal para o número de casas desejado
-        truncated_dec = dec_part[:decimal_places]
-        # Preencher com zeros se necessário
-        truncated_dec = truncated_dec.ljust(decimal_places, '0')
-        # Reconstruir o número
-        return float(f"{int_part}.{truncated_dec}")
-    else:
-        # Se não houver parte decimal, retornar o valor original
-        return float(value)
 
 
 @limite_bp.route('/limites')
@@ -559,10 +538,12 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
             )
 
             result = connection.execute(sql_todas_empresas)
+            rows = result.fetchall()  # ✅ Carrega todos os dados de uma vez
+
             todas_empresas_anteriores = {}
 
             # Processar resultados
-            for row in result:
+            for row in rows:
                 id_empresa = row[0]
                 nome = row[1]
                 nome_abreviado = row[2]
@@ -575,15 +556,13 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     if emp.ID_EMPRESA == id_empresa:
                         situacao = 'PERMANECE'
                         break
-
                 todas_empresas_anteriores[id_empresa] = {
                     'id_empresa': id_empresa,
                     'nome': nome,
                     'nome_abreviado': nome_abreviado,
                     'situacao': situacao,
-                    'arrecadacao': arrecadacao
+                    'arrecadacao': arrecadacao,
                 }
-
             # 2. Calcular percentuais de arrecadação para todas as empresas anteriores
             total_arrecadacao = sum(e['arrecadacao'] for e in todas_empresas_anteriores.values())
 
@@ -612,23 +591,16 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
 
             # 4. Redistribuir o percentual das empresas que saem entre as que permanecem
             # O adicional para cada empresa que permanece é o mesmo
-            pct_adicional_por_empresa = truncate_decimal(pct_empresas_que_saem / len(empresas_permanece))
+            pct_adicional_por_empresa = pct_empresas_que_saem / len(empresas_permanece)
 
             # Calcular novo percentual para empresas que permanecem
             dados_permanece = []
+
             for i, emp in enumerate(empresas_permanece):
-                # Obter o percentual original se a empresa estava no período anterior
-                pct_original = 0.0
-                arrecadacao = 0.0
                 nome_abreviado = emp.NO_EMPRESA_ABREVIADA or emp.NO_EMPRESA
-
-                if emp.ID_EMPRESA in todas_empresas_anteriores:
-                    pct_original = todas_empresas_anteriores[emp.ID_EMPRESA]['pct_arrecadacao']
-                    nome_abreviado = todas_empresas_anteriores[emp.ID_EMPRESA]['nome_abreviado'] or nome_abreviado
-                    arrecadacao = todas_empresas_anteriores[emp.ID_EMPRESA]['arrecadacao']
-
-                # Percentual final = original + adicional
-                pct_distribuicao = truncate_decimal(pct_original + pct_adicional_por_empresa)
+                arrecadacao = todas_empresas_anteriores.get(emp.ID_EMPRESA, {}).get('arrecadacao', 0.0)
+                pct_original = truncate_decimal((arrecadacao / total_arrecadacao) * 100)
+                pct_adicional_por_empresa = pct_empresas_que_saem / len(empresas_permanece)
 
                 dados_permanece.append({
                     'idx': i + 1,
@@ -637,10 +609,32 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     'situacao': 'PERMANECE',
                     'pct_original': pct_original,
                     'pct_adicional': pct_adicional_por_empresa,
-                    'pct_distribuicao': pct_distribuicao,
+                    'pct_redistribuido': pct_adicional_por_empresa,
+                    'pct_ajuste': 0.0,  # será ajustado depois
                     'arrecadacao': arrecadacao,
-                    'contratos': 0  # Será calculado posteriormente
+                    'contratos': 0  # será calculado depois
                 })
+
+            # Aplicar ajuste de 0.01% ciclicamente para bater 100%
+            soma_pct = sum(e['pct_original'] + e['pct_adicional'] for e in dados_permanece)
+            diferenca = round(100.00 - soma_pct, 2)
+
+            if diferenca > 0:
+                dados_permanece.sort(key=lambda x: x['pct_original'], reverse=True)
+                for i in range(int(diferenca / 0.01)):
+                    dados_permanece[i % len(dados_permanece)]['pct_ajuste'] += 0.01
+
+            # Recalcular pct_distribuicao final (agora somando ajuste)
+            for e in dados_permanece:
+                e['pct_distribuicao'] = truncate_decimal(
+                    e['pct_original'] + e['pct_adicional'] + e['pct_ajuste']
+                )
+            # Atualizar os valores calculados no dicionário que o HTML usa
+            for empresa in dados_permanece:
+                if empresa['id_empresa'] in todas_empresas_anteriores:
+                    todas_empresas_anteriores[empresa['id_empresa']]['pct_redistribuido'] = empresa['pct_redistribuido']
+                    todas_empresas_anteriores[empresa['id_empresa']]['pct_ajuste'] = empresa['pct_ajuste']
+                    todas_empresas_anteriores[empresa['id_empresa']]['pct_novo_final'] = empresa['pct_distribuicao']
 
             # 5. Calcular distribuição de contratos por situação conforme a quantidade de empresas
             # Total de empresas atuais
@@ -704,10 +698,10 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
             # Aplicar ajuste final com ciclo justo entre PERMANECE e NOVAS
             resultados_combinados = ajustar_percentuais_finais(resultados_combinados)
 
-            # 11. Adicionar dados de empresas que saem para o template
-            dados_saem = []
+
+            # 11. Adicionar dados de empresas que saem para o template e para a tabela final
             for id_emp, emp in empresas_que_saem.items():
-                dados_saem.append({
+                resultados_combinados.append({
                     'idx': len(resultados_combinados) + 1,
                     'id_empresa': id_emp,
                     'empresa': emp['nome_abreviado'] or emp['nome'],
@@ -715,6 +709,8 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     'pct_original': emp['pct_arrecadacao'],
                     'arrecadacao': emp['arrecadacao'],
                     'contratos': 0,
+                    'pct_distribuicao': 0.0,
+                    'ajuste': 0.0,
                     'pct_final': 0.0
                 })
 
@@ -761,7 +757,6 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
         return None
 
 def ajustar_percentuais_finais(empresas):
-    # Calcula o total atual
     total_pct = sum(e['pct_distribuicao'] for e in empresas)
     diferenca = round(100.00 - total_pct, 2)
 
@@ -779,6 +774,7 @@ def ajustar_percentuais_finais(empresas):
     novas = [e for e in empresas if e['situacao'] == 'NOVA']
     ciclo = permanece + novas
 
+    # Distribui 0.01% por vez para cada empresa, começando pelas que mais arrecadam
     idx = 0
     while round(diferenca, 4) > 0 and ciclo:
         empresa = ciclo[idx % len(ciclo)]
@@ -786,6 +782,7 @@ def ajustar_percentuais_finais(empresas):
         diferenca = round(diferenca - 0.01, 4)
         idx += 1
 
+    # Calcula os percentuais finais
     for e in empresas:
         e['ajuste'] = round(e.get('ajuste', 0.00), 2)
         e['pct_final'] = round(e['pct_distribuicao'] + e['ajuste'], 2)
