@@ -224,47 +224,57 @@
             <table class="table table-bordered">
                 <thead>
                     <tr>
+                        <th>#</th>
                         <th>Empresa</th>
-                        <th>% Distribuição</th>
-                        <th>Qtde Contratos</th>
-                        <th>Ajuste Contratos</th>
+                        <th>Situação</th>
+                        <th>%NOVO</th>
+                        <th>QTDE CONTRATOS</th>
+                        <th>AJUSTE</th>
+                        <th>TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% set total_contratos_permanece = namespace(valor=0) %}
-                    {% set total_ajuste_contratos = namespace(valor=0) %}
-                    {% set total_pct_final_permanece = namespace(valor=0) %}
+                    {% set total_percentual = namespace(valor=0) %}
+                    {% set total_contratos = namespace(valor=0) %}
+                    {% set total_ajuste = namespace(valor=0) %}
+                    {% set total_total = namespace(valor=0) %}
 
                     {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
                     <tr>
+                        <td>{{ item.idx }}</td>
                         <td>{{ item.empresa }}</td>
+                        <td>
+                            <span class="badge bg-success">PERMANECE</span>
+                        </td>
                         <td class="text-end">
-                            {% set pct_final = item.pct_final|default(0) %}
-                            {% set total_pct_final_permanece.valor = total_pct_final_permanece.valor + pct_final %}
-                            {{ "%.2f%%"|format(pct_final) }}
+                            {% set pct_novo = item.pct_novo_truncado|default(0) %}
+                            {% set total_percentual.valor = total_percentual.valor + pct_novo %}
+                            {{ "%.2f%%"|format(pct_novo) }}
                         </td>
                         <td class="text-end">
                             {% set contratos = item.contratos|default(0) %}
-                            {% set total_contratos_permanece.valor = total_contratos_permanece.valor + contratos %}
+                            {% set total_contratos.valor = total_contratos.valor + contratos %}
                             {{ "{:,}".format(contratos).replace(',', '.') }}
                         </td>
                         <td class="text-end">
-                            {% set ajuste_contratos = item.ajuste_contratos|default(0) %}
-                            {% set total_ajuste_contratos.valor = total_ajuste_contratos.valor + ajuste_contratos %}
-                            {{ "+{}".format(ajuste_contratos) if ajuste_contratos > 0 else "0" }}
+                            {% set ajuste = item.ajuste_contratos|default(0) %}
+                            {% set total_ajuste.valor = total_ajuste.valor + ajuste %}
+                            {{ ajuste }}
+                        </td>
+                        <td class="text-end">
+                            {% set total = contratos + ajuste %}
+                            {% set total_total.valor = total_total.valor + total %}
+                            {{ "{:,}".format(total).replace(',', '.') }}
                         </td>
                     </tr>
                     {% endfor %}
 
                     <tr class="table-secondary">
-                        <td><strong>TOTAL</strong></td>
-                        <td class="text-end">
-                          <strong>{{ "%.2f%%"|format(total_pct_final_permanece.valor) }}</strong>
-                        </td>
-                        <td class="text-end">
-                          <strong>{{ "{:,}".format(total_contratos_permanece.valor).replace(',', '.') }}</strong>
-                        </td>
-                        <td class="text-end"><strong>{{ total_ajuste_contratos.valor }}</strong></td>
+                        <td colspan="3"><strong>TOTAL</strong></td>
+                        <td class="text-end"><strong>{{ "%.2f%%"|format(total_percentual.valor) }}</strong></td>
+                        <td class="text-end"><strong>{{ "{:,}".format(total_contratos.valor).replace(',', '.') }}</strong></td>
+                        <td class="text-end"><strong>{{ total_ajuste.valor }}</strong></td>
+                        <td class="text-end"><strong>{{ "{:,}".format(total_total.valor).replace(',', '.') }}</strong></td>
                     </tr>
                 </tbody>
             </table>
@@ -530,19 +540,20 @@
                         </tr>
                         {% endfor %}
 
+                        <!-- Linha de totais -->
                         <tr class="table-secondary">
-                            <td colspan="3"><strong>Total</strong></td>
+                            <td colspan="3"><strong>TOTAL</strong></td>
                             <td class="text-end">
-                                <strong>{{ "{:,.0f}".format(total_contratos_novas_final.valor).replace(',', '.') }}</strong>
+                                <strong>{{ "{:,}".format(total_contratos_final.valor).replace(",", ".") }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f%%"|format(total_pct_distribuicao_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_base.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%+.2f%%"|format(total_ajuste_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_ajustes.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f%%"|format(total_pct_final_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_final.valor) }}</strong>
                             </td>
                         </tr>
                     </tbody>
