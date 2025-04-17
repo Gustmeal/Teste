@@ -241,7 +241,7 @@
                         <td class="text-end">
                             {% set pct_final = item.pct_final|default(0) %}
                             {% set total_pct_final_permanece.valor = total_pct_final_permanece.valor + pct_final %}
-                            {{ "%.6f%%"|format(pct_final) }}
+                            {{ "%.2f%%"|format(pct_final) }}
                         </td>
                         <td class="text-end">
                             {% set contratos = item.contratos|default(0) %}
@@ -259,7 +259,7 @@
                     <tr class="table-secondary">
                         <td><strong>TOTAL</strong></td>
                         <td class="text-end">
-                          <strong>{{ "%.6f%%"|format(total_pct_final_permanece.valor) }}</strong>
+                          <strong>{{ "%.2f%%"|format(total_pct_final_permanece.valor) }}</strong>
                         </td>
                         <td class="text-end">
                           <strong>{{ "{:,}".format(total_contratos_permanece.valor).replace(',', '.') }}</strong>
@@ -361,17 +361,17 @@
                         <td class="text-end">
                             {% set pct_base = item.pct_distribuicao|default(0) %}
                             {% set total_pct_base.valor = total_pct_base.valor + pct_base %}
-                            {{ "%.6f%%"|format(pct_base) }}
+                            {{ "%.2f%%"|format(pct_base) }}
                         </td>
                         <td class="text-end">
                             {% set ajuste = item.ajuste|default(0) %}
                             {% set total_ajustes.valor = total_ajustes.valor + ajuste %}
-                            {{ "%.6f%%"|format(ajuste) }}
+                            {{ "%.2f%%"|format(ajuste) }}
                         </td>
                         <td class="text-end">
                             {% set pct_final = item.pct_final|default(0) %}
                             {% set total_pct_final.valor = total_pct_final.valor + pct_final %}
-                            {{ "%.6f%%"|format(pct_final) }}
+                            {{ "%.2f%%"|format(pct_final) }}
                         </td>
                     </tr>
                     {% endfor %}
