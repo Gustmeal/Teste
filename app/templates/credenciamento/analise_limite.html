@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+
 {% block content %}
 <div class="editais-container fade-in">
     <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
@@ -93,20 +94,23 @@
             {{ "%.2f%%"|format(pct) }}
           </td>
           <td class="text-end">
-            {% set redistrib = emp.pct_redistribuido or 0 %}
+            {% set redistrib = emp.pct_redistribuido|default(0) %}
             {% set total_pct_redistribuido.valor = total_pct_redistribuido.valor + redistrib %}
             {{ "%.2f%%"|format(redistrib) }}
           </td>
           <td class="text-end">
-            {% set ajuste = emp.pct_ajuste or 0 %}
+            {% set ajuste = emp.pct_ajuste|default(0) %}
             {% set total_pct_ajuste.valor = total_pct_ajuste.valor + ajuste %}
             {{ "%.2f%%"|format(ajuste) }}
           </td>
           <td class="text-end">
-            {% if emp.situacao == 'PERMANECE' or emp.situacao == 'NOVA' %}
-            {% set novo_final = (pct + redistrib + ajuste) %}
-            {% set total_pct_novo.valor = total_pct_novo.valor + novo_final %}
-            {{ "%.2f%%"|format(novo_final) }}{% else %}  0,00%{% endif %}
+            {% if emp.situacao == 'PERMANECE' %}
+              {% set pct_novo = emp.pct_novo_final|default(emp.pct_arrecadacao + emp.pct_redistribuido|default(0)) %}
+              {% set total_pct_novo.valor = total_pct_novo.valor + pct_novo %}
+              {{ "%.2f%%"|format(pct_novo) }}
+            {% else %}
+              0,00%
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -162,12 +166,12 @@
             </table>
             <div class="mt-2">
                 {% set qtde_total_empresas = qtde_empresas_permanece + qtde_empresas_novas %}
+                {% set contratos_por_empresa = 0 %}
+                {% if qtde_total_empresas > 0 %}
+                    {% set contratos_por_empresa = num_contratos / qtde_total_empresas %}
+                {% endif %}
                 <p class="mb-0 text-muted">Qtde de contratos por empresa:
-                    {% if qtde_total_empresas > 0 %}
-                        {{ "{:,.0f}".format(num_contratos / qtde_total_empresas).replace(',', '.') }}
-                    {% else %}
-                        0
-                    {% endif %}
+                    {{ "{:,.0f}".format(contratos_por_empresa).replace(',', '.') }}
                 </p>
             </div>
         </div>
@@ -192,23 +196,25 @@
                 <tbody>
                     {% set total_contratos_permanece = namespace(valor=0) %}
                     {% set total_ajuste_contratos = namespace(valor=0) %}
+                    {% set total_pct_final_permanece = namespace(valor=0) %}
 
                     {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
                     <tr>
                         <td>{{ item.empresa }}</td>
-                        <td class="text-end">{{ "%.2f%%"|format(item.pct_final|float) }}</td>
                         <td class="text-end">
-                            {% set total_contratos_permanece.valor = total_contratos_permanece.valor + (item.contratos or 0) %}
-                            {{ "{:,.3f}".format(item.contratos or 0).replace(',', '.') }}
+                            {% set pct_final = item.pct_final|default(0) %}
+                            {% set total_pct_final_permanece.valor = total_pct_final_permanece.valor + pct_final %}
+                            {{ "%.2f%%"|format(pct_final) }}
                         </td>
                         <td class="text-end">
-                            {% if item.ajuste_contratos is defined and item.ajuste_contratos is not none %}
-                                {% set total_ajuste_contratos.valor = total_ajuste_contratos.valor + item.ajuste_contratos %}
-                                {{ "+{}".format(item.ajuste_contratos) if item.ajuste_contratos > 0 else "0" }}
-                            {% else %}
-                                {% set total_ajuste_contratos.valor = total_ajuste_contratos.valor + 0 %}
-                                0
-                            {% endif %}
+                            {% set contratos = item.contratos|default(0) %}
+                            {% set total_contratos_permanece.valor = total_contratos_permanece.valor + contratos %}
+                            {{ "{:,.3f}".format(contratos).replace(',', '.') }}
+                        </td>
+                        <td class="text-end">
+                            {% set ajuste_contratos = item.ajuste_contratos|default(0) %}
+                            {% set total_ajuste_contratos.valor = total_ajuste_contratos.valor + ajuste_contratos %}
+                            {{ "+{}".format(ajuste_contratos) if ajuste_contratos > 0 else "0" }}
                         </td>
                     </tr>
                     {% endfor %}
@@ -216,7 +222,7 @@
                     <tr class="table-secondary">
                         <td><strong>TOTAL</strong></td>
                         <td class="text-end">
-                          <strong>{{ resultados_calculo | selectattr("situacao", "equalto", "PERMANECE") | map(attribute='pct_final') | sum | round(2) }}%</strong>
+                          <strong>{{ "%.2f%%"|format(total_pct_final_permanece.valor) }}</strong>
                         </td>
                         <td class="text-end">
                           <strong>{{ "{:,.3f}".format(total_contratos_permanece.valor).replace(',', '.') }}</strong>
@@ -253,11 +259,12 @@
             <tr>
               <td>{{ item.empresa }}</td>
               <td class="text-end">
-                {% set total_contratos_novas.valor = total_contratos_novas.valor + (item.contratos or 0) %}
-                {{ "{:,.0f}".format(item.contratos or 0).replace(',', '.') }}
+                {% set contratos = item.contratos|default(0) %}
+                {% set total_contratos_novas.valor = total_contratos_novas.valor + contratos %}
+                {{ "{:,.0f}".format(contratos).replace(',', '.') }}
               </td>
               <td class="text-end">
-                {% set ajuste = item.ajuste_contratos or 0 %}
+                {% set ajuste = item.ajuste_contratos|default(0) %}
                 {% set total_ajuste_contratos_novas.valor = total_ajuste_contratos_novas.valor + ajuste %}
                 {{ "+{}".format(ajuste) if ajuste > 0 else "0" }}
               </td>
@@ -313,49 +320,42 @@
                             {% endif %}
                         </td>
                         <td class="text-end">
-                            {% set contratos = item.contratos or 0 %}
+                            {% set contratos = item.contratos|default(0) %}
                             {% set total_contratos_final.valor = total_contratos_final.valor + contratos %}
                             {{ "{:,.3f}".format(contratos).replace(',', '.') }}
                         </td>
                         <td class="text-end">
-                            {% set pct_base = item.pct_distribuicao or 0 %}
+                            {% set pct_base = item.pct_distribuicao|default(0) %}
                             {% set total_pct_base.valor = total_pct_base.valor + pct_base %}
-                            {{ "{:.2f}%".format(pct_base) }}
+                            {{ "%.2f%%"|format(pct_base) }}
                         </td>
                         <td class="text-end">
-                            {% set ajuste = item.ajuste or 0 %}
+                            {% set ajuste = item.ajuste|default(0) %}
                             {% set total_ajustes.valor = total_ajustes.valor + ajuste %}
-                            {{ "{:+.2f}%".format(ajuste) }}
+                            {{ "%+.2f%%"|format(ajuste) }}
                         </td>
                         <td class="text-end">
-                            {% set pct_final = item.pct_final or 0 %}
+                            {% set pct_final = item.pct_final|default(0) %}
                             {% set total_pct_final.valor = total_pct_final.valor + pct_final %}
-                            {{ "{:.2f}%".format(pct_final) }}
+                            {{ "%.2f%%"|format(pct_final) }}
                         </td>
                     </tr>
                     {% endfor %}
 
+                    <!-- Linha de totais -->
                     <tr class="table-secondary">
                         <td colspan="3"><strong>TOTAL</strong></td>
                         <td class="text-end">
-                            <strong>
-                              {{ "{:,.3f}".format(total_contratos_final.valor).replace(",", ".") }}
-                            </strong>
+                            <strong>{{ "{:,.3f}".format(total_contratos_final.valor).replace(",", ".") }}</strong>
                         </td>
                         <td class="text-end">
-                            <strong>
-                                {{ "{:.2f}%".format(total_pct_base.valor) }}
-                            </strong>
+                            <strong>{{ "%.2f%%"|format(total_pct_base.valor) }}</strong>
                         </td>
                         <td class="text-end">
-                            <strong>
-                                {{ "{:+.2f}%".format(total_ajustes.valor) }}
-                            </strong>
+                            <strong>{{ "%+.2f%%"|format(total_ajustes.valor) }}</strong>
                         </td>
                         <td class="text-end">
-                            <strong>
-                                {{ "{:.2f}%".format(total_pct_final.valor) }}
-                            </strong>
+                            <strong>{{ "%.2f%%"|format(total_pct_final.valor) }}</strong>
                         </td>
                     </tr>
                 </tbody>
@@ -383,84 +383,59 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% set total_arrecadacao = namespace(valor=0) %}
-                        {% set total_pct_arrecadacao = namespace(valor=0) %}
-                        {% set total_ajuste = namespace(valor=0) %}
-                        {% set total_pct_final = namespace(valor=0) %}
+                        {% set total_arrecadacao_permanece = namespace(valor=0) %}
+                        {% set total_pct_arrecadacao_permanece = namespace(valor=0) %}
+                        {% set total_ajuste_permanece = namespace(valor=0) %}
+                        {% set total_pct_final_permanece = namespace(valor=0) %}
 
                         {% for item in resultados_calculo if item.idx != 'TOTAL' %}
                         <tr>
                             <td>{{ item.idx }}</td>
                             <td>{{ item.empresa }}</td>
                             <td class="text-end">
-                                {% if item.arrecadacao is defined and item.arrecadacao is not none %}
-                                    {% set total_arrecadacao.valor = total_arrecadacao.valor + item.arrecadacao %}
-                                    {{ "R$ {:,.2f}".format(item.arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                {% else %}
-                                    R$ 0,00
-                                {% endif %}
+                                {% set arrecadacao_item = item.arrecadacao|default(0) %}
+                                {% set total_arrecadacao_permanece.valor = total_arrecadacao_permanece.valor + arrecadacao_item %}
+                                {{ "R$ {:,.2f}".format(arrecadacao_item).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                             </td>
                             <td class="text-end">
-                                {% if item.pct_arrecadacao is defined and item.pct_arrecadacao is not none %}
-                                    {% set total_pct_arrecadacao.valor = total_pct_arrecadacao.valor + item.pct_arrecadacao %}
-                                    {{ "{:.2f}%".format(item.pct_arrecadacao) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set pct_arrecadacao_item = item.pct_arrecadacao|default(0) %}
+                                {% set total_pct_arrecadacao_permanece.valor = total_pct_arrecadacao_permanece.valor + pct_arrecadacao_item %}
+                                {{ "%.2f%%"|format(pct_arrecadacao_item) }}
                             </td>
                             <td class="text-end">
-                                {% if item.ajuste is defined and item.ajuste is not none %}
-                                    {% set total_ajuste.valor = total_ajuste.valor + item.ajuste %}
-                                    {{ "{:+.2f}%".format(item.ajuste) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set ajuste_item = item.ajuste|default(0) %}
+                                {% set total_ajuste_permanece.valor = total_ajuste_permanece.valor + ajuste_item %}
+                                {{ "%+.2f%%"|format(ajuste_item) }}
                             </td>
                             <td class="text-end">
-                                {% if item.pct_final is defined and item.pct_final is not none %}
-                                    {% set total_pct_final.valor = total_pct_final.valor + item.pct_final %}
-                                    {{ "{:.2f}%".format(item.pct_final) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set pct_final_item = item.pct_final|default(0) %}
+                                {% set total_pct_final_permanece.valor = total_pct_final_permanece.valor + pct_final_item %}
+                                {{ "%.2f%%"|format(pct_final_item) }}
                             </td>
                         </tr>
                         {% endfor %}
-                        {% for item in resultados_calculo if item.idx == 'TOTAL' %}
+
                         <tr class="table-secondary">
                             <td colspan="2"><strong>Total</strong></td>
                             <td class="text-end">
                                 <strong>
-                                    {% if item.arrecadacao is defined and item.arrecadacao is not none %}
-                                        {{ "R$ {:,.2f}".format(item.arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                    {% else %}
-                                        {{ "R$ {:,.2f}".format(total_arrecadacao.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                    {% endif %}
+                                    {{ "R$ {:,.2f}".format(total_arrecadacao_permanece.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                 </strong>
                             </td>
                             <td class="text-end">
                                 <strong>
-                                    {% if item.pct_arrecadacao is defined and item.pct_arrecadacao is not none %}
-                                        {{ "{:.2f}%".format(item.pct_arrecadacao) }}
-                                    {% else %}
-                                        {{ "{:.2f}%".format(total_pct_arrecadacao.valor) }}
-                                    {% endif %}
+                                    {{ "%.2f%%"|format(total_pct_arrecadacao_permanece.valor) }}
                                 </strong>
                             </td>
                             <td class="text-end">
                                 <strong>
-                                    {% if item.ajuste is defined and item.ajuste is not none %}
-                                        {{ "{:+.2f}%".format(item.ajuste) }}
-                                    {% else %}
-                                        {{ "{:+.2f}%".format(total_ajuste.valor) }}
-                                    {% endif %}
+                                    {{ "%+.2f%%"|format(total_ajuste_permanece.valor) }}
                                 </strong>
                             </td>
                             <td class="text-end">
-                                <strong>100,00%</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_final_permanece.valor) }}</strong>
                             </td>
                         </tr>
-                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -488,10 +463,10 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% set total_contratos = namespace(valor=0) %}
-                        {% set total_pct_distribuicao = namespace(valor=0) %}
-                        {% set total_ajuste = namespace(valor=0) %}
-                        {% set total_pct_final = namespace(valor=0) %}
+                        {% set total_contratos_novas_final = namespace(valor=0) %}
+                        {% set total_pct_distribuicao_novas = namespace(valor=0) %}
+                        {% set total_ajuste_novas = namespace(valor=0) %}
+                        {% set total_pct_final_novas = namespace(valor=0) %}
 
                         {% for item in resultados_calculo if item.idx != 'TOTAL' %}
                         <tr>
@@ -499,74 +474,43 @@
                             <td>{{ item.empresa }}</td>
                             <td>{{ item.situacao }}</td>
                             <td class="text-end">
-                                {% if item.contratos is defined and item.contratos is not none %}
-                                    {% set total_contratos.valor = total_contratos.valor + item.contratos %}
-                                    {{ "{:,.0f}".format(item.contratos).replace(',', '.') }}
-                                {% else %}
-                                    0
-                                {% endif %}
+                                {% set contratos_item = item.contratos|default(0) %}
+                                {% set total_contratos_novas_final.valor = total_contratos_novas_final.valor + contratos_item %}
+                                {{ "{:,.0f}".format(contratos_item).replace(',', '.') }}
                             </td>
                             <td class="text-end">
-                                {% if item.pct_distribuicao is defined and item.pct_distribuicao is not none %}
-                                    {% set total_pct_distribuicao.valor = total_pct_distribuicao.valor + item.pct_distribuicao %}
-                                    {{ "{:.2f}%".format(item.pct_distribuicao) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set pct_distribuicao_item = item.pct_distribuicao|default(0) %}
+                                {% set total_pct_distribuicao_novas.valor = total_pct_distribuicao_novas.valor + pct_distribuicao_item %}
+                                {{ "%.2f%%"|format(pct_distribuicao_item) }}
                             </td>
                             <td class="text-end">
-                                {% if item.ajuste is defined and item.ajuste is not none %}
-                                    {% set total_ajuste.valor = total_ajuste.valor + item.ajuste %}
-                                    {{ "{:+.2f}%".format(item.ajuste) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set ajuste_item = item.ajuste|default(0) %}
+                                {% set total_ajuste_novas.valor = total_ajuste_novas.valor + ajuste_item %}
+                                {{ "%+.2f%%"|format(ajuste_item) }}
                             </td>
                             <td class="text-end">
-                                {% if item.pct_final is defined and item.pct_final is not none %}
-                                    {% set total_pct_final.valor = total_pct_final.valor + item.pct_final %}
-                                    {{ "{:.2f}%".format(item.pct_final) }}
-                                {% else %}
-                                    0,00%
-                                {% endif %}
+                                {% set pct_final_item = item.pct_final|default(0) %}
+                                {% set total_pct_final_novas.valor = total_pct_final_novas.valor + pct_final_item %}
+                                {{ "%.2f%%"|format(pct_final_item) }}
                             </td>
                         </tr>
                         {% endfor %}
-                        {% for item in resultados_calculo if item.idx == 'TOTAL' %}
+
                         <tr class="table-secondary">
                             <td colspan="3"><strong>Total</strong></td>
                             <td class="text-end">
-                                <strong>
-                                    {% if item.contratos is defined and item.contratos is not none %}
-                                        {{ "{:,.0f}".format(item.contratos).replace(',', '.') }}
-                                    {% else %}
-                                        {{ "{:,.0f}".format(total_contratos.valor).replace(',', '.') }}
-                                    {% endif %}
-                                </strong>
+                                <strong>{{ "{:,.0f}".format(total_contratos_novas_final.valor).replace(',', '.') }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>
-                                    {% if item.pct_distribuicao is defined and item.pct_distribuicao is not none %}
-                                        {{ "{:.2f}%".format(item.pct_distribuicao) }}
-                                    {% else %}
-                                        {{ "{:.2f}%".format(total_pct_distribuicao.valor) }}
-                                    {% endif %}
-                                </strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_distribuicao_novas.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>
-                                    {% if item.ajuste is defined and item.ajuste is not none %}
-                                        {{ "{:+.2f}%".format(item.ajuste) }}
-                                    {% else %}
-                                        {{ "{:+.2f}%".format(total_ajuste.valor) }}
-                                    {% endif %}
-                                </strong>
+                                <strong>{{ "%+.2f%%"|format(total_ajuste_novas.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>100,00%</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_final_novas.valor) }}</strong>
                             </td>
                         </tr>
-                        {% endfor %}
                     </tbody>
                 </table>
             </div>
@@ -624,7 +568,6 @@
         </div>
     </div>
 </div>
-
 <style>
     .table thead th { text-align: center; vertical-align: middle; background-color: #007bff; color: white; }
     .table th, .table td {
