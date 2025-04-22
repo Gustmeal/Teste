@@ -164,6 +164,56 @@
     </div>
     {% endif %}
 
+<!-- [2] Distribuição de Contratos por Situação -->
+    {% if qtde_empresas_permanece is defined and qtde_empresas_novas is defined and qtde_contratos_permanece is defined and qtde_contratos_novas is defined %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">[2] Distribuição de Contratos por Situação</h5>
+        </div>
+        <div class="card-body table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Situação</th>
+                        <th>Qtde Empresas</th>
+                        <th>Qtde Contratos</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>PERMANECEM</td>
+                        <td>{{ qtde_empresas_permanece }}</td>
+                        <td>{{ "{:,}".format(qtde_contratos_permanece).replace(',', '.') }}</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>NOVAS</td>
+                        <td>{{ qtde_empresas_novas }}</td>
+                        <td>{{ "{:,}".format(qtde_contratos_novas).replace(',', '.') }}</td>
+                    </tr>
+                    <tr class="table-secondary">
+                        <td colspan="2"><strong>TOTAL</strong></td>
+                        <td><strong>{{ qtde_empresas_permanece + qtde_empresas_novas }}</strong></td>
+                        <td><strong>{{ "{:,}".format(num_contratos).replace(',', '.') }}</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="mt-2">
+                {% set qtde_total_empresas = qtde_empresas_permanece + qtde_empresas_novas %}
+                {% set contratos_por_empresa = 0 %}
+                {% if qtde_total_empresas > 0 %}
+                    {% set contratos_por_empresa = num_contratos / qtde_total_empresas %}
+                {% endif %}
+                <p class="mb-0 text-muted">Qtde de contratos por empresa:
+                    {{ "{:,.0f}".format(contratos_por_empresa).replace(',', '.') }}
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- [3] Distribuição de Contratos para Empresas que Permanecem -->
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">

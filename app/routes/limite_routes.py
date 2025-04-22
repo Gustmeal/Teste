@@ -27,6 +27,13 @@ def truncate_decimal(valor, casas=2):
     fator = 10 ** casas
     return int(valor * fator) / fator
 
+@limite_bp.app_template_filter('truncate_2dec')
+def truncate_2dec_filter(value):
+    """Filtro Jinja2 para truncar valores com duas casas decimais."""
+    if isinstance(value, (int, float)):
+        return "{0:.2f}".format(int(value * 100) / 100)
+    return value
+
 @limite_bp.route('/limites')
 @login_required
 def lista_limites():
