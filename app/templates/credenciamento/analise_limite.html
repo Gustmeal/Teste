@@ -45,123 +45,101 @@
 
 
 {% if resultados_calculo %}
-    <!-- [1] Participação na Arrecadação com Redistribuição, Ajuste e Novo Final -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-danger text-white">
-            <h5 class="mb-0">[1] Participação na Arrecadação</h5>
-        </div>
-        <div class="card-body">
-            <table class="table table-bordered table-sm text-center align-middle">
-                <thead style="background-color: #007bff; color: white;">
-                    <tr>
-                        <th>#</th>
-                        <th>Empresa</th>
-                        <th>Situação</th>
-                        <th>Arrecadação</th>
-                        <th>% Arrecadação</th>
-                        <th>% Redistribuído</th>
-                        <th>% Novo</th>
-                        <th>Ajuste</th>
-                        <th>% NovoFinal</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% set total_arrecadacao = namespace(valor=0) %}
-                    {% set total_pct_arrecadacao = namespace(valor=0) %}
-                    {% set total_pct_redistribuido = namespace(valor=0) %}
-                    {% set total_pct_novo = namespace(valor=0) %}
-                    {% set total_ajuste = namespace(valor=0) %}
-                    {% set total_pct_novofinal = namespace(valor=0) %}
-
-                    {% for item in resultados_calculo if item.idx != 'TOTAL' and item.situacao != 'NOVA' %}
-                    <tr>
-                        <td>{{ item.idx }}</td>
-                        <td>{{ item.empresa }}</td>
-                        <td>
-                            {% if item.situacao == 'PERMANECE' %}
-                                <span class="badge bg-success">PERMANECE</span>
-                            {% elif item.situacao == 'DESCREDENCIADO' or item.situacao == 'SAI' %}
-                                <span class="badge bg-danger">DESCREDENCIADA</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% set arrec = item.arrecadacao|default(0) %}
-                            {% set total_arrecadacao.valor = total_arrecadacao.valor + arrec %}
-                            {% if arrec > 0 %}
-                                {{ "R$ {:,.2f}".format(arrec).replace(",", "#").replace(".", ",").replace("#", ".") }}
-                            {% else %}
-                                {{ "R$ 0,00" }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% set pct = item.pct_arrecadacao|default(0) %}
-                            {% set total_pct_arrecadacao.valor = total_pct_arrecadacao.valor + pct %}
-                            {{ "%.6f%%"|format(pct) }}
-                        </td>
-                        <td class="text-end">
-                            {% if item.situacao == 'PERMANECE' %}
-                                {% set redistrib = item.pct_redistribuido|default(0) %}
-                                {% set total_pct_redistribuido.valor = total_pct_redistribuido.valor + redistrib %}
-                                {{ "%.6f%%"|format(redistrib) }}
-                            {% else %}
-                                {{ "0,000000%" }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if item.situacao == 'PERMANECE' %}
-                                {% set pct_novo = item.pct_novo_truncado|default(0) %}
-                                {% set total_pct_novo.valor = total_pct_novo.valor + pct_novo %}
-                                {{ "%.2f%%"|format(pct_novo) }}
-                            {% else %}
-                                {{ "0,00%" }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if item.situacao == 'PERMANECE' %}
-                                {% set ajuste = item.ajuste|default(0) %}
-                                {% set total_ajuste.valor = total_ajuste.valor + ajuste %}
-                                {{ "%.2f%%"|format(ajuste) }}
-                            {% else %}
-                                {{ "0,00%" }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">
-                            {% if item.situacao == 'PERMANECE' %}
-                                {% set pct_novofinal = item.pct_novo_truncado + item.ajuste|default(0) %}
-                                {% set total_pct_novofinal.valor = total_pct_novofinal.valor + pct_novofinal %}
-                                {{ "%.2f%%"|format(pct_novofinal) }}
-                            {% else %}
-                                {{ "0,00%" }}
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-
-                    <!-- Linha de totais -->
-                    <tr class="table-secondary">
-                        <td colspan="3"><strong>TOTAL</strong></td>
-                        <td class="text-end"><strong>{{ "R$ {:,.2f}".format(total_arrecadacao.valor).replace(",", "#").replace(".", ",").replace("#", ".") }}</strong></td>
-                        <td class="text-end"><strong>{{ "%.6f%%"|format(total_pct_arrecadacao.valor) }}</strong></td>
-                        <td class="text-end"><strong>{{ "%.6f%%"|format(total_pct_redistribuido.valor) }}</strong></td>
-                        <td class="text-end"><strong>{{ "%.2f%%"|format(total_pct_novo.valor) }}</strong></td>
-                        <td class="text-end"><strong>{{ "%.2f%%"|format(total_ajuste.valor) }}</strong></td>
-                        <td class="text-end"><strong>{{ "%.2f%%"|format(total_pct_novofinal.valor) }}</strong></td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div class="mt-3">
-                <div class="alert alert-info">
-                    <p class="mb-0"><strong>Legenda:</strong></p>
-                    <ul class="mb-0">
-                        <li><strong>A: Soma do % das empresas que saem:</strong> {{ "%.6f%%"|format(total_pct_que_saem) }}</li>
-                        <li><strong>B: Quantidade de empresas que permanecem:</strong> {{ qtde_empresas_permanece }}</li>
-                        <li><strong>C: % a ser redistribuído igualitariamente (A/B):</strong> {{ "%.6f%%"|format(valor_redistribuicao) }}</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
+<!-- [1] Participação na Arrecadação -->
+<div class="card shadow mb-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0">[1] Participação na Arrecadação</h5>
     </div>
+    <div class="card-body">
+        <table class="table table-bordered table-sm text-center align-middle">
+            <thead style="background-color: #007bff; color: white;">
+                <tr>
+                    <th>#</th>
+                    <th>Empresa</th>
+                    <th>Situação</th>
+                    <th>Arrecadação</th>
+                    <th>% Arrecadação</th>
+                    <th>% Redistribuído</th>
+                    <th>% Novo</th>
+                    <th>Ajuste</th>
+                    <th>% NovoFinal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in resultados_calculo if item.idx != 'TOTAL' and item.situacao != 'NOVA' %}
+                <tr>
+                    <td>{{ item.idx }}</td>
+                    <td>{{ item.empresa }}</td>
+                    <td>
+                        {% if item.situacao == 'PERMANECE' %}
+                            <span class="badge bg-success">PERMANECE</span>
+                        {% elif item.situacao == 'DESCREDENCIADA' or item.situacao == 'SAI' %}
+                            <span class="badge bg-danger">DESCREDENCIADA</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% set arrec = item.arrecadacao|default(0) %}
+                        {% if arrec > 0 %}
+                            {{ "R$ {:,.2f}".format(arrec).replace(",", "#").replace(".", ",").replace("#", ".") }}
+                        {% else %}
+                            {{ "R$ 0,00" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% set pct = item.pct_arrecadacao|default(0) %}
+                        {{ "%.6f%%"|format(pct) }}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set redistrib = item.pct_redistribuido|default(0) %}
+                            {{ "%.6f%%"|format(redistrib) }}
+                        {% else %}
+                            {{ "0,000000%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set pct_novo = item.pct_novo_truncado|default(0) %}
+                            {{ "%.2f%%"|format(pct_novo) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set ajuste = item.ajuste|default(0) %}
+                            {{ "%.2f%%"|format(ajuste) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set pct_novofinal = item.pct_novofinal|default(0) %}
+                            {{ "%.2f%%"|format(pct_novofinal) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+
+                <!-- Linha de totais -->
+                {% for item in resultados_calculo if item.idx == 'TOTAL' %}
+                <tr class="table-secondary">
+                    <td colspan="3"><strong>TOTAL</strong></td>
+                    <td class="text-end"><strong>{{ "R$ {:,.2f}".format(item.arrecadacao).replace(",", "#").replace(".", ",").replace("#", ".") }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.6f%%"|format(item.pct_arrecadacao) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.6f%%"|format(item.pct_redistribuido) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.2f%%"|format(item.pct_novo) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.2f%%"|format(item.ajuste) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.2f%%"|format(item.pct_novofinal) }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
     {% endif %}
 
 <!-- [2] Distribuição de Contratos por Situação -->
@@ -215,70 +193,70 @@
     {% endif %}
 
     <!-- [3] Distribuição de Contratos para Empresas que Permanecem -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">[3] Distribuição de Contratos para Empresas que Permanecem</h5>
-        </div>
-        <div class="card-body table-responsive">
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Empresa</th>
-                        <th>Situação</th>
-                        <th>%NOVO</th>
-                        <th>QTDE CONTRATOS</th>
-                        <th>AJUSTE</th>
-                        <th>TOTAL</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% set total_percentual = namespace(valor=0) %}
-                    {% set total_contratos = namespace(valor=0) %}
-                    {% set total_ajuste = namespace(valor=0) %}
-                    {% set total_total = namespace(valor=0) %}
-
-                    {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
-                    <tr>
-                        <td>{{ item.idx }}</td>
-                        <td>{{ item.empresa }}</td>
-                        <td>
-                            <span class="badge bg-success">PERMANECE</span>
-                        </td>
-                        <td class="text-end">
-                            {% set pct_novo = item.pct_novo_truncado|default(0) %}
-                            {% set total_percentual.valor = total_percentual.valor + pct_novo %}
-                            {{ "%.2f%%"|format(pct_novo) }}
-                        </td>
-                        <td class="text-end">
-                            {% set contratos = item.contratos|default(0) %}
-                            {% set total_contratos.valor = total_contratos.valor + contratos %}
-                            {{ "{:,}".format(contratos).replace(',', '.') }}
-                        </td>
-                        <td class="text-end">
-                            {% set ajuste = item.ajuste_contratos|default(0) %}
-                            {% set total_ajuste.valor = total_ajuste.valor + ajuste %}
-                            {{ ajuste }}
-                        </td>
-                        <td class="text-end">
-                            {% set total = contratos + ajuste %}
-                            {% set total_total.valor = total_total.valor + total %}
-                            {{ "{:,}".format(total).replace(',', '.') }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-
-                    <tr class="table-secondary">
-                        <td colspan="3"><strong>TOTAL</strong></td>
-                        <td class="text-end"><strong>{{ "%.2f%%"|format(total_percentual.valor) }}</strong></td>
-                        <td class="text-end"><strong>{{ "{:,}".format(total_contratos.valor).replace(',', '.') }}</strong></td>
-                        <td class="text-end"><strong>{{ total_ajuste.valor }}</strong></td>
-                        <td class="text-end"><strong>{{ "{:,}".format(total_total.valor).replace(',', '.') }}</strong></td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">[3] Distribuição de Contratos para Empresas que Permanecem</h5>
     </div>
+    <div class="card-body table-responsive">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Empresa</th>
+                    <th>Situação</th>
+                    <th>%NOVO</th>
+                    <th>QTDE CONTRATOS</th>
+                    <th>AJUSTE</th>
+                    <th>TOTAL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set total_percentual = namespace(valor=0) %}
+                {% set total_contratos = namespace(valor=0) %}
+                {% set total_ajuste = namespace(valor=0) %}
+                {% set total_total = namespace(valor=0) %}
+
+                {% for item in resultados_tabela3 %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ item.empresa }}</td>
+                    <td>
+                        <span class="badge bg-success">PERMANECE</span>
+                    </td>
+                    <td class="text-end">
+                        {% set pct_novo = item.pct_novofinal|default(0) %}
+                        {% set total_percentual.valor = total_percentual.valor + pct_novo %}
+                        {{ "%.2f%%"|format(pct_novo) }}
+                    </td>
+                    <td class="text-end">
+                        {% set contratos = item.contratos|default(0) %}
+                        {% set total_contratos.valor = total_contratos.valor + contratos %}
+                        {{ "{:,}".format(contratos).replace(',', '.') }}
+                    </td>
+                    <td class="text-end">
+                        {% set ajuste = item.ajuste|default(0) %}
+                        {% set total_ajuste.valor = total_ajuste.valor + ajuste %}
+                        {{ ajuste }}
+                    </td>
+                    <td class="text-end">
+                        {% set total = item.total|default(0) %}
+                        {% set total_total.valor = total_total.valor + total %}
+                        {{ "{:,}".format(total).replace(',', '.') }}
+                    </td>
+                </tr>
+                {% endfor %}
+
+                <tr class="table-secondary">
+                    <td colspan="3"><strong>TOTAL</strong></td>
+                    <td class="text-end"><strong>{{ "%.2f%%"|format(total_percentual.valor) }}</strong></td>
+                    <td class="text-end"><strong>{{ "{:,}".format(total_contratos.valor).replace(',', '.') }}</strong></td>
+                    <td class="text-end"><strong>{{ total_ajuste.valor }}</strong></td>
+                    <td class="text-end"><strong>{{ "{:,}".format(total_total.valor).replace(',', '.') }}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
 
     <!-- [4] Distribuição de Contratos para Empresas Novas -->
     {% if qtde_empresas_novas > 0 %}
