@@ -216,9 +216,9 @@
                 {% set total_ajuste = namespace(valor=0) %}
                 {% set total_total = namespace(valor=0) %}
 
-                {% for item in resultados_tabela3 %}
+                {% for item in resultados_calculo if item.situacao == 'PERMANECE' and item.idx != 'TOTAL' %}
                 <tr>
-                    <td>{{ loop.index }}</td>
+                    <td>{{ item.idx }}</td>
                     <td>{{ item.empresa }}</td>
                     <td>
                         <span class="badge bg-success">PERMANECE</span>
@@ -229,17 +229,17 @@
                         {{ "%.2f%%"|format(pct_novo) }}
                     </td>
                     <td class="text-end">
-                        {% set contratos = item.contratos|default(0) %}
+                        {% set contratos = item.contratos|default(0) - item.ajuste_contratos|default(0) %}
                         {% set total_contratos.valor = total_contratos.valor + contratos %}
                         {{ "{:,}".format(contratos).replace(',', '.') }}
                     </td>
                     <td class="text-end">
-                        {% set ajuste = item.ajuste|default(0) %}
+                        {% set ajuste = item.ajuste_contratos|default(0) %}
                         {% set total_ajuste.valor = total_ajuste.valor + ajuste %}
                         {{ ajuste }}
                     </td>
                     <td class="text-end">
-                        {% set total = item.total|default(0) %}
+                        {% set total = item.contratos|default(0) %}
                         {% set total_total.valor = total_total.valor + total %}
                         {{ "{:,}".format(total).replace(',', '.') }}
                     </td>
