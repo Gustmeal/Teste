@@ -1623,3 +1623,71 @@ def detalhe_limite(id):
         dt_fim=dt_fim,
         no_empresa=no_empresa
     )
+
+
+@limite_bp.route('/limites/distribuir-contratos', methods=['GET', 'POST'])
+@login_required
+def distribuir_contratos():
+    """
+    Página para distribuição de contratos conforme limites cadastrados.
+    Implementa o processo descrito no documento "Distribuição para cobrança.docx".
+    """
+    # Obter editais e períodos para o formulário
+    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
+
+    # Status da execução
+    resultados = None
+
+    # Se for POST, processar a distribuição
+    if request.method == 'POST':
+        try:
+            edital_id = request.form.get('edital_id', type=int)
+            periodo_id = request.form.get('periodo_id', type=int)
+
+            if not edital_id or not periodo_id:
+                flash('Edital e período são obrigatórios', 'warning')
+                return render_template(
+                    'credenciamento/distribuir_contratos.html',
+                    editais=editais,
+                    periodos=periodos
+                )
+
+            # Importar a função para selecionar contratos distribuíveis
+            from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
+                processar_distribuicao_completa
+
+            # Opção para execução completa ou apenas seleção de contratos
+            modo_execucao = request.form.get('modo_execucao', 'selecao')
+
+            if modo_execucao == 'completo':
+                # Executar o processo completo de distribuição
+                resultados = processar_distribuicao_completa(edital_id, periodo_id)
+
+                if resultados['contratos_distribuiveis'] > 0:
+                    flash(
+                        f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos de um total de {resultados["contratos_distribuiveis"]} contratos distribuíveis.',
+                        'success')
+                else:
+                    flash('Nenhum contrato disponível para distribuição.', 'warning')
+            else:
+                # Executar apenas a seleção de contratos distribuíveis
+                num_contratos = selecionar_contratos_distribuiveis()
+
+                if num_contratos > 0:
+                    flash(f'Seleção de contratos concluída. {num_contratos} contratos disponíveis para distribuição.',
+                          'success')
+                    resultados = {'contratos_distribuiveis': num_contratos}
+                else:
+                    flash('Nenhum contrato disponível para distribuição.', 'warning')
+
+        except Exception as e:
+            flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
+
+    # Renderizar o formulário inicial
+    return render_template(
+        'credenciamento/distribuir_contratos.html',
+        editais=editais,
+        periodos=periodos,
+        resultados=resultados
+    )

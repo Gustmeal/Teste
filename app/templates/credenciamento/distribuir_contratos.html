@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Distribuição de Contratos</h1>
+    </div>
+
+    <!-- Formulário de parâmetros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Parâmetros para Distribuição</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('limite.distribuir_contratos') }}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Edital <span class="text-danger">*</span></label>
+                        <select name="edital_id" class="form-select" required>
+                            <option value="">Selecione um edital</option>
+                            {% for edital in editais %}
+                                <option value="{{ edital.ID }}">
+                                    {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Período <span class="text-danger">*</span></label>
+                        <select name="periodo_id" class="form-select" required>
+                            <option value="">Selecione um período</option>
+                            {% for periodo in periodos %}
+                                <option value="{{ periodo.ID }}">
+                                    {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }}
+                                    a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-12">
+                        <label class="form-label">Modo de Execução</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="modo_execucao" id="modo_selecao"
+                                   value="selecao" checked>
+                            <label class="form-check-label" for="modo_selecao">
+                                Apenas selecionar contratos distribuíveis
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="modo_execucao" id="modo_completo"
+                                   value="completo">
+                            <label class="form-check-label" for="modo_completo">
+                                Executar processo completo de distribuição
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <button type="submit" class="btn btn-success px-4">
+                        <i class="fas fa-random me-2"></i> Iniciar Processo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Área para exibir resultados -->
+    {% if resultados %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Resultados do Processamento</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Etapa</th>
+                            <th class="text-center">Contratos Processados</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 1 -->
+                        <tr>
+                            <td>1. Seleção de contratos distribuíveis</td>
+                            <td class="text-center">{{ resultados.contratos_distribuiveis|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.contratos_distribuiveis|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Sem contratos</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 2 -->
+                        <tr>
+                            <td>2. Contratos com acordo vigente (empresas que permanecem)</td>
+                            <td class="text-center">{{ resultados.acordos_empresas_permanece|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.acordos_empresas_permanece|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 3 -->
+                        <tr>
+                            <td>3. Contratos com acordo vigente (empresas descredenciadas)</td>
+                            <td class="text-center">{{ resultados.acordos_empresas_descredenciadas|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.acordos_empresas_descredenciadas|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 4 -->
+                        <tr>
+                            <td>4. Regra de arrasto (contratos com acordo)</td>
+                            <td class="text-center">{{ resultados.regra_arrasto_acordos|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.regra_arrasto_acordos|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 5 -->
+                        <tr>
+                            <td>5. Demais contratos sem acordo - regra do arrasto</td>
+                            <td class="text-center">{{ resultados.regra_arrasto_sem_acordo|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.regra_arrasto_sem_acordo|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 6 -->
+                        <tr>
+                            <td>6. Demais contratos sem acordo</td>
+                            <td class="text-center">{{ resultados.demais_contratos|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.demais_contratos|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Processo descritivo -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Processo de Distribuição de Contratos</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                O processo de distribuição seguirá as seguintes etapas:
+            </div>
+            <ol class="list-group list-group-numbered mb-4">
+                <li class="list-group-item">Seleção de contratos distribuíveis</li>
+                <li class="list-group-item">Contratos com acordo vigente de empresa que permanece</li>
+                <li class="list-group-item">Contratos com acordo vigente de empresa descredenciada</li>
+                <li class="list-group-item">Contratos com acordo - regra do arrasto</li>
+                <li class="list-group-item">Demais contratos sem acordo - regra do arrasto</li>
+                <li class="list-group-item">Demais contratos sem acordo</li>
+            </ol>
+        </div>
+    </div>
+</div>
+{% endblock %}
