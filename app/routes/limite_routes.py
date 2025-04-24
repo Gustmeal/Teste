@@ -1264,10 +1264,34 @@ def salvar_limites():
 
         # Inserir os novos limites
         limites_criados = 0
+        # Na função salvar_limites
         for i in range(len(empresas_data)):
             if situacoes[i].upper() == 'DESCREDENCIADA':
                 continue
-            percentual = truncate_decimal(float(percentuais[i] or 0.0), 2)
+
+            # Converter para string, depois para float para manter a precisão original
+            percentual_str = percentuais[i] or '0.0'
+
+            # Método mais confiável para truncar: converter para string e manipular a string
+            try:
+                # Convertemos para float primeiro
+                valor_float = float(percentual_str)
+
+                # Truncamos diretamente manipulando a string (evita arredondamentos do float)
+                valor_str = str(valor_float)
+                partes = valor_str.split('.')
+
+                if len(partes) == 1:
+                    # Número inteiro
+                    percentual_truncado = float(partes[0])
+                else:
+                    # Truncar decimal para 2 casas sem arredondar
+                    inteiro = partes[0]
+                    decimal = partes[1][:2].ljust(2, '0')  # Garantir 2 casas
+                    percentual_truncado = float(f"{inteiro}.{decimal}")
+            except:
+                # Fallback em caso de erro
+                percentual_truncado = 0.0
 
             novo_limite = LimiteDistribuicao(
                 ID_EDITAL=edital_id,
@@ -1277,7 +1301,7 @@ def salvar_limites():
                 DT_APURACAO=dt_apuracao,
                 QTDE_MAXIMA=None,
                 VALOR_MAXIMO=None,
-                PERCENTUAL_FINAL=percentual
+                PERCENTUAL_FINAL=percentual_truncado
             )
             db.session.add(novo_limite)
             limites_criados += 1

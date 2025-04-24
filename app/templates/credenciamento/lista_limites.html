@@ -91,7 +91,7 @@
                         <td>{{ limite.criterio_descricao }}</td>
                         <td class="text-end">{{ limite.QTDE_MAXIMA|br_number if limite.QTDE_MAXIMA else "-" }}</td>
                         <td class="text-end">{{ limite.VALOR_MAXIMO|br_currency if limite.VALOR_MAXIMO else "-" }}</td>
-                        <td class="text-end">{{ (limite.PERCENTUAL_FINAL|float)|string + "%" if limite.PERCENTUAL_FINAL else "-" }}</td>
+                       <td class="text-end">{{ "%.2f%%"|format(limite.PERCENTUAL_FINAL) if limite.PERCENTUAL_FINAL else "-" }}</td>
                         <td class="text-center">
                             <a href="{{ url_for('limite.editar_limite', id=limite.ID) }}"
                                class="btn btn-sm btn-outline-primary me-1">
