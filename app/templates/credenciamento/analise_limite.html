@@ -305,85 +305,87 @@
 
   <!-- [5] Percentuais Finais de Distribuição -->
 <div class="card shadow mb-4">
-    <div class="card-header bg-primary text-white">
-        <h5 class="mb-0">[{% if tipo_calculo == 'mistas' and qtde_empresas_novas > 0 %}5{% else %}4{% endif %}] Percentuais Finais de Distribuição</h5>
-    </div>
-    <div class="card-body table-responsive">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Empresa</th>
-                    <th>Situação</th>
-                    <th>Qtde Contratos</th>
-                    <th>% Base</th>
-                    <th>Ajuste %</th>
-                    <th>% Final</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% set total_contratos_final = namespace(valor=0) %}
-                {% set total_pct_base = namespace(valor=0) %}
-                {% set total_ajustes = namespace(valor=0) %}
-                {% set total_pct_final = namespace(valor=0) %}
+  <div class="card-header bg-primary text-white">
+    <h5 class="mb-0">
+      [{% if tipo_calculo == 'mistas' and qtde_empresas_novas > 0 %}5{% else %}4{% endif %}]
+      Percentuais Finais de Distribuição
+    </h5>
+  </div>
+  <div class="card-body table-responsive">
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Empresa</th>
+          <th>Situação</th>
+          <th>Qtde Contratos</th>
+          <th>% Base</th>
+          <th>Ajuste %</th>
+          <th>% Final</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set total_contratos_final = namespace(valor=0) %}
+        {% set total_pct_base       = namespace(valor=0) %}
+        {% set total_ajustes        = namespace(valor=0) %}
+        {% set total_pct_final      = namespace(valor=0) %}
 
-                <!-- Loop através das empresas, ignorando a linha TOTAL -->
-                {% for item in resultados_calculo if item.idx != 'TOTAL' %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ item.empresa }}</td>
-                    <td>
-                        {% if item.situacao == 'PERMANECE' %}
-                            <span class="badge bg-success">PERMANECE</span>
-                        {% elif item.situacao == 'NOVA' %}
-                            <span class="badge bg-info">NOVA</span>
-                        {% elif item.situacao == 'DESCREDENCIADO' or item.situacao == 'SAI' %}
-                            <span class="badge bg-danger">DESCREDENCIADA</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-end">
-                        {% set contratos = item.contratos|default(0) %}
-                        {% set total_contratos_final.valor = total_contratos_final.valor + contratos %}
-                        {{ "{:,}".format(contratos).replace(',', '.') }}
-                    </td>
-                    <td class="text-end">
-                        {% set pct_base = item.pct_distribuicao|default(0) %}
-                        {% set total_pct_base.valor = total_pct_base.valor + pct_base %}
-                        {{ "%.2f%%"|format(pct_base) }}
-                    </td>
-                    <td class="text-end">
-                        {% set ajuste = item.ajuste|default(0) %}
-                        {% set total_ajustes.valor = total_ajustes.valor + ajuste %}
-                        {{ "%.2f%%"|format(ajuste) }}
-                    </td>
-                    <td class="text-end">
-                        {% set pct_final = pct_base + ajuste %}
-                        {% set total_pct_final.valor = total_pct_final.valor + pct_final %}
-                        {{ "%.2f%%"|format(pct_final) }}
-                    </td>
-                </tr>
-                {% endfor %}
+        {% for item in resultados_calculo if item.idx != 'TOTAL' %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ item.empresa }}</td>
+            <td>
+              {% if item.situacao == 'PERMANECE' %}
+                <span class="badge bg-success">PERMANECE</span>
+              {% elif item.situacao == 'NOVA' %}
+                <span class="badge bg-info">NOVA</span>
+              {% elif item.situacao in ['DESCREDENCIADA','SAI'] %}
+                <span class="badge bg-danger">DESCREDENCIADA</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% set c = item.contratos|default(0) %}
+              {% set total_contratos_final.valor = total_contratos_final.valor + c %}
+              {{ "{:,}".format(c).replace(',', '.') }}
+            </td>
+            <td class="text-end">
+              {% set pb = item.pct_distribuicao|default(0) %}
+              {% set total_pct_base.valor = total_pct_base.valor + pb %}
+              {{ "%.2f%%"|format(pb) }}
+            </td>
+            <td class="text-end">
+              {% set aj = item.ajuste_pct|default(0) %}
+              {% set total_ajustes.valor = total_ajustes.valor + aj %}
+              {{ "%.2f%%"|format(aj) }}
+            </td>
+            <td class="text-end">
+              {% set pf = item.pct_final|default(0) %}
+              {% set total_pct_final.valor = total_pct_final.valor + pf %}
+              {{ "%.2f%%"|format(pf) }}
+            </td>
+          </tr>
+        {% endfor %}
 
-                <!-- Linha de totais calculada diretamente no template -->
-                <tr class="table-secondary">
-                    <td colspan="3"><strong>TOTAL</strong></td>
-                    <td class="text-end">
-                        <strong>{{ "{:,}".format(total_contratos_final.valor).replace(",", ".") }}</strong>
-                    </td>
-                    <td class="text-end">
-                        <strong>{{ "%.2f%%"|format(total_pct_base.valor) }}</strong>
-                    </td>
-                    <td class="text-end">
-                        <strong>{{ "%.2f%%"|format(total_ajustes.valor) }}</strong>
-                    </td>
-                    <td class="text-end">
-                        <strong>{{ "%.2f%%"|format(total_pct_final.valor) }}</strong>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+        <tr class="table-secondary">
+          <td colspan="3"><strong>TOTAL</strong></td>
+          <td class="text-end">
+            <strong>{{ "{:,}".format(total_contratos_final.valor).replace(',', '.') }}</strong>
+          </td>
+          <td class="text-end">
+            <strong>{{ "%.2f%%"|format(total_pct_base.valor) }}</strong>
+          </td>
+          <td class="text-end">
+            <strong>{{ "%.2f%%"|format(total_ajustes.valor) }}</strong>
+          </td>
+          <td class="text-end">
+            <strong>{{ "%.2f%%"|format(total_pct_final.valor) }}</strong>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </div>
+
 
 
     {% if todas_permanece and resultados_calculo %}
@@ -554,12 +556,12 @@
         <input type="hidden" name="periodo_id" value="{{ periodo.ID_PERIODO }}">
         <div id="camposEmpresasContainer">
             {% for item in resultados_calculo %}
-                {% if item.idx != 'TOTAL' and item.idx and item.situacao != 'DESCREDENCIADO' and item.situacao != 'SAI' %}
-                    <input type="hidden" name="empresa_id[]" value="{{ item.id_empresa }}">
-                    <input type="hidden" name="percentual_final[]" value="{{ item.pct_final|default(0) }}">
-                    <input type="hidden" name="contratos[]" value="{{ item.contratos|default(0) }}">
-                    <input type="hidden" name="situacao[]" value="{{ item.situacao|default('') }}">
-                {% endif %}
+              {% if item.idx != 'TOTAL'
+                    and (item.situacao == 'PERMANECE' or item.situacao == 'NOVA') %}
+                <input type="hidden" name="empresa_id[]"      value="{{ item.id_empresa }}">
+                <input type="hidden" name="percentual_final[]" value="{{ item.pct_final|default(0) }}">
+                <input type="hidden" name="situacao[]"         value="{{ item.situacao }}">
+              {% endif %}
             {% endfor %}
         </div>
     </form>

@@ -170,12 +170,17 @@ def selecionar_contratos():
         return 0
 
 
-def ajustar_percentuais_tabela1(empresas):
+def ajustar_percentuais_tabela1(empresas, include_total=False):
     """
     Ajusta os percentuais na tabela de participação na arrecadação (Tabela 1)
 
-    Agora só considera empresas com DS_CONDICAO 'PERMANECE' e 'DESCREDENCIADA';
-    ignora as 'NOVA'.
+    Considera empresas com DS_CONDICAO 'PERMANECE' e 'DESCREDENCIADA';
+    Distribui os ajustes de 0,01% por empresa em ordem decrescente de arrecadação.
+    Uma empresa só recebe o segundo incremento após todas receberem o primeiro.
+
+    Args:
+        empresas: Lista de objetos EmpresaParticipante
+        include_total: Se True, inclui linha de TOTAL nos resultados
     """
     # Converter objetos para dicionários, filtrando NOVAS
     dados_empresas = []
@@ -213,8 +218,10 @@ def ajustar_percentuais_tabela1(empresas):
         if e['situacao'] == 'PERMANECE':
             e['pct_redistribuido'] = pct_redistrib
             e['pct_novo'] = e['pct_arrecadacao'] + pct_redistrib
+            # Trunca valor em duas casas decimais (sem arredondamento)
             e['pct_novo_truncado'] = int(e['pct_novo'] * 100) / 100
             e['ajuste'] = 0.0
+            e['pct_novofinal'] = 0.0
         else:
             e['pct_redistribuido'] = 0.0
             e['pct_novo'] = 0.0
@@ -226,46 +233,67 @@ def ajustar_percentuais_tabela1(empresas):
     soma_trunc = sum(e['pct_novo_truncado'] for e in empresas_permanece)
     diferenca = 100.0 - soma_trunc
 
-    # Aplicar ajustes de 0.01% em ciclos
-    if diferenca > 0 and empresas_permanece:
-        empresas_por_arrec = sorted(empresas_permanece, key=lambda x: x['arrecadacao'], reverse=True)
-        ajustes = {e['id_empresa']: 0 for e in empresas_permanece}
-        ajustes_necess = int(diferenca * 100)
-        for _ in range(ajustes_necess):
-            min_aj = min(ajustes.values())
-            candidatos = [e for e in empresas_por_arrec if ajustes[e['id_empresa']] == min_aj]
-            sel = candidatos[0]
-            sel['ajuste'] += 0.01
-            ajustes[sel['id_empresa']] += 1
+    # IMPORTANTE: Nova implementação da distribuição de ajustes
+    # Ordenar empresas por arrecadação decrescente
+    empresas_ordenadas = sorted(empresas_permanece, key=lambda x: x['arrecadacao'], reverse=True)
 
-    # Calcular pct_novofinal e ajuste fino
-    for e in dados_empresas:
-        if e['situacao'] == 'PERMANECE':
-            e['pct_novofinal'] = e['pct_novo_truncado'] + e['ajuste']
-    soma_final = sum(e.get('pct_novofinal', 0) for e in empresas_permanece)
-    if abs(soma_final - 100.0) > 0.001 and empresas_permanece:
-        df = 100.0 - soma_final
-        emp0 = sorted(empresas_permanece, key=lambda x: x['arrecadacao'], reverse=True)[0]
-        emp0['ajuste'] += df
-        emp0['pct_novofinal'] += df
+    # Inicializar contadores de ajustes recebidos
+    ajustes_recebidos = {e['id_empresa']: 0 for e in empresas_ordenadas}
 
-    # Adicionar linha de TOTAL
-    total_row = {
-        'idx': 'TOTAL',
-        'empresa': 'TOTAL',
-        'situacao': '',
-        'arrecadacao': sum(e['arrecadacao'] for e in dados_empresas),
-        'pct_arrecadacao': sum(e['pct_arrecadacao'] for e in dados_empresas),
-        'pct_redistribuido': sum(e['pct_redistribuido'] for e in empresas_permanece),
-        'pct_novo': sum(e['pct_novo_truncado'] for e in empresas_permanece),
-        'pct_novo_truncado': sum(e['pct_novo_truncado'] for e in empresas_permanece),
-        'ajuste': sum(e['ajuste'] for e in empresas_permanece),
-        'pct_novofinal': sum(e.get('pct_novofinal', 0) for e in empresas_permanece)
-    }
-    dados_empresas.append(total_row)
+    # Calcular quantos incrementos de 0.01% são necessários
+    incrementos = int(diferenca * 100)  # Cada 0.01% = 1 incremento
+
+    # Distribuir incrementos um a um
+    for _ in range(incrementos):
+        # Encontrar a empresa que tem menos ajustes
+        min_ajustes = min(ajustes_recebidos.values())
+
+        # Empresas candidatas (com o menor número de ajustes)
+        candidatas = [e for e in empresas_ordenadas if ajustes_recebidos[e['id_empresa']] == min_ajustes]
+
+        # Em caso de empate, escolher a empresa com maior arrecadação
+        # (já está ordenado, então é a primeira da lista)
+        empresa_escolhida = candidatas[0]
+
+        # Incrementar o contador de ajustes
+        ajustes_recebidos[empresa_escolhida['id_empresa']] += 1
+
+        # Adicionar o ajuste à empresa
+        empresa_escolhida['ajuste'] += 0.01
+
+    # Calcular pct_novofinal para cada empresa
+    for e in empresas_permanece:
+        e['pct_novofinal'] = e['pct_novo_truncado'] + e['ajuste']
+
+    # Verificar o total final (deve ser exatamente 100%)
+    soma_final = sum(e['pct_novofinal'] for e in empresas_permanece)
+
+    # Ajuste fino se necessário (embora não deveria ser com a implementação acima)
+    if abs(soma_final - 100.0) > 0.0001 and empresas_permanece:
+        diferenca_final = 100.0 - soma_final
+        # Encontrar a empresa com menos ajustes para fazer o ajuste final
+        min_ajustes = min(ajustes_recebidos.values())
+        candidatas = [e for e in empresas_ordenadas if ajustes_recebidos[e['id_empresa']] == min_ajustes]
+        candidatas[0]['ajuste'] += diferenca_final
+        candidatas[0]['pct_novofinal'] = candidatas[0]['pct_novo_truncado'] + candidatas[0]['ajuste']
+
+    # Adicionar linha de TOTAL se solicitado
+    if include_total:
+        total_row = {
+            'idx': 'TOTAL',
+            'empresa': 'TOTAL',
+            'situacao': '',
+            'arrecadacao': sum(e['arrecadacao'] for e in dados_empresas),
+            'pct_arrecadacao': sum(e['pct_arrecadacao'] for e in dados_empresas),
+            'pct_redistribuido': sum(e['pct_redistribuido'] for e in empresas_permanece),
+            'pct_novo': sum(e['pct_novo'] for e in empresas_permanece),
+            'pct_novo_truncado': sum(e['pct_novo_truncado'] for e in empresas_permanece),
+            'ajuste': sum(e['ajuste'] for e in empresas_permanece),
+            'pct_novofinal': sum(e.get('pct_novofinal', 0) for e in empresas_permanece)
+        }
+        dados_empresas.append(total_row)
 
     return dados_empresas
-
 
 def distribuir_contratos_tabela3(empresas_permanece, total_contratos_permanece):
     """
@@ -358,73 +386,50 @@ def distribuir_restantes_tabela4(empresas_novas, total_contratos_novas):
 
 
 def ajustar_percentuais_tabela5(empresas_todas, total_contratos):
-    """
-    Ajusta percentuais finais (Tabela 5)
+    # 1) pct_base e init ajuste_pct
+    for e in empresas_todas:
+        if total_contratos > 0:
+            e['pct_base'] = int((e['contratos'] / total_contratos * 100) * 100) / 100
+        else:
+            e['pct_base'] = 0.0
+        e['ajuste_pct'] = 0.0
 
-    Args:
-        empresas_todas: Lista de todas as empresas com contratos já distribuídos
-        total_contratos: Total geral de contratos
+    # 2) calcula faltante
+    soma_base = sum(e['pct_base'] for e in empresas_todas)
+    faltante = int(round((100.00 - soma_base) * 100))
 
-    Returns:
-        Lista de empresas com percentuais finais
-    """
-    import random
+    # 3) ciclo distribuindo
+    perm = sorted(
+        [e for e in empresas_todas if e['situacao'] == 'PERMANECE'],
+        key=lambda x: x.get('arrecadacao', 0),
+        reverse=True
+    )
+    nov = [e for e in empresas_todas if e['situacao'] == 'NOVA']
+    ciclo = perm + nov
+    ciclo_len = len(ciclo)
 
-    # Calcular percentuais base
-    for empresa in empresas_todas:
-        # %Base = contratos / total_contratos * 100 (truncado a 2 casas)
-        empresa['pct_base'] = int((empresa['contratos'] / total_contratos * 100) * 100) / 100
-        empresa['ajuste_pct'] = 0.0
+    if faltante > 0 and ciclo_len > 0:
+        for i in range(faltante):
+            pos = i % ciclo_len
+            if pos < len(perm):
+                alvo = perm[pos]
+            else:
+                # se não houver NOVA, volta a distribuir entre as PERMANECEM
+                alvo = random.choice(nov) if nov else perm[pos % len(perm)]
+            alvo['ajuste_pct'] += 0.01
 
-    # Calcular total de percentual base
-    total_pct_base = sum(e['pct_base'] for e in empresas_todas)
+    # 4) recalcula pct_final
+    for e in empresas_todas:
+        e['pct_final'] = e['pct_base'] + e['ajuste_pct']
 
-    # Calcular diferença para 100%
-    diferenca = 100.0 - total_pct_base
-
-    # Aplicar ajustes para chegar a 100%
-    if diferenca > 0:
-        # Separar empresas por tipo
-        permanece = [e for e in empresas_todas if e['situacao'] == 'PERMANECE']
-        novas = [e for e in empresas_todas if e['situacao'] == 'NOVA']
-
-        # Ordenar "PERMANECE" por arrecadação (decrescente)
-        permanece = sorted(permanece, key=lambda x: x.get('arrecadacao', 0), reverse=True)
-
-        # Randomizar ordem das empresas novas
-        random.shuffle(novas)
-
-        # Ciclo de aplicação: primeiro PERMANECE, depois NOVAS
-        ciclo = permanece + novas
-
-        # Inicializar contadores de ajustes
-        ajustes_recebidos = [0] * len(ciclo)
-
-        # Aplicar ajustes de 0.01% em ciclos
-        ajustes_necessarios = int(diferenca * 100)  # Quantos incrementos de 0.01%
-
-        for _ in range(ajustes_necessarios):
-            # Encontrar a empresa com menos ajustes
-            min_ajustes = min(ajustes_recebidos)
-            candidatos = [i for i, val in enumerate(ajustes_recebidos) if val == min_ajustes]
-
-            # Selecionar empresa candidata
-            idx_selecionado = candidatos[0]
-
-            # Aplicar ajuste
-            ciclo[idx_selecionado]['ajuste_pct'] += 0.01
-            ajustes_recebidos[idx_selecionado] += 1
-
-    # Calcular percentuais finais
-    for empresa in empresas_todas:
-        empresa['pct_final'] = empresa['pct_base'] + empresa['ajuste_pct']
-
-    # Verificação final (garantia de 100% exato)
+    # 5) ajuste fino
     total_final = sum(e['pct_final'] for e in empresas_todas)
-    if abs(total_final - 100.0) > 0.0001 and empresas_todas:
-        diferenca_final = 100.0 - total_final
-        empresas_todas[0]['ajuste_pct'] += diferenca_final
-        empresas_todas[0]['pct_final'] += diferenca_final
+    delta = round((100.00 - total_final) * 100) / 100
+    if abs(delta) >= 0.01 and empresas_todas:
+        # prefere primeira PERMANECEM, senão a primeira da lista completa
+        alvo = perm[0] if perm else empresas_todas[0]
+        alvo['ajuste_pct'] += delta
+        alvo['pct_final'] = alvo['pct_base'] + alvo['ajuste_pct']
 
     return empresas_todas
 
@@ -884,8 +889,8 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                     emp.arrecadacao = float(row[1]) or 0.0
                     break
 
-        # 4) Tabela 1: ajustar percentuais
-        resultados_tabela1 = ajustar_percentuais_tabela1(empresas)
+        # 4) Tabela 1: ajustar percentuais (SEM incluir linha TOTAL)
+        resultados_tabela1 = ajustar_percentuais_tabela1(empresas, include_total=False)
 
         # 5) Tabela 2: contratos por situação
         empresas_permanece = [e for e in empresas if e.DS_CONDICAO == 'PERMANECE']
@@ -900,13 +905,15 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
         # 6) Tabela 3: distribuir contratos para quem permanece
         dados_perm = [e for e in resultados_tabela1 if e['situacao'] == 'PERMANECE']
         res3 = distribuir_contratos_tabela3(dados_perm, qtde_contratos_permanece)
+
+        # Transferir resultados de Tabela 3 para os dados consolidados
         mapa3 = {e['id_empresa']: e for e in res3}
         for e in resultados_tabela1:
             if e['situacao'] == 'PERMANECE':
                 m = mapa3.get(e['id_empresa'], {})
-                e['contratos']        = m.get('contratos', 0)
+                e['contratos'] = m.get('contratos', 0)
                 e['ajuste_contratos'] = m.get('ajuste_contratos', 0)
-                e['total']            = m.get('total', e['contratos'])
+                e['total'] = m.get('total', e['contratos'])
 
         # 7) Tabela 4: Distribuição para empresas NOVAS
         # Montar lista de dicionários apenas com as NOVAS
@@ -924,13 +931,94 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
 
         resultados_novas = distribuir_restantes_tabela4(dados_nov_raw, qtde_contratos_novas)
 
+        # 8) Combinar resultados para Tabela 5
         # Limpar entradas NOVA existentes e mesclar as novas
-        resultados_tabela1 = [e for e in resultados_tabela1 if e.get('situacao') != 'NOVA']
-        resultados_tabela1.extend(resultados_novas)
+        resultados_sem_novas = [e for e in resultados_tabela1 if e.get('situacao') != 'NOVA']
 
-        # 8) Montar retorno
+        # Garantir que apenas empresas relevantes sejam passadas para ajuste de percentuais
+        empresas_para_tabela5 = []
+
+        # Adicionar empresas que permanecem
+        for e in res3:
+            # Copiar apenas os dados necessários para a Tabela 5
+            empresas_para_tabela5.append({
+                'idx': e.get('idx'),
+                'id_empresa': e.get('id_empresa'),
+                'empresa': e.get('empresa'),
+                'situacao': 'PERMANECE',
+                'contratos': e.get('contratos', 0),
+                'arrecadacao': e.get('arrecadacao', 0),
+                'pct_distribuicao': 0.0,  # Será calculado na Tabela 5
+            })
+
+        # Adicionar empresas novas
+        for e in resultados_novas:
+            empresas_para_tabela5.append({
+                'idx': e.get('idx'),
+                'id_empresa': e.get('id_empresa'),
+                'empresa': e.get('empresa'),
+                'situacao': 'NOVA',
+                'contratos': e.get('contratos', 0),
+                'arrecadacao': 0.0,  # Empresas novas não têm arrecadação
+                'pct_distribuicao': 0.0,  # Será calculado na Tabela 5
+            })
+
+        # 9) Calcular percentuais finais (Tabela 5)
+        resultados_tabela5 = ajustar_percentuais_tabela5(empresas_para_tabela5, num_contratos)
+
+        # 10) Integrar resultados da Tabela 5 de volta ao resultado consolidado
+        mapa5 = {e['id_empresa']: e for e in resultados_tabela5 if e.get('idx') != 'TOTAL'}
+
+        # Atualizar dados nas empresas que permanecem
+        for e in resultados_sem_novas:
+            if e.get('idx') != 'TOTAL' and e['situacao'] == 'PERMANECE':
+                m = mapa5.get(e['id_empresa'], {})
+                e['pct_distribuicao'] = m.get('pct_base', 0.0)
+                e['ajuste_pct'] = m.get('ajuste_pct', 0.0)  # Usar ajuste da Tabela 5
+                e['pct_final'] = m.get('pct_final', 0.0)
+
+        # Adicionar empresas novas com percentuais calculados
+        for e in resultados_novas:
+            m = mapa5.get(e['id_empresa'], {})
+            e['pct_distribuicao'] = m.get('pct_base', 0.0)
+            e['ajuste_pct'] = m.get('ajuste_pct', 0.0)  # Usar ajuste da Tabela 5
+            e['pct_final'] = m.get('pct_final', 0.0)
+            resultados_sem_novas.append(e)
+
+        # Agora adicionar a linha TOTAL única para todas as tabelas
+        total_arrecadacao = sum(e.get('arrecadacao', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_pct_arrecadacao = sum(e.get('pct_arrecadacao', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_pct_redistribuido = sum(e.get('pct_redistribuido', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_pct_novo = sum(e.get('pct_novo_truncado', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_ajuste = sum(e.get('ajuste', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_pct_final = sum(e.get('pct_final', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_contratos = sum(e.get('contratos', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL')
+        total_pct_novofinal = sum(e.get('pct_novofinal', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL' and e.get('situacao') == 'PERMANECE')
+
+        linha_total = {
+            'idx': 'TOTAL',
+            'empresa': 'TOTAL',
+            'situacao': '',
+            'arrecadacao': total_arrecadacao,
+            'pct_arrecadacao': total_pct_arrecadacao,
+            'pct_redistribuido': total_pct_redistribuido,
+            'pct_novo': total_pct_novo,
+            'pct_novo_truncado': total_pct_novo,
+            'ajuste': total_ajuste,
+            'pct_novofinal': total_pct_novofinal,
+            'pct_final': total_pct_final,
+            'contratos': total_contratos,
+            'ajuste_contratos': sum(e.get('ajuste_contratos', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL'),
+            'total_contratos': total_contratos,
+            'pct_base': sum(e.get('pct_distribuicao', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL'),
+            'pct_distribuicao': sum(e.get('pct_distribuicao', 0) for e in resultados_sem_novas if e.get('idx') != 'TOTAL'),
+        }
+
+        resultados_sem_novas.append(linha_total)
+
+        # 11) Montar retorno
         return {
-            'resultados': resultados_tabela1,
+            'resultados': resultados_sem_novas,
             'todas_empresas_anteriores': {
                 e['id_empresa']: e for e in resultados_tabela1 if e.get('idx') != 'TOTAL'
             },
@@ -961,7 +1049,6 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
         import traceback
         traceback.print_exc()
         return None
-
 
 
 
@@ -1178,9 +1265,9 @@ def salvar_limites():
         # Inserir os novos limites
         limites_criados = 0
         for i in range(len(empresas_data)):
-            if situacoes[i].upper() == 'DESCREDENCIADO':
+            if situacoes[i].upper() == 'DESCREDENCIADA':
                 continue
-            percentual = truncate_decimal(float(percentuais[i]) if percentuais[i] else 0.0)
+            percentual = truncate_decimal(float(percentuais[i] or 0.0), 2)
 
             novo_limite = LimiteDistribuicao(
                 ID_EDITAL=edital_id,
