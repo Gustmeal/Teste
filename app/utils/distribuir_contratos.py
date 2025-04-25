@@ -124,7 +124,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # Identificar contratos com acordo vigente de empresas descredenciadas
+                # CORREÇÃO: Alterado o filtro para usar fkEstadoAcordo em vez de ESTADO_ACORDO
                 contratos_descred_sql = text("""
                 -- Criar tabela temporária para armazenar contratos a serem redistribuídos
                 SELECT 
@@ -145,7 +145,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 
                 -- Filtro: contrato tem acordo vigente (estado = 1)
                 -- E a empresa atual NÃO está entre as empresas do período atual
-                WHERE ALV.ESTADO_ACORDO = 1
+                WHERE ALV.fkEstadoAcordo = 1
                 AND NOT EXISTS (
                     SELECT 1 
                     FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES EP
@@ -297,28 +297,14 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
         logging.error(f"Erro ao distribuir contratos com acordo de empresas descredenciadas: {str(e)}")
         return 0
 
-
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
     Distribui contratos com acordo vigente para empresas que permanecem no período avaliativo.
-
-    Este passo implementa o item 1.1.4 do documento de referência:
-    - Verifica contratos com acordo vigente
-    - Mantém esses contratos com as mesmas empresas se elas permanecem no período atual
-    - Usa critério de seleção 1 (Contrato com acordo para assessoria que permanece)
-
-    Args:
-        edital_id (int): ID do edital
-        periodo_id (int): ID do período
-
-    Returns:
-        int: Quantidade de contratos distribuídos
     """
     try:
-        # Usar uma conexão direta para executar o SQL
         with db.engine.connect() as connection:
             try:
-                # Buscando período anterior para referência
+                # Buscar período anterior (mantido sem alteração)
                 periodo_anterior_sql = text("""
                 SELECT TOP 1 ID_PERIODO 
                 FROM DEV.DCA_TB001_PERIODO_AVALIACAO 
@@ -336,12 +322,10 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                 periodo_anterior_id = periodo_anterior_result[0]
 
                 # Obtém a data de referência atual
-                data_referencia_sql = text("""
-                SELECT CONVERT(DATE, GETDATE())
-                """)
+                data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # Distribuir contratos com acordo vigente para empresas que permanecem
+                # CORREÇÃO: Alterado o filtro para usar fkEstadoAcordo em vez de ESTADO_ACORDO
                 distribuir_sql = text("""
                 -- Inserir na tabela de distribuição os contratos com acordo vigente
                 -- para empresas que permanecem no período atual
@@ -396,7 +380,7 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                         AND EP_ATUAL.DELETED_AT IS NULL
 
                     -- Filtro por acordo vigente (Estado do Acordo = 1)
-                    WHERE ALV.ESTADO_ACORDO = 1
+                    WHERE ALV.fkEstadoAcordo = 1
                 ) AS DIST
                 """).bindparams(
                     dt_referencia=dt_referencia,
@@ -404,11 +388,10 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                     periodo_id=periodo_id
                 )
 
-                # Executar a distribuição
+                # Resto da função mantido sem alteração
                 result = connection.execute(distribuir_sql)
                 contratos_distribuidos = result.rowcount
 
-                # Remover os contratos distribuídos da tabela de distribuíveis
                 if contratos_distribuidos > 0:
                     remover_sql = text("""
                     DELETE FROM DEV.DCA_TB006_DISTRIBUIVEIS
@@ -554,8 +537,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     Aplica a regra de arrasto para contratos sem acordo.
 
     Este passo implementa o item 1.1.5 do documento:
-    - Dos contratos restantes sem acordo, separa todos os contratos cujo CPF possui múltiplos contratos
-    - Move esses contratos para a tabela DCA_TB007_ARRASTAVEIS
+    - Dos contratos restantes, sem acordo vigente, separa todos os contratos cujo CPF possui outros contratos
     - Distribui esses contratos respeitando a regra de arrasto (mesmo CPF vai para a mesma empresa)
     - Usa critério de seleção 6 (Regra de Arrasto)
 
@@ -569,6 +551,9 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     try:
         # Usar uma conexão direta para executar o SQL
         with db.engine.connect() as connection:
+            # Verificando se há transação ativa e fazendo commit/rollback se necessário
+            connection.execute(text("IF @@TRANCOUNT > 0 COMMIT"))
+
             try:
                 # Limpar tabela de arrastáveis antes de iniciar
                 truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]")
@@ -640,8 +625,14 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # Buscar limites de distribuição para as empresas
+                # Garantir que a tabela temporária seja criada corretamente
+                # Buscar limites de distribuição para as empresas - usar uma única instrução SQL
                 limites_sql = text("""
+                -- Verificar se a tabela temporária já existe e excluí-la se necessário
+                IF OBJECT_ID('tempdb..#PERCENTUAIS_EMPRESAS') IS NOT NULL
+                    DROP TABLE #PERCENTUAIS_EMPRESAS;
+
+                -- Criar tabela temporária com percentuais
                 SELECT 
                     ID_EMPRESA,
                     PERCENTUAL_FINAL
@@ -716,10 +707,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 )
                 """))
 
-                # Criar variáveis para distribuição
-                start_row = 1
-
-                # Distribuir contratos por empresa usando CURSOR (necessário para processar linha a linha)
+                # Distribuir contratos por empresa usando CURSOR
                 connection.execute(text("""
                 DECLARE @ID INT
                 DECLARE @ID_EMPRESA INT
@@ -866,8 +854,10 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         int: Quantidade de contratos distribuídos
     """
     try:
-        # Usar uma conexão direta para executar o SQL
         with db.engine.connect() as connection:
+            # Verificando se há transação ativa e fazendo commit/rollback se necessário
+            connection.execute(text("IF @@TRANCOUNT > 0 COMMIT"))
+
             try:
                 # Contar quantos contratos restantes sem acordo existem
                 count_restantes_sql = text("SELECT COUNT(*) FROM DEV.DCA_TB006_DISTRIBUIVEIS")
@@ -881,8 +871,13 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # Buscar limites de distribuição para empresas
+                # Garantir que a tabela temporária seja criada corretamente
+                # Buscar limites de distribuição para empresas - usar uma única instrução SQL
                 limites_sql = text("""
+                -- Verificar se a tabela temporária já existe e excluí-la se necessário
+                IF OBJECT_ID('tempdb..#LIMITES') IS NOT NULL
+                    DROP TABLE #LIMITES;
+
                 -- Selecionar empresas e seus limites
                 SELECT 
                     LD.ID_EMPRESA,
@@ -976,7 +971,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 SELECT
                     FkContratoSISCTR,
                     NR_CPF_CNPJ,
-                    VR_SD_DEVEDOR,
                     RowNum = ROW_NUMBER() OVER (ORDER BY NEWID())
                 INTO #DISTRIBUIVEIS
                 FROM DEV.DCA_TB006_DISTRIBUIVEIS
@@ -987,8 +981,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 CREATE TABLE #DISTRIBUICAO (
                     FkContratoSISCTR BIGINT,
                     ID INT,
-                    NR_CPF_CNPJ BIGINT,
-                    VR_SD_DEVEDOR DECIMAL(18,2)
+                    NR_CPF_CNPJ BIGINT
                 )
                 """))
 
@@ -1019,8 +1012,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     SELECT
                         FkContratoSISCTR,
                         @ID,
-                        NR_CPF_CNPJ,
-                        VR_SD_DEVEDOR
+                        NR_CPF_CNPJ
                     FROM #DISTRIBUIVEIS
                     WHERE RowNum BETWEEN @START_ROW AND @END_ROW
 
@@ -1044,7 +1036,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     COD_CRITERIO_SELECAO,
                     COD_EMPRESA_COBRANCA,
                     NR_CPF_CNPJ,
-                    VR_SD_DEVEDOR,
                     CREATED_AT,
                     UPDATED_AT,
                     DELETED_AT
@@ -1057,7 +1048,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     4, -- Código 4: Demais contratos sem acordo
                     ASS.ID_EMPRESA,
                     DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
                     GETDATE(),
                     NULL,
                     NULL
@@ -1109,7 +1099,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
     except Exception as e:
         logging.error(f"Erro ao distribuir os demais contratos: {str(e)}")
         return 0
-
 
 def processar_distribuicao_completa(edital_id, periodo_id):
     """
