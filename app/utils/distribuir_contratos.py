@@ -124,8 +124,11 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # CORREÇÃO: Alterado o filtro para usar fkEstadoAcordo em vez de ESTADO_ACORDO
+                # Criar tabela temporária para contratos descredenciados
                 contratos_descred_sql = text("""
+                IF OBJECT_ID('tempdb..#CONTRATOS_DESCREDENCIADOS') IS NOT NULL
+                    DROP TABLE #CONTRATOS_DESCREDENCIADOS;
+
                 -- Criar tabela temporária para armazenar contratos a serem redistribuídos
                 SELECT 
                     D.FkContratoSISCTR,
@@ -159,6 +162,19 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
                 # Executar seleção de contratos descredenciados
                 connection.execute(contratos_descred_sql)
 
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#CONTRATOS_DESCREDENCIADOS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #CONTRATOS_DESCREDENCIADOS não foi criada corretamente")
+                    return 0
+
                 # Contar quantos contratos foram selecionados
                 count_sql = text("SELECT COUNT(*) FROM #CONTRATOS_DESCREDENCIADOS")
                 num_contratos_descred = connection.execute(count_sql).scalar()
@@ -170,6 +186,9 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 
                 # Obter empresas do período atual para redistribuição
                 empresas_atuais_sql = text("""
+                IF OBJECT_ID('tempdb..#EMPRESAS_ATUAIS') IS NOT NULL
+                    DROP TABLE #EMPRESAS_ATUAIS;
+
                 SELECT 
                     ID_EMPRESA,
                     ROW_NUMBER() OVER (ORDER BY NEWID()) AS RowNum
@@ -182,6 +201,20 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 
                 connection.execute(empresas_atuais_sql)
 
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#EMPRESAS_ATUAIS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #EMPRESAS_ATUAIS não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #CONTRATOS_DESCREDENCIADOS"))
+                    return 0
+
                 # Obter total de empresas atuais
                 count_empresas_sql = text("SELECT COUNT(*) FROM #EMPRESAS_ATUAIS")
                 qtde_empresas = connection.execute(count_empresas_sql).scalar()
@@ -192,12 +225,30 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 
                 # Criar tabela temporária de mapeamento
                 map_sql = text("""
+                IF OBJECT_ID('tempdb..#MAPEAMENTO') IS NOT NULL
+                    DROP TABLE #MAPEAMENTO;
+
                 CREATE TABLE #MAPEAMENTO (
                     RowNumContrato INT,
                     RowNumEmpresa INT
                 )
                 """)
                 connection.execute(map_sql)
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#MAPEAMENTO') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #MAPEAMENTO não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #CONTRATOS_DESCREDENCIADOS"))
+                    connection.execute(text("DROP TABLE IF EXISTS #EMPRESAS_ATUAIS"))
+                    return 0
 
                 # Preencher mapeamento para distribuição igualitária
                 for i in range(1, qtde_empresas + 1):
@@ -300,6 +351,18 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
     Distribui contratos com acordo vigente para empresas que permanecem no período avaliativo.
+
+    Este passo implementa o item 1.1.2 do documento:
+    - Identifica contratos com acordo vigente de empresas que permanecem no período atual
+    - Distribui esses contratos para a mesma empresa do acordo
+    - Usa critério de seleção 1 (Contrato com acordo para assessoria que permanece)
+
+    Args:
+        edital_id (int): ID do edital
+        periodo_id (int): ID do período
+
+    Returns:
+        int: Quantidade de contratos distribuídos
     """
     try:
         with db.engine.connect() as connection:
@@ -325,7 +388,7 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # CORREÇÃO: Alterado o filtro para usar fkEstadoAcordo em vez de ESTADO_ACORDO
+                # Distribuir contratos com acordo vigente para empresas que permanecem
                 distribuir_sql = text("""
                 -- Inserir na tabela de distribuição os contratos com acordo vigente
                 -- para empresas que permanecem no período atual
@@ -388,7 +451,6 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                     periodo_id=periodo_id
                 )
 
-                # Resto da função mantido sem alteração
                 result = connection.execute(distribuir_sql)
                 contratos_distribuidos = result.rowcount
 
@@ -418,7 +480,6 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     except Exception as e:
         logging.error(f"Erro ao distribuir contratos com acordo vigente: {str(e)}")
         return 0
-
 
 def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
     """
@@ -560,7 +621,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 connection.execute(truncate_sql)
 
                 # Identificar CPFs com múltiplos contratos e movê-los para tabela de arrastáveis
-                # CORREÇÃO: Removida a coluna VR_SD_DEVEDOR da consulta e inserção
+                # CORREÇÃO: Removida referência à coluna VR_SD_DEVEDOR que não existe na tabela DCA_TB007_ARRASTAVEIS
                 mover_arrastaveis_sql = text("""
                 -- Identificar contratos onde o CPF aparece mais de uma vez
                 WITH arrastaveis AS (
@@ -645,6 +706,19 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
                 connection.execute(limites_sql)
 
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#PERCENTUAIS_EMPRESAS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #PERCENTUAIS_EMPRESAS não foi criada corretamente")
+                    return 0
+
                 # Verificar se existem limites de distribuição
                 count_limites_sql = text("SELECT COUNT(*) FROM #PERCENTUAIS_EMPRESAS")
                 qtde_empresas = connection.execute(count_limites_sql).scalar()
@@ -656,6 +730,9 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
                 # Atribuir um ID sequencial para cada empresa
                 id_empresas_sql = text("""
+                IF OBJECT_ID('tempdb..#ASSESSORIAS') IS NOT NULL
+                    DROP TABLE #ASSESSORIAS;
+
                 SELECT 
                     ID = ROW_NUMBER() OVER (ORDER BY ID_EMPRESA),
                     ID_EMPRESA,
@@ -666,6 +743,20 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 """).bindparams(qtde_arrastaveis=qtde_arrastaveis)
 
                 connection.execute(id_empresas_sql)
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#ASSESSORIAS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #ASSESSORIAS não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #PERCENTUAIS_EMPRESAS"))
+                    return 0
 
                 # Verificar soma das quantidades calculadas
                 soma_qtde_sql = text("SELECT SUM(QTDE) FROM #ASSESSORIAS")
@@ -685,10 +776,12 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
                 # Ordenar os contratos por CPF para facilitar distribuição em blocos
                 ordenar_arrastaveis_sql = text("""
+                IF OBJECT_ID('tempdb..#ARRASTAVEIS') IS NOT NULL
+                    DROP TABLE #ARRASTAVEIS;
+
                 SELECT
                     FkContratoSISCTR,
                     NR_CPF_CNPJ,
-                    VR_SD_DEVEDOR,
                     RowNum = ROW_NUMBER() OVER (ORDER BY NR_CPF_CNPJ)
                 INTO #ARRASTAVEIS
                 FROM DEV.DCA_TB007_ARRASTAVEIS
@@ -696,15 +789,48 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
                 connection.execute(ordenar_arrastaveis_sql)
 
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#ARRASTAVEIS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #ARRASTAVEIS não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #PERCENTUAIS_EMPRESAS"))
+                    connection.execute(text("DROP TABLE IF EXISTS #ASSESSORIAS"))
+                    return 0
+
                 # Criar tabela temporária para distribuição
                 connection.execute(text("""
+                IF OBJECT_ID('tempdb..#DISTRIBUICAO') IS NOT NULL
+                    DROP TABLE #DISTRIBUICAO;
+
                 CREATE TABLE #DISTRIBUICAO (
                     FkContratoSISCTR BIGINT,
                     ID INT,
-                    NR_CPF_CNPJ BIGINT,
-                    VR_SD_DEVEDOR DECIMAL(18,2)
+                    NR_CPF_CNPJ BIGINT
                 )
                 """))
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#DISTRIBUICAO') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #DISTRIBUICAO não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #PERCENTUAIS_EMPRESAS"))
+                    connection.execute(text("DROP TABLE IF EXISTS #ASSESSORIAS"))
+                    connection.execute(text("DROP TABLE IF EXISTS #ARRASTAVEIS"))
+                    return 0
 
                 # Distribuir contratos por empresa usando CURSOR
                 connection.execute(text("""
@@ -755,8 +881,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                     SELECT
                         FkContratoSISCTR,
                         @ID,
-                        NR_CPF_CNPJ,
-                        VR_SD_DEVEDOR
+                        NR_CPF_CNPJ
                     FROM #ARRASTAVEIS
                     WHERE RowNum BETWEEN @START_ROW AND @END_ROW
 
@@ -771,6 +896,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 """))
 
                 # Inserir na tabela final de distribuição
+                # CORREÇÃO: A tabela DCA_TB005_DISTRIBUICAO possui a coluna VR_SD_DEVEDOR, mas não está recebendo valor aqui
                 inserir_distribuicao_sql = text("""
                 INSERT INTO DEV.DCA_TB005_DISTRIBUICAO (
                     DT_REFERENCIA,
@@ -793,7 +919,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                     6, -- Código 6: Regra de Arrasto
                     ASS.ID_EMPRESA,
                     DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
+                    NULL, -- VR_SD_DEVEDOR não está disponível aqui
                     GETDATE(),
                     NULL,
                     NULL
@@ -870,14 +996,14 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
                 dt_referencia = connection.execute(data_referencia_sql).scalar()
 
-                # Garantir que a tabela temporária seja criada corretamente
-                # Buscar limites de distribuição para empresas - usar uma única instrução SQL
+                # CORREÇÃO: Garantir que as tabelas temporárias sejam criadas corretamente
+                # Criar tabela temporária #LIMITES
                 limites_sql = text("""
                 -- Verificar se a tabela temporária já existe e excluí-la se necessário
                 IF OBJECT_ID('tempdb..#LIMITES') IS NOT NULL
                     DROP TABLE #LIMITES;
 
-                -- Selecionar empresas e seus limites
+                -- Criar tabela temporária com limites
                 SELECT 
                     LD.ID_EMPRESA,
                     LD.PERCENTUAL_FINAL,
@@ -898,6 +1024,19 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
 
                 connection.execute(limites_sql)
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#LIMITES') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #LIMITES não foi criada corretamente")
+                    return 0
 
                 # Verificar total de empresas
                 count_empresas_sql = text("SELECT COUNT(*) FROM #LIMITES")
@@ -934,6 +1073,10 @@ def distribuir_demais_contratos(edital_id, periodo_id):
 
                 # Calcular a quantidade ainda a distribuir para cada empresa
                 calcular_qtde_sql = text("""
+                -- Verificar se a tabela temporária já existe e excluí-la se necessário
+                IF OBJECT_ID('tempdb..#ASSESSORIAS') IS NOT NULL
+                    DROP TABLE #ASSESSORIAS;
+
                 -- Calcular quantidade restante a distribuir para cada empresa
                 SELECT 
                     ID = ROW_NUMBER() OVER (ORDER BY NEWID()), -- Ordem aleatória 
@@ -948,6 +1091,20 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 """).bindparams(total_universo=total_universo)
 
                 connection.execute(calcular_qtde_sql)
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#ASSESSORIAS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #ASSESSORIAS não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #LIMITES"))
+                    return 0
 
                 # Calcular total a distribuir
                 total_a_distribuir_sql = text("SELECT SUM(QTDE_A_DISTRIBUIR) FROM #ASSESSORIAS")
@@ -967,22 +1124,63 @@ def distribuir_demais_contratos(edital_id, periodo_id):
 
                 # Ordenar os contratos de forma aleatória
                 connection.execute(text("""
+                -- Verificar se a tabela temporária já existe e excluí-la se necessário
+                IF OBJECT_ID('tempdb..#DISTRIBUIVEIS') IS NOT NULL
+                    DROP TABLE #DISTRIBUIVEIS;
+
                 SELECT
                     FkContratoSISCTR,
                     NR_CPF_CNPJ,
+                    VR_SD_DEVEDOR,
                     RowNum = ROW_NUMBER() OVER (ORDER BY NEWID())
                 INTO #DISTRIBUIVEIS
                 FROM DEV.DCA_TB006_DISTRIBUIVEIS
                 """))
 
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#DISTRIBUIVEIS') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #DISTRIBUIVEIS não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #LIMITES"))
+                    connection.execute(text("DROP TABLE IF EXISTS #ASSESSORIAS"))
+                    return 0
+
                 # Criar tabela para distribuição
                 connection.execute(text("""
+                -- Verificar se a tabela temporária já existe e excluí-la se necessário
+                IF OBJECT_ID('tempdb..#DISTRIBUICAO') IS NOT NULL
+                    DROP TABLE #DISTRIBUICAO;
+
                 CREATE TABLE #DISTRIBUICAO (
                     FkContratoSISCTR BIGINT,
                     ID INT,
-                    NR_CPF_CNPJ BIGINT
+                    NR_CPF_CNPJ BIGINT,
+                    VR_SD_DEVEDOR DECIMAL(18,2)
                 )
                 """))
+
+                # Verificar se a tabela foi criada corretamente
+                verificar_tabela_sql = text("""
+                IF OBJECT_ID('tempdb..#DISTRIBUICAO') IS NOT NULL
+                    SELECT 1
+                ELSE
+                    SELECT 0
+                """)
+                tabela_existe = connection.execute(verificar_tabela_sql).scalar()
+
+                if not tabela_existe:
+                    logging.warning("A tabela temporária #DISTRIBUICAO não foi criada corretamente")
+                    connection.execute(text("DROP TABLE IF EXISTS #LIMITES"))
+                    connection.execute(text("DROP TABLE IF EXISTS #ASSESSORIAS"))
+                    connection.execute(text("DROP TABLE IF EXISTS #DISTRIBUIVEIS"))
+                    return 0
 
                 # Distribuir os contratos usando cursor
                 connection.execute(text("""
@@ -1011,7 +1209,8 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     SELECT
                         FkContratoSISCTR,
                         @ID,
-                        NR_CPF_CNPJ
+                        NR_CPF_CNPJ,
+                        VR_SD_DEVEDOR
                     FROM #DISTRIBUIVEIS
                     WHERE RowNum BETWEEN @START_ROW AND @END_ROW
 
@@ -1035,6 +1234,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     COD_CRITERIO_SELECAO,
                     COD_EMPRESA_COBRANCA,
                     NR_CPF_CNPJ,
+                    VR_SD_DEVEDOR,
                     CREATED_AT,
                     UPDATED_AT,
                     DELETED_AT
@@ -1047,6 +1247,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     4, -- Código 4: Demais contratos sem acordo
                     ASS.ID_EMPRESA,
                     DIS.NR_CPF_CNPJ,
+                    DIS.VR_SD_DEVEDOR,
                     GETDATE(),
                     NULL,
                     NULL
@@ -1098,7 +1299,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
     except Exception as e:
         logging.error(f"Erro ao distribuir os demais contratos: {str(e)}")
         return 0
-
 def processar_distribuicao_completa(edital_id, periodo_id):
     """
     Executa todo o processo de distribuição em ordem.
