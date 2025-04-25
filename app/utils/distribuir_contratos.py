@@ -560,6 +560,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 connection.execute(truncate_sql)
 
                 # Identificar CPFs com múltiplos contratos e movê-los para tabela de arrastáveis
+                # CORREÇÃO: Removida a coluna VR_SD_DEVEDOR da consulta e inserção
                 mover_arrastaveis_sql = text("""
                 -- Identificar contratos onde o CPF aparece mais de uma vez
                 WITH arrastaveis AS (
@@ -584,7 +585,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 INSERT INTO DEV.DCA_TB007_ARRASTAVEIS (
                     FkContratoSISCTR,
                     NR_CPF_CNPJ,
-                    VR_SD_DEVEDOR,
                     CREATED_AT,
                     UPDATED_AT,
                     DELETED_AT
@@ -592,7 +592,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 SELECT
                     DIS.FkContratoSISCTR,
                     DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
                     GETDATE(),
                     NULL,
                     NULL

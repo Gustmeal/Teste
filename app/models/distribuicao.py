@@ -25,7 +25,6 @@ class Arrastaveis(db.Model):
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     FkContratoSISCTR = db.Column(db.BigInteger, nullable=False)
     NR_CPF_CNPJ = db.Column(db.BigInteger, nullable=False)
-    VR_SD_DEVEDOR = db.Column(db.Numeric(18, 2), nullable=True)
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
