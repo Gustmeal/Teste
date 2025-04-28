@@ -1633,8 +1633,31 @@ def distribuir_contratos():
     Implementa o processo descrito no documento "Distribuição para cobrança.docx".
     """
     # Obter editais e períodos para o formulário
-    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
-    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).all()
+    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+
+    # Obter último edital (maior ID)
+    ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+
+    # Definir valor padrão para edital_id
+    edital_id_default = ultimo_edital.ID if ultimo_edital else None
+
+    # Obter períodos e último período (maior ID_PERIODO) para o último edital
+    if ultimo_edital:
+        periodos = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.DELETED_AT == None,
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).all()
+
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.DELETED_AT == None,
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        # Definir valor padrão para periodo_id
+        periodo_id_default = ultimo_periodo.ID_PERIODO if ultimo_periodo else None
+    else:
+        periodos = []
+        periodo_id_default = None
 
     # Status da execução
     resultados = None
@@ -1650,7 +1673,9 @@ def distribuir_contratos():
                 return render_template(
                     'credenciamento/distribuir_contratos.html',
                     editais=editais,
-                    periodos=periodos
+                    periodos=periodos,
+                    edital_id_default=edital_id_default,
+                    periodo_id_default=periodo_id_default
                 )
 
             # Importar a função para selecionar contratos distribuíveis
@@ -1689,5 +1714,7 @@ def distribuir_contratos():
         'credenciamento/distribuir_contratos.html',
         editais=editais,
         periodos=periodos,
-        resultados=resultados
+        resultados=resultados,
+        edital_id_default=edital_id_default,
+        periodo_id_default=periodo_id_default
     )

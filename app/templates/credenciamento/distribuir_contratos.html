@@ -23,7 +23,7 @@
                         <select name="edital_id" class="form-select" required>
                             <option value="">Selecione um edital</option>
                             {% for edital in editais %}
-                                <option value="{{ edital.ID }}">
+                                <option value="{{ edital.ID }}" {% if edital_id_default == edital.ID %}selected{% endif %}>
                                     {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
                                 </option>
                             {% endfor %}
@@ -34,12 +34,13 @@
                         <select name="periodo_id" class="form-select" required>
                             <option value="">Selecione um período</option>
                             {% for periodo in periodos %}
-                                <option value="{{ periodo.ID }}">
+                                <option value="{{ periodo.ID }}" {% if periodo_id_default == periodo.ID %}selected{% endif %}>
                                     {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }}
                                     a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
                                 </option>
                             {% endfor %}
                         </select>
+
                     </div>
 
                     <div class="col-md-12">
