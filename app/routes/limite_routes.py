@@ -11,6 +11,7 @@ from app.utils.audit import registrar_log
 from sqlalchemy import or_, func, text
 import math
 import random
+import logging
 
 limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
@@ -1632,32 +1633,26 @@ def distribuir_contratos():
     Página para distribuição de contratos conforme limites cadastrados.
     Implementa o processo descrito no documento "Distribuição para cobrança.docx".
     """
-    # Obter editais e períodos para o formulário
-    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
-
-    # Obter último edital (maior ID)
+    # Encontrar automaticamente o edital mais recente
     ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
 
-    # Definir valor padrão para edital_id
-    edital_id_default = ultimo_edital.ID if ultimo_edital else None
+    if not ultimo_edital:
+        flash('Não foram encontrados editais cadastrados.', 'warning')
+        return redirect(url_for('edital.lista_editais'))
 
-    # Obter períodos e último período (maior ID_PERIODO) para o último edital
-    if ultimo_edital:
-        periodos = PeriodoAvaliacao.query.filter(
-            PeriodoAvaliacao.DELETED_AT == None,
-            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
-        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).all()
+    # Encontrar automaticamente o período mais recente do último edital
+    ultimo_periodo = PeriodoAvaliacao.query.filter(
+        PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+        PeriodoAvaliacao.DELETED_AT == None
+    ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
 
-        ultimo_periodo = PeriodoAvaliacao.query.filter(
-            PeriodoAvaliacao.DELETED_AT == None,
-            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
-        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+    if not ultimo_periodo:
+        flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
+        return redirect(url_for('periodo.lista_periodos'))
 
-        # Definir valor padrão para periodo_id
-        periodo_id_default = ultimo_periodo.ID_PERIODO if ultimo_periodo else None
-    else:
-        periodos = []
-        periodo_id_default = None
+    # Logging para debug
+    logging.info(f"Edital selecionado automaticamente: ID={ultimo_edital.ID}, NU_EDITAL={ultimo_edital.NU_EDITAL}")
+    logging.info(f"Período selecionado automaticamente: ID={ultimo_periodo.ID}, ID_PERIODO={ultimo_periodo.ID_PERIODO}")
 
     # Status da execução
     resultados = None
@@ -1665,18 +1660,9 @@ def distribuir_contratos():
     # Se for POST, processar a distribuição
     if request.method == 'POST':
         try:
-            edital_id = request.form.get('edital_id', type=int)
-            periodo_id = request.form.get('periodo_id', type=int)
-
-            if not edital_id or not periodo_id:
-                flash('Edital e período são obrigatórios', 'warning')
-                return render_template(
-                    'credenciamento/distribuir_contratos.html',
-                    editais=editais,
-                    periodos=periodos,
-                    edital_id_default=edital_id_default,
-                    periodo_id_default=periodo_id_default
-                )
+            # Usar sempre o último edital e período identificados
+            edital_id = ultimo_edital.ID
+            periodo_id = ultimo_periodo.ID_PERIODO  # Usando ID_PERIODO em vez de ID
 
             # Importar a função para selecionar contratos distribuíveis
             from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
@@ -1709,12 +1695,21 @@ def distribuir_contratos():
         except Exception as e:
             flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
 
-    # Renderizar o formulário inicial
+    # Para o template, passamos o edital e período já selecionados
+    # Também passamos todos os editais e períodos para referência, mas estarão desabilitados
+    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
+    periodos = PeriodoAvaliacao.query.filter(
+        PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+        PeriodoAvaliacao.DELETED_AT == None
+    ).all()
+
+    # Renderizar o formulário com as seleções automáticas
     return render_template(
         'credenciamento/distribuir_contratos.html',
         editais=editais,
         periodos=periodos,
+        ultimo_edital=ultimo_edital,
+        ultimo_periodo=ultimo_periodo,
         resultados=resultados,
-        edital_id_default=edital_id_default,
-        periodo_id_default=periodo_id_default
+        modo_automatico=True  # Flag para informar o template que estamos no modo automático
     )

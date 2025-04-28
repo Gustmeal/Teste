@@ -11,6 +11,9 @@
     </div>
 
     <!-- Formulário de parâmetros -->
+    <!-- Substitua a seção do formulário de parâmetros no arquivo app/templates/credenciamento/distribuir_contratos.html -->
+
+    <!-- Formulário de parâmetros -->
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0">Parâmetros para Distribuição</h5>
@@ -19,28 +22,23 @@
             <form method="POST" action="{{ url_for('limite.distribuir_contratos') }}">
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label class="form-label">Edital <span class="text-danger">*</span></label>
-                        <select name="edital_id" class="form-select" required>
-                            <option value="">Selecione um edital</option>
-                            {% for edital in editais %}
-                                <option value="{{ edital.ID }}" {% if edital_id_default == edital.ID %}selected{% endif %}>
-                                    {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
-                                </option>
-                            {% endfor %}
+                        <label class="form-label">Edital</label>
+                        <select name="edital_id" class="form-select" disabled>
+                            <option value="{{ ultimo_edital.ID }}" selected>
+                                {{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }} - {{ ultimo_edital.DESCRICAO }}
+                            </option>
                         </select>
+                        <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Período <span class="text-danger">*</span></label>
-                        <select name="periodo_id" class="form-select" required>
-                            <option value="">Selecione um período</option>
-                            {% for periodo in periodos %}
-                                <option value="{{ periodo.ID }}" {% if periodo_id_default == periodo.ID %}selected{% endif %}>
-                                    {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }}
-                                    a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
-                                </option>
-                            {% endfor %}
+                        <label class="form-label">Período</label>
+                        <select name="periodo_id" class="form-select" disabled>
+                            <option value="{{ ultimo_periodo.ID_PERIODO }}" selected>
+                                {{ ultimo_periodo.ID_PERIODO }} - {{ ultimo_periodo.DT_INICIO.strftime('%d/%m/%Y') }}
+                                a {{ ultimo_periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                            </option>
                         </select>
-
+                        <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
                     </div>
 
                     <div class="col-md-12">
