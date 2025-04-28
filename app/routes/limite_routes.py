@@ -1633,83 +1633,92 @@ def distribuir_contratos():
     Página para distribuição de contratos conforme limites cadastrados.
     Implementa o processo descrito no documento "Distribuição para cobrança.docx".
     """
-    # Encontrar automaticamente o edital mais recente
-    ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+    try:
+        # Encontrar automaticamente o edital mais recente
+        ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
 
-    if not ultimo_edital:
-        flash('Não foram encontrados editais cadastrados.', 'warning')
-        return redirect(url_for('edital.lista_editais'))
+        if not ultimo_edital:
+            flash('Não foram encontrados editais cadastrados.', 'warning')
+            return redirect(url_for('edital.lista_editais'))
 
-    # Encontrar automaticamente o período mais recente do último edital
-    ultimo_periodo = PeriodoAvaliacao.query.filter(
-        PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
-        PeriodoAvaliacao.DELETED_AT == None
-    ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+        # Encontrar automaticamente o período mais recente do último edital
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
 
-    if not ultimo_periodo:
-        flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
-        return redirect(url_for('periodo.lista_periodos'))
+        if not ultimo_periodo:
+            flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
+            return redirect(url_for('periodo.lista_periodos'))
 
-    # Logging para debug
-    logging.info(f"Edital selecionado automaticamente: ID={ultimo_edital.ID}, NU_EDITAL={ultimo_edital.NU_EDITAL}")
-    logging.info(f"Período selecionado automaticamente: ID={ultimo_periodo.ID}, ID_PERIODO={ultimo_periodo.ID_PERIODO}")
+        # Logging detalhado para debug
+        logging.info(
+            f"Distribuição de contratos - Edital selecionado: ID={ultimo_edital.ID}, NU_EDITAL={ultimo_edital.NU_EDITAL}")
+        logging.info(
+            f"Distribuição de contratos - Período selecionado: ID={ultimo_periodo.ID}, ID_PERIODO={ultimo_periodo.ID_PERIODO}")
 
-    # Status da execução
-    resultados = None
+        # Status da execução
+        resultados = None
 
-    # Se for POST, processar a distribuição
-    if request.method == 'POST':
-        try:
-            # Usar sempre o último edital e período identificados
-            edital_id = ultimo_edital.ID
-            periodo_id = ultimo_periodo.ID_PERIODO  # Usando ID_PERIODO em vez de ID
+        # Se for POST, processar a distribuição
+        if request.method == 'POST':
+            try:
+                # Usar sempre o último edital e período identificados
+                edital_id = ultimo_edital.ID
+                periodo_id = ultimo_periodo.ID_PERIODO  # IMPORTANTE: Usa ID_PERIODO em vez de ID
 
-            # Importar a função para selecionar contratos distribuíveis
-            from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
-                processar_distribuicao_completa
+                logging.info(f"Iniciando distribuição para: edital_id={edital_id}, periodo_id={periodo_id}")
 
-            # Opção para execução completa ou apenas seleção de contratos
-            modo_execucao = request.form.get('modo_execucao', 'selecao')
+                # Importar a função para selecionar contratos distribuíveis
+                from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
+                    processar_distribuicao_completa
 
-            if modo_execucao == 'completo':
-                # Executar o processo completo de distribuição
-                resultados = processar_distribuicao_completa(edital_id, periodo_id)
+                # Opção para execução completa ou apenas seleção de contratos
+                modo_execucao = request.form.get('modo_execucao', 'selecao')
+                logging.info(f"Modo de execução selecionado: {modo_execucao}")
 
-                if resultados['contratos_distribuiveis'] > 0:
-                    flash(
-                        f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos de um total de {resultados["contratos_distribuiveis"]} contratos distribuíveis.',
-                        'success')
+                if modo_execucao == 'completo':
+                    # Executar o processo completo de distribuição
+                    logging.info("Iniciando processo completo de distribuição...")
+                    resultados = processar_distribuicao_completa(edital_id, periodo_id)
+                    logging.info(f"Resultados obtidos: {resultados}")
+
+                    if resultados['contratos_distribuiveis'] > 0:
+                        flash(
+                            f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos de um total de {resultados["contratos_distribuiveis"]} contratos distribuíveis.',
+                            'success')
+                    else:
+                        flash('Nenhum contrato disponível para distribuição.', 'warning')
                 else:
-                    flash('Nenhum contrato disponível para distribuição.', 'warning')
-            else:
-                # Executar apenas a seleção de contratos distribuíveis
-                num_contratos = selecionar_contratos_distribuiveis()
+                    # Executar apenas a seleção de contratos distribuíveis
+                    logging.info("Iniciando seleção de contratos distribuíveis...")
+                    num_contratos = selecionar_contratos_distribuiveis()
+                    logging.info(f"Contratos selecionados: {num_contratos}")
 
-                if num_contratos > 0:
-                    flash(f'Seleção de contratos concluída. {num_contratos} contratos disponíveis para distribuição.',
-                          'success')
-                    resultados = {'contratos_distribuiveis': num_contratos}
-                else:
-                    flash('Nenhum contrato disponível para distribuição.', 'warning')
+                    if num_contratos > 0:
+                        flash(
+                            f'Seleção de contratos concluída. {num_contratos} contratos disponíveis para distribuição.',
+                            'success')
+                        resultados = {'contratos_distribuiveis': num_contratos}
+                    else:
+                        flash('Nenhum contrato disponível para distribuição.', 'warning')
 
-        except Exception as e:
-            flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
+            except Exception as e:
+                logging.error(f"Erro ao processar a distribuição: {str(e)}")
+                import traceback
+                logging.error(traceback.format_exc())
+                flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
 
-    # Para o template, passamos o edital e período já selecionados
-    # Também passamos todos os editais e períodos para referência, mas estarão desabilitados
-    editais = Edital.query.filter(Edital.DELETED_AT == None).all()
-    periodos = PeriodoAvaliacao.query.filter(
-        PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
-        PeriodoAvaliacao.DELETED_AT == None
-    ).all()
-
-    # Renderizar o formulário com as seleções automáticas
-    return render_template(
-        'credenciamento/distribuir_contratos.html',
-        editais=editais,
-        periodos=periodos,
-        ultimo_edital=ultimo_edital,
-        ultimo_periodo=ultimo_periodo,
-        resultados=resultados,
-        modo_automatico=True  # Flag para informar o template que estamos no modo automático
-    )
+        # Renderizar o formulário inicial
+        return render_template(
+            'credenciamento/distribuir_contratos.html',
+            ultimo_edital=ultimo_edital,
+            ultimo_periodo=ultimo_periodo,
+            resultados=resultados
+        )
+    except Exception as e:
+        logging.error(f"Erro na página de distribuição de contratos: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        flash(f'Erro na página de distribuição: {str(e)}', 'danger')
+        return redirect(url_for('limite.lista_limites'))

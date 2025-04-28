@@ -3,15 +3,10 @@ from sqlalchemy import text
 import logging
 
 
-
-
 def selecionar_contratos_distribuiveis():
     """
     Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
     Usa as tabelas do Banco de Dados Gerencial (BDG).
-
-    Returns:
-        int: Quantidade de contratos selecionados
     """
     try:
         # Usar uma conexão direta para executar o SQL
@@ -21,6 +16,12 @@ def selecionar_contratos_distribuiveis():
                 logging.info("Limpando tabela de distribuíveis...")
                 truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
                 connection.execute(truncate_sql)
+                logging.info("Tabela de distribuíveis limpa com sucesso")
+
+                # DEBUG: Verificar se a limpeza foi bem-sucedida
+                check_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+                count_after_truncate = connection.execute(check_sql).scalar()
+                logging.info(f"Contagem após limpeza: {count_after_truncate}")
 
                 # Em seguida, inserir os contratos selecionados
                 logging.info("Selecionando contratos distribuíveis...")
@@ -48,7 +49,20 @@ def selecionar_contratos_distribuiveis():
                     SIT.[fkSituacaoCredito] = 1
                     AND SDJ.fkContratoSISCTR IS NULL""")
 
-                connection.execute(insert_sql)
+                # DEBUG: Verificar informações das tabelas de origem
+                origem_count_sql = text("""
+                SELECT COUNT(*) FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                    ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                    ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                WHERE SIT.[fkSituacaoCredito] = 1
+                """)
+                origem_count = connection.execute(origem_count_sql).scalar()
+                logging.info(f"Contratos elegíveis nas tabelas de origem: {origem_count}")
+
+                result = connection.execute(insert_sql)
+                logging.info(f"Inserção concluída - linhas afetadas: {result.rowcount}")
 
                 # Contar quantos contratos foram selecionados
                 logging.info("Contando contratos selecionados...")
@@ -73,245 +87,115 @@ def selecionar_contratos_distribuiveis():
 
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
-    Distribui contratos com acordo vigente para empresas que permanecem no período avaliativo.
+    Distribui contratos com acordos vigentes para empresas que permanecem
+    e aplica a regra de arrasto para contratos com mesmo CPF.
+
+    Args:
+        edital_id: ID do edital a ser processado
+        periodo_id: ID do período a ser processado
+
+    Returns:
+        int: Total de contratos distribuídos
     """
+    contratos_acordo = 0
+    contratos_arrasto = 0
+
     try:
-        logging.info(f"INICIANDO distribuir_acordos_vigentes_empresas_permanece")
-        logging.info(f"Parâmetros recebidos: edital_id={edital_id}, periodo_id={periodo_id}")
+        print(
+            f"Iniciando distribuição de acordos vigentes para empresas que permanecem - Edital: {edital_id}, Período: {periodo_id}")
 
-        with db.engine.connect() as connection:
-            try:
-                # Verificar se o edital_id existe
-                verify_edital_sql = text("""
-                SELECT ID FROM DEV.DCA_TB008_EDITAIS 
-                WHERE ID = :edital_id AND DELETED_AT IS NULL
-                """).bindparams(edital_id=edital_id)
+        # 1. Limpar a tabela de distribuição (se necessário - verifique se seu código já faz isso em outro lugar)
+        db.session.execute(text("DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]"))
+        print("Tabela DCA_TB005_DISTRIBUICAO limpa com sucesso")
 
-                edital_exists = connection.execute(verify_edital_sql).scalar()
-                logging.info(f"Verificação do edital ID={edital_id}: {'EXISTE' if edital_exists else 'NÃO EXISTE'}")
+        # 2. Inserir contratos com acordos vigentes para empresas que permanecem
+        resultado_acordos = db.session.execute(
+            text("""
+                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
+                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
+                [VR_SD_DEVEDOR], [CREATED_AT])
 
-                # CORREÇÃO: Verificando pela coluna ID_PERIODO em vez de ID
-                verify_periodo_sql = text("""
-                SELECT ID FROM DEV.DCA_TB001_PERIODO_AVALIACAO 
-                WHERE ID_PERIODO = :periodo_id 
-                AND ID_EDITAL = :edital_id
-                AND DELETED_AT IS NULL
-                """).bindparams(periodo_id=periodo_id, edital_id=edital_id)
-
-                periodo_exists = connection.execute(verify_periodo_sql).scalar()
-                logging.info(
-                    f"Verificação do período ID_PERIODO={periodo_id}: {'EXISTE' if periodo_exists else 'NÃO EXISTE'}")
-
-                if not edital_exists or not periodo_exists:
-                    logging.error(
-                        f"Edital ID={edital_id} ou Período ID_PERIODO={periodo_id} não encontrado no banco de dados")
-                    return 0
-
-                # DEBUG 2: Listar IDs das empresas para confirmar
-                list_empresas_sql = text("""
-                SELECT ID_EMPRESA FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND DS_CONDICAO = 'PERMANECE'
-                AND DELETED_AT IS NULL
-                """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
-
-                empresas_result = connection.execute(list_empresas_sql).fetchall()
-                empresas_ids = [row[0] for row in empresas_result]
-                logging.info(f"DEBUG 2: IDs das empresas que permanecem: {empresas_ids}")
-
-                # DEBUG 3: Verificar acordos vigentes
-                count_acordos_sql = text("""
-                SELECT COUNT(*) FROM BDG.COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES
-                WHERE fkEstadoAcordo = 1
-                """)
-
-                acordos_count = connection.execute(count_acordos_sql).scalar() or 0
-                logging.info(f"DEBUG 3: Total de acordos vigentes: {acordos_count}")
-
-                if acordos_count == 0:
-                    logging.warning("Não existem acordos vigentes (fkEstadoAcordo = 1) no banco de dados")
-                    return 0
-
-                # DEBUG 4: Verificar JOIN entre empresas e empresa_cobranca_atual
-                count_empresas_cobranca_sql = text("""
-                SELECT COUNT(*) 
-                FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EMP
-                INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL AS ECA
-                    ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
-                WHERE EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-                AND EMP.DS_CONDICAO = 'PERMANECE'
-                AND EMP.DELETED_AT IS NULL
-                """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
-
-                empresas_cobranca_count = connection.execute(count_empresas_cobranca_sql).scalar() or 0
-                logging.info(f"DEBUG 4: JOIN Empresas + Empresa_Cobranca: {empresas_cobranca_count}")
-
-                if empresas_cobranca_count == 0:
-                    logging.warning(
-                        "Não foi encontrada correspondência entre empresas participantes e tabela COM_TB011_EMPRESA_COBRANCA_ATUAL")
-                    # Vamos verificar uma amostra de empresas para debug
-                    for empresa_id in empresas_ids[:3]:  # Primeiras 3 empresas
-                        check_empresa_sql = text("""
-                        SELECT COUNT(*) FROM BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL
-                        WHERE COD_EMPRESA_COBRANCA = :empresa_id
-                        """).bindparams(empresa_id=empresa_id)
-                        count = connection.execute(check_empresa_sql).scalar() or 0
-                        logging.info(
-                            f"DEBUG 4.1: Empresa ID={empresa_id} tem {count} registros em COM_TB011_EMPRESA_COBRANCA_ATUAL")
-                    return 0
-
-                # DEBUG 5: Verificar JOIN entre empresas, cobranca_atual e acordos_vigentes
-                count_empresas_acordos_sql = text("""
-                SELECT COUNT(*) 
-                FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EMP
-                INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL AS ECA
-                    ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
-                INNER JOIN BDG.COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES AS ALV
-                    ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
-                WHERE EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-                AND EMP.DS_CONDICAO = 'PERMANECE'
-                AND EMP.DELETED_AT IS NULL
-                AND ALV.fkEstadoAcordo = 1
-                """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
-
-                empresas_acordos_count = connection.execute(count_empresas_acordos_sql).scalar() or 0
-                logging.info(f"DEBUG 5: JOIN Empresas + Cobranca + Acordos: {empresas_acordos_count}")
-
-                if empresas_acordos_count == 0:
-                    logging.warning("Não foi encontrada correspondência após incluir a tabela de acordos vigentes")
-                    return 0
-
-                # DEBUG 6: Verificar JOIN completo incluindo tabela de distribuíveis
-                count_completo_sql = text("""
-                SELECT COUNT(*) 
-                FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EMP
-                INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL AS ECA
-                    ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
-                INNER JOIN BDG.COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES AS ALV
-                    ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
-                INNER JOIN DEV.DCA_TB006_DISTRIBUIVEIS AS DIS
-                    ON ECA.fkContratoSISCTR = DIS.FkContratoSISCTR
-                WHERE EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-                AND EMP.DS_CONDICAO = 'PERMANECE'
-                AND EMP.DELETED_AT IS NULL
-                AND ALV.fkEstadoAcordo = 1
-                AND DIS.DELETED_AT IS NULL
-                """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
-
-                join_completo_count = connection.execute(count_completo_sql).scalar() or 0
-                logging.info(f"DEBUG 6: JOIN Completo (incluindo distribuíveis): {join_completo_count}")
-
-                if join_completo_count == 0:
-                    logging.warning("Não foi encontrada correspondência após incluir a tabela de distribuíveis")
-                    # Verificar contagem na tabela de distribuíveis para confirmar que há dados
-                    count_dist_sql = text("SELECT COUNT(*) FROM DEV.DCA_TB006_DISTRIBUIVEIS WHERE DELETED_AT IS NULL")
-                    dist_count = connection.execute(count_dist_sql).scalar() or 0
-                    logging.info(f"DEBUG 6.1: Total de registros em DCA_TB006_DISTRIBUIVEIS: {dist_count}")
-                    return 0
-
-                # Obtém a data de referência atual
-                data_referencia_sql = text("SELECT CONVERT(DATE, GETDATE())")
-                dt_referencia = connection.execute(data_referencia_sql).scalar()
-                logging.info(f"Data de referência: {dt_referencia}")
-
-                # Construir a SQL para distribuição
-                distribuir_sql = text("""
-                INSERT INTO DEV.DCA_TB005_DISTRIBUICAO (
-                    DT_REFERENCIA,
-                    ID_EDITAL,
-                    ID_PERIODO,
-                    FkContratoSISCTR,
-                    COD_CRITERIO_SELECAO,
-                    COD_EMPRESA_COBRANCA,
-                    NR_CPF_CNPJ,
-                    VR_SD_DEVEDOR,
-                    CREATED_AT,
-                    UPDATED_AT,
-                    DELETED_AT
-                )
-                SELECT
-                    :dt_referencia,
-                    :edital_id,
-                    :periodo_id,
+                SELECT 
+                    GETDATE() AS [DT_REFERENCIA],
+                    EMP.ID_EDITAL,
+                    EMP.ID_PERIODO,
                     ECA.fkContratoSISCTR,
-                    1, -- Código 1: Contrato com acordo para assessoria que permanece
-                    EMP.ID_EMPRESA,
-                    DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
-                    GETDATE(),
-                    NULL,
-                    NULL
-                FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EMP
-                INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL AS ECA
-                    ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
-                INNER JOIN BDG.COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES AS ALV
-                    ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
-                INNER JOIN DEV.DCA_TB006_DISTRIBUIVEIS AS DIS
-                    ON ECA.fkContratoSISCTR = DIS.FkContratoSISCTR
+                    EMP.ID_EMPRESA AS COD_EMPRESA_COBRANCA,
+                    1 AS COD_CRITERIO_SELECAO, -- Contrato com acordo para assessoria que permanece
+                    DIS.[NR_CPF_CNPJ],
+                    DIS.[VR_SD_DEVEDOR],
+                    GETDATE() AS [CREATED_AT]
+                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                    INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
+                    INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
+                        ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
+                    INNER JOIN [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                        ON ECA.fkContratoSISCTR = DIS.[FkContratoSISCTR]
                 WHERE EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-                AND EMP.DS_CONDICAO = 'PERMANECE'
-                AND EMP.DELETED_AT IS NULL
-                AND ALV.fkEstadoAcordo = 1
-                AND DIS.DELETED_AT IS NULL
-                """).bindparams(
-                    dt_referencia=dt_referencia,
-                    edital_id=edital_id,
-                    periodo_id=periodo_id
-                )
+                    AND EMP.ID_PERIODO = :periodo_id
+                    AND EMP.DS_CONDICAO = 'PERMANECE'
+                    AND ALV.fkEstadoAcordo = 1
+            """),
+            {"edital_id": edital_id, "periodo_id": periodo_id}
+        )
+        contratos_acordo = resultado_acordos.rowcount
+        print(f"{contratos_acordo} contratos com acordo distribuídos")
 
-                # DEBUG 7: Imprimir SQL a ser executada
-                sql_to_execute = str(distribuir_sql.compile(
-                    compile_kwargs={"literal_binds": True}))
-                logging.info(f"DEBUG 7: SQL a ser executada: {sql_to_execute}")
+        # 3. Aplicar regra de arrasto - distribuir contratos do mesmo CPF para a mesma empresa
+        resultado_arrasto = db.session.execute(
+            text("""
+                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
+                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
+                [VR_SD_DEVEDOR], [CREATED_AT])
 
-                # Executar a inserção
-                logging.info("Executando SQL para distribuir contratos...")
-                result = connection.execute(distribuir_sql)
-                contratos_distribuidos = result.rowcount
-                logging.info(f"Resultado da inserção: {contratos_distribuidos} registros inseridos")
-
-                if contratos_distribuidos > 0:
-                    # Marcar como excluídos na tabela de distribuíveis
-                    marcar_como_excluido_sql = text("""
-                    UPDATE DEV.DCA_TB006_DISTRIBUIVEIS
-                    SET DELETED_AT = GETDATE()
-                    WHERE FkContratoSISCTR IN (
-                        SELECT FkContratoSISCTR 
-                        FROM DEV.DCA_TB005_DISTRIBUICAO
-                        WHERE ID_EDITAL = :edital_id
-                        AND ID_PERIODO = :periodo_id
-                        AND COD_CRITERIO_SELECAO = 1
+                SELECT 
+                    GETDATE() AS [DT_REFERENCIA],
+                    DIST.ID_EDITAL,
+                    DIST.ID_PERIODO,
+                    DIS.FkContratoSISCTR,
+                    DIST.COD_EMPRESA_COBRANCA,
+                    6 AS COD_CRITERIO_SELECAO, -- Regra de Arrasto
+                    DIS.[NR_CPF_CNPJ],
+                    DIS.[VR_SD_DEVEDOR],
+                    GETDATE() AS [CREATED_AT]
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] DIS
+                INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] DIST 
+                    ON DIS.[NR_CPF_CNPJ] = DIST.[NR_CPF_CNPJ]
+                    AND DIS.[FkContratoSISCTR] <> DIST.[fkContratoSISCTR]
+                WHERE DIST.[COD_CRITERIO_SELECAO] = 1
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
+                        WHERE fkContratoSISCTR = DIS.[FkContratoSISCTR]
                     )
-                    AND DELETED_AT IS NULL
-                    """).bindparams(edital_id=edital_id, periodo_id=periodo_id)
+            """)
+        )
+        contratos_arrasto = resultado_arrasto.rowcount
+        print(f"{contratos_arrasto} contratos distribuídos por regra de arrasto")
 
-                    # DEBUG 8: Mostrar SQL de atualização
-                    update_sql_str = str(marcar_como_excluido_sql.compile(
-                        compile_kwargs={"literal_binds": True}))
-                    logging.info(f"DEBUG 8: SQL para marcar como excluído: {update_sql_str}")
+        # 4. Excluir os contratos inseridos da tabela de distribuíveis
+        resultado_delete = db.session.execute(
+            text("""
+                DELETE DIS
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] AS DIST 
+                    ON DIS.[FkContratoSISCTR] = DIST.[fkContratoSISCTR]
+            """)
+        )
+        print(f"{resultado_delete.rowcount} contratos removidos da tabela de distribuíveis")
 
-                    # Executar a atualização
-                    update_result = connection.execute(marcar_como_excluido_sql)
-                    atualizados = update_result.rowcount
-                    logging.info(f"Marcados {atualizados} contratos como excluídos na tabela de distribuíveis")
-
-                logging.info(f"CONCLUÍDO: Contratos com acordo vigente distribuídos: {contratos_distribuidos}")
-                return contratos_distribuidos
-
-            except Exception as e:
-                logging.error(f"Erro durante a distribuição de contratos com acordo vigente: {str(e)}")
-                import traceback
-                logging.error(traceback.format_exc())
-                raise
+        db.session.commit()
+        print("Processo de distribuição de acordos vigentes concluído com sucesso")
 
     except Exception as e:
-        logging.error(f"Erro ao distribuir contratos com acordo vigente: {str(e)}")
-        return 0
+        db.session.rollback()
+        print(f"Erro ao distribuir contratos: {str(e)}")
+
+    # Retorna um valor inteiro (soma dos contratos distribuídos)
+    return contratos_acordo + contratos_arrasto
 
 def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
     """
