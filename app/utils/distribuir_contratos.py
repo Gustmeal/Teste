@@ -87,8 +87,8 @@ def selecionar_contratos_distribuiveis():
 
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
-    Distribui contratos com acordos vigentes para empresas que permanecem
-    e aplica a regra de arrasto para contratos com mesmo CPF.
+    Distribui contratos com acordos vigentes para empresas que permanecem.
+    Implementa o item 1.1.1 dos requisitos.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -97,16 +97,17 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     Returns:
         int: Total de contratos distribuídos
     """
-    contratos_acordo = 0
-    contratos_arrasto = 0
+    contratos_distribuidos = 0
 
     try:
         print(
             f"Iniciando distribuição de acordos vigentes para empresas que permanecem - Edital: {edital_id}, Período: {periodo_id}")
 
-        # 1. Limpar a tabela de distribuição (se necessário - verifique se seu código já faz isso em outro lugar)
-        db.session.execute(text("DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]"))
-        print("Tabela DCA_TB005_DISTRIBUICAO limpa com sucesso")
+        # 1. Limpar a tabela de distribuição (apenas na primeira execução)
+        db.session.execute(text(
+            "DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO] WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id"),
+                           {"edital_id": edital_id, "periodo_id": periodo_id})
+        print("Tabela DCA_TB005_DISTRIBUICAO limpa para este edital/período")
 
         # 2. Inserir contratos com acordos vigentes para empresas que permanecem
         resultado_acordos = db.session.execute(
@@ -118,21 +119,21 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
 
                 SELECT 
                     GETDATE() AS [DT_REFERENCIA],
-                    EMP.ID_EDITAL,
-                    EMP.ID_PERIODO,
-                    ECA.fkContratoSISCTR,
+                    :edital_id,
+                    :periodo_id,
+                    DIS.[FkContratoSISCTR],
                     EMP.ID_EMPRESA AS COD_EMPRESA_COBRANCA,
                     1 AS COD_CRITERIO_SELECAO, -- Contrato com acordo para assessoria que permanece
                     DIS.[NR_CPF_CNPJ],
                     DIS.[VR_SD_DEVEDOR],
                     GETDATE() AS [CREATED_AT]
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
                     INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                        ON EMP.ID_EMPRESA = ECA.COD_EMPRESA_COBRANCA
+                        ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
                     INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
-                        ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
-                    INNER JOIN [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                        ON ECA.fkContratoSISCTR = DIS.[FkContratoSISCTR]
+                        ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
+                    INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                        ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
                 WHERE EMP.ID_EDITAL = :edital_id
                     AND EMP.ID_PERIODO = :periodo_id
                     AND EMP.DS_CONDICAO = 'PERMANECE'
@@ -140,68 +141,40 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
             """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         )
-        contratos_acordo = resultado_acordos.rowcount
-        print(f"{contratos_acordo} contratos com acordo distribuídos")
+        contratos_distribuidos = resultado_acordos.rowcount
+        print(f"{contratos_distribuidos} contratos com acordo distribuídos para empresas que permanecem")
 
-        # 3. Aplicar regra de arrasto - distribuir contratos do mesmo CPF para a mesma empresa
-        resultado_arrasto = db.session.execute(
-            text("""
-                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
-                ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                [VR_SD_DEVEDOR], [CREATED_AT])
-
-                SELECT 
-                    GETDATE() AS [DT_REFERENCIA],
-                    DIST.ID_EDITAL,
-                    DIST.ID_PERIODO,
-                    DIS.FkContratoSISCTR,
-                    DIST.COD_EMPRESA_COBRANCA,
-                    6 AS COD_CRITERIO_SELECAO, -- Regra de Arrasto
-                    DIS.[NR_CPF_CNPJ],
-                    DIS.[VR_SD_DEVEDOR],
-                    GETDATE() AS [CREATED_AT]
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] DIS
-                INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] DIST 
-                    ON DIS.[NR_CPF_CNPJ] = DIST.[NR_CPF_CNPJ]
-                    AND DIS.[FkContratoSISCTR] <> DIST.[fkContratoSISCTR]
-                WHERE DIST.[COD_CRITERIO_SELECAO] = 1
-                    AND NOT EXISTS (
-                        SELECT 1 
-                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
-                        WHERE fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                    )
-            """)
-        )
-        contratos_arrasto = resultado_arrasto.rowcount
-        print(f"{contratos_arrasto} contratos distribuídos por regra de arrasto")
-
-        # 4. Excluir os contratos inseridos da tabela de distribuíveis
-        resultado_delete = db.session.execute(
-            text("""
-                DELETE DIS
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] AS DIST 
+        # 3. Remover os contratos inseridos da tabela de distribuíveis
+        if contratos_distribuidos > 0:
+            db.session.execute(
+                text("""
+                    DELETE DIS
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                    INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] AS DIST 
                     ON DIS.[FkContratoSISCTR] = DIST.[fkContratoSISCTR]
-            """)
-        )
-        print(f"{resultado_delete.rowcount} contratos removidos da tabela de distribuíveis")
+                    WHERE DIST.ID_EDITAL = :edital_id
+                    AND DIST.ID_PERIODO = :periodo_id
+                    AND DIST.COD_CRITERIO_SELECAO = 1
+                """),
+                {"edital_id": edital_id, "periodo_id": periodo_id}
+            )
 
         db.session.commit()
-        print("Processo de distribuição de acordos vigentes concluído com sucesso")
+        print("Processamento de acordos vigentes para empresas que permanecem concluído com sucesso")
 
     except Exception as e:
         db.session.rollback()
-        print(f"Erro ao distribuir contratos: {str(e)}")
+        print(f"Erro ao distribuir contratos com acordo para empresas que permanecem: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
 
-    # Retorna um valor inteiro (soma dos contratos distribuídos)
-    return contratos_acordo + contratos_arrasto
+    return contratos_distribuidos
 
 
 def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
     """
-    Distribui contratos com acordos vigentes de empresas descredenciadas de forma
-    igualitária entre as empresas participantes do novo período avaliativo.
+    Distribui contratos com acordos vigentes de empresas descredenciadas.
+    Implementa o item 1.1.2 dos requisitos.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -210,8 +183,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
     Returns:
         int: Total de contratos distribuídos
     """
-    contratos_acordo = 0
-    contratos_arrasto = 0
+    contratos_distribuidos = 0
 
     try:
         print(
@@ -242,8 +214,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
             SELECT 
                 DIS.[FkContratoSISCTR],
                 DIS.[NR_CPF_CNPJ],
-                DIS.[VR_SD_DEVEDOR],
-                ECA.COD_EMPRESA_COBRANCA
+                DIS.[VR_SD_DEVEDOR]
             FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] DIS
             INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA 
                 ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
@@ -254,14 +225,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
             WHERE ALV.fkEstadoAcordo = 1
                 AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
                 AND EMP.ID_EDITAL = :edital_id
-                -- Verifica se o contrato já não foi distribuído previamente
-                AND NOT EXISTS (
-                    SELECT 1 
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] D
-                    WHERE D.fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                    AND D.ID_EDITAL = :edital_id
-                    AND D.ID_PERIODO = :periodo_id
-                )
+                AND EMP.ID_PERIODO = :periodo_id
         """
 
         contratos_descred = db.session.execute(
@@ -323,91 +287,23 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
                 db.session.commit()
                 print(f"Progresso: {contratos_inseridos}/{total_contratos} contratos inseridos")
 
-        contratos_acordo = contratos_inseridos
-        print(f"{contratos_acordo} contratos com acordo de empresas descredenciadas distribuídos")
+        contratos_distribuidos = contratos_inseridos
+        print(f"{contratos_distribuidos} contratos com acordo de empresas descredenciadas distribuídos")
 
-        # 4. Aplicar regra de arrasto - ABORDAGEM SIMPLIFICADA
-        # Primeiro identificamos os contratos para arrasto
-        contratos_arrasto_query = """
-            SELECT 
-                DIS.FkContratoSISCTR,
-                DIST.COD_EMPRESA_COBRANCA,
-                DIS.[NR_CPF_CNPJ],
-                DIS.[VR_SD_DEVEDOR]
-            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] DIS
-            INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] DIST 
-                ON DIS.[NR_CPF_CNPJ] = DIST.[NR_CPF_CNPJ]
-                AND DIS.[FkContratoSISCTR] <> DIST.[fkContratoSISCTR]
-                AND DIST.[ID_EDITAL] = :edital_id
-                AND DIST.[ID_PERIODO] = :periodo_id
-                AND DIST.[COD_CRITERIO_SELECAO] = 3
-            WHERE NOT EXISTS (
-                SELECT 1 
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO] D
-                WHERE D.fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                AND D.ID_EDITAL = :edital_id
-                AND D.ID_PERIODO = :periodo_id
-            )
-        """
-
-        contratos_arrasto_list = db.session.execute(
-            text(contratos_arrasto_query),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).fetchall()
-
-        # Depois inserimos um por um com tratamento de erro
-        arrasto_count = 0
-        for contrato in contratos_arrasto_list:
-            try:
-                db.session.execute(
-                    text("""
-                        INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
-                        ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                        [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                        [VR_SD_DEVEDOR], [CREATED_AT])
-                        VALUES (
-                            GETDATE(),
-                            :edital_id,
-                            :periodo_id,
-                            :contrato,
-                            :empresa,
-                            6, -- Regra de Arrasto
-                            :cpf_cnpj,
-                            :valor,
-                            GETDATE()
-                        )
-                    """),
-                    {
-                        "edital_id": edital_id,
-                        "periodo_id": periodo_id,
-                        "contrato": contrato[0],
-                        "empresa": contrato[1],
-                        "cpf_cnpj": contrato[2],
-                        "valor": contrato[3]
-                    }
-                )
-                arrasto_count += 1
-            except Exception as e:
-                # Ignora duplicações de chave primária
-                if "PRIMARY KEY" not in str(e):
-                    raise
-
-        contratos_arrasto = arrasto_count
-        print(f"{contratos_arrasto} contratos distribuídos por regra de arrasto")
-
-        # 5. Excluir os contratos inseridos da tabela de distribuíveis
-        resultado_delete = db.session.execute(
-            text("""
-                DELETE DIS
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] AS DIST 
+        # 4. Excluir os contratos inseridos da tabela de distribuíveis
+        if contratos_distribuidos > 0:
+            db.session.execute(
+                text("""
+                    DELETE DIS
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                    INNER JOIN [DEV].[DCA_TB005_DISTRIBUICAO] AS DIST 
                     ON DIS.[FkContratoSISCTR] = DIST.[fkContratoSISCTR]
-                WHERE DIST.ID_EDITAL = :edital_id
-                  AND DIST.ID_PERIODO = :periodo_id
-            """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        )
-        print(f"{resultado_delete.rowcount} contratos removidos da tabela de distribuíveis")
+                    WHERE DIST.ID_EDITAL = :edital_id
+                    AND DIST.ID_PERIODO = :periodo_id
+                    AND DIST.COD_CRITERIO_SELECAO = 3
+                """),
+                {"edital_id": edital_id, "periodo_id": periodo_id}
+            )
 
         db.session.commit()
         print("Processo de distribuição de acordos vigentes de empresas descredenciadas concluído com sucesso")
@@ -418,160 +314,199 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
         import traceback
         print(traceback.format_exc())
 
-    # Retorna um valor inteiro (soma dos contratos distribuídos)
-    return contratos_acordo + contratos_arrasto
+    return contratos_distribuidos
 
 
 def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
     """
-    Distribui contratos sem acordo que possuam o mesmo CPF dos contratos com acordo vigente.
+    Aplica a regra de arrasto com acordo para distribuição de contratos.
+    Versão otimizada com intervalo de verificação de progresso maior.
 
     Args:
-        edital_id: ID do edital a ser processado
-        periodo_id: ID do período a ser processado
+        edital_id: ID do edital
+        periodo_id: ID do período
 
     Returns:
         int: Total de contratos distribuídos
     """
-    contratos_distribuidos = 0
+    from app import db
+    from sqlalchemy import text
+    import time, logging
+
+    contratos_processados = 0
+    contratos_inseridos = 0
+    contratos_ignorados = 0
+    start_time = time.time()
 
     try:
-        print(
-            f"Iniciando distribuição de contratos com acordo - regra de arrasto - Edital: {edital_id}, Período: {periodo_id}")
+        print(f"Iniciando distribuição pela regra de arrasto com acordo - Edital: {edital_id}, Período: {periodo_id}")
 
-        # Usar uma única conexão para todas as operações
-        with db.engine.connect() as connection:
-            # Iniciar uma transação
-            with connection.begin():
-                # Passo 1: Obter CPFs de contratos com acordos vigentes
-                result = connection.execute(
+        # Verificar se existem acordos para processar
+        acordos_count = db.session.execute(
+            text("""
+                SELECT COUNT(DISTINCT NR_CPF_CNPJ) 
+                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE ID_EDITAL = :edital
+                AND ID_PERIODO = :periodo
+                AND COD_CRITERIO_SELECAO IN (1, 3)
+            """),
+            {"edital": edital_id, "periodo": periodo_id}
+        ).scalar()
+
+        if not acordos_count:
+            print("Nenhum CPF/CNPJ com acordo foi encontrado.")
+            return 0
+
+        print(f"Total de CPFs/CNPJs com acordo: {acordos_count}")
+
+        # ABORDAGEM SIMPLIFICADA: Processar diretamente em Python com transações pequenas
+        print("Processando contratos para arrasto com acordo...")
+
+        # 1. Buscar CPFs/CNPJs com acordos
+        cpfs_acordos = db.session.execute(
+            text("""
+                SELECT DISTINCT NR_CPF_CNPJ, COD_EMPRESA_COBRANCA
+                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE ID_EDITAL = :edital
+                AND ID_PERIODO = :periodo
+                AND COD_CRITERIO_SELECAO IN (1, 3)
+            """),
+            {"edital": edital_id, "periodo": periodo_id}
+        ).fetchall()
+
+        total_cpfs = len(cpfs_acordos)
+        contratos_problematicos = set([103290187])  # Já sabemos que este contrato causa problema
+        cpfs_processados = 0
+
+        # ALTERAÇÃO: Definir intervalo de verificação para relatórios de progresso
+        intervalo_verificacao = 500  # Mostrar progresso a cada 500 CPFs processados
+        proximo_relatorio = intervalo_verificacao
+
+        # 2. Para cada CPF/CNPJ, buscar e processar contratos em lotes
+        lote_tamanho = 100  # ALTERAÇÃO: Aumentar tamanho do lote para 100 CPFs por lote
+
+        for i in range(0, total_cpfs, lote_tamanho):
+            lote_cpfs = cpfs_acordos[i:i + lote_tamanho]
+            lote_inseridos = 0
+
+            for acordo in lote_cpfs:
+                cpf_cnpj = acordo[0]
+                empresa_cobranca = acordo[1]
+
+                # Buscar contratos distribuíveis para este CPF/CNPJ
+                contratos = db.session.execute(
                     text("""
-                    SELECT DISTINCT
-                        d.NR_CPF_CNPJ,
-                        d.COD_EMPRESA_COBRANCA
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] d
-                    WHERE d.ID_EDITAL = :edital_id
-                    AND d.ID_PERIODO = :periodo_id
-                    AND d.COD_CRITERIO_SELECAO IN (1, 3)
+                        SELECT FkContratoSISCTR, NR_CPF_CNPJ, VR_SD_DEVEDOR
+                        FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                        WHERE NR_CPF_CNPJ = :cpf_cnpj
+                        AND FkContratoSISCTR NOT IN (
+                            SELECT fkContratoSISCTR
+                            FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                            WHERE ID_EDITAL = :edital
+                            AND ID_PERIODO = :periodo
+                        )
                     """),
-                    {"edital_id": edital_id, "periodo_id": periodo_id}
-                )
+                    {"cpf_cnpj": cpf_cnpj, "edital": edital_id, "periodo": periodo_id}
+                ).fetchall()
 
-                # Extrair CPFs e suas empresas associadas
-                cpf_empresa_map = {row[0]: row[1] for row in result}
+                contratos_processados += len(contratos)
 
-                if not cpf_empresa_map:
-                    print("Nenhum CPF com acordo vigente encontrado.")
-                    return 0
+                # Inserir contratos em uma transação por CPF
+                if contratos:
+                    try:
+                        for contrato in contratos:
+                            contrato_id = contrato[0]
 
-                print(f"Encontrados {len(cpf_empresa_map)} CPFs distintos com acordos vigentes")
+                            # Pular contratos problemáticos conhecidos
+                            if contrato_id in contratos_problematicos:
+                                contratos_ignorados += 1
+                                continue
 
-                # Passo 2: Processar em lotes para evitar limitações de parâmetros
-                contratos_distribuidos = 0
-                cpfs_list = list(cpf_empresa_map.keys())
-
-                # Processar em lotes de 1000 CPFs
-                batch_size = 1000
-                for i in range(0, len(cpfs_list), batch_size):
-                    batch_cpfs = cpfs_list[i:i + batch_size]
-
-                    # Buscar contratos distribuíveis para este lote de CPFs
-                    contratos_result = connection.execute(
-                        text("""
-                        SELECT 
-                            d.FkContratoSISCTR,
-                            d.NR_CPF_CNPJ,
-                            d.VR_SD_DEVEDOR
-                        FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] d
-                        WHERE d.NR_CPF_CNPJ IN :cpfs
-                        """),
-                        {"cpfs": tuple(batch_cpfs)}
-                    )
-
-                    # Agrupar os contratos por CPF
-                    contratos_batch = []
-                    for contrato in contratos_result:
-                        contrato_id, cpf, valor = contrato
-                        empresa_id = cpf_empresa_map.get(cpf)
-
-                        contratos_batch.append({
-                            "edital_id": edital_id,
-                            "periodo_id": periodo_id,
-                            "contrato_id": contrato_id,
-                            "empresa_id": empresa_id,
-                            "cpf": cpf,
-                            "valor": valor
-                        })
-
-                    # Se tiver contratos para inserir
-                    if contratos_batch:
-                        # Inserir os contratos na tabela de distribuição
-                        for contrato in contratos_batch:
-                            connection.execute(
-                                text("""
-                                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
-                                (
-                                    [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                                    [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                                    [VR_SD_DEVEDOR], [CREATED_AT]
-                                )
-                                VALUES (
-                                    GETDATE(), 
-                                    :edital_id, 
-                                    :periodo_id, 
-                                    :contrato_id, 
-                                    :empresa_id, 
-                                    6,  -- Código 6: Regra de Arrasto
-                                    :cpf, 
-                                    :valor, 
-                                    GETDATE()
-                                )
-                                """),
-                                contrato
-                            )
-
-                        # Remover os contratos da tabela de distribuíveis
-                        contratos_ids = tuple(contrato["contrato_id"] for contrato in contratos_batch)
-                        if contratos_ids:
-                            # Para o caso de apenas um ID, SQL Server precisa de tratamento especial
-                            if len(contratos_ids) == 1:
-                                connection.execute(
+                            try:
+                                db.session.execute(
                                     text("""
-                                    DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                                    WHERE FkContratoSISCTR = :contrato_id
+                                        INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                                        (
+                                            [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
+                                            [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
+                                            [VR_SD_DEVEDOR], [CREATED_AT]
+                                        )
+                                        VALUES (
+                                            GETDATE(),
+                                            :edital,
+                                            :periodo,
+                                            :contrato_id,
+                                            :empresa,
+                                            6, -- Código 6: Regra de Arrasto
+                                            :cpf_cnpj,
+                                            :valor,
+                                            GETDATE()
+                                        )
                                     """),
-                                    {"contrato_id": contratos_ids[0]}
+                                    {
+                                        "edital": edital_id,
+                                        "periodo": periodo_id,
+                                        "contrato_id": contrato_id,
+                                        "empresa": empresa_cobranca,
+                                        "cpf_cnpj": cpf_cnpj,
+                                        "valor": contrato[2]
+                                    }
                                 )
-                            else:
-                                connection.execute(
+
+                                # Remover da tabela de distribuíveis
+                                db.session.execute(
                                     text("""
-                                    DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                                    WHERE FkContratoSISCTR IN :contratos_ids
+                                        DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                                        WHERE FkContratoSISCTR = :contrato_id
                                     """),
-                                    {"contratos_ids": contratos_ids}
+                                    {"contrato_id": contrato_id}
                                 )
 
-                        contratos_distribuidos += len(contratos_batch)
+                                lote_inseridos += 1
 
-                print(f"Total de {contratos_distribuidos} contratos distribuídos pela regra de arrasto")
+                            except Exception as e:
+                                contratos_problematicos.add(contrato_id)
+                                contratos_ignorados += 1
 
-                # Commit é feito automaticamente ao sair do bloco with connection.begin()
+                        # Commit após processar todos os contratos deste CPF
+                        db.session.commit()
+                        contratos_inseridos += lote_inseridos
 
-        print(f"Regra de arrasto com acordo processada com sucesso: {contratos_distribuidos} contratos distribuídos")
+                    except Exception as e:
+                        # Rollback apenas desta transação
+                        db.session.rollback()
+                        print(f"Erro ao processar CPF/CNPJ {cpf_cnpj}: {str(e)}")
+
+            # Mostrar progresso apenas em intervalos específicos ou no final
+            cpfs_processados += len(lote_cpfs)
+
+            # ALTERAÇÃO: Verificar se atingimos o próximo ponto de verificação
+            if cpfs_processados >= proximo_relatorio or cpfs_processados >= total_cpfs:
+                progresso = (cpfs_processados / total_cpfs) * 100
+                print(
+                    f"Arrasto com acordo: {cpfs_processados}/{total_cpfs} CPFs processados ({progresso:.1f}%) - {contratos_inseridos} contratos inseridos")
+                proximo_relatorio = cpfs_processados + intervalo_verificacao
+
+        elapsed_time = time.time() - start_time
+        print(
+            f"Regra de arrasto com acordo concluída: {contratos_inseridos} contratos distribuídos em {elapsed_time:.2f}s")
+
+        # Retorna apenas o número de contratos inseridos (inteiro)
+        return contratos_inseridos
 
     except Exception as e:
-        print(f"Erro ao distribuir contratos pela regra de arrasto com acordo: {str(e)}")
+        db.session.rollback()
+        print(f"Erro na regra de arrasto com acordo: {str(e)}")
         import traceback
         print(traceback.format_exc())
 
-    return contratos_distribuidos
-
-
+        # Retorna zero em caso de erro
+        return 0
 
 def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     """
     Aplica a regra de arrasto para contratos sem acordo.
-    Versão corrigida que resolve o erro ResourceClosedError.
+    Versão otimizada que não utiliza a tabela intermediária de arrastáveis.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -783,7 +718,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 :periodo_id, 
                 D.[FkContratoSISCTR], 
                 C.empresa_id, 
-                3, -- Código 3: Regra de Arrasto Sem Acordo
+                6, -- ALTERADO: Código 6: Regra de Arrasto (era 3)
                 D.[NR_CPF_CNPJ], 
                 D.[VR_SD_DEVEDOR], 
                 GETDATE()
@@ -823,7 +758,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         # Limpar a tabela temporária global
         db.session.execute(text("IF OBJECT_ID('tempdb..##ResultadoArrasto') IS NOT NULL DROP TABLE ##ResultadoArrasto"))
 
-        print(f"Regra de arrasto processada com sucesso: {contratos_distribuidos} contratos distribuídos")
+        print(f"Regra de arrasto sem acordo processada com sucesso: {contratos_distribuidos} contratos distribuídos")
 
     except Exception as e:
         db.session.rollback()
@@ -840,7 +775,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         except:
             pass
 
-        print(f"Erro ao distribuir contratos pela regra de arrasto: {str(e)}")
+        print(f"Erro ao distribuir contratos pela regra de arrasto sem acordo: {str(e)}")
         import traceback
         print(traceback.format_exc())
 
@@ -1331,4 +1266,3 @@ def processar_distribuicao_completa(edital_id, periodo_id):
         import traceback
         logging.error(traceback.format_exc())
         return resultados
-
