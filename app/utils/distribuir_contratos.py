@@ -512,18 +512,16 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
 def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     """
     Aplica a regra de arrasto para contratos sem acordo (regra 1.1.4).
-    Versão corrigida e testada.
+    Versão corrigida para resolver problema de contratos não distribuídos.
     """
     from app import db
     from sqlalchemy import text
     import time
     import logging
 
-    # Configurar logger para registro detalhado
     logger = logging.getLogger(__name__)
-
     start_time = time.time()
-    resultados = {
+    resultados_internos = {
         "inseridos_arrastaveis": 0,
         "distribuidos": 0,
         "cpfs_processados": 0
@@ -533,319 +531,443 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         logger.info(
             f"Iniciando regra de arrasto para contratos sem acordo - Edital: {edital_id}, Período: {periodo_id}")
 
-        # ETAPA 1: Limpar e criar tabela temporária
-        logger.info("Preparando tabela temporária...")
-        db.session.execute(
-            text("IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo")
-        )
-        db.session.commit()
-
-        db.session.execute(
+        # ETAPA 1: Verificar se existem empresas para distribuição
+        empresas = db.session.execute(
             text("""
-                CREATE TABLE ##CPFsArrasteSemAcordo (
-                    NR_CPF_CNPJ VARCHAR(20) PRIMARY KEY CLUSTERED
-                )
-            """)
-        )
+                SELECT COUNT(*)
+                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                WHERE ID_EDITAL = :edital
+                AND ID_PERIODO = :periodo
+                AND DELETED_AT IS NULL
+            """),
+            {"edital": edital_id, "periodo": periodo_id}
+        ).scalar() or 0
+
+        if empresas == 0:
+            logger.warning("Nenhuma empresa disponível para distribuição. Processo interrompido.")
+            return 0
+
+        logger.info(f"Encontradas {empresas} empresas para distribuição")
+
+        # ETAPA 2: Preparar tabelas temporárias
+        logger.info("Preparando tabelas temporárias...")
+        db.session.execute(text("""
+            -- Limpar tabelas temporárias anteriores
+            IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo;
+            IF OBJECT_ID('tempdb..##DistribuicaoCPFs') IS NOT NULL DROP TABLE ##DistribuicaoCPFs;
+            IF OBJECT_ID('tempdb..##EmpresasPercentuais') IS NOT NULL DROP TABLE ##EmpresasPercentuais;
+
+            -- Criar tabela para CPFs elegíveis
+            CREATE TABLE ##CPFsArrasteSemAcordo (
+                NR_CPF_CNPJ VARCHAR(20) PRIMARY KEY CLUSTERED
+            );
+
+            -- Criar tabela para distribuição
+            CREATE TABLE ##DistribuicaoCPFs (
+                NR_CPF_CNPJ VARCHAR(20),
+                ID_EMPRESA INT
+            );
+
+            -- Criar tabela para empresas e percentuais
+            CREATE TABLE ##EmpresasPercentuais (
+                ID_EMPRESA INT,
+                percentual_ajustado DECIMAL(10,4),
+                qtd_cpfs INT,
+                ordem INT IDENTITY(1,1)
+            );
+        """))
         db.session.commit()
 
-        # ETAPA 2: Identificar CPFs com múltiplos contratos - CORREÇÃO: Operações separadas
+        # ETAPA 3: Identificar CPFs com múltiplos contratos
         logger.info("Identificando CPFs com múltiplos contratos...")
-
-        # Primeiro executar o INSERT
-        db.session.execute(
-            text("""
-                INSERT INTO ##CPFsArrasteSemAcordo (NR_CPF_CNPJ)
-                SELECT DISTINCT LTRIM(RTRIM(NR_CPF_CNPJ))
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                WHERE NR_CPF_CNPJ IS NOT NULL
-                GROUP BY LTRIM(RTRIM(NR_CPF_CNPJ))
-                HAVING COUNT(*) > 1
-            """)
-        )
+        db.session.execute(text("""
+            INSERT INTO ##CPFsArrasteSemAcordo (NR_CPF_CNPJ)
+            SELECT DISTINCT LTRIM(RTRIM(NR_CPF_CNPJ))
+            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
+            WHERE NR_CPF_CNPJ IS NOT NULL
+            GROUP BY LTRIM(RTRIM(NR_CPF_CNPJ))
+            HAVING COUNT(*) > 1;
+        """))
         db.session.commit()
 
-        # Depois contar separadamente
+        # Contar CPFs com múltiplos contratos
         cpfs_multiplos = db.session.execute(
             text("SELECT COUNT(*) FROM ##CPFsArrasteSemAcordo")
         ).scalar() or 0
-
         logger.info(f"Encontrados {cpfs_multiplos} CPFs com múltiplos contratos")
 
-        # ETAPA 3: Incluir CPFs únicos
+        # ETAPA 4: Incluir CPFs únicos
         logger.info("Incluindo CPFs com contratos únicos...")
-
-        db.session.execute(
-            text("""
-                INSERT INTO ##CPFsArrasteSemAcordo (NR_CPF_CNPJ)
-                SELECT DISTINCT LTRIM(RTRIM(D.NR_CPF_CNPJ))
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                WHERE D.NR_CPF_CNPJ IS NOT NULL
-                AND NOT EXISTS (
-                    SELECT 1 
-                    FROM ##CPFsArrasteSemAcordo 
-                    WHERE NR_CPF_CNPJ = LTRIM(RTRIM(D.NR_CPF_CNPJ))
-                )
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] DIST
-                    WHERE LTRIM(RTRIM(DIST.NR_CPF_CNPJ)) = LTRIM(RTRIM(D.NR_CPF_CNPJ))
-                    AND DIST.ID_EDITAL = :edital
-                    AND DIST.ID_PERIODO = :periodo
-                    AND DIST.COD_CRITERIO_SELECAO IN (1, 3, 6)
-                )
-            """),
-            {"edital": edital_id, "periodo": periodo_id}
-        )
+        db.session.execute(text("""
+            INSERT INTO ##CPFsArrasteSemAcordo (NR_CPF_CNPJ)
+            SELECT DISTINCT LTRIM(RTRIM(D.NR_CPF_CNPJ))
+            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
+            WHERE D.NR_CPF_CNPJ IS NOT NULL
+            AND NOT EXISTS (
+                SELECT 1 FROM ##CPFsArrasteSemAcordo
+                WHERE NR_CPF_CNPJ = LTRIM(RTRIM(D.NR_CPF_CNPJ))
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM [DEV].[DCA_TB005_DISTRIBUICAO] DIST
+                WHERE LTRIM(RTRIM(DIST.NR_CPF_CNPJ)) = LTRIM(RTRIM(D.NR_CPF_CNPJ))
+                AND DIST.ID_EDITAL = :edital
+                AND DIST.ID_PERIODO = :periodo
+                AND DIST.COD_CRITERIO_SELECAO IN (1, 3, 6)
+            );
+        """), {"edital": edital_id, "periodo": periodo_id})
         db.session.commit()
 
-        # Contar total após inclusão
+        # Contar total de CPFs
         total_cpfs = db.session.execute(
             text("SELECT COUNT(*) FROM ##CPFsArrasteSemAcordo")
         ).scalar() or 0
-
         cpfs_unicos = total_cpfs - cpfs_multiplos
         logger.info(f"Incluídos {cpfs_unicos} CPFs com contratos únicos (total: {total_cpfs})")
 
-        # ETAPA 4: Contar contratos para processamento
+        if total_cpfs == 0:
+            logger.warning("Nenhum CPF elegível para regra de arrasto. Processo interrompido.")
+            # Limpeza de tabelas temporárias
+            db.session.execute(text("""
+                IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo;
+                IF OBJECT_ID('tempdb..##DistribuicaoCPFs') IS NOT NULL DROP TABLE ##DistribuicaoCPFs;
+                IF OBJECT_ID('tempdb..##EmpresasPercentuais') IS NOT NULL DROP TABLE ##EmpresasPercentuais;
+            """))
+            db.session.commit()
+            return 0
+
+        # ETAPA 5: Contar contratos para processamento
         contratos_para_mover = db.session.execute(
             text("""
                 SELECT COUNT(*)
                 FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                INNER JOIN ##CPFsArrasteSemAcordo M 
+                INNER JOIN ##CPFsArrasteSemAcordo M
                     ON LTRIM(RTRIM(D.NR_CPF_CNPJ)) = M.NR_CPF_CNPJ
             """)
         ).scalar() or 0
-
         logger.info(f"Total de {contratos_para_mover} contratos elegíveis para regra de arrasto sem acordo")
 
-        # ETAPA 5: Mover para tabela de arrastaveis em lotes
+        # ETAPA 6: Mover para tabela de arrastaveis
         if contratos_para_mover > 0:
             logger.info("Movendo contratos para tabela de arrastaveis...")
 
-            lote_tamanho = 5000
-            offset = 0
-            total_inseridos = 0
+            # Inserir na tabela de arrastaveis
+            resultado_insercao = db.session.execute(text("""
+                INSERT INTO [DEV].[DCA_TB007_ARRASTAVEIS] (FkContratoSISCTR, NR_CPF_CNPJ, CREATED_AT)
+                SELECT
+                    D.FkContratoSISCTR,
+                    D.NR_CPF_CNPJ,
+                    GETDATE()
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
+                INNER JOIN ##CPFsArrasteSemAcordo M
+                    ON LTRIM(RTRIM(D.NR_CPF_CNPJ)) = M.NR_CPF_CNPJ
+                LEFT JOIN [DEV].[DCA_TB007_ARRASTAVEIS] A
+                    ON D.FkContratoSISCTR = A.FkContratoSISCTR
+                WHERE A.FkContratoSISCTR IS NULL;
+            """))
 
-            while offset < contratos_para_mover:
-                # Inserir na tabela de arrastaveis
-                db.session.execute(
-                    text("""
-                        INSERT INTO [DEV].[DCA_TB007_ARRASTAVEIS]
-                        (
-                            [FkContratoSISCTR], [NR_CPF_CNPJ], [CREATED_AT]
-                        )
-                        SELECT 
-                            D.FkContratoSISCTR,
-                            D.NR_CPF_CNPJ,
-                            GETDATE()
-                        FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                        INNER JOIN ##CPFsArrasteSemAcordo M 
-                            ON LTRIM(RTRIM(D.NR_CPF_CNPJ)) = M.NR_CPF_CNPJ
-                        LEFT JOIN [DEV].[DCA_TB007_ARRASTAVEIS] A
-                            ON D.FkContratoSISCTR = A.FkContratoSISCTR
-                        WHERE A.FkContratoSISCTR IS NULL
-                        ORDER BY D.FkContratoSISCTR
-                        OFFSET :offset ROWS
-                        FETCH NEXT :lote_tamanho ROWS ONLY
-                    """),
-                    {"offset": offset, "lote_tamanho": lote_tamanho}
-                )
+            # Usar rowcount para obter o número de linhas afetadas
+            total_inseridos = resultado_insercao.rowcount
+            resultados_internos["inseridos_arrastaveis"] = total_inseridos
+            logger.info(f"Movidos {total_inseridos} contratos para a tabela de arrastaveis")
 
-                # Contar inseridos neste lote
-                inseridos = db.session.execute(
-                    text("""
-                        SELECT COUNT(*) 
-                        FROM [DEV].[DCA_TB007_ARRASTAVEIS]
-                        WHERE CREATED_AT >= DATEADD(SECOND, -10, GETDATE())
-                    """)
-                ).scalar() or 0
-
-                if inseridos > 0:
-                    # Remover da tabela de distribuíveis
-                    db.session.execute(
-                        text("""
-                            DELETE D
-                            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                            INNER JOIN [DEV].[DCA_TB007_ARRASTAVEIS] A
-                                ON D.FkContratoSISCTR = A.FkContratoSISCTR
-                            WHERE A.CREATED_AT >= DATEADD(SECOND, -10, GETDATE())
-                        """)
-                    )
-
-                    # Commit após operações de inserção/deleção
-                    db.session.commit()
-
-                    total_inseridos += inseridos
-                    offset += inseridos
-                    logger.info(
-                        f"Lote processado: {inseridos} contratos movidos para arrastaveis (total: {total_inseridos})")
-                else:
-                    logger.info("Nenhum contrato movido neste lote. Avançando...")
-                    offset += lote_tamanho
-
-            resultados["inseridos_arrastaveis"] = total_inseridos
-
-        # ETAPA 6: Distribuir contratos
-        logger.info("Buscando empresas para distribuição...")
-
-        empresas = db.session.execute(
-            text("""
-                SELECT COD_EMPRESA_COBRANCA, PERCENTUAL
-                FROM [DEV].[DCA_TB001_PERCENTUAL_EMPRESA]
-                WHERE ID_EDITAL = :edital
-                AND ID_PERIODO = :periodo
-                ORDER BY PERCENTUAL DESC
-            """),
-            {"edital": edital_id, "periodo": periodo_id}
-        ).fetchall()
-
-        if not empresas:
-            logger.warning("Nenhuma empresa com percentual definido!")
-            db.session.execute(
-                text("IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo"))
-            db.session.commit()
-            return resultados
-
-        logger.info(f"Encontradas {len(empresas)} empresas com percentuais definidos")
-
-        # Buscar CPFs para distribuição
-        logger.info("Buscando CPFs para distribuição...")
-
-        cpfs_arrastaveis = db.session.execute(
-            text("""
-                SELECT DISTINCT LTRIM(RTRIM(NR_CPF_CNPJ)) as CPF
-                FROM [DEV].[DCA_TB007_ARRASTAVEIS]
-                WHERE DELETED_AT IS NULL
-            """)
-        ).fetchall()
-
-        total_cpfs = len(cpfs_arrastaveis)
-        logger.info(f"Encontrados {total_cpfs} CPFs para distribuição")
-
-        if total_cpfs == 0:
-            logger.warning("Nenhum CPF para distribuir!")
-            db.session.execute(
-                text("IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo"))
-            db.session.commit()
-            return resultados
-
-        # Cálculo de distribuição por empresa
-        cpfs_por_empresa = {}
-        total_percentual = sum(empresa[1] for empresa in empresas)
-
-        for empresa_id, percentual in empresas:
-            qtd_cpfs = max(1, round((percentual / total_percentual) * total_cpfs))
-            cpfs_por_empresa[empresa_id] = qtd_cpfs
-
-        # Distribuição por CPF
-        distribuidos = 0
-        cpfs_processados = 0
-        empresa_idx = 0
-
-        for cpf_record in cpfs_arrastaveis:
-            cpf = cpf_record[0] if cpf_record else None
-            if not cpf:
-                continue
-
-            cpfs_processados += 1
-            if cpfs_processados % 1000 == 0:
-                logger.info(f"Progresso: {cpfs_processados}/{total_cpfs} CPFs processados")
-
-            # Selecionar empresa
-            empresa_id = empresas[0][0]  # default
-            try:
-                for _ in range(len(empresas)):
-                    emp_id = empresas[empresa_idx % len(empresas)][0]
-                    if cpfs_por_empresa.get(emp_id, 0) > 0:
-                        empresa_id = emp_id
-                        cpfs_por_empresa[emp_id] -= 1
-                        break
-                    empresa_idx += 1
-            except:
-                pass
-
-            try:
-                # Obter contratos deste CPF
-                contratos = db.session.execute(
-                    text("""
-                        SELECT FkContratoSISCTR, NR_CPF_CNPJ
-                        FROM [DEV].[DCA_TB007_ARRASTAVEIS]
-                        WHERE LTRIM(RTRIM(NR_CPF_CNPJ)) = :cpf
-                        AND DELETED_AT IS NULL
-                    """),
-                    {"cpf": cpf}
-                ).fetchall()
-
-                contratos_cpf = 0
-                for contrato in contratos:
-                    contrato_id = contrato[0]
-                    cpf_cnpj = contrato[1]
-
-                    # Buscar valor devedor
-                    valor = db.session.execute(
-                        text("""
-                            SELECT COALESCE(
-                                (SELECT TOP 1 VR_SD_DEVEDOR FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE FkContratoSISCTR = :contrato_id),
-                                (SELECT TOP 1 VR_SD_DEVEDOR FROM [DEV].[DCA_TB005_DISTRIBUICAO] WHERE fkContratoSISCTR = :contrato_id ORDER BY ID DESC),
-                                0
-                            )
-                        """),
-                        {"contrato_id": contrato_id}
-                    ).scalar() or 0
-
-                    # Inserir na distribuição
-                    db.session.execute(
-                        text("""
-                            INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
-                            (
-                                [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                                [VR_SD_DEVEDOR], [CREATED_AT]
-                            )
-                            VALUES (
-                                GETDATE(), :edital, :periodo, :contrato_id, 
-                                :empresa_id, 6, :cpf_cnpj, :valor, GETDATE()
-                            )
-                        """),
-                        {
-                            "edital": edital_id,
-                            "periodo": periodo_id,
-                            "contrato_id": contrato_id,
-                            "empresa_id": empresa_id,
-                            "cpf_cnpj": cpf_cnpj,
-                            "valor": valor
-                        }
-                    )
-                    contratos_cpf += 1
-
-                # Marcar como processado
-                db.session.execute(
-                    text("""
-                        UPDATE [DEV].[DCA_TB007_ARRASTAVEIS]
-                        SET DELETED_AT = GETDATE()
-                        WHERE LTRIM(RTRIM(NR_CPF_CNPJ)) = :cpf
-                        AND DELETED_AT IS NULL
-                    """),
-                    {"cpf": cpf}
-                )
-
-                distribuidos += contratos_cpf
-
-                # Commit a cada CPF para evitar transações muito grandes
+            # Remover da tabela de distribuíveis
+            if total_inseridos > 0:
+                # Commit da inserção antes do delete
                 db.session.commit()
 
-            except Exception as e:
-                db.session.rollback()
-                logger.error(f"Erro ao distribuir CPF {cpf}: {str(e)}")
+                logger.info("Removendo contratos movidos da tabela de distribuíveis...")
+                # É mais seguro deletar usando os FkContratoSISCTR que acabaram de ser inseridos
+                # Assumindo que DCA_TB007_ARRASTAVEIS não tem DELETED_AT ou é NULL por padrão
+                db.session.execute(text("""
+                    DELETE D
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
+                    WHERE EXISTS (
+                        SELECT 1 FROM [DEV].[DCA_TB007_ARRASTAVEIS] A
+                        WHERE A.FkContratoSISCTR = D.FkContratoSISCTR
+                        AND A.CREATED_AT >= DATEADD(minute, -5, GETDATE()) -- Filtro de segurança
+                    );
+                """))
+                db.session.commit()
+                logger.info("Contratos removidos da tabela de distribuíveis")
+            else:
+                # Commit mesmo se nada foi inserido para liberar a transação
+                db.session.commit()
+        else:
+            # Commit mesmo se não há contratos para mover
+            db.session.commit()
 
-            # Avançar para próxima empresa
-            empresa_idx += 1
+        # ETAPA 7: Preparar percentuais e distribuição de CPFs por empresa
+        logger.info("Preparando distribuição entre empresas...")
 
-        resultados["distribuidos"] = distribuidos
-        resultados["cpfs_processados"] = cpfs_processados
+        # 7.1. Inserir empresas e percentuais
+        db.session.execute(text("""
+            INSERT INTO ##EmpresasPercentuais (ID_EMPRESA, percentual_ajustado, qtd_cpfs)
+            SELECT
+                ID_EMPRESA,
+                COALESCE(PERCENTUAL_FINAL, 0),
+                0
+            FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+            WHERE ID_EDITAL = :edital
+            AND ID_PERIODO = :periodo
+            AND DELETED_AT IS NULL
+            ORDER BY NEWID(); -- Ordenação aleatória para distribuição dos CPFs restantes
 
-        # Verificação final
+            DECLARE @total_percentual DECIMAL(10,4);
+            SELECT @total_percentual = SUM(percentual_ajustado) FROM ##EmpresasPercentuais;
+
+            IF @total_percentual = 0 AND (SELECT COUNT(*) FROM ##EmpresasPercentuais) > 0
+            BEGIN
+                UPDATE ##EmpresasPercentuais
+                SET percentual_ajustado = 100.0 / (SELECT COUNT(*) FROM ##EmpresasPercentuais);
+            END
+            ELSE IF @total_percentual > 0 AND ABS(@total_percentual - 100) > 0.01
+            BEGIN
+                UPDATE ##EmpresasPercentuais
+                SET percentual_ajustado = (percentual_ajustado * 100.0) / @total_percentual;
+            END
+        """), {"edital": edital_id, "periodo": periodo_id})
+        db.session.commit()
+
+        # 7.2. Garantir que todas as empresas tenham pelo menos 1 CPF atribuído
+        db.session.execute(text("""
+            DECLARE @total_cpfs INT;
+            SELECT @total_cpfs = COUNT(*) FROM ##CPFsArrasteSemAcordo;
+
+            -- Garantir no mínimo 1 CPF por empresa
+            DECLARE @total_empresas INT;
+            SELECT @total_empresas = COUNT(*) FROM ##EmpresasPercentuais;
+
+            -- Ajustar a atribuição para garantir pelo menos 1 CPF por empresa
+            UPDATE ##EmpresasPercentuais
+            SET qtd_cpfs = 1;
+
+            -- Calcular CPFs restantes após garantir mínimo de 1 por empresa
+            DECLARE @cpfs_restantes INT = @total_cpfs - @total_empresas;
+
+            -- Distribuir CPFs restantes proporcionalmente se houver
+            IF @cpfs_restantes > 0
+            BEGIN
+                -- Distribuir com base nos percentuais
+                WITH DistEmpresa AS (
+                    SELECT 
+                        ID_EMPRESA,
+                        FLOOR(percentual_ajustado * @cpfs_restantes / 100.0) AS cpfs_adicionais,
+                        ROW_NUMBER() OVER (ORDER BY percentual_ajustado DESC) AS ordem
+                    FROM ##EmpresasPercentuais
+                )
+                UPDATE ##EmpresasPercentuais
+                SET qtd_cpfs = qtd_cpfs + DE.cpfs_adicionais
+                FROM ##EmpresasPercentuais EP
+                JOIN DistEmpresa DE ON EP.ID_EMPRESA = DE.ID_EMPRESA;
+
+                -- Recalcular CPFs restantes após a distribuição proporcional
+                DECLARE @total_atribuido INT;
+                SELECT @total_atribuido = SUM(qtd_cpfs) FROM ##EmpresasPercentuais;
+                SET @cpfs_restantes = @total_cpfs - @total_atribuido;
+
+                -- Distribuir os CPFs restantes um por empresa, começando das maiores percentuais
+                WHILE @cpfs_restantes > 0
+                BEGIN
+                    UPDATE TOP(1) ##EmpresasPercentuais
+                    SET qtd_cpfs = qtd_cpfs + 1
+                    WHERE ID_EMPRESA IN (
+                        SELECT TOP(1) ID_EMPRESA 
+                        FROM ##EmpresasPercentuais 
+                        ORDER BY percentual_ajustado DESC, ID_EMPRESA
+                    );
+                    SET @cpfs_restantes = @cpfs_restantes - 1;
+                END
+            END
+        """))
+        db.session.commit()
+
+        # 7.3. Criar tabelas auxiliares para atribuição
+        db.session.execute(text("""
+            IF OBJECT_ID('tempdb..##LimitesEmpresas') IS NOT NULL DROP TABLE ##LimitesEmpresas;
+            IF OBJECT_ID('tempdb..##CPFsNumerados') IS NOT NULL DROP TABLE ##CPFsNumerados;
+
+            SELECT
+                ID_EMPRESA, ordem, qtd_cpfs,
+                (SELECT SUM(qtd_cpfs) FROM ##EmpresasPercentuais e2 WHERE e2.ordem <= e1.ordem) AS limite_superior,
+                ISNULL((SELECT SUM(qtd_cpfs) FROM ##EmpresasPercentuais e2 WHERE e2.ordem < e1.ordem), 0) AS limite_inferior
+            INTO ##LimitesEmpresas
+            FROM ##EmpresasPercentuais e1;
+
+            SELECT
+                NR_CPF_CNPJ,
+                ROW_NUMBER() OVER (ORDER BY NEWID()) AS ordem
+            INTO ##CPFsNumerados
+            FROM ##CPFsArrasteSemAcordo;
+
+            -- Verificação para garantir que a numeração não ultrapasse o máximo definido
+            DECLARE @max_ordem INT;
+            DECLARE @total_cpfs INT;
+
+            SELECT @total_cpfs = COUNT(*) FROM ##CPFsArrasteSemAcordo;
+            SELECT @max_ordem = MAX(limite_superior) FROM ##LimitesEmpresas;
+
+            IF @max_ordem <> @total_cpfs
+            BEGIN
+                -- Ajustar limites se necessário
+                DECLARE @ajuste INT = @total_cpfs - @max_ordem;
+
+                UPDATE ##LimitesEmpresas
+                SET limite_superior = limite_superior + @ajuste
+                WHERE ordem = (SELECT MAX(ordem) FROM ##LimitesEmpresas);
+            END
+        """))
+        db.session.commit()
+
+        # 7.4. Atribuir CPFs a empresas - CORRIGIDO para garantir que todos os CPFs sejam atribuídos
+        logger.info("Atribuindo CPFs a empresas...")
+        db.session.execute(text("""
+            -- Limpar tabela de distribuição se existir
+            TRUNCATE TABLE ##DistribuicaoCPFs;
+
+            -- Inserir CPFs com atribuição normal dentro dos limites
+            INSERT INTO ##DistribuicaoCPFs (NR_CPF_CNPJ, ID_EMPRESA)
+            SELECT c.NR_CPF_CNPJ, e.ID_EMPRESA
+            FROM ##CPFsNumerados c
+            JOIN ##LimitesEmpresas e ON c.ordem > e.limite_inferior AND c.ordem <= e.limite_superior;
+
+            -- Verificar se todos os CPFs foram atribuídos
+            DECLARE @cpfs_atribuidos INT;
+            DECLARE @total_cpfs INT;
+
+            SELECT @cpfs_atribuidos = COUNT(*) FROM ##DistribuicaoCPFs;
+            SELECT @total_cpfs = COUNT(*) FROM ##CPFsArrasteSemAcordo;
+
+            -- Se houver CPFs não atribuídos, distribuí-los para a empresa com maior percentual
+            IF @cpfs_atribuidos < @total_cpfs
+            BEGIN
+                DECLARE @empresa_maior_percentual INT;
+
+                SELECT TOP 1 @empresa_maior_percentual = ID_EMPRESA 
+                FROM ##EmpresasPercentuais 
+                ORDER BY percentual_ajustado DESC;
+
+                INSERT INTO ##DistribuicaoCPFs (NR_CPF_CNPJ, ID_EMPRESA)
+                SELECT c.NR_CPF_CNPJ, @empresa_maior_percentual
+                FROM ##CPFsArrasteSemAcordo c
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM ##DistribuicaoCPFs d
+                    WHERE d.NR_CPF_CNPJ = c.NR_CPF_CNPJ
+                );
+            END
+
+            DROP TABLE ##LimitesEmpresas;
+            DROP TABLE ##CPFsNumerados;
+        """))
+        db.session.commit()
+
+        # ETAPA 8: Executar a distribuição final -- MODIFICADO para resolver o erro ResourceClosedError
+        logger.info("Distribuindo contratos...")
+        try:
+            # Executa a inserção sem tentar obter resultados diretamente
+            resultado_distribuicao = db.session.execute(text("""
+                WITH ContratoValores AS (
+                    -- Tenta pegar da distribuição existente
+                    SELECT fkContratoSISCTR, VR_SD_DEVEDOR,
+                           ROW_NUMBER() OVER(PARTITION BY fkContratoSISCTR ORDER BY ID DESC) as rn
+                    FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                    WHERE fkContratoSISCTR IN (SELECT FkContratoSISCTR FROM [DEV].[DCA_TB007_ARRASTAVEIS] WHERE DELETED_AT IS NULL)
+
+                    UNION ALL
+
+                    -- Se não existir, pega da tabela de distribuíveis original (caso tenha sido movido)
+                    SELECT FkContratoSISCTR, VR_SD_DEVEDOR, 1 as rn
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                    WHERE FkContratoSISCTR IN (SELECT FkContratoSISCTR FROM [DEV].[DCA_TB007_ARRASTAVEIS] WHERE DELETED_AT IS NULL)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM [DEV].[DCA_TB005_DISTRIBUICAO] d5
+                          WHERE d5.fkContratoSISCTR = [DEV].[DCA_TB006_DISTRIBUIVEIS].FkContratoSISCTR
+                      )
+                ),
+                ValoresFinais AS (
+                    SELECT fkContratoSISCTR, VR_SD_DEVEDOR
+                    FROM ContratoValores
+                    WHERE rn = 1
+                )
+                -- Inserir contratos na tabela de distribuição
+                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                (
+                    [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                    [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                    [VR_SD_DEVEDOR], [CREATED_AT]
+                )
+                SELECT
+                    GETDATE(), :edital, :periodo, A.FkContratoSISCTR,
+                    D.ID_EMPRESA, 6, A.NR_CPF_CNPJ,
+                    ISNULL(VF.VR_SD_DEVEDOR, 0), GETDATE()
+                FROM [DEV].[DCA_TB007_ARRASTAVEIS] A
+                INNER JOIN ##DistribuicaoCPFs D ON LTRIM(RTRIM(A.NR_CPF_CNPJ)) = D.NR_CPF_CNPJ
+                LEFT JOIN ValoresFinais VF ON A.FkContratoSISCTR = VF.fkContratoSISCTR
+                WHERE A.DELETED_AT IS NULL
+            """), {"edital": edital_id, "periodo": periodo_id})
+
+            # Use rowcount para obter o número de linhas inseridas
+            contratos_distribuidos = resultado_distribuicao.rowcount
+            resultados_internos["distribuidos"] = contratos_distribuidos
+
+            # Consulta separada para contar contratos inseridos (caso rowcount não esteja funcionando)
+            if contratos_distribuidos <= 0:
+                # Verificação secundária do número de contratos
+                contagem = db.session.execute(text("""
+                    SELECT COUNT(*) 
+                    FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                    WHERE ID_EDITAL = :edital
+                    AND ID_PERIODO = :periodo
+                    AND COD_CRITERIO_SELECAO = 6
+                    AND CREATED_AT >= DATEADD(minute, -5, GETDATE())
+                """), {"edital": edital_id, "periodo": periodo_id}).scalar() or 0
+
+                # Use a contagem apenas se for maior que zero
+                if contagem > 0:
+                    contratos_distribuidos = contagem
+                    resultados_internos["distribuidos"] = contagem
+
+            logger.info(f"Distribuição inseriu {contratos_distribuidos} contratos")
+        except Exception as insert_error:
+            logger.error(f"Erro na distribuição final: {str(insert_error)}")
+            db.session.rollback()
+            contratos_distribuidos = 0
+            # Continuar para tentar marcar contratos como processados, mesmo que a inserção falhe
+
+        # Marcar contratos como processados na tabela de arrastáveis, mesmo se a inserção falhar
+        # Isso impede que contratos fiquem "presos" na tabela de arrastáveis
+        try:
+            logger.info("Marcando todos os contratos como processados...")
+            # CORREÇÃO CRÍTICA: Marcar TODOS os contratos como processados sem depender de ##DistribuicaoCPFs
+            db.session.execute(text("""
+                UPDATE [DEV].[DCA_TB007_ARRASTAVEIS]
+                SET DELETED_AT = GETDATE()
+                WHERE DELETED_AT IS NULL;
+            """))
+            db.session.commit()
+        except Exception as update_error:
+            logger.error(f"Erro ao marcar contratos como processados: {str(update_error)}")
+            db.session.rollback()
+
+        # Contar CPFs processados
+        resultados_internos["cpfs_processados"] = db.session.execute(
+            text("SELECT COUNT(*) FROM ##DistribuicaoCPFs")
+        ).scalar() or 0
+
+        logger.info(f"Distribuição concluída: {contratos_distribuidos} contratos distribuídos")
+
+        # ETAPA 9: Limpeza final
+        logger.info("Realizando limpeza final...")
+        try:
+            db.session.execute(text("""
+                IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo;
+                IF OBJECT_ID('tempdb..##DistribuicaoCPFs') IS NOT NULL DROP TABLE ##DistribuicaoCPFs;
+                IF OBJECT_ID('tempdb..##EmpresasPercentuais') IS NOT NULL DROP TABLE ##EmpresasPercentuais;
+            """))
+            db.session.commit()
+        except Exception as cleanup_error:
+            logger.warning(f"Erro na limpeza final: {str(cleanup_error)}")
+
+        # Verificar se há contratos remanescentes (deve ser 0)
         restantes = db.session.execute(
             text("""
                 SELECT COUNT(*)
@@ -855,19 +977,17 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         ).scalar() or 0
 
         if restantes > 0:
-            logger.warning(f"ATENÇÃO: Ainda restam {restantes} contratos não distribuídos na tabela de arrastaveis")
-
-        # Limpeza final
-        db.session.execute(
-            text("IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo"))
-        db.session.commit()
+            logger.warning(
+                f"ATENÇÃO: Ainda restam {restantes} contratos não distribuídos na tabela de arrastaveis após a distribuição.")
 
         # Log de finalização
         elapsed_time = time.time() - start_time
-        logger.info(f"Regra de arrasto sem acordo concluída em {elapsed_time:.2f}s")
-        logger.info(f"Resultados: {distribuidos} contratos distribuídos, {cpfs_processados} CPFs processados")
+        logger.info(f"Regra de arrasto sem acordo otimizada concluída em {elapsed_time:.2f}s")
+        logger.info(
+            f"Resultados: {resultados_internos['distribuidos']} contratos distribuídos, {resultados_internos['cpfs_processados']} CPFs processados")
 
-        return resultados
+        # Retorna apenas o número de contratos distribuídos
+        return resultados_internos["distribuidos"]
 
     except Exception as e:
         db.session.rollback()
@@ -875,19 +995,28 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         import traceback
         logger.error(traceback.format_exc())
 
+        # Limpeza em caso de erro
         try:
-            db.session.execute(
-                text("IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo"))
+            db.session.execute(text("""
+                IF OBJECT_ID('tempdb..##CPFsArrasteSemAcordo') IS NOT NULL DROP TABLE ##CPFsArrasteSemAcordo;
+                IF OBJECT_ID('tempdb..##DistribuicaoCPFs') IS NOT NULL DROP TABLE ##DistribuicaoCPFs;
+                IF OBJECT_ID('tempdb..##EmpresasPercentuais') IS NOT NULL DROP TABLE ##EmpresasPercentuais;
+                IF OBJECT_ID('tempdb..##CPFsNumerados') IS NOT NULL DROP TABLE ##CPFsNumerados;
+                IF OBJECT_ID('tempdb..##LimitesEmpresas') IS NOT NULL DROP TABLE ##LimitesEmpresas;
+            """))
             db.session.commit()
-        except:
-            pass
+        except Exception as cleanup_e:
+            logger.error(f"Erro durante a limpeza após falha: {cleanup_e}")
 
-        return resultados
+        # Retorna 0 em caso de erro
+        return 0
+
 
 def distribuir_demais_contratos(edital_id, periodo_id):
     """
     Distribui os contratos restantes entre as empresas.
-    Versão corrigida que resolve o erro ResourceClosedError.
+    Versão corrigida para resolver problemas com ResourceClosedError e garantir que
+    todos os contratos sejam distribuídos.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -897,9 +1026,12 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         int: Total de contratos distribuídos
     """
     contratos_distribuidos = 0
+    import logging
+    logger = logging.getLogger(__name__)
 
     try:
-        print(f"Iniciando distribuição dos demais contratos sem acordo - Edital: {edital_id}, Período: {periodo_id}")
+        logger.info(
+            f"Iniciando distribuição dos demais contratos sem acordo - Edital: {edital_id}, Período: {periodo_id}")
 
         # Verificar se existem empresas e contratos antes de iniciar o processamento
         empresas_count = db.session.execute(
@@ -916,32 +1048,44 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL)
             """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).scalar()
+        ).scalar() or 0
 
         if not empresas_count:
-            print("Nenhuma empresa participante encontrada.")
+            logger.warning("Nenhuma empresa participante encontrada.")
             return 0
 
         contratos_count = db.session.execute(
             text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]")
-        ).scalar()
+        ).scalar() or 0
 
         if not contratos_count:
-            print("Nenhum contrato restante para distribuir.")
+            logger.warning("Nenhum contrato restante para distribuir.")
             return 0
 
-        print(f"Total de contratos restantes: {contratos_count}")
+        logger.info(f"Total de contratos restantes: {contratos_count}")
 
-        # Executar o script SQL principal sem tentar recuperar resultado diretamente
-        db.session.execute(
-            text("""
-            -- Declaração de variáveis
-            DECLARE @contratos_distribuidos INT = 0;
+        # Criar tabelas temporárias
+        logger.info("Criando tabelas temporárias...")
+        db.session.execute(text("""
+            -- Limpar tabelas temporárias anteriores
+            IF OBJECT_ID('tempdb..##ContratosDisponiveis') IS NOT NULL DROP TABLE ##ContratosDisponiveis;
+            IF OBJECT_ID('tempdb..##EmpresasInfo') IS NOT NULL DROP TABLE ##EmpresasInfo;
+            IF OBJECT_ID('tempdb..##FaixasOrdem') IS NOT NULL DROP TABLE ##FaixasOrdem;
 
-            -- ETAPA 1: Buscar empresas e seus percentuais + contratos atuais
-            IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL
-                DROP TABLE #EmpresasInfo;
+            -- Criar tabela para contratos disponíveis
+            SELECT 
+                ROW_NUMBER() OVER (ORDER BY [FkContratoSISCTR]) AS ordem,
+                [FkContratoSISCTR],
+                [NR_CPF_CNPJ],
+                [VR_SD_DEVEDOR],
+                NULL AS ID_EMPRESA
+            INTO ##ContratosDisponiveis
+            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS];
 
+            -- Criar índice para melhorar performance
+            CREATE CLUSTERED INDEX IX_ContratosDisponiveis_Ordem ON ##ContratosDisponiveis(ordem);
+
+            -- Criar tabela para empresas
             SELECT 
                 EP.ID_EMPRESA,
                 COALESCE(LD.PERCENTUAL_FINAL, 0) AS percentual,
@@ -959,7 +1103,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 0 AS contratos_extra,
                 0 AS total_a_receber,
                 ROW_NUMBER() OVER (ORDER BY COALESCE(LD.PERCENTUAL_FINAL, 0) DESC) AS ranking
-            INTO #EmpresasInfo
+            INTO ##EmpresasInfo
             FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
             LEFT JOIN [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
                 ON EP.ID_EMPRESA = LD.ID_EMPRESA
@@ -970,64 +1114,79 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
             AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL);
 
-            -- ETAPA 2: Normalizar percentuais
+            -- Criar tabela para faixas de ordem
+            CREATE TABLE ##FaixasOrdem (
+                ID_EMPRESA INT,
+                ordem_inicio INT,
+                ordem_fim INT
+            );
+        """), {"edital_id": edital_id, "periodo_id": periodo_id})
+        db.session.commit()
+
+        # Normalizar percentuais
+        logger.info("Normalizando percentuais...")
+        db.session.execute(text("""
             DECLARE @total_percentual DECIMAL(10,6);
             DECLARE @total_empresas INT;
 
             SELECT 
                 @total_percentual = SUM(percentual),
                 @total_empresas = COUNT(*)
-            FROM #EmpresasInfo;
+            FROM ##EmpresasInfo;
 
             IF @total_percentual <= 0
             BEGIN
-                UPDATE #EmpresasInfo
+                UPDATE ##EmpresasInfo
                 SET percentual = 100.0 / @total_empresas;
             END
             ELSE IF ABS(@total_percentual - 100) > 0.01
             BEGIN
-                UPDATE #EmpresasInfo
+                UPDATE ##EmpresasInfo
                 SET percentual = percentual * 100.0 / @total_percentual;
             END;
+        """))
+        db.session.commit()
 
-            -- ETAPA 3: Calcular metas e contratos a distribuir
+        # Calcular metas e contratos a distribuir
+        logger.info("Calculando metas por empresa...")
+        db.session.execute(text("""
             DECLARE @total_contratos_restantes INT;
             SELECT @total_contratos_restantes = COUNT(*) 
-            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS];
+            FROM ##ContratosDisponiveis;
 
-            -- 3.1 Calcular total de contratos (atuais + restantes)
+            -- Calcular total de contratos (atuais + restantes)
             DECLARE @total_contratos_atuais INT;
             DECLARE @total_contratos INT;
 
             SELECT @total_contratos_atuais = SUM(contratos_atuais)
-            FROM #EmpresasInfo;
+            FROM ##EmpresasInfo;
 
             SET @total_contratos = @total_contratos_atuais + @total_contratos_restantes;
 
-            -- 3.2 Calcular metas para cada empresa
-            UPDATE #EmpresasInfo
+            -- Calcular metas para cada empresa
+            UPDATE ##EmpresasInfo
             SET
                 meta_total_exata = @total_contratos * percentual / 100.0,
                 meta_total_inteira = FLOOR(@total_contratos * percentual / 100.0),
                 parte_fracionaria = @total_contratos * percentual / 100.0 - FLOOR(@total_contratos * percentual / 100.0);
 
-            -- 3.3 Calcular quantos contratos faltam para cada empresa
-            UPDATE #EmpresasInfo
+            -- Calcular quantos contratos faltam para cada empresa
+            UPDATE ##EmpresasInfo
             SET contratos_faltantes = CASE
-                                        WHEN meta_total_inteira > contratos_atuais THEN meta_total_inteira - contratos_atuais
-                                        ELSE 0
-                                      END;
+                                      WHEN meta_total_inteira > contratos_atuais THEN meta_total_inteira - contratos_atuais
+                                      ELSE 0
+                                    END;
 
-            -- 3.4 Verificar quantos contratos faltam distribuir pelos fracionais
+            -- Verificar quantos contratos faltam distribuir pelos fracionais
             DECLARE @total_faltantes INT;
             DECLARE @contratos_nao_alocados INT;
 
             SELECT @total_faltantes = SUM(contratos_faltantes)
-            FROM #EmpresasInfo;
+            FROM ##EmpresasInfo;
 
             SET @contratos_nao_alocados = @total_contratos_restantes - @total_faltantes;
 
-            -- 3.5 Distribuir contratos extras por maiores fracionais
+            -- Distribuir contratos extras por maiores fracionais
             IF @contratos_nao_alocados > 0
             BEGIN
                 WITH EmpresasOrdenadas AS (
@@ -1035,161 +1194,146 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                         ID_EMPRESA,
                         parte_fracionaria,
                         ROW_NUMBER() OVER (ORDER BY parte_fracionaria DESC) AS ranking_fracao
-                    FROM #EmpresasInfo
+                    FROM ##EmpresasInfo
                 )
-                UPDATE #EmpresasInfo
+                UPDATE ##EmpresasInfo
                 SET contratos_extra = CASE WHEN EO.ranking_fracao <= @contratos_nao_alocados THEN 1 ELSE 0 END
-                FROM #EmpresasInfo EI
+                FROM ##EmpresasInfo EI
                 JOIN EmpresasOrdenadas EO ON EI.ID_EMPRESA = EO.ID_EMPRESA;
             END;
 
-            -- 3.6 Calcular total de contratos a receber
-            UPDATE #EmpresasInfo
+            -- Calcular total de contratos a receber
+            UPDATE ##EmpresasInfo
             SET total_a_receber = contratos_faltantes + contratos_extra;
+        """))
+        db.session.commit()
 
-            -- ETAPA 4: Criar tabela indexada para contratos disponíveis
-            IF OBJECT_ID('tempdb..#ContratosDisponiveis') IS NOT NULL
-                DROP TABLE #ContratosDisponiveis;
-
-            SELECT 
-                ROW_NUMBER() OVER (ORDER BY [FkContratoSISCTR]) AS ordem,
-                [FkContratoSISCTR],
-                [NR_CPF_CNPJ],
-                [VR_SD_DEVEDOR],
-                NULL AS ID_EMPRESA
-            INTO #ContratosDisponiveis
-            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS];
-
-            -- Criar índice para melhorar performance
-            CREATE CLUSTERED INDEX IX_ContratosDisponiveis_Ordem ON #ContratosDisponiveis(ordem);
-
-            -- ETAPA 5: Distribuir contratos para empresas
-
-            -- 5.1 Criar tabela para faixas de ordem por empresa
-            IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL
-                DROP TABLE #FaixasOrdem;
-
-            CREATE TABLE #FaixasOrdem (
-                ID_EMPRESA INT,
-                ordem_inicio INT,
-                ordem_fim INT
-            );
-
-            -- 5.2 Definir faixas de ordem por empresa
+        # Definir faixas de ordem por empresa
+        logger.info("Definindo faixas de distribuição por empresa...")
+        db.session.execute(text("""
             DECLARE @ordem_atual INT = 1;
-            DECLARE @empresa_id INT, @contratos_empresa INT;
 
-            DECLARE cursor_empresas CURSOR FOR
-            SELECT ID_EMPRESA, total_a_receber
-            FROM #EmpresasInfo
-            WHERE total_a_receber > 0
-            ORDER BY percentual DESC, ID_EMPRESA;
+            INSERT INTO ##FaixasOrdem (ID_EMPRESA, ordem_inicio, ordem_fim)
+            SELECT
+                ID_EMPRESA,
+                @ordem_atual + SUM(0) OVER (ORDER BY percentual DESC, ID_EMPRESA ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),
+                @ordem_atual + SUM(total_a_receber) OVER (ORDER BY percentual DESC, ID_EMPRESA ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) - 1
+            FROM
+                ##EmpresasInfo
+            WHERE
+                total_a_receber > 0;
+        """))
+        db.session.commit()
 
-            OPEN cursor_empresas;
-            FETCH NEXT FROM cursor_empresas INTO @empresa_id, @contratos_empresa;
-
-            WHILE @@FETCH_STATUS = 0
-            BEGIN
-                IF @contratos_empresa > 0
-                BEGIN
-                    INSERT INTO #FaixasOrdem (ID_EMPRESA, ordem_inicio, ordem_fim)
-                    VALUES (@empresa_id, @ordem_atual, @ordem_atual + @contratos_empresa - 1);
-
-                    SET @ordem_atual = @ordem_atual + @contratos_empresa;
-                END
-
-                FETCH NEXT FROM cursor_empresas INTO @empresa_id, @contratos_empresa;
-            END;
-
-            CLOSE cursor_empresas;
-            DEALLOCATE cursor_empresas;
-
-            -- 5.3 Atribuir empresas aos contratos
-            UPDATE #ContratosDisponiveis
+        # Atribuir empresas aos contratos
+        logger.info("Atribuindo empresas aos contratos...")
+        db.session.execute(text("""
+            UPDATE ##ContratosDisponiveis
             SET ID_EMPRESA = F.ID_EMPRESA
-            FROM #ContratosDisponiveis C
-            JOIN #FaixasOrdem F ON C.ordem BETWEEN F.ordem_inicio AND F.ordem_fim;
+            FROM ##ContratosDisponiveis C
+            JOIN ##FaixasOrdem F ON C.ordem BETWEEN F.ordem_inicio AND F.ordem_fim;
+        """))
+        db.session.commit()
 
-            -- ETAPA 6: Inserir contratos e remover da tabela de distribuíveis
+        # Inserir contratos na tabela de distribuição
+        logger.info("Inserindo contratos na tabela de distribuição...")
+        try:
+            resultado_insercao = db.session.execute(text("""
+                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                (
+                    [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
+                    [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
+                    [VR_SD_DEVEDOR], [CREATED_AT]
+                )
+                SELECT 
+                    GETDATE(), 
+                    :edital_id, 
+                    :periodo_id, 
+                    C.[FkContratoSISCTR], 
+                    C.ID_EMPRESA, 
+                    4, -- Código 4: Demais Contratos Sem Acordo
+                    C.[NR_CPF_CNPJ], 
+                    C.[VR_SD_DEVEDOR], 
+                    GETDATE()
+                FROM ##ContratosDisponiveis C
+                WHERE C.ID_EMPRESA IS NOT NULL;
+            """), {"edital_id": edital_id, "periodo_id": periodo_id})
 
-            BEGIN TRANSACTION;
+            # Usar rowcount para obter o número de linhas afetadas
+            contratos_distribuidos = resultado_insercao.rowcount
+            logger.info(f"Inserção concluída: {contratos_distribuidos} contratos inseridos")
 
-            -- 6.1 Inserir todos os contratos
-            INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
-            (
-                [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                [VR_SD_DEVEDOR], [CREATED_AT]
-            )
-            SELECT 
-                GETDATE(), 
-                :edital_id, 
-                :periodo_id, 
-                C.[FkContratoSISCTR], 
-                C.ID_EMPRESA, 
-                4, -- Código 4: Demais Contratos Sem Acordo
-                C.[NR_CPF_CNPJ], 
-                C.[VR_SD_DEVEDOR], 
-                GETDATE()
-            FROM #ContratosDisponiveis C
-            WHERE C.ID_EMPRESA IS NOT NULL;
+            # Verificação de segurança - se rowcount não funcionou
+            if contratos_distribuidos <= 0:
+                # Verificação secundária do número de contratos
+                contagem = db.session.execute(text("""
+                    SELECT COUNT(*) 
+                    FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                    WHERE ID_EDITAL = :edital_id
+                    AND ID_PERIODO = :periodo_id
+                    AND COD_CRITERIO_SELECAO = 4
+                    AND CREATED_AT >= DATEADD(minute, -10, GETDATE())
+                """), {"edital_id": edital_id, "periodo_id": periodo_id}).scalar() or 0
 
-            -- Capturar o número total de contratos inseridos
-            SET @contratos_distribuidos = @@ROWCOUNT;
+                # Use a contagem apenas se for maior que zero
+                if contagem > 0:
+                    contratos_distribuidos = contagem
+                    logger.info(f"Contagem secundária: {contratos_distribuidos} contratos inseridos")
+        except Exception as insert_error:
+            logger.error(f"Erro ao inserir contratos: {str(insert_error)}")
+            db.session.rollback()
+            contratos_distribuidos = 0
 
-            -- 6.2 Remover contratos distribuídos
-            DELETE D
-            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-            INNER JOIN #ContratosDisponiveis C 
-                ON D.[FkContratoSISCTR] = C.[FkContratoSISCTR]
-            WHERE C.ID_EMPRESA IS NOT NULL;
+        # Remover contratos distribuídos
+        if contratos_distribuidos > 0:
+            logger.info("Removendo contratos distribuídos da tabela de distribuíveis...")
+            try:
+                db.session.execute(text("""
+                    DELETE D
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
+                    INNER JOIN ##ContratosDisponiveis C 
+                        ON D.[FkContratoSISCTR] = C.[FkContratoSISCTR]
+                    WHERE C.ID_EMPRESA IS NOT NULL;
+                """))
+                db.session.commit()
+            except Exception as delete_error:
+                logger.error(f"Erro ao remover contratos distribuídos: {str(delete_error)}")
+                db.session.rollback()
 
-            COMMIT;
+        # Limpeza de tabelas temporárias
+        logger.info("Realizando limpeza final...")
+        try:
+            db.session.execute(text("""
+                IF OBJECT_ID('tempdb..##ContratosDisponiveis') IS NOT NULL DROP TABLE ##ContratosDisponiveis;
+                IF OBJECT_ID('tempdb..##EmpresasInfo') IS NOT NULL DROP TABLE ##EmpresasInfo;
+                IF OBJECT_ID('tempdb..##FaixasOrdem') IS NOT NULL DROP TABLE ##FaixasOrdem;
+            """))
+            db.session.commit()
+        except Exception as cleanup_error:
+            logger.warning(f"Erro durante limpeza de tabelas temporárias: {str(cleanup_error)}")
 
-            -- ETAPA 7: Salvar o resultado para recuperação posterior
-            IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL
-                DROP TABLE ##ResultadoDemaisContratos;
-
-            CREATE TABLE ##ResultadoDemaisContratos (contratos_distribuidos INT);
-            INSERT INTO ##ResultadoDemaisContratos VALUES (@contratos_distribuidos);
-
-            -- Limpeza
-            DROP TABLE #EmpresasInfo;
-            DROP TABLE #ContratosDisponiveis;
-            DROP TABLE #FaixasOrdem;
-            """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        )
-
-        # Recuperar o resultado da tabela temporária global
-        result = db.session.execute(text("SELECT contratos_distribuidos FROM ##ResultadoDemaisContratos")).scalar()
-        contratos_distribuidos = result if result is not None else 0
-
-        # Limpar a tabela temporária global
-        db.session.execute(text(
-            "IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL DROP TABLE ##ResultadoDemaisContratos"))
-
-        print(f"Distribuição dos demais contratos concluída: {contratos_distribuidos} contratos distribuídos")
+        logger.info(f"Distribuição dos demais contratos concluída: {contratos_distribuidos} contratos distribuídos")
+        return contratos_distribuidos
 
     except Exception as e:
         db.session.rollback()
         # Limpeza das tabelas temporárias em caso de erro
         try:
             db.session.execute(text("""
-                IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
-                IF OBJECT_ID('tempdb..#ContratosDisponiveis') IS NOT NULL DROP TABLE #ContratosDisponiveis;
-                IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL DROP TABLE #FaixasOrdem;
-                IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL DROP TABLE ##ResultadoDemaisContratos;
+                IF OBJECT_ID('tempdb..##ContratosDisponiveis') IS NOT NULL DROP TABLE ##ContratosDisponiveis;
+                IF OBJECT_ID('tempdb..##EmpresasInfo') IS NOT NULL DROP TABLE ##EmpresasInfo;
+                IF OBJECT_ID('tempdb..##FaixasOrdem') IS NOT NULL DROP TABLE ##FaixasOrdem;
             """))
             db.session.commit()
         except:
             pass
 
-        print(f"Erro ao distribuir demais contratos: {str(e)}")
+        logger.error(f"Erro ao distribuir demais contratos: {str(e)}")
         import traceback
-        print(traceback.format_exc())
+        logger.error(traceback.format_exc())
 
-    return contratos_distribuidos
+        return 0
+
 
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
