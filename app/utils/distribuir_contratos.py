@@ -768,7 +768,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 def distribuir_demais_contratos(edital_id, periodo_id):
     """
     Distribui os contratos restantes entre as empresas.
-    Versão corrigida que resolve o erro ResourceClosedError.
+    Implementa o item 1.1.5 dos requisitos: Demais contratos sem acordo.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -928,31 +928,17 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             SET total_a_receber = contratos_faltantes + contratos_extra;
 
             -- ETAPA 4: Criar tabela de contratos distribuíveis estrategicamente embaralhados
-            -- Primeiro ordenamos por valor e depois embaralhamos dentro de faixas de valor
-            -- Isso garante uma distribuição mais equilibrada de valores
             IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL
                 DROP TABLE #ContratosEmbaralhados;
 
-            -- 4.1 Dividir em 5 faixas de valor e embaralhar dentro de cada faixa
-            WITH ContratosComFaixa AS (
-                SELECT 
-                    [FkContratoSISCTR],
-                    [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR],
-                    NTILE(5) OVER (ORDER BY [VR_SD_DEVEDOR]) AS faixa_valor
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-            )
+            -- 4.1 Embaralhar todos os contratos aleatoriamente sem considerar valor
             SELECT 
                 [FkContratoSISCTR],
                 [NR_CPF_CNPJ],
                 [VR_SD_DEVEDOR],
-                ROW_NUMBER() OVER (
-                    ORDER BY 
-                        faixa_valor, -- Mantém a ordem das faixas
-                        NEWID() -- Embaralha aleatoriamente dentro de cada faixa
-                ) AS ordem
+                ROW_NUMBER() OVER (ORDER BY NEWID()) AS ordem
             INTO #ContratosEmbaralhados
-            FROM ContratosComFaixa;
+            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS];
 
             -- ETAPA 5: Distribuir contratos para empresas
 
@@ -1090,6 +1076,8 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         print(traceback.format_exc())
 
     return contratos_distribuidos
+
+
 
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
