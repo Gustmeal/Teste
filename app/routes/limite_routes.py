@@ -1216,6 +1216,9 @@ def analise_limites():
         return redirect(url_for('limite.lista_limites'))
 
 
+# Modificação no arquivo app/routes/limite_routes.py
+# Na função salvar_limites()
+
 @limite_bp.route('/limites/salvar', methods=['POST'])
 @login_required
 def salvar_limites():
@@ -1265,47 +1268,50 @@ def salvar_limites():
 
         # Inserir os novos limites
         limites_criados = 0
-        # Na função salvar_limites
+
+        # Coletar todos os valores percentuais para validação
+        percentuais_validados = []
         for i in range(len(empresas_data)):
             if situacoes[i].upper() == 'DESCREDENCIADA':
                 continue
 
-            # Converter para string, depois para float para manter a precisão original
-            percentual_str = percentuais[i] or '0.0'
-
-            # Método mais confiável para truncar: converter para string e manipular a string
+            # Tratar o valor percentual diretamente como float (evitar conversões intermediárias)
             try:
-                # Convertemos para float primeiro
-                valor_float = float(percentual_str)
+                percentual_valor = float(percentuais[i]) if percentuais[i] else 0.0
+                # Arredondar para 2 casas decimais para manter consistência
+                percentual_valor = round(percentual_valor, 2)
+                percentuais_validados.append((i, percentual_valor))
+            except ValueError:
+                percentuais_validados.append((i, 0.0))
 
-                # Truncamos diretamente manipulando a string (evita arredondamentos do float)
-                valor_str = str(valor_float)
-                partes = valor_str.split('.')
+        # Verificar se a soma é exatamente 100%
+        soma_percentuais = sum(pct for _, pct in percentuais_validados)
+        if abs(soma_percentuais - 100.0) > 0.01:
+            # Se a soma não for 100%, ajustar o maior valor para compensar
+            if percentuais_validados:
+                maior_idx, _ = max(percentuais_validados, key=lambda x: x[1])
+                ajuste = 100.0 - soma_percentuais
+                percentuais_validados = [(i, pct + ajuste if i == maior_idx else pct) for i, pct in
+                                         percentuais_validados]
 
-                if len(partes) == 1:
-                    # Número inteiro
-                    percentual_truncado = float(partes[0])
-                else:
-                    # Truncar decimal para 2 casas sem arredondar
-                    inteiro = partes[0]
-                    decimal = partes[1][:2].ljust(2, '0')  # Garantir 2 casas
-                    percentual_truncado = float(f"{inteiro}.{decimal}")
-            except:
-                # Fallback em caso de erro
-                percentual_truncado = 0.0
+        # Inserir os limites com valores validados
+        for idx, percentual_valor in percentuais_validados:
+            i = idx  # Índice original
 
-            novo_limite = LimiteDistribuicao(
-                ID_EDITAL=edital_id,
-                ID_PERIODO=periodo_id,
-                ID_EMPRESA=int(empresas_data[i]),
-                COD_CRITERIO_SELECAO=cod_criterio,
-                DT_APURACAO=dt_apuracao,
-                QTDE_MAXIMA=None,
-                VALOR_MAXIMO=None,
-                PERCENTUAL_FINAL=percentual_truncado
-            )
-            db.session.add(novo_limite)
-            limites_criados += 1
+            # Criar novo limite apenas para empresas que não são DESCREDENCIADAS
+            if situacoes[i].upper() != 'DESCREDENCIADA':
+                novo_limite = LimiteDistribuicao(
+                    ID_EDITAL=edital_id,
+                    ID_PERIODO=periodo_id,
+                    ID_EMPRESA=int(empresas_data[i]),
+                    COD_CRITERIO_SELECAO=cod_criterio,
+                    DT_APURACAO=dt_apuracao,
+                    QTDE_MAXIMA=None,
+                    VALOR_MAXIMO=None,
+                    PERCENTUAL_FINAL=percentual_valor  # Valor já tratado
+                )
+                db.session.add(novo_limite)
+                limites_criados += 1
 
         db.session.commit()
 
