@@ -848,8 +848,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 AND EP.ID_PERIODO = LD.ID_PERIODO
             WHERE EP.ID_EDITAL = :edital_id
             AND EP.ID_PERIODO = :periodo_id
-            AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
-            AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL);
+            AND EP.DS_CONDICAO <> 'DESCREDENCIADA';
 
             -- ETAPA 2: Normalizar percentuais
             DECLARE @total_percentual DECIMAL(10,6);
@@ -928,21 +927,32 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             UPDATE #EmpresasInfo
             SET total_a_receber = contratos_faltantes + contratos_extra;
 
-            -- ETAPA 4: Criar tabela indexada para contratos disponíveis
-            IF OBJECT_ID('tempdb..#ContratosDisponiveis') IS NOT NULL
-                DROP TABLE #ContratosDisponiveis;
+            -- ETAPA 4: Criar tabela de contratos distribuíveis estrategicamente embaralhados
+            -- Primeiro ordenamos por valor e depois embaralhamos dentro de faixas de valor
+            -- Isso garante uma distribuição mais equilibrada de valores
+            IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL
+                DROP TABLE #ContratosEmbaralhados;
 
+            -- 4.1 Dividir em 5 faixas de valor e embaralhar dentro de cada faixa
+            WITH ContratosComFaixa AS (
+                SELECT 
+                    [FkContratoSISCTR],
+                    [NR_CPF_CNPJ],
+                    [VR_SD_DEVEDOR],
+                    NTILE(5) OVER (ORDER BY [VR_SD_DEVEDOR]) AS faixa_valor
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+            )
             SELECT 
-                ROW_NUMBER() OVER (ORDER BY [FkContratoSISCTR]) AS ordem,
                 [FkContratoSISCTR],
                 [NR_CPF_CNPJ],
                 [VR_SD_DEVEDOR],
-                NULL AS ID_EMPRESA
-            INTO #ContratosDisponiveis
-            FROM [DEV].[DCA_TB006_DISTRIBUIVEIS];
-
-            -- Criar índice para melhorar performance
-            CREATE CLUSTERED INDEX IX_ContratosDisponiveis_Ordem ON #ContratosDisponiveis(ordem);
+                ROW_NUMBER() OVER (
+                    ORDER BY 
+                        faixa_valor, -- Mantém a ordem das faixas
+                        NEWID() -- Embaralha aleatoriamente dentro de cada faixa
+                ) AS ordem
+            INTO #ContratosEmbaralhados
+            FROM ContratosComFaixa;
 
             -- ETAPA 5: Distribuir contratos para empresas
 
@@ -960,11 +970,12 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             DECLARE @ordem_atual INT = 1;
             DECLARE @empresa_id INT, @contratos_empresa INT;
 
+            -- Usar NEWID() para randomizar a ordem das empresas na distribuição
             DECLARE cursor_empresas CURSOR FOR
             SELECT ID_EMPRESA, total_a_receber
             FROM #EmpresasInfo
             WHERE total_a_receber > 0
-            ORDER BY percentual DESC, ID_EMPRESA;
+            ORDER BY NEWID(); -- Randomiza a ordem das empresas
 
             OPEN cursor_empresas;
             FETCH NEXT FROM cursor_empresas INTO @empresa_id, @contratos_empresa;
@@ -986,9 +997,16 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             DEALLOCATE cursor_empresas;
 
             -- 5.3 Atribuir empresas aos contratos
-            UPDATE #ContratosDisponiveis
-            SET ID_EMPRESA = F.ID_EMPRESA
-            FROM #ContratosDisponiveis C
+            IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL
+                DROP TABLE #AtribuicaoFinal;
+
+            SELECT 
+                C.[FkContratoSISCTR],
+                C.[NR_CPF_CNPJ],
+                C.[VR_SD_DEVEDOR],
+                F.ID_EMPRESA
+            INTO #AtribuicaoFinal
+            FROM #ContratosEmbaralhados C
             JOIN #FaixasOrdem F ON C.ordem BETWEEN F.ordem_inicio AND F.ordem_fim;
 
             -- ETAPA 6: Inserir contratos e remover da tabela de distribuíveis
@@ -1006,14 +1024,13 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 GETDATE(), 
                 :edital_id, 
                 :periodo_id, 
-                C.[FkContratoSISCTR], 
-                C.ID_EMPRESA, 
+                [FkContratoSISCTR], 
+                ID_EMPRESA, 
                 4, -- Código 4: Demais Contratos Sem Acordo
-                C.[NR_CPF_CNPJ], 
-                C.[VR_SD_DEVEDOR], 
+                [NR_CPF_CNPJ], 
+                [VR_SD_DEVEDOR], 
                 GETDATE()
-            FROM #ContratosDisponiveis C
-            WHERE C.ID_EMPRESA IS NOT NULL;
+            FROM #AtribuicaoFinal;
 
             -- Capturar o número total de contratos inseridos
             SET @contratos_distribuidos = @@ROWCOUNT;
@@ -1021,9 +1038,9 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             -- 6.2 Remover contratos distribuídos
             DELETE D
             FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-            INNER JOIN #ContratosDisponiveis C 
-                ON D.[FkContratoSISCTR] = C.[FkContratoSISCTR]
-            WHERE C.ID_EMPRESA IS NOT NULL;
+            WHERE [FkContratoSISCTR] IN (
+                SELECT [FkContratoSISCTR] FROM #AtribuicaoFinal
+            );
 
             COMMIT;
 
@@ -1035,9 +1052,10 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             INSERT INTO ##ResultadoDemaisContratos VALUES (@contratos_distribuidos);
 
             -- Limpeza
-            DROP TABLE #EmpresasInfo;
-            DROP TABLE #ContratosDisponiveis;
-            DROP TABLE #FaixasOrdem;
+            IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
+            IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL DROP TABLE #ContratosEmbaralhados;
+            IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL DROP TABLE #FaixasOrdem;
+            IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL DROP TABLE #AtribuicaoFinal;
             """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         )
@@ -1058,8 +1076,9 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         try:
             db.session.execute(text("""
                 IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
-                IF OBJECT_ID('tempdb..#ContratosDisponiveis') IS NOT NULL DROP TABLE #ContratosDisponiveis;
+                IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL DROP TABLE #ContratosEmbaralhados;
                 IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL DROP TABLE #FaixasOrdem;
+                IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL DROP TABLE #AtribuicaoFinal;
                 IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL DROP TABLE ##ResultadoDemaisContratos;
             """))
             db.session.commit()
@@ -1071,8 +1090,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         print(traceback.format_exc())
 
     return contratos_distribuidos
-
-
 
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
