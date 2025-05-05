@@ -1234,6 +1234,82 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
         import traceback
         print(traceback.format_exc())
 
+
+def obter_resultados_finais_distribuicao(edital_id, periodo_id):
+    """
+    Obtém os resultados finais da distribuição com totais e percentuais.
+
+    Args:
+        edital_id: ID do edital
+        periodo_id: ID do período
+
+    Returns:
+        dict: Contendo a lista de resultados e totais
+    """
+    try:
+        print(f"Obtendo resultados finais da distribuição - Edital: {edital_id}, Período: {periodo_id}")
+
+        # Executar consulta SQL para obter resultados da distribuição
+        query = text("""
+            SELECT 
+                DIS.[COD_EMPRESA_COBRANCA], 
+                EMP.NO_EMPRESA_ABREVIADA, 
+                COUNT(*) AS QTDE, 
+                SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
+            FROM [DEV].[DCA_TB005_DISTRIBUICAO] AS DIS 
+            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP 
+                ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA 
+                AND EMP.ID_EDITAL = :edital_id
+                AND EMP.ID_PERIODO = :periodo_id
+            WHERE DIS.ID_EDITAL = :edital_id
+                AND DIS.ID_PERIODO = :periodo_id
+                AND DIS.DELETED_AT IS NULL
+            GROUP BY [COD_EMPRESA_COBRANCA], EMP.NO_EMPRESA_ABREVIADA 
+            ORDER BY EMP.NO_EMPRESA_ABREVIADA
+        """)
+
+        resultados = db.session.execute(query, {"edital_id": edital_id, "periodo_id": periodo_id}).fetchall()
+
+        # Calcular totais
+        total_qtde = 0
+        total_saldo = 0
+
+        # Converter para lista de dicionários e calcular totais
+        lista_resultados = []
+        for resultado in resultados:
+            cod_empresa = resultado[0]
+            empresa_abrev = resultado[1]
+            qtde = resultado[2]
+            saldo = float(resultado[3]) if resultado[3] else 0.0
+
+            total_qtde += qtde
+            total_saldo += saldo
+
+            lista_resultados.append({
+                'cod_empresa': cod_empresa,
+                'empresa_abrev': empresa_abrev,
+                'qtde': qtde,
+                'saldo': saldo
+            })
+
+        # Adicionar percentuais
+        for resultado in lista_resultados:
+            resultado['pct_qtde'] = (resultado['qtde'] / total_qtde * 100) if total_qtde > 0 else 0
+            resultado['pct_saldo'] = (resultado['saldo'] / total_saldo * 100) if total_saldo > 0 else 0
+
+        return {
+            'resultados': lista_resultados,
+            'total_qtde': total_qtde,
+            'total_saldo': total_saldo
+        }
+
+    except Exception as e:
+        print(f"Erro ao obter resultados finais da distribuição: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {'resultados': [], 'total_qtde': 0, 'total_saldo': 0}
+
+
 def processar_distribuicao_completa(edital_id, periodo_id):
     """
     Executa todo o processo de distribuição em ordem.
@@ -1270,7 +1346,6 @@ def processar_distribuicao_completa(edital_id, periodo_id):
                                                                                                               periodo_id)
 
         # 1.1.3. Contratos com acordo vigente – regra do arrasto
-        # CORREÇÃO: Agora recebemos diretamente um inteiro
         resultados['regra_arrasto_acordos'] = aplicar_regra_arrasto_acordos(edital_id, periodo_id)
 
         # 1.1.4. Demais contratos sem acordo – regra do arrasto
@@ -1298,6 +1373,10 @@ def processar_distribuicao_completa(edital_id, periodo_id):
 
         # Atualizar limites de distribuição
         atualizar_limites_distribuicao(edital_id, periodo_id)
+
+        # NOVO: Obter resultados finais da distribuição
+        resultados_finais = obter_resultados_finais_distribuicao(edital_id, periodo_id)
+        resultados['resultados_finais'] = resultados_finais
 
         return resultados
 

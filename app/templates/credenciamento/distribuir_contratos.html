@@ -165,6 +165,115 @@
     </div>
     {% endif %}
 
+<!-- Resultado Final da Distribuição -->
+{% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
+<div class="card shadow mb-4">
+    <div class="card-header bg-success text-white">
+        <h5 class="mb-0">Resultado Final da Distribuição</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead class="bg-light">
+                    <tr>
+                        <th>COD</th>
+                        <th>NO_EMPRESA_ABREVIADA</th>
+                        <th class="text-center">QTDE</th>
+                        <th class="text-center">%</th>
+                        <th class="text-end">SALDO</th>
+                        <th class="text-center">%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for resultado in resultados.resultados_finais.resultados %}
+                    <tr>
+                        <td>{{ resultado.cod_empresa }}</td>
+                        <td>{{ resultado.empresa_abrev }}</td>
+                        <td class="text-center">{{ "{:,.0f}".format(resultado.qtde).replace(',', '.') }}</td>
+                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_qtde) }}</td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultado.saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_saldo) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-secondary">
+                    <tr class="fw-bold">
+                        <td colspan="2">TOTAL</td>
+                        <td class="text-center">{{ "{:,.0f}".format(resultados.resultados_finais.total_qtde).replace(',', '.') }}</td>
+                        <td class="text-center">100,00%</td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">100,00%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Botão de Homologação - Mostrado apenas após distribuição completa -->
+{% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
+<div class="text-center mt-4 mb-4">
+    <button type="button" class="btn btn-lg btn-primary" data-bs-toggle="modal" data-bs-target="#homologacaoModal">
+        <i class="fas fa-check-circle me-2"></i> Homologar Distribuição
+    </button>
+</div>
+
+<!-- Modal de Homologação -->
+<div class="modal fade" id="homologacaoModal" tabindex="-1" aria-labelledby="homologacaoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="homologacaoModalLabel">Homologação de Distribuição</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Você está prestes a homologar a distribuição de contratos para o Edital {{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }} - Período {{ ultimo_periodo.ID_PERIODO }}.</p>
+
+                <p>Ao homologar, você confirma que:</p>
+                <ul>
+                    <li>Revisou os resultados da distribuição</li>
+                    <li>Concorda com a distribuição final apresentada</li>
+                    <li>Está ciente que isso ficará registrado no sistema</li>
+                </ul>
+
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="downloadArquivo" checked>
+                    <label class="form-check-label" for="downloadArquivo">
+                        Baixar arquivo TXT com a distribuição
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="formHomologacao" action="{{ url_for('limite.homologar_distribuicao') }}" method="POST">
+                    <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                    <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                    <input type="hidden" id="downloadArquivoHidden" name="download_arquivo" value="1">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check me-2"></i> Confirmar Homologação
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Script para o checkbox de download -->
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const checkDownload = document.getElementById('downloadArquivo');
+        const hiddenInput = document.getElementById('downloadArquivoHidden');
+
+        if (checkDownload && hiddenInput) {
+            checkDownload.addEventListener('change', function() {
+                hiddenInput.value = this.checked ? '1' : '0';
+            });
+        }
+    });
+</script>
+{% endif %}
+
     <!-- Processo descritivo -->
     <div class="card shadow">
         <div class="card-header bg-primary text-white">

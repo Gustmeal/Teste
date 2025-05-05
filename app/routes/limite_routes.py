@@ -4,9 +4,10 @@ from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
 from app.models.empresa_participante import EmpresaParticipante
 from app.models.criterio_selecao import CriterioSelecao
+from app.utils.distribuir_contratos import obter_resultados_finais_distribuicao
 from app import db
 from datetime import datetime
-from flask_login import login_required
+from flask_login import login_required, current_user
 from app.utils.audit import registrar_log
 from sqlalchemy import or_, func, text
 import math
@@ -1728,3 +1729,105 @@ def distribuir_contratos():
         logging.error(traceback.format_exc())
         flash(f'Erro na página de distribuição: {str(e)}', 'danger')
         return redirect(url_for('limite.lista_limites'))
+
+
+@limite_bp.route('/limites/homologar-distribuicao', methods=['POST'])
+@login_required
+def homologar_distribuicao():
+    """
+    Homologa a distribuição de contratos e opcionalmente faz download do arquivo TXT de homologação.
+    """
+    try:
+        edital_id = request.form.get('edital_id', type=int)
+        periodo_id = request.form.get('periodo_id', type=int)
+        download_arquivo = request.form.get('download_arquivo') == '1'
+
+        # Buscar informações do edital e período para o log
+        edital = Edital.query.get_or_404(edital_id)
+        periodo = PeriodoAvaliacao.query.filter_by(ID_PERIODO=periodo_id).first_or_404()
+
+        # Obter informações da distribuição
+        resultados = obter_resultados_finais_distribuicao(edital_id, periodo_id)
+
+        # Registrar log de homologação
+        registrar_log(
+            acao='homologar',
+            entidade='distribuicao',
+            entidade_id=periodo_id,  # Usando ID do período como identificador da distribuição
+            descricao=f'Homologação da distribuição do Edital {edital.NU_EDITAL}/{edital.ANO} - Período {periodo.ID_PERIODO}',
+            dados_novos={
+                'homologado_por': current_user.nome,
+                'data_homologacao': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'qtde_contratos': resultados.get('total_qtde', 0),
+                'valor_total': resultados.get('total_saldo', 0)
+            }
+        )
+
+        if download_arquivo:
+            # Gerar o arquivo TXT para download
+            return gerar_arquivo_homologacao(edital_id, periodo_id)
+        else:
+            flash(f'Distribuição homologada com sucesso por {current_user.nome}.', 'success')
+            return redirect(url_for('limite.distribuir_contratos'))
+
+    except Exception as e:
+        flash(f'Erro ao homologar distribuição: {str(e)}', 'danger')
+        return redirect(url_for('limite.distribuir_contratos'))
+
+
+def gerar_arquivo_homologacao(edital_id, periodo_id):
+    """
+    Gera um arquivo TXT com a homologação da distribuição.
+
+    Args:
+        edital_id: ID do edital
+        periodo_id: ID do período
+
+    Returns:
+        Response: Download do arquivo TXT
+    """
+    try:
+        # Consultar dados da distribuição
+        query = text("""
+            SELECT 
+                [fkContratoSISCTR],
+                [COD_EMPRESA_COBRANCA] AS NOVA_EMPRESA
+            FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+            WHERE ID_EDITAL = :edital_id
+            AND ID_PERIODO = :periodo_id
+            AND DELETED_AT IS NULL
+            ORDER BY [fkContratoSISCTR]
+        """)
+
+        resultados = db.session.execute(query, {"edital_id": edital_id, "periodo_id": periodo_id}).fetchall()
+
+        # Gerar conteúdo do arquivo
+        conteudo = "fkContratoSISCTR;NOVA_EMPRESA\n"
+        for resultado in resultados:
+            conteudo += f"{resultado[0]};{resultado[1]}\n"
+
+        # Preparar resposta para download
+        from flask import Response
+        from datetime import datetime
+
+        # Buscar informações do edital e período para o nome do arquivo
+        edital = Edital.query.get_or_404(edital_id)
+
+        filename = f"DISTRIBUICAO_COBRANCA_{datetime.now().strftime('%Y%m%d')}_TI.TXT"
+
+        response = Response(
+            conteudo,
+            mimetype='text/plain',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+
+        return response
+
+    except Exception as e:
+        # Em caso de erro, log e redirecionar
+        import traceback
+        print(f"Erro ao gerar arquivo de homologação: {e}")
+        print(traceback.format_exc())
+
+        flash(f'Erro ao gerar arquivo de homologação: {str(e)}', 'danger')
+        return redirect(url_for('limite.distribuir_contratos'))
