@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('empresa.lista_empresas', periodo_id=periodo.ID) }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h1 class="mb-0">Editar Empresa Participante</h1>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Edital</label>
+                        <input type="text" class="form-control" value="{{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}" readonly>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Período</label>
+                        <input type="text" class="form-control" value="{{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}" readonly>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Empresa</label>
+                        <input type="text" class="form-control" value="{{ empresa.NO_EMPRESA }}" readonly>
+                        {% if empresa.NO_EMPRESA_ABREVIADA %}
+                        <small class="text-muted">Nome Abreviado: {{ empresa.NO_EMPRESA_ABREVIADA }}</small>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Condição <span class="text-danger">*</span></label>
+                        <select name="ds_condicao" class="form-select" required>
+                            {% for condicao in condicoes %}
+                                <option value="{{ condicao }}" {% if empresa.DS_CONDICAO == condicao %}selected{% endif %}>
+                                    {{ condicao }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text mt-2">
+                            <p><strong>Legenda:</strong></p>
+                            <ul>
+                                <li><strong>NOVA</strong>: Empresa que começou a participar neste período</li>
+                                <li><strong>PERMANECE</strong>: Empresa que continua de um período anterior</li>
+                                <li><strong>DESCREDENCIADA</strong>: Empresa que saiu em um período anterior</li>
+                                <li><strong>DESCREDENCIADA NO PERÍODO</strong>: Empresa que está saindo no período atual</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('empresa.lista_empresas', periodo_id=periodo.ID) }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            Salvar Alterações
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}

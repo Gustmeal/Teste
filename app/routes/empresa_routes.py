@@ -67,7 +67,7 @@ def nova_empresa(periodo_id):
         flash(f"Erro ao carregar empresas responsáveis: {str(e)}", "danger")
 
     # Lista de opções para o campo condição
-    condicoes = ["NOVA", "PERMANECE", "DESCREDENCIADA"]
+    condicoes = ["NOVA", "PERMANECE", "DESCREDENCIADA", "DESCREDENCIADA NO PERÍODO"]
 
     if request.method == 'POST':
         try:
@@ -140,6 +140,61 @@ def nova_empresa(periodo_id):
                            periodo=periodo,
                            edital=edital,
                            empresas=empresas_responsaveis,
+                           condicoes=condicoes)
+
+
+@empresa_bp.route('/empresas/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def editar_empresa(id):
+    empresa = EmpresaParticipante.query.get_or_404(id)
+    periodo = PeriodoAvaliacao.query.filter_by(ID_PERIODO=empresa.ID_PERIODO).first_or_404()
+    edital = Edital.query.get(periodo.ID_EDITAL)
+
+    # Lista de opções para o campo condição
+    condicoes = ["NOVA", "PERMANECE", "DESCREDENCIADA", "DESCREDENCIADA NO PERÍODO"]
+
+    if request.method == 'POST':
+        try:
+            # Capturar dados antigos para auditoria
+            dados_antigos = {
+                'id_empresa': empresa.ID_EMPRESA,
+                'no_empresa': empresa.NO_EMPRESA,
+                'no_empresa_abreviada': empresa.NO_EMPRESA_ABREVIADA,
+                'ds_condicao': empresa.DS_CONDICAO
+            }
+
+            # Atualizar condição da empresa
+            nova_condicao = request.form.get('ds_condicao', '')
+            empresa.DS_CONDICAO = nova_condicao
+
+            # Dados para auditoria
+            dados_novos = {
+                'ds_condicao': nova_condicao
+            }
+
+            db.session.commit()
+
+            # Registrar log de auditoria
+            registrar_log(
+                acao='editar',
+                entidade='empresa',
+                entidade_id=empresa.ID,
+                descricao=f'Alteração da condição da empresa {empresa.NO_EMPRESA}',
+                dados_antigos=dados_antigos,
+                dados_novos=dados_novos
+            )
+
+            flash('Empresa atualizada com sucesso!', 'success')
+            return redirect(url_for('empresa.lista_empresas', periodo_id=periodo.ID))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro: {str(e)}', 'danger')
+
+    return render_template('credenciamento/form_empresa_editar.html',
+                           empresa=empresa,
+                           periodo=periodo,
+                           edital=edital,
                            condicoes=condicoes)
 
 

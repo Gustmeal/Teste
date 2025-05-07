@@ -26,6 +26,47 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
             truncate_arrastaveis_sql = text("TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]")
             connection.execute(truncate_arrastaveis_sql)
 
+            # DIAGNÓSTICO: Verificar contratos existentes para esta empresa (sem filtros)
+            check_total_contratos_sql = text("""
+                SELECT COUNT(*) 
+                FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] 
+                WHERE [COD_EMPRESA_COBRANCA] = :empresa_id
+            """)
+            total_contratos = connection.execute(check_total_contratos_sql, {"empresa_id": empresa_id}).scalar() or 0
+
+            if total_contratos == 0:
+                logging.error(
+                    f"Empresa ID {empresa_id} não possui nenhum contrato na tabela COM_TB011_EMPRESA_COBRANCA_ATUAL")
+                return 0
+
+            logging.info(f"Total de contratos encontrados para empresa {empresa_id}: {total_contratos}")
+
+            # DIAGNÓSTICO: Verificar contratos ativos
+            check_ativos_sql = text("""
+                SELECT COUNT(*) 
+                FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                    ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                WHERE ECA.[COD_EMPRESA_COBRANCA] = :empresa_id
+                AND SIT.[fkSituacaoCredito] = 1
+            """)
+            contratos_ativos = connection.execute(check_ativos_sql, {"empresa_id": empresa_id}).scalar() or 0
+            logging.info(f"Contratos ativos (situação=1) para empresa {empresa_id}: {contratos_ativos}")
+
+            # DIAGNÓSTICO: Verificar contratos com suspensão judicial
+            check_suspensos_sql = text("""
+                SELECT COUNT(*) 
+                FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                    ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                INNER JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                    ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                WHERE ECA.[COD_EMPRESA_COBRANCA] = :empresa_id
+                AND SIT.[fkSituacaoCredito] = 1
+            """)
+            contratos_suspensos = connection.execute(check_suspensos_sql, {"empresa_id": empresa_id}).scalar() or 0
+            logging.info(f"Contratos com suspensão judicial para empresa {empresa_id}: {contratos_suspensos}")
+
             # Inserir contratos da empresa que está saindo na tabela de distribuíveis
             insert_sql = text("""
             INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
@@ -57,6 +98,19 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
             count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
             result = connection.execute(count_sql)
             num_contratos = result.scalar() or 0
+
+            # Resumo do diagnóstico
+            if num_contratos == 0:
+                razoes = []
+                if total_contratos == 0:
+                    razoes.append("A empresa não possui nenhum contrato no sistema")
+                elif contratos_ativos == 0:
+                    razoes.append("A empresa não possui contratos ativos (situação = 1)")
+                elif contratos_ativos == contratos_suspensos:
+                    razoes.append("Todos os contratos ativos da empresa possuem suspensão judicial")
+
+                motivo = " | ".join(razoes) if razoes else "Motivo desconhecido"
+                logging.warning(f"Nenhum contrato encontrado para a empresa {empresa_id}. Motivo: {motivo}")
 
             return num_contratos
 

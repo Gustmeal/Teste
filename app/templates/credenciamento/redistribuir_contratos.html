@@ -52,22 +52,35 @@
                                 </option>
                             {% endfor %}
                         </select>
+                        <small class="text-muted">
+                            Apenas empresas participantes do período atual são exibidas
+                        </small>
                     </div>
 
                     <div class="col-md-6">
                         <label class="form-label">Critério de Redistribuição <span class="text-danger">*</span></label>
-                        <select name="criterio_id" class="form-select" required>
-                            <option value="">Selecione o critério</option>
-                            {% for criterio in criterios %}
-                                <option value="{{ criterio.COD }}">
-                                    {{ criterio.DS_CRITERIO_SELECAO }}
-                                </option>
-                            {% endfor %}
-                        </select>
+                        <div class="input-group mb-2">
+                            <select name="criterio_id" id="criterioSelect" class="form-select" required>
+                                <option value="">Selecione o critério</option>
+                                {% for criterio in criterios %}
+                                    <option value="{{ criterio.COD }}">
+                                        {{ criterio.COD }} - {{ criterio.DS_CRITERIO_SELECAO }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" class="btn btn-outline-primary" id="btnNovoCriterio">
+                                <i class="fas fa-plus"></i> Novo
+                            </button>
+                        </div>
                         <small class="text-muted">
-                            Selecione o critério que será usado para esta redistribuição
+                            Selecione o critério que será usado para esta redistribuição ou cadastre um novo
                         </small>
                     </div>
+
+                    <!-- Campos ocultos para cadastro de novo critério -->
+                    <input type="hidden" name="novo_criterio_flag" id="novoCriterioFlag" value="0">
+                    <input type="hidden" name="novo_criterio_cod" id="novoCriterioCod" value="">
+                    <input type="hidden" name="novo_criterio_descricao" id="novoCriterioDescricao" value="">
                 </div>
 
                 <div class="mt-4 text-center">
@@ -189,4 +202,85 @@
         </div>
     </div>
 </div>
+
+<!-- Modal para cadastro de novo critério -->
+<div class="modal fade" id="novoCriterioModal" tabindex="-1" aria-labelledby="novoCriterioModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="novoCriterioModalLabel">Cadastrar Novo Critério</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="codCriterio" class="form-label">Código do Critério <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="codCriterio" placeholder="Ex: 15" required>
+                    <small class="text-muted">Informe um código numérico único para o critério</small>
+                </div>
+                <div class="mb-3">
+                    <label for="descricaoCriterio" class="form-label">Descrição do Critério <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="descricaoCriterio"
+                           placeholder="Ex: Redistribuição Exponencial Edital 1 Período 6" required>
+                    <small class="text-muted">Descreva o critério de forma clara e específica</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnSalvarCriterio">Salvar Critério</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Modal de novo critério
+        const btnNovoCriterio = document.getElementById('btnNovoCriterio');
+        const btnSalvarCriterio = document.getElementById('btnSalvarCriterio');
+        const novoCriterioModal = new bootstrap.Modal(document.getElementById('novoCriterioModal'));
+
+        // Campos do formulário principal
+        const novoCriterioFlag = document.getElementById('novoCriterioFlag');
+        const novoCriterioCod = document.getElementById('novoCriterioCod');
+        const novoCriterioDescricao = document.getElementById('novoCriterioDescricao');
+        const criterioSelect = document.getElementById('criterioSelect');
+
+        // Abrir modal de novo critério
+        btnNovoCriterio.addEventListener('click', function() {
+            novoCriterioModal.show();
+        });
+
+        // Salvar novo critério
+        btnSalvarCriterio.addEventListener('click', function() {
+            const codCriterio = document.getElementById('codCriterio').value;
+            const descricaoCriterio = document.getElementById('descricaoCriterio').value;
+
+            // Validação
+            if (!codCriterio || !descricaoCriterio) {
+                alert('Preencha todos os campos obrigatórios!');
+                return;
+            }
+
+            // Preencher campos ocultos
+            novoCriterioFlag.value = '1';
+            novoCriterioCod.value = codCriterio;
+            novoCriterioDescricao.value = descricaoCriterio;
+
+            // Desabilitar select de critérios existentes
+            criterioSelect.value = '';
+            criterioSelect.disabled = true;
+
+            // Mostrar feedback visual
+            criterioSelect.parentElement.innerHTML += `
+                <div class="form-text text-success mt-2">
+                    <i class="fas fa-check-circle"></i>
+                    Novo critério será cadastrado: <strong>${codCriterio} - ${descricaoCriterio}</strong>
+                </div>
+            `;
+
+            // Fechar modal
+            novoCriterioModal.hide();
+        });
+    });
+</script>
 {% endblock %}

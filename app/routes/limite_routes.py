@@ -1849,10 +1849,6 @@ from app.utils.redistribuir_contratos import processar_redistribuicao_contratos
 @limite_bp.route('/limites/redistribuir', methods=['GET', 'POST'])
 @login_required
 def redistribuir_contratos():
-    """
-    Página para redistribuição de contratos quando uma empresa sai.
-    Implementa o processo descrito no documento "Distribuição para cobrança.docx", item 1.2.
-    """
     try:
         # Encontrar automaticamente o edital mais recente
         ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
@@ -1871,10 +1867,11 @@ def redistribuir_contratos():
             flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
             return redirect(url_for('periodo.lista_periodos'))
 
-        # Buscar empresas do último período para redistribuição
+        # MODIFICAÇÃO: Buscar apenas empresas participantes que NÃO saem (excluir DESCREDENCIADA)
         empresas = EmpresaParticipante.query.filter(
             EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
             EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.DS_CONDICAO != 'DESCREDENCIADA',  # Apenas empresas que não saem
             EmpresaParticipante.DELETED_AT == None
         ).all()
 
@@ -1896,6 +1893,51 @@ def redistribuir_contratos():
                 empresa_id = request.form.get('empresa_id', type=int)
                 criterio_id = request.form.get('criterio_id', type=int)
 
+                # ADIÇÃO: Verificar se é um novo critério a ser cadastrado
+                novo_criterio = request.form.get('novo_criterio_flag') == '1'
+                if novo_criterio:
+                    # Extrair dados do novo critério
+                    cod_criterio = request.form.get('novo_criterio_cod', type=int)
+                    ds_criterio = request.form.get('novo_criterio_descricao')
+
+                    # Validar dados
+                    if not cod_criterio or not ds_criterio:
+                        flash('Código e descrição do critério são obrigatórios.', 'warning')
+                        return render_template(
+                            'credenciamento/redistribuir_contratos.html',
+                            ultimo_edital=ultimo_edital,
+                            ultimo_periodo=ultimo_periodo,
+                            empresas=empresas,
+                            criterios=criterios,
+                            resultados=resultados
+                        )
+
+                    # Verificar se o código já existe
+                    criterio_existente = CriterioSelecao.query.filter_by(COD=cod_criterio, DELETED_AT=None).first()
+                    if criterio_existente:
+                        flash(f'Já existe um critério com o código {cod_criterio}.', 'warning')
+                        return render_template(
+                            'credenciamento/redistribuir_contratos.html',
+                            ultimo_edital=ultimo_edital,
+                            ultimo_periodo=ultimo_periodo,
+                            empresas=empresas,
+                            criterios=criterios,
+                            resultados=resultados
+                        )
+
+                    # Criar novo critério
+                    novo_criterio = CriterioSelecao(
+                        COD=cod_criterio,
+                        DS_CRITERIO_SELECAO=ds_criterio
+                    )
+                    db.session.add(novo_criterio)
+                    db.session.commit()
+
+                    # Usar o novo critério
+                    criterio_id = cod_criterio
+                    flash(f'Critério "{ds_criterio}" cadastrado com sucesso.', 'success')
+
+                # Validar seleção da empresa
                 if not empresa_id:
                     flash('Selecione a empresa que está saindo.', 'warning')
                     return render_template(
@@ -1907,6 +1949,7 @@ def redistribuir_contratos():
                         resultados=resultados
                     )
 
+                # Validar seleção do critério
                 if not criterio_id:
                     flash('Selecione o critério de redistribuição.', 'warning')
                     return render_template(
