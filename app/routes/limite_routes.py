@@ -5,6 +5,7 @@ from app.models.periodo import PeriodoAvaliacao
 from app.models.empresa_participante import EmpresaParticipante
 from app.models.criterio_selecao import CriterioSelecao
 from app.utils.distribuir_contratos import obter_resultados_finais_distribuicao
+from app.utils.redistribuir_contratos import processar_redistribuicao_contratos
 from app import db
 from datetime import datetime
 from flask_login import login_required, current_user
@@ -1763,6 +1764,7 @@ def homologar_distribuicao():
             }
         )
 
+        # Redirecionar ou fazer download direto
         if download_arquivo:
             # Gerar o arquivo TXT para download
             return gerar_arquivo_homologacao(edital_id, periodo_id)
@@ -1773,7 +1775,6 @@ def homologar_distribuicao():
     except Exception as e:
         flash(f'Erro ao homologar distribuição: {str(e)}', 'danger')
         return redirect(url_for('limite.distribuir_contratos'))
-
 
 def gerar_arquivo_homologacao(edital_id, periodo_id):
     """
@@ -1810,15 +1811,22 @@ def gerar_arquivo_homologacao(edital_id, periodo_id):
         from flask import Response
         from datetime import datetime
 
-        # Buscar informações do edital e período para o nome do arquivo
-        edital = Edital.query.get_or_404(edital_id)
+        # Nome do arquivo com data atual
+        data_atual = datetime.now().strftime('%Y%m%d')
+        filename = f"DISTRIBUICAO_COBRANCA_{data_atual}_TI.TXT"
 
-        filename = f"DISTRIBUICAO_COBRANCA_{datetime.now().strftime('%Y%m%d')}_TI.TXT"
-
+        # Configurar resposta para forçar download pelo navegador
         response = Response(
             conteudo,
-            mimetype='text/plain',
-            headers={'Content-Disposition': f'attachment; filename={filename}'}
+            mimetype='text/plain; charset=utf-8',
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'text/plain; charset=utf-8',
+                # Desabilitar cache para garantir download fresco
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
         )
 
         return response
@@ -1831,3 +1839,116 @@ def gerar_arquivo_homologacao(edital_id, periodo_id):
 
         flash(f'Erro ao gerar arquivo de homologação: {str(e)}', 'danger')
         return redirect(url_for('limite.distribuir_contratos'))
+
+
+# Adicionar no início do arquivo, junto com os outros imports
+from app.utils.redistribuir_contratos import processar_redistribuicao_contratos
+
+
+# Adicionar essa nova rota ao arquivo
+@limite_bp.route('/limites/redistribuir', methods=['GET', 'POST'])
+@login_required
+def redistribuir_contratos():
+    """
+    Página para redistribuição de contratos quando uma empresa sai.
+    Implementa o processo descrito no documento "Distribuição para cobrança.docx", item 1.2.
+    """
+    try:
+        # Encontrar automaticamente o edital mais recente
+        ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+
+        if not ultimo_edital:
+            flash('Não foram encontrados editais cadastrados.', 'warning')
+            return redirect(url_for('edital.lista_editais'))
+
+        # Encontrar automaticamente o período mais recente do último edital
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        if not ultimo_periodo:
+            flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
+            return redirect(url_for('periodo.lista_periodos'))
+
+        # Buscar empresas do último período para redistribuição
+        empresas = EmpresaParticipante.query.filter(
+            EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
+            EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.DELETED_AT == None
+        ).all()
+
+        if not empresas:
+            flash('Não foram encontradas empresas para redistribuição.', 'warning')
+            return redirect(url_for('limite.lista_limites'))
+
+        # Buscar critérios de seleção para uso na redistribuição
+        criterios = CriterioSelecao.query.filter(
+            CriterioSelecao.DELETED_AT == None
+        ).all()
+
+        # Status da execução
+        resultados = None
+
+        # Se for POST, processar a redistribuição
+        if request.method == 'POST':
+            try:
+                empresa_id = request.form.get('empresa_id', type=int)
+                criterio_id = request.form.get('criterio_id', type=int)
+
+                if not empresa_id:
+                    flash('Selecione a empresa que está saindo.', 'warning')
+                    return render_template(
+                        'credenciamento/redistribuir_contratos.html',
+                        ultimo_edital=ultimo_edital,
+                        ultimo_periodo=ultimo_periodo,
+                        empresas=empresas,
+                        criterios=criterios,
+                        resultados=resultados
+                    )
+
+                if not criterio_id:
+                    flash('Selecione o critério de redistribuição.', 'warning')
+                    return render_template(
+                        'credenciamento/redistribuir_contratos.html',
+                        ultimo_edital=ultimo_edital,
+                        ultimo_periodo=ultimo_periodo,
+                        empresas=empresas,
+                        criterios=criterios,
+                        resultados=resultados
+                    )
+
+                # Executar a redistribuição
+                resultados = processar_redistribuicao_contratos(
+                    ultimo_edital.ID,
+                    ultimo_periodo.ID_PERIODO,
+                    empresa_id,
+                    criterio_id
+                )
+
+                if resultados["success"]:
+                    flash(
+                        f'Redistribuição concluída. {resultados["contratos_redistribuidos"]} contratos redistribuídos.',
+                        'success')
+                else:
+                    flash('Falha na redistribuição de contratos. Verifique os logs.', 'danger')
+
+            except Exception as e:
+                flash(f'Erro ao processar redistribuição: {str(e)}', 'danger')
+                import traceback
+                logging.error(traceback.format_exc())
+
+        # Renderizar o formulário inicial
+        return render_template(
+            'credenciamento/redistribuir_contratos.html',
+            ultimo_edital=ultimo_edital,
+            ultimo_periodo=ultimo_periodo,
+            empresas=empresas,
+            criterios=criterios,
+            resultados=resultados
+        )
+    except Exception as e:
+        flash(f'Erro na página de redistribuição: {str(e)}', 'danger')
+        import traceback
+        logging.error(traceback.format_exc())
+        return redirect(url_for('limite.lista_limites'))

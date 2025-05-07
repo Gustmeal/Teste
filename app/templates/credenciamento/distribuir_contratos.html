@@ -11,9 +11,6 @@
     </div>
 
     <!-- Formulário de parâmetros -->
-    <!-- Substitua a seção do formulário de parâmetros no arquivo app/templates/credenciamento/distribuir_contratos.html -->
-
-    <!-- Formulário de parâmetros -->
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="mb-0">Parâmetros para Distribuição</h5>
@@ -158,12 +155,21 @@
                                 {% endif %}
                             </td>
                         </tr>
+                        <!-- Linha de Totais -->
+                        <tr class="table-primary">
+                            <td><strong>Total de Contratos</strong></td>
+                            <td class="text-center"><strong>{{ resultados.total_distribuido|default(0) }}</strong></td>
+                            <td class="text-center">
+                                {% if resultados.total_distribuido|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Sem processamento</span>
+                                {% endif %}
+                            </td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
-        </div>
-    </div>
-    {% endif %}
 
 <!-- Resultado Final da Distribuição -->
 {% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
@@ -174,7 +180,7 @@
     <div class="card-body">
         <div class="table-responsive">
             <table class="table table-bordered table-striped">
-                <thead class="bg-light">
+                <thead class="bg-primary text-white">
                     <tr>
                         <th>COD</th>
                         <th>NO_EMPRESA_ABREVIADA</th>
@@ -210,69 +216,39 @@
     </div>
 </div>
 {% endif %}
+            <!-- NOVA SEÇÃO: Área para homologação com a modificação -->
+            {% if resultados.total_distribuido|default(0) > 0 %}
+            <div class="card shadow mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Homologação da Distribuição</h5>
+                </div>
+                <div class="card-body text-center">
+                    <p class="mb-4">
+                        <i class="fas fa-check-circle text-success fa-2x"></i><br>
+                        Distribuição concluída. Homologue os resultados para gerar o arquivo para importação no sistema.
+                    </p>
 
-<!-- Botão de Homologação - Mostrado apenas após distribuição completa -->
-{% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
-<div class="text-center mt-4 mb-4">
-    <button type="button" class="btn btn-lg btn-primary" data-bs-toggle="modal" data-bs-target="#homologacaoModal">
-        <i class="fas fa-check-circle me-2"></i> Homologar Distribuição
-    </button>
-</div>
+                    <!-- Formulário para homologação -->
+                    <form id="formHomologacao" action="{{ url_for('limite.homologar_distribuicao') }}" method="POST">
+                        <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                        <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                        <input type="hidden" name="download_arquivo" value="1" id="download_arquivo">
 
-<!-- Modal de Homologação -->
-<div class="modal fade" id="homologacaoModal" tabindex="-1" aria-labelledby="homologacaoModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="homologacaoModalLabel">Homologação de Distribuição</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Você está prestes a homologar a distribuição de contratos para o Edital {{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }} - Período {{ ultimo_periodo.ID_PERIODO }}.</p>
-
-                <p>Ao homologar, você confirma que:</p>
-                <ul>
-                    <li>Revisou os resultados da distribuição</li>
-                    <li>Concorda com a distribuição final apresentada</li>
-                    <li>Está ciente que isso ficará registrado no sistema</li>
-                </ul>
-
-                <div class="form-check mt-3">
-                    <input class="form-check-input" type="checkbox" id="downloadArquivo" checked>
-                    <label class="form-check-label" for="downloadArquivo">
-                        Baixar arquivo TXT com a distribuição
-                    </label>
+                        <div class="d-grid gap-2 d-md-block">
+                            <button type="button" class="btn btn-primary btn-lg me-2" onclick="iniciarHomologacao(false)">
+                                <i class="fas fa-check me-2"></i> Homologar
+                            </button>
+                            <button type="button" class="btn btn-success btn-lg" onclick="iniciarHomologacao(true)">
+                                <i class="fas fa-download me-2"></i> Homologar e Baixar Arquivo
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <form id="formHomologacao" action="{{ url_for('limite.homologar_distribuicao') }}" method="POST">
-                    <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
-                    <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
-                    <input type="hidden" id="downloadArquivoHidden" name="download_arquivo" value="1">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-check me-2"></i> Confirmar Homologação
-                    </button>
-                </form>
-            </div>
+            {% endif %}
         </div>
     </div>
-</div>
-
-<!-- Script para o checkbox de download -->
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const checkDownload = document.getElementById('downloadArquivo');
-        const hiddenInput = document.getElementById('downloadArquivoHidden');
-
-        if (checkDownload && hiddenInput) {
-            checkDownload.addEventListener('change', function() {
-                hiddenInput.value = this.checked ? '1' : '0';
-            });
-        }
-    });
-</script>
-{% endif %}
+    {% endif %}
 
     <!-- Processo descritivo -->
     <div class="card shadow">
@@ -295,4 +271,91 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de confirmação -->
+<div class="modal fade" id="confirmacaoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalTitulo">Confirmar Homologação</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMensagem">Deseja homologar a distribuição?</p>
+                <p class="text-muted mb-0" id="modalDescricao">A homologação será registrada no histórico do sistema.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarHomologacao">
+                    <i class="fas fa-check me-2"></i> <span id="btnTextoConfirmar">Confirmar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+});
+
+// Variável para controlar se o download será feito
+let comDownload = false;
+
+function iniciarHomologacao(download) {
+    // Configurar o tipo de homologação
+    comDownload = download;
+    document.getElementById('download_arquivo').value = download ? '1' : '0';
+
+    // Configurar o modal
+    document.getElementById('modalTitulo').textContent = download ?
+        'Homologar e Baixar Arquivo' : 'Confirmar Homologação';
+
+    document.getElementById('modalMensagem').textContent = download ?
+        'Deseja homologar a distribuição e baixar o arquivo?' :
+        'Deseja homologar a distribuição?';
+
+    document.getElementById('modalDescricao').textContent = download ?
+        'O arquivo será gerado e o download iniciará automaticamente.' :
+        'A homologação será registrada no histórico do sistema.';
+
+    document.getElementById('btnTextoConfirmar').textContent = download ?
+        'Homologar e Baixar' : 'Homologar';
+
+    // Exibir o modal
+    const modal = new bootstrap.Modal(document.getElementById('confirmacaoModal'));
+    modal.show();
+}
+
+// Configurar ação do botão de confirmar
+document.getElementById('btnConfirmarHomologacao').addEventListener('click', function() {
+    // Fechar o modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('confirmacaoModal'));
+    modal.hide();
+
+    // Se for com download, mostrar indicador de carregamento
+    if (comDownload) {
+        // Usar o gerenciador de loading global (se disponível)
+        if (window.autoLoadingManager) {
+            window.autoLoadingManager.showLoading();
+
+            // Esconder indicador após 3 segundos
+            setTimeout(() => {
+                window.autoLoadingManager.hideLoading();
+                // Exibir notificação
+                if (window.showToast) {
+                    window.showToast('Download iniciado com sucesso!', 'success');
+                }
+            }, 3000);
+        }
+    }
+
+    // Submeter o formulário (isso iniciará o download via navegador se for o caso)
+    document.getElementById('formHomologacao').submit();
+});
+</script>
 {% endblock %}

@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Redistribuição de Contratos</h1>
+    </div>
+
+    <!-- Formulário de parâmetros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Parâmetros para Redistribuição</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('limite.redistribuir_contratos') }}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Edital</label>
+                        <select name="edital_id" class="form-select" disabled>
+                            <option value="{{ ultimo_edital.ID }}" selected>
+                                {{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }} - {{ ultimo_edital.DESCRICAO }}
+                            </option>
+                        </select>
+                        <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Período</label>
+                        <select name="periodo_id" class="form-select" disabled>
+                            <option value="{{ ultimo_periodo.ID_PERIODO }}" selected>
+                                {{ ultimo_periodo.ID_PERIODO }} - {{ ultimo_periodo.DT_INICIO.strftime('%d/%m/%Y') }}
+                                a {{ ultimo_periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                            </option>
+                        </select>
+                        <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Empresa que está saindo <span class="text-danger">*</span></label>
+                        <select name="empresa_id" class="form-select" required>
+                            <option value="">Selecione a empresa que está saindo</option>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.ID_EMPRESA }}">
+                                    {% if empresa.NO_EMPRESA_ABREVIADA %}
+                                        {{ empresa.NO_EMPRESA_ABREVIADA }} - {{ empresa.NO_EMPRESA }}
+                                    {% else %}
+                                        {{ empresa.NO_EMPRESA }}
+                                    {% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Critério de Redistribuição <span class="text-danger">*</span></label>
+                        <select name="criterio_id" class="form-select" required>
+                            <option value="">Selecione o critério</option>
+                            {% for criterio in criterios %}
+                                <option value="{{ criterio.COD }}">
+                                    {{ criterio.DS_CRITERIO_SELECAO }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            Selecione o critério que será usado para esta redistribuição
+                        </small>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-center">
+                    <button type="submit" class="btn btn-success px-4">
+                        <i class="fas fa-random me-2"></i> Iniciar Redistribuição
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Área para exibir resultados -->
+    {% if resultados %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Resultados da Redistribuição</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Etapa</th>
+                            <th class="text-center">Contratos Processados</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- 1 -->
+                        <tr>
+                            <td>1. Seleção de contratos a redistribuir</td>
+                            <td class="text-center">{{ resultados.contratos_redistribuidos|default(0) + resultados.contratos_arrastados|default(0) + resultados.contratos_restantes|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.contratos_redistribuidos|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Sem contratos</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 2 -->
+                        <tr>
+                            <td>2. Cálculo dos percentuais de redistribuição</td>
+                            <td class="text-center">{{ resultados.total_empresas|default(0) }} empresas</td>
+                            <td class="text-center">
+                                {% if resultados.total_empresas|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Falha</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 3 -->
+                        <tr>
+                            <td>3. Redistribuição de contratos arrastáveis</td>
+                            <td class="text-center">{{ resultados.contratos_arrastados|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.contratos_arrastados|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <!-- 4 -->
+                        <tr>
+                            <td>4. Redistribuição de demais contratos</td>
+                            <td class="text-center">{{ resultados.contratos_restantes|default(0) }}</td>
+                            <td class="text-center">
+                                {% if resultados.contratos_restantes|default(0) > 0 %}
+                                    <span class="badge bg-success">Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Nenhum contrato</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-primary">
+                            <th>Total de Contratos Redistribuídos</th>
+                            <th class="text-center">{{ resultados.contratos_redistribuidos|default(0) }}</th>
+                            <th class="text-center">
+                                {% if resultados.success %}
+                                    <span class="badge bg-success">Processo Concluído</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Falha no Processo</span>
+                                {% endif %}
+                            </th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Processo descritivo -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Processo de Redistribuição de Contratos</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                O processo de redistribuição seguirá as seguintes etapas:
+            </div>
+            <ol class="list-group list-group-numbered mb-4">
+                <li class="list-group-item">Seleção de contratos a redistribuir da empresa que está saindo</li>
+                <li class="list-group-item">Cálculo dos percentuais de redistribuição</li>
+                <li class="list-group-item">Redistribuição de contratos arrastáveis (mesmo CPF/CNPJ)</li>
+                <li class="list-group-item">Redistribuição dos demais contratos</li>
+                <li class="list-group-item">Atualização dos limites de distribuição</li>
+            </ol>
+
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Atenção:</strong> Este processo é irreversível. Certifique-se de selecionar a empresa correta.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
