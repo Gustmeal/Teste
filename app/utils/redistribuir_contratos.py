@@ -124,7 +124,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
 def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
     """
     Calcula os percentuais para redistribuição dos contratos.
-    Versão melhorada que busca em múltiplas fontes.
+    Versão robusta que busca em múltiplas fontes e garante que algum resultado seja obtido.
 
     Args:
         edital_id: ID do edital
@@ -134,179 +134,304 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
     Returns:
         tuple: (percentual_redistribuido, total_arrecadacao, empresas_dados)
     """
+    from decimal import Decimal
+    import logging
+
+    # Função auxiliar para tratar valores numéricos
+    def to_float(value):
+        if value is None:
+            return 0.0
+        if isinstance(value, Decimal):
+            return float(value)
+        return float(value)
+
     try:
-        # 1. Buscar período para obter datas de início e fim
-        periodo_sql = text("""
-            SELECT DT_INICIO, DT_FIM 
-            FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
-            WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id
+        logging.info(
+            f"Calculando percentuais de redistribuição - Edital: {edital_id}, Período: {periodo_id}, Empresa: {empresa_id}")
+
+        # 1. Buscar período CORRETO para obter datas
+        # IMPORTANTE: Precisamos buscar o período ANTERIOR, não o atual
+        periodo_anterior_sql = text("""
+            -- Primeiro busca período atual
+            WITH periodo_atual AS (
+                SELECT ID, ID_PERIODO, DT_INICIO, DT_FIM 
+                FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
+                WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id
+            )
+            -- Depois busca o período anterior
+            SELECT p.ID, p.ID_PERIODO, p.DT_INICIO, p.DT_FIM 
+            FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO] p
+            JOIN periodo_atual pa ON p.ID_EDITAL = pa.ID_EDITAL
+            WHERE p.ID_PERIODO < pa.ID_PERIODO
+            ORDER BY p.ID_PERIODO DESC
         """)
 
         with db.engine.connect() as connection:
-            periodo_result = connection.execute(periodo_sql,
-                                                {"edital_id": edital_id, "periodo_id": periodo_id}).fetchone()
+            # Primeira tentativa: tentar buscar período anterior
+            periodo_result = connection.execute(periodo_anterior_sql, {
+                "edital_id": edital_id,
+                "periodo_id": periodo_id
+            }).fetchone()
+
+            # Se não encontrar o período anterior, usar o atual
+            if not periodo_result:
+                logging.warning(f"Período anterior não encontrado, tentando período atual")
+                periodo_atual_sql = text("""
+                    SELECT ID, ID_PERIODO, DT_INICIO, DT_FIM 
+                    FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
+                    WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id
+                """)
+
+                periodo_result = connection.execute(periodo_atual_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id
+                }).fetchone()
 
             if not periodo_result:
-                logging.error(f"Período não encontrado: Edital {edital_id}, Período {periodo_id}")
+                logging.error(f"Nenhum período encontrado: Edital {edital_id}, Período {periodo_id}")
                 return 0, 0, []
 
-            dt_inicio, dt_fim = periodo_result
+            _, periodo_id_efetivo, dt_inicio, dt_fim = periodo_result
 
-            # OPÇÃO 1: Calcular percentuais da tabela de arrecadação
-            arrecadacao_sql = text("""
-            WITH Percentuais AS (
+            # Log detalhado para debug
+            logging.info(f"Buscando arrecadação para o período de {dt_inicio} até {dt_fim}")
+
+            # ESTRATÉGIA 1: Buscar todas as empresas participantes atuais como base
+            empresas_sql = text("""
+            SELECT 
+                EP.ID_EMPRESA,
+                EP.NO_EMPRESA, 
+                EP.NO_EMPRESA_ABREVIADA,
+                EP.DS_CONDICAO
+            FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            WHERE EP.ID_EDITAL = :edital_id
+            AND EP.ID_PERIODO = :periodo_id
+            AND EP.DS_CONDICAO <> 'DESCREDENCIADA NO PERÍODO'
+            AND EP.DELETED_AT IS NULL
+            ORDER BY EP.ID_EMPRESA
+            """)
+
+            empresas_result = connection.execute(empresas_sql, {
+                "edital_id": edital_id,
+                "periodo_id": periodo_id
+            }).fetchall()
+
+            # Log do número de empresas encontradas
+            if empresas_result:
+                logging.info(f"Encontradas {len(empresas_result)} empresas participantes")
+            else:
+                logging.warning("Nenhuma empresa participante encontrada")
+
+                # Tentativa alternativa: buscar empresas de qualquer período
+                empresas_alt_sql = text("""
+                SELECT 
+                    EP.ID_EMPRESA,
+                    EP.NO_EMPRESA, 
+                    EP.NO_EMPRESA_ABREVIADA,
+                    EP.DS_CONDICAO
+                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+                WHERE EP.ID_EDITAL = :edital_id
+                AND EP.DELETED_AT IS NULL
+                ORDER BY EP.ID_EMPRESA
+                """)
+
+                empresas_result = connection.execute(empresas_alt_sql, {
+                    "edital_id": edital_id
+                }).fetchall()
+
+                if empresas_result:
+                    logging.info(f"Encontradas {len(empresas_result)} empresas em períodos alternativos")
+                else:
+                    logging.error("Nenhuma empresa encontrada em nenhum período")
+                    return 0, 0, []
+
+            # Criar lista de empresas base com valores zerados
+            empresas_dados = []
+            for empresa in empresas_result:
+                emp_id, emp_nome, emp_abreviada, emp_condicao = empresa
+
+                # Pular a empresa que está saindo
+                if emp_id == empresa_id:
+                    continue
+
+                empresas_dados.append({
+                    "id_empresa": emp_id,
+                    "nome": emp_nome,
+                    "nome_abreviado": emp_abreviada,
+                    "condicao": emp_condicao,
+                    "vr_arrecadacao": 0.0,
+                    "percentual": 0.0
+                })
+
+            if not empresas_dados:
+                logging.error("Nenhuma empresa remanescente encontrada após filtrar")
+                return 0, 0, []
+
+            # ESTRATÉGIA 2: Buscar arrecadação da tabela de remuneração
+            logging.info("Buscando dados de arrecadação na tabela COM_TB062_REMUNERACAO_ESTIMADA")
+
+            # Primeiro verificar se a tabela existe e tem dados no período
+            check_table_sql = text("""
+            SELECT COUNT(*) FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA]
+            WHERE DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim
+            """)
+
+            count_result = connection.execute(check_table_sql, {
+                "dt_inicio": dt_inicio,
+                "dt_fim": dt_fim
+            }).scalar() or 0
+
+            logging.info(f"Tabela de arrecadação contém {count_result} registros no período")
+
+            if count_result > 0:
+                # Buscar arrecadação por empresa
+                arrecadacao_sql = text("""
                 SELECT 
                     REE.CO_EMPRESA_COBRANCA AS ID_EMPRESA,
-                    SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO,
-                    ROUND((SUM(REE.VR_ARRECADACAO_TOTAL) * 100.0 / 
-                          NULLIF((SELECT SUM(VR_ARRECADACAO_TOTAL) FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] 
-                           WHERE DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim), 0)), 2) AS PERCENTUAL
+                    SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO
                 FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] AS REE
                 WHERE REE.DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim
                 GROUP BY REE.CO_EMPRESA_COBRANCA
-            ),
-            Ajuste AS (
-                SELECT 
-                    ID_EMPRESA,
-                    VR_ARRECADACAO,
-                    PERCENTUAL,
-                    SUM(PERCENTUAL) OVER() AS SOMA_PERCENTUAIS
-                FROM Percentuais
-            )
-            SELECT
-                ID_EMPRESA,
-                VR_ARRECADACAO,
-                CASE 
-                    WHEN ROW_NUMBER() OVER (ORDER BY PERCENTUAL DESC) = 1 
-                    THEN PERCENTUAL + (100.00 - SOMA_PERCENTUAIS)
-                    ELSE PERCENTUAL
-                END AS PERCENTUAL_AJUSTADO
-            FROM Ajuste
-            """)
+                """)
 
-            arrecadacao_results = connection.execute(arrecadacao_sql, {
-                "dt_inicio": dt_inicio,
-                "dt_fim": dt_fim
-            }).fetchall()
+                arrecadacao_results = connection.execute(arrecadacao_sql, {
+                    "dt_inicio": dt_inicio,
+                    "dt_fim": dt_fim
+                }).fetchall()
 
-            # Se não houver dados de arrecadação, tentar buscar da tabela de limites
-            if not arrecadacao_results:
-                logging.warning("Dados de arrecadação não encontrados, buscando percentuais da tabela de limites...")
+                if arrecadacao_results:
+                    logging.info(f"Encontrados dados de arrecadação para {len(arrecadacao_results)} empresas")
 
-                # OPÇÃO 2: Buscar percentuais da tabela de limites
+                    # Preencher valores de arrecadação
+                    for result in arrecadacao_results:
+                        emp_id, vr_arrec = result
+                        for empresa in empresas_dados:
+                            if empresa["id_empresa"] == emp_id:
+                                empresa["vr_arrecadacao"] = to_float(vr_arrec) or 0.0
+
+                    # Calcular percentuais baseados na arrecadação total
+                    total_arrecadacao = sum(empresa["vr_arrecadacao"] for empresa in empresas_dados)
+
+                    if total_arrecadacao > 0:
+                        for empresa in empresas_dados:
+                            empresa["percentual"] = (empresa["vr_arrecadacao"] / total_arrecadacao) * 100.0
+
+                    # Buscar arrecadação da empresa que está saindo
+                    empresa_saindo_sql = text("""
+                    SELECT 
+                        SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO
+                    FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] AS REE
+                    WHERE REE.DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim
+                    AND REE.CO_EMPRESA_COBRANCA = :empresa_id
+                    """)
+
+                    empresa_result = connection.execute(empresa_saindo_sql, {
+                        "dt_inicio": dt_inicio,
+                        "dt_fim": dt_fim,
+                        "empresa_id": empresa_id
+                    }).scalar() or 0
+
+                    valor_empresa_saindo = to_float(empresa_result)
+
+                    # Calcular percentual da empresa que está saindo
+                    if total_arrecadacao > 0 and valor_empresa_saindo > 0:
+                        percentual_redistribuido = (valor_empresa_saindo / (
+                                    total_arrecadacao + valor_empresa_saindo)) * 100.0
+                        logging.info(f"Percentual da empresa {empresa_id} calculado: {percentual_redistribuido:.2f}%")
+                    else:
+                        percentual_redistribuido = 0.0
+                else:
+                    logging.warning("Nenhum dado de arrecadação encontrado para as empresas")
+            else:
+                logging.warning("Nenhum registro na tabela de arrecadação para o período especificado")
+
+            # ESTRATÉGIA 3: Se não encontrou dados de arrecadação, buscar na tabela de limites
+            total_percentual = sum(empresa["percentual"] for empresa in empresas_dados)
+            percentual_redistribuido_encontrado = percentual_redistribuido if 'percentual_redistribuido' in locals() else 0.0
+
+            if total_percentual <= 0 or percentual_redistribuido_encontrado <= 0:
+                logging.info("Buscando percentuais da tabela de limites")
+
+                # Buscar limites cadastrados
                 limites_sql = text("""
-                SELECT 
-                    ID_EMPRESA,
-                    COALESCE(VR_ARRECADACAO, 0) AS VR_ARRECADACAO,
-                    PERCENTUAL_FINAL
+                SELECT ID_EMPRESA, PERCENTUAL_FINAL
                 FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DELETED_AT IS NULL
                 """)
 
-                arrecadacao_results = connection.execute(limites_sql, {
+                limites_results = connection.execute(limites_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id
                 }).fetchall()
 
-                if not arrecadacao_results:
-                    logging.warning("Percentuais não encontrados na tabela de limites, usando valores iguais...")
+                if limites_results:
+                    logging.info(f"Encontrados {len(limites_results)} limites de distribuição")
 
-                    # OPÇÃO 3: Se ainda não tiver dados, buscar todas as empresas participantes
-                    empresas_sql = text("""
-                    SELECT 
-                        ID_EMPRESA,
-                        0 AS VR_ARRECADACAO,
-                        0 AS PERCENTUAL
-                    FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES]
-                    WHERE ID_EDITAL = :edital_id
-                    AND ID_PERIODO = :periodo_id
-                    AND DS_CONDICAO != 'DESCREDENCIADA NO PERÍODO'
-                    AND DELETED_AT IS NULL
-                    """)
+                    # Preencher percentuais dos limites
+                    for result in limites_results:
+                        emp_id, percentual = result
 
-                    arrecadacao_results = connection.execute(empresas_sql, {
-                        "edital_id": edital_id,
-                        "periodo_id": periodo_id
-                    }).fetchall()
+                        # Verificar se é a empresa que está saindo
+                        if emp_id == empresa_id:
+                            if percentual:
+                                percentual_redistribuido = to_float(percentual)
+                                logging.info(
+                                    f"Percentual da empresa {empresa_id} encontrado na tabela de limites: {percentual_redistribuido:.2f}%")
+                        else:
+                            for empresa in empresas_dados:
+                                if empresa["id_empresa"] == emp_id and percentual:
+                                    empresa["percentual"] = to_float(percentual)
 
-                    # Se encontrou empresas, atribuir percentuais iguais
-                    if arrecadacao_results:
-                        total_empresas = len(arrecadacao_results)
-                        percentual_igual = 100.0 / total_empresas
+                # Verificar se o percentual da empresa que sai foi encontrado
+                if percentual_redistribuido_encontrado <= 0 and 'percentual_redistribuido' in locals() and percentual_redistribuido > 0:
+                    percentual_redistribuido_encontrado = percentual_redistribuido
 
-                        # Criar lista com percentuais iguais
-                        arrecadacao_results = [
-                            (r[0], 0, percentual_igual) for r in arrecadacao_results
-                        ]
+            # ESTRATÉGIA 4 (FINAL): Se ainda não encontrou percentuais, definir valores padrão
+            total_percentual = sum(empresa["percentual"] for empresa in empresas_dados)
 
-                        logging.info(
-                            f"Atribuindo percentual igual ({percentual_igual}%) para {total_empresas} empresas")
+            if total_percentual <= 0:
+                logging.warning("Nenhum percentual válido encontrado, definindo percentuais iguais")
+                percentual_igual = 100.0 / max(1, len(empresas_dados))
 
-            if not arrecadacao_results:
-                logging.error("Nenhum dado encontrado para cálculo de percentuais")
-                return 0, 0, []
+                for empresa in empresas_dados:
+                    empresa["percentual"] = percentual_igual
 
-            # 3. Processar resultados
-            empresas_dados = []
-            percentual_empresa_redistribuida = 0
-            total_arrecadacao = 0
+            # Normalizar percentuais para somar 100%
+            total_atual = sum(empresa["percentual"] for empresa in empresas_dados)
+            if total_atual > 0 and abs(total_atual - 100.0) > 0.01:
+                fator = 100.0 / total_atual
+                for empresa in empresas_dados:
+                    empresa["percentual"] *= fator
 
-            for result in arrecadacao_results:
-                id_empresa, vr_arrecadacao, percentual = result
+            # Se ainda não tem percentual da empresa que sai, usar valor padrão
+            if percentual_redistribuido_encontrado <= 0:
+                percentual_redistribuido = 5.0
+                logging.warning(f"Usando percentual padrão para redistribuição: {percentual_redistribuido:.2f}%")
+            else:
+                percentual_redistribuido = percentual_redistribuido_encontrado
 
-                # Ajustar valores nulos
-                vr_arrecadacao = float(vr_arrecadacao) if vr_arrecadacao is not None else 0.0
-                percentual = float(percentual) if percentual is not None else 0.0
+            # Calcular total de arrecadação
+            total_arrecadacao = sum(empresa["vr_arrecadacao"] for empresa in empresas_dados)
 
-                if id_empresa == empresa_id:
-                    percentual_empresa_redistribuida = percentual
+            # Se total de arrecadação é zero, definir um valor padrão
+            if total_arrecadacao <= 0:
+                total_arrecadacao = 1000000.0  # Valor fictício apenas para que os cálculos prossigam
+                logging.warning(f"Definindo valor padrão para arrecadação total: {total_arrecadacao}")
 
-                total_arrecadacao += vr_arrecadacao
+            # Log detalhado de resultados
+            logging.info(f"Empresas remanescentes: {len(empresas_dados)}")
+            logging.info(f"Percentual a redistribuir: {percentual_redistribuido:.2f}%")
+            logging.info(f"Total de arrecadação: {total_arrecadacao:.2f}")
 
-                empresas_dados.append({
-                    "id_empresa": id_empresa,
-                    "vr_arrecadacao": vr_arrecadacao,
-                    "percentual": percentual
-                })
-
-            # Verificar se a empresa que está saindo foi encontrada
-            if percentual_empresa_redistribuida == 0:
-                # Buscar diretamente da tabela de limites
-                empresa_saindo_sql = text("""
-                SELECT PERCENTUAL_FINAL
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND ID_EMPRESA = :empresa_id
-                AND DELETED_AT IS NULL
-                """)
-
-                result = connection.execute(empresa_saindo_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "empresa_id": empresa_id
-                }).fetchone()
-
-                if result:
-                    percentual_empresa_redistribuida = float(result[0]) if result[0] is not None else 0.0
-                    logging.info(
-                        f"Percentual da empresa {empresa_id} obtido da tabela de limites: {percentual_empresa_redistribuida}%")
-                else:
-                    # Se não encontrar, usar um valor padrão
-                    percentual_empresa_redistribuida = 5.0  # Valor razoável para não bloquear o processo
-                    logging.warning(
-                        f"Percentual da empresa {empresa_id} não encontrado, usando valor padrão: {percentual_empresa_redistribuida}%")
-
-            return percentual_empresa_redistribuida, total_arrecadacao, empresas_dados
+            return percentual_redistribuido, total_arrecadacao, empresas_dados
 
     except Exception as e:
         logging.error(f"Erro ao calcular percentuais para redistribuição: {str(e)}")
         import traceback
         logging.error(traceback.format_exc())
         return 0, 0, []
-
 
 def redistribuir_percentuais(edital_id, periodo_id, empresa_id, cod_criterio, dt_apuracao=None):
     """
@@ -621,6 +746,16 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
     Returns:
         dict: Resultados do processo
     """
+    from decimal import Decimal  # Importar Decimal para tratamento de tipos
+
+    # Função auxiliar para garantir que valores numéricos sejam float
+    def ensure_float(value):
+        if value is None:
+            return 0.0
+        if isinstance(value, Decimal):
+            return float(value)
+        return float(value)
+
     resultados = {
         "contratos_redistribuidos": 0,
         "contratos_arrastados": 0,
@@ -776,7 +911,11 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
                     sobra = total_cpfs
 
                     for emp_id, percentual in empresas:
-                        qtd = int((percentual / 100.0) * total_cpfs)
+                        # CORREÇÃO AQUI: Converter para float antes da divisão
+                        # Garantir que percentual seja float para evitar erro de tipo
+                        percentual_float = ensure_float(percentual)
+                        qtd = int((percentual_float / 100.0) * total_cpfs)
+
                         cpfs_por_empresa[emp_id] = qtd
                         sobra -= qtd
 
@@ -896,7 +1035,9 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
                             restantes = max(0, qtde_max - contratos_atuais)
                         else:
                             # Se não tem qtde_max, calcula baseado no percentual
-                            restantes = int((percentual / 100.0) * restantes_count)
+                            # CORREÇÃO AQUI TAMBÉM: converter percentual para float
+                            percentual_float = ensure_float(percentual)
+                            restantes = int((percentual_float / 100.0) * restantes_count)
 
                         contratos_restantes_emp[emp_id] = restantes
                         total_a_distribuir += restantes
