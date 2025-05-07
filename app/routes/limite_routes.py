@@ -1871,7 +1871,7 @@ def redistribuir_contratos():
         empresas = EmpresaParticipante.query.filter(
             EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
             EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
-            EmpresaParticipante.DS_CONDICAO != 'DESCREDENCIADA',  # Apenas empresas que não saem
+            EmpresaParticipante.DS_CONDICAO == 'DESCREDENCIADA NO PERÍODO',
             EmpresaParticipante.DELETED_AT == None
         ).all()
 
