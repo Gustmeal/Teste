@@ -1054,7 +1054,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
         return 0, False
 
 
-def processar_demais_contratos(edital_id, periodo_id, criterio_id):
+def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redistribuida=None):
     """
     Processa os contratos restantes (não arrastáveis) para redistribuição.
     Distribui aleatoriamente os contratos restantes entre as empresas remanescentes
@@ -1064,6 +1064,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
         edital_id: ID do edital
         periodo_id: ID do período
         criterio_id: ID do critério de seleção
+        empresa_redistribuida: ID da empresa que está sendo redistribuída (saindo)
 
     Returns:
         tuple: (contratos_processados, success)
@@ -1094,55 +1095,48 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
             transaction = connection.begin()
 
             try:
-                # 1. DIAGNÓSTICO: Verificar o estado atual das tabelas relevantes
-                diag_sql = text("""
-                SELECT 
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]) AS distribuiveis_count,
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB007_ARRASTAVEIS]) AS arrastaveis_count,
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
-                     WHERE ID_EDITAL = :edital_id 
-                       AND ID_PERIODO = :periodo_id 
-                       AND COD_CRITERIO_SELECAO = :criterio_id) AS distribuidos_count,
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                     WHERE ID_EDITAL = :edital_id 
-                       AND ID_PERIODO = :periodo_id 
-                       AND COD_CRITERIO_SELECAO = :criterio_id) AS limites_count
+                # 1. Apurar quantidade de registros restantes na tabela DCA_TB006_DISTRIBUIVEIS
+                count_sql = text("""
+                SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
                 """)
 
-                diag_result = connection.execute(diag_sql, {
+                count_result = connection.execute(count_sql).fetchone()
+                qtde_contratos_restantes = count_result[0] if count_result else 0
+
+                print(f"Total de contratos restantes para distribuição: {qtde_contratos_restantes}")
+                logging.info(f"Contratos restantes para distribuição: {qtde_contratos_restantes}")
+
+                if qtde_contratos_restantes == 0:
+                    print("Não há contratos restantes para distribuir. Finalizando etapa.")
+                    transaction.commit()
+                    return 0, True
+
+                # 2. Contar registros atuais na tabela de distribuição (para calcular diferença depois)
+                baseline_sql = text("""
+                SELECT COUNT(*) 
+                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE ID_EDITAL = :edital_id 
+                  AND ID_PERIODO = :periodo_id 
+                  AND COD_CRITERIO_SELECAO = :criterio_id
+                """)
+
+                baseline_result = connection.execute(baseline_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id
                 }).fetchone()
 
-                dist_count = diag_result[0] if diag_result else 0
-                arr_count = diag_result[1] if diag_result else 0
-                distribuidos = diag_result[2] if diag_result else 0
-                limites = diag_result[3] if diag_result else 0
+                baseline_count = baseline_result[0] if baseline_result else 0
 
-                print(f"\n----- DIAGNÓSTICO INICIAL -----")
-                print(f"Contratos distribuíveis: {dist_count}")
-                print(f"Contratos arrastáveis: {arr_count}")
-                print(f"Contratos já distribuídos: {distribuidos}")
-                print(f"Limites de empresas: {limites}")
+                # Filtro para empresa redistribuída
+                empresa_filter = ""
+                if empresa_redistribuida:
+                    empresa_filter = f"AND ID_EMPRESA <> {empresa_redistribuida}"
 
-                if limites == 0:
-                    print("ERRO: Não há limites definidos para as empresas. Não é possível continuar.")
-                    logging.error("Nenhum limite definido na tabela DCA_TB003_LIMITES_DISTRIBUICAO.")
-                    return 0, False
-
-                if dist_count == 0:
-                    print("AVISO: Não há contratos distribuíveis restantes para processar.")
-                    logging.info("Nenhum contrato disponível na tabela DCA_TB006_DISTRIBUIVEIS.")
-                    transaction.commit()
-                    return 0, True
-
-                # 2. Executar o processamento de distribuição em um único batch SQL
-                # com melhor tratamento de resultados e diagnósticos adicionais
-                distribuir_sql = text("""
-                DECLARE @contratos_processados INT = 0;
-
-                -- Criar tabela temporária para empresas com suas quantidades
+                # 3. Executar todo o processo em um único batch SQL
+                # Não tentamos capturar resultados diretamente do batch
+                sql_completo = text(f"""
+                -- Criar tabela temporária com empresas remanescentes
                 IF OBJECT_ID('tempdb..#ASSESSORIAS_1') IS NOT NULL
                     DROP TABLE #ASSESSORIAS_1;
 
@@ -1158,14 +1152,11 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                     ID_EDITAL = :edital_id
                     AND ID_PERIODO = :periodo_id
                     AND COD_CRITERIO_SELECAO = :criterio_id
+                    {empresa_filter}
                 ORDER BY
                     ID_EMPRESA;
 
-                -- DIAGNÓSTICO: Registrar contagem de empresas
-                DECLARE @empresas_count INT = (SELECT COUNT(*) FROM #ASSESSORIAS_1);
-                PRINT 'Empresas encontradas: ' + CAST(@empresas_count AS VARCHAR);
-
-                -- Calcular quantidades iniciais já distribuídas
+                -- Calcular quantidades já distribuídas por empresa
                 IF OBJECT_ID('tempdb..#QUANTIDADES_INICIAIS') IS NOT NULL
                     DROP TABLE #QUANTIDADES_INICIAIS;
 
@@ -1185,11 +1176,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                 ORDER BY
                     COD_EMPRESA_COBRANCA;
 
-                -- DIAGNÓSTICO: Registrar contagem de empresas com contratos já distribuídos
-                DECLARE @empresas_dist_count INT = (SELECT COUNT(*) FROM #QUANTIDADES_INICIAIS);
-                PRINT 'Empresas já com contratos: ' + CAST(@empresas_dist_count AS VARCHAR);
-
-                -- Criar tabela temporária para distribuição
+                -- Criar tabela para nova distribuição
                 IF OBJECT_ID('tempdb..#DISTRIBUICAO_1') IS NOT NULL
                     DROP TABLE #DISTRIBUICAO_1;
 
@@ -1200,19 +1187,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                     VR_SD_DEVEDOR DECIMAL(18,2)
                 );
 
-                -- DIAGNÓSTICO: Verificar se existem contratos para distribuir
-                DECLARE @contratos_restantes INT = (SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]);
-                IF @contratos_restantes = 0
-                BEGIN
-                    PRINT 'Nenhum contrato restante para distribuir';
-                    RETURN;
-                END
-                ELSE
-                BEGIN
-                    PRINT 'Contratos restantes para distribuir: ' + CAST(@contratos_restantes AS VARCHAR);
-                END
-
-                -- Criar tabela para contratos embaralhados
+                -- Embaralhar contratos para distribuição aleatória
                 IF OBJECT_ID('tempdb..#DISTRIBUIVEIS') IS NOT NULL
                     DROP TABLE #DISTRIBUIVEIS;
 
@@ -1229,11 +1204,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                 INTO #DISTRIBUIVEIS
                 FROM CTE;
 
-                -- DIAGNÓSTICO: Verificar se a tabela #DISTRIBUIVEIS foi preenchida corretamente
-                DECLARE @dist_embaralhados INT = (SELECT COUNT(*) FROM #DISTRIBUIVEIS);
-                PRINT 'Contratos embaralhados: ' + CAST(@dist_embaralhados AS VARCHAR);
-
-                -- Distribuir os contratos entre empresas
+                -- Variáveis para o cursor
                 DECLARE @ID INT;
                 DECLARE @ID_EMPRESA INT;
                 DECLARE @PERCENTUAL DECIMAL(6,2);
@@ -1250,7 +1221,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                     P.ID_EMPRESA,
                     P.PERCENTUAL_FINAL,
                     P.QTDE_MAXIMA,
-                    ISNULL(Q.QTDE, 0) as QTDE
+                    ISNULL(Q.QTDE, 0) AS QTDE
                 FROM 
                     #ASSESSORIAS_1 AS P
                 LEFT JOIN #QUANTIDADES_INICIAIS AS Q
@@ -1264,10 +1235,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                     -- Calcular quantos contratos ainda podem ser atribuídos a esta empresa
                     SET @QUANTIDADE_RESTANTE = @QTDE_MAXIMA - @QUANTIDADE_INICIAL;
 
-                    PRINT 'Empresa ID: ' + CAST(@ID_EMPRESA AS VARCHAR) + ', Percentual: ' + CAST(@PERCENTUAL AS VARCHAR) + 
-                          ', Máximo: ' + CAST(@QTDE_MAXIMA AS VARCHAR) + ', Existentes: ' + CAST(@QUANTIDADE_INICIAL AS VARCHAR) + 
-                          ', Restantes: ' + CAST(@QUANTIDADE_RESTANTE AS VARCHAR);
-
                     -- Somente distribui se houver contratos disponíveis para esta empresa
                     IF @QUANTIDADE_RESTANTE > 0
                     BEGIN
@@ -1277,7 +1244,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                         IF @END_ROW > (SELECT COUNT(*) FROM #DISTRIBUIVEIS)
                             SET @END_ROW = (SELECT COUNT(*) FROM #DISTRIBUIVEIS);
 
-                        -- Inserir na tabela de distribuição
+                        -- Inserir na tabela de distribuição temporária
                         INSERT INTO #DISTRIBUICAO_1 (
                             FkContratoSISCTR,
                             ID,
@@ -1294,11 +1261,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                         WHERE 
                             RowNum BETWEEN @START_ROW AND @END_ROW;
 
-                        -- Contagem de inserções para esta empresa
-                        DECLARE @inseridos_empresa INT = @@ROWCOUNT;
-                        SET @contratos_processados = @contratos_processados + @inseridos_empresa;
-                        PRINT '  -> Inseridos para empresa ' + CAST(@ID_EMPRESA AS VARCHAR) + ': ' + CAST(@inseridos_empresa AS VARCHAR);
-
                         SET @START_ROW = @END_ROW + 1;
                     END
 
@@ -1308,11 +1270,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                 CLOSE PERCENTUAIS_CURSOR;
                 DEALLOCATE PERCENTUAIS_CURSOR;
 
-                -- DIAGNÓSTICO: Verificar distribuição gerada na tabela temporária
-                DECLARE @distribuicao_temp INT = (SELECT COUNT(*) FROM #DISTRIBUICAO_1);
-                PRINT 'Contratos na tabela de distribuição temporária: ' + CAST(@distribuicao_temp AS VARCHAR);
-
-                -- Inserir na tabela final de distribuição
+                -- Inserir os registros da tabela temporária na tabela final
                 INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
                     [DT_REFERENCIA],
                     [ID_EDITAL],
@@ -1342,90 +1300,42 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id):
                     #DISTRIBUICAO_1 AS DIS
                     JOIN #ASSESSORIAS_1 AS ASS
                         ON DIS.ID = ASS.ID;
-
-                -- Verificar quantos contratos foram inseridos
-                DECLARE @inseridos_final INT = @@ROWCOUNT;
-                PRINT 'Contratos inseridos na tabela final: ' + CAST(@inseridos_final AS VARCHAR);
-
-                -- Retornar contagem de contratos processados
-                SELECT @contratos_processados AS contratos_processados;
                 """)
 
-                # Executar o batch e tentar obter o resultado final
-                try:
-                    result = connection.execute(distribuir_sql, {
-                        "edital_id": edital_id,
-                        "periodo_id": periodo_id,
-                        "criterio_id": criterio_id
-                    }).fetchone()
+                # 4. Executar o batch SQL sem tentar obter resultados
+                connection.execute(sql_completo, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                })
 
-                    contratos_inseridos = result[0] if result else 0
-                except:
-                    # Se falhar ao obter o resultado, fazer uma contagem manual depois do batch
-                    print("Aviso: Não foi possível obter contagem diretamente do batch SQL. Calculando manualmente.")
-
-                    # Contar quantos contratos foram inseridos usando uma consulta separada
-                    baseline_sql = text("""
-                    SELECT COUNT(*) 
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
-                    WHERE ID_EDITAL = :edital_id 
-                        AND ID_PERIODO = :periodo_id 
-                        AND COD_CRITERIO_SELECAO = :criterio_id
-                    """)
-
-                    baseline_result = connection.execute(baseline_sql, {
-                        "edital_id": edital_id,
-                        "periodo_id": periodo_id,
-                        "criterio_id": criterio_id
-                    }).fetchone()
-
-                    contratos_inseridos = baseline_result[0] if baseline_result else 0
-
-                # 3. IMPORTANTE: Remover os contratos distribuídos para evitar duplicidade
-                if contratos_inseridos > 0:
-                    delete_sql = text("""
-                    DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                    WHERE [FkContratoSISCTR] IN (
-                        SELECT [FkContratoSISCTR]
-                        FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                        WHERE ID_EDITAL = :edital_id 
-                          AND ID_PERIODO = :periodo_id 
-                          AND COD_CRITERIO_SELECAO = :criterio_id
-                    )
-                    """)
-
-                    connection.execute(delete_sql, {
-                        "edital_id": edital_id,
-                        "periodo_id": periodo_id,
-                        "criterio_id": criterio_id
-                    })
-
-                    print(f"Contratos distribuídos removidos da tabela de distribuíveis")
-
-                # 4. Diagnóstico final
-                diag_final_sql = text("""
-                SELECT 
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]) AS distribuiveis_restantes,
-                    (SELECT COUNT(*) FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
-                     WHERE ID_EDITAL = :edital_id 
-                       AND ID_PERIODO = :periodo_id 
-                       AND COD_CRITERIO_SELECAO = :criterio_id) AS total_distribuidos
+                # 5. Contar quantos contratos foram inseridos usando uma consulta separada
+                check_sql = text("""
+                SELECT COUNT(*) 
+                FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
+                WHERE ID_EDITAL = :edital_id 
+                    AND ID_PERIODO = :periodo_id 
+                    AND COD_CRITERIO_SELECAO = :criterio_id
                 """)
 
-                diag_final = connection.execute(diag_final_sql, {
+                check_result = connection.execute(check_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id
                 }).fetchone()
 
-                dist_restantes = diag_final[0] if diag_final else 0
-                total_distribuidos = diag_final[1] if diag_final else 0
+                total_final = check_result[0] if check_result else 0
+                contratos_inseridos = total_final - baseline_count
+
+                # 6. Remover os contratos processados da tabela de distribuíveis
+                if contratos_inseridos > 0:
+                    connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
+                    print("Tabela de distribuíveis limpa após processamento")
 
                 print(f"\n----- RESULTADO FINAL: CONTRATOS RESTANTES -----")
-                print(f"Contratos restantes identificados no início: {dist_count}")
+                print(f"Contratos restantes identificados: {qtde_contratos_restantes}")
                 print(f"Contratos restantes distribuídos: {contratos_inseridos}")
-                print(f"Total atual na tabela de distribuição: {total_distribuidos}")
-                print(f"Contratos ainda não distribuídos: {dist_restantes}")
+                print(f"Total atual na tabela de distribuição: {total_final}")
 
                 # Commit da transação se tudo correu bem
                 transaction.commit()
@@ -1498,9 +1408,11 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
 
     # Inicializar resultados
     resultados = {
-        "contratos_redistribuidos": 0,
-        "contratos_arrastados": 0,
-        "contratos_restantes": 0,
+        "contratos_selecionados": 0,  # Total selecionado inicialmente
+        "contratos_arrastados": 0,  # Contratos arrastáveis
+        "contratos_restantes": 0,  # Demais contratos
+        "total_redistribuido": 0,  # Total efetivamente redistribuído
+        "contratos_redistribuidos": 0,  # Alias para total_redistribuido (para compatibilidade)
         "total_empresas": 0,
         "empresa_redistribuida": empresa_id,
         "success": False
@@ -1515,6 +1427,9 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         if num_contratos == 0:
             print("Sem contratos para redistribuir. Processo encerrado.")
             return resultados
+
+        # Atualizar resultados com número de contratos selecionados
+        resultados["contratos_selecionados"] = num_contratos
 
         # ETAPA 2: Calcular percentuais para redistribuição
         print("\n----- ETAPA 2: CÁLCULO DE PERCENTUAIS -----")
@@ -1577,7 +1492,8 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         contratos_restantes, restantes_ok = processar_demais_contratos(
             edital_id,
             periodo_id,
-            cod_criterio
+            cod_criterio,
+            empresa_id  # Passando o ID da empresa que está sendo redistribuída
         )
 
         if not restantes_ok:
@@ -1588,12 +1504,22 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
 
         print(f"Processamento dos contratos restantes concluído: {contratos_restantes} contratos")
 
+        # IMPORTANTE: Calcular o total redistribuído somando arrastados e restantes
+        total_redistribuido = contratos_arrastados + contratos_restantes
+
+        # Verificar se o total coincide com o esperado
+        if total_redistribuido != num_contratos:
+            print(
+                f"\nATENÇÃO: Total redistribuído ({total_redistribuido}) difere do total selecionado ({num_contratos})")
+            print("Isso pode indicar que alguns contratos não foram processados corretamente.")
+
         # Atualizar resultados finais
         resultados.update({
-            "contratos_redistribuidos": num_contratos,
+            "contratos_selecionados": num_contratos,
             "contratos_arrastados": contratos_arrastados,
             "contratos_restantes": contratos_restantes,
-            "total_redistribuido": contratos_arrastados + contratos_restantes,
+            "total_redistribuido": total_redistribuido,  # Soma de arrastados + restantes
+            "contratos_redistribuidos": total_redistribuido,  # IMPORTANTE: Adicionar esta chave para compatibilidade
             "total_empresas": len(empresas_dados),
             "percentual_redistribuido": percentual_redistribuido,
             "empresas_remanescentes": len(empresas_dados),
@@ -1602,10 +1528,10 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         })
 
         print("\n----- RESULTADO FINAL DA REDISTRIBUIÇÃO -----")
-        print(f"Contratos selecionados: {num_contratos}")
+        print(f"Contratos selecionados inicialmente: {num_contratos}")
         print(f"Contratos arrastáveis redistribuídos: {contratos_arrastados}")
         print(f"Contratos restantes redistribuídos: {contratos_restantes}")
-        print(f"Total de contratos redistribuídos: {contratos_arrastados + contratos_restantes}")
+        print(f"Total de contratos efetivamente redistribuídos: {total_redistribuido}")
         print(f"Percentual da empresa redistribuída: {percentual_redistribuido:.2f}%")
         print(f"Empresas remanescentes: {len(empresas_dados)}")
         print("=" * 50)
@@ -1626,7 +1552,8 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         # Retornar resultados com informações de erro
         resultados.update({
             "error": str(e),
-            "success": False
+            "success": False,
+            "contratos_redistribuidos": 0  # Garantir que esta chave exista mesmo em caso de erro
         })
 
         return resultados
