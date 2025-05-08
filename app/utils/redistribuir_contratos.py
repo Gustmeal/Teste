@@ -1498,10 +1498,9 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
 
     # Inicializar resultados
     resultados = {
-        "contratos_selecionados": 0,  # Total selecionado inicialmente
-        "contratos_redistribuidos": 0,  # Total efetivamente redistribuído
-        "contratos_arrastados": 0,  # Contratos arrastáveis
-        "contratos_restantes": 0,  # Demais contratos
+        "contratos_redistribuidos": 0,
+        "contratos_arrastados": 0,
+        "contratos_restantes": 0,
         "total_empresas": 0,
         "empresa_redistribuida": empresa_id,
         "success": False
@@ -1516,9 +1515,6 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         if num_contratos == 0:
             print("Sem contratos para redistribuir. Processo encerrado.")
             return resultados
-
-        # Atualizar resultados com número de contratos selecionados
-        resultados["contratos_selecionados"] = num_contratos
 
         # ETAPA 2: Calcular percentuais para redistribuição
         print("\n----- ETAPA 2: CÁLCULO DE PERCENTUAIS -----")
@@ -1592,21 +1588,12 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
 
         print(f"Processamento dos contratos restantes concluído: {contratos_restantes} contratos")
 
-        # IMPORTANTE: Calcular o total redistribuído somando arrastados e restantes
-        total_redistribuido = contratos_arrastados + contratos_restantes
-
-        # Verificar se o total coincide com o esperado
-        if total_redistribuido != num_contratos:
-            print(
-                f"\nATENÇÃO: Total redistribuído ({total_redistribuido}) difere do total selecionado ({num_contratos})")
-            print("Isso pode indicar que alguns contratos não foram processados corretamente.")
-
         # Atualizar resultados finais
         resultados.update({
-            "contratos_selecionados": num_contratos,
-            "contratos_redistribuidos": total_redistribuido,  # CORREÇÃO: Usar soma efetiva
+            "contratos_redistribuidos": num_contratos,
             "contratos_arrastados": contratos_arrastados,
             "contratos_restantes": contratos_restantes,
+            "total_redistribuido": contratos_arrastados + contratos_restantes,
             "total_empresas": len(empresas_dados),
             "percentual_redistribuido": percentual_redistribuido,
             "empresas_remanescentes": len(empresas_dados),
@@ -1615,10 +1602,10 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         })
 
         print("\n----- RESULTADO FINAL DA REDISTRIBUIÇÃO -----")
-        print(f"Contratos selecionados inicialmente: {num_contratos}")
+        print(f"Contratos selecionados: {num_contratos}")
         print(f"Contratos arrastáveis redistribuídos: {contratos_arrastados}")
         print(f"Contratos restantes redistribuídos: {contratos_restantes}")
-        print(f"Total de contratos efetivamente redistribuídos: {total_redistribuido}")
+        print(f"Total de contratos redistribuídos: {contratos_arrastados + contratos_restantes}")
         print(f"Percentual da empresa redistribuída: {percentual_redistribuido:.2f}%")
         print(f"Empresas remanescentes: {len(empresas_dados)}")
         print("=" * 50)
