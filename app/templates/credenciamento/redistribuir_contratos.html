@@ -101,7 +101,7 @@
         <div class="card-body">
             <div class="table-responsive">
                 <table class="table table-bordered">
-                    <thead class="bg-light">
+                    <thead class="bg-primary text-white">
                         <tr>
                             <th>Etapa</th>
                             <th class="text-center">Contratos Processados</th>
@@ -109,12 +109,12 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- 1 -->
+                        <!-- 1 - ALTERAÇÃO AQUI -->
                         <tr>
                             <td>1. Seleção de contratos a redistribuir</td>
-                            <td class="text-center">{{ resultados.contratos_redistribuidos|default(0) + resultados.contratos_arrastados|default(0) + resultados.contratos_restantes|default(0) }}</td>
+                            <td class="text-center">{{ resultados.contratos_selecionados|default(0) }}</td>
                             <td class="text-center">
-                                {% if resultados.contratos_redistribuidos|default(0) > 0 %}
+                                {% if resultados.contratos_selecionados|default(0) > 0 %}
                                     <span class="badge bg-success">Concluído</span>
                                 {% else %}
                                     <span class="badge bg-warning">Sem contratos</span>
