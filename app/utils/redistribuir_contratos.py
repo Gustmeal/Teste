@@ -903,7 +903,15 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
     """
     Processa os contratos arrastáveis (do mesmo CPF/CNPJ) para redistribuição.
-    Abordagem simplificada que não depende de tabelas temporárias entre consultas.
+    Abordagem modificada: exclui registros existentes antes de redistribuir.
+
+    Args:
+        edital_id: ID do edital
+        periodo_id: ID do período
+        criterio_id: ID do critério de seleção
+
+    Returns:
+        tuple: (contratos_processados, success)
     """
     import logging
     import sys
@@ -925,7 +933,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 print("Tabela DCA_TB007_ARRASTAVEIS truncada com sucesso")
 
                 # 2. Identificar e inserir contratos arrastáveis (mesmo CPF/CNPJ)
-                # CORRIGIDO: Especificando explicitamente as colunas, excluindo VR_SD_DEVEDOR
+                # CORRIGIDO: Removida a coluna VR_SD_DEVEDOR que não existe na tabela
                 insert_arrastaveis_sql = text("""
                 WITH arrastaveis AS (
                     SELECT
@@ -1034,7 +1042,34 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                     empresa_id = empresas[empresa_idx][0]  # ID_EMPRESA
                     cpf_empresa_map[cpf] = empresa_id
 
-                # 7. Inserir na tabela de distribuição para cada CPF
+                # 7. NOVA ABORDAGEM: Excluir registros existentes para estes contratos
+                # Obter lista de todos os contratos a serem processados
+                contratos_a_processar = connection.execute(text("""
+                    SELECT FkContratoSISCTR FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                """)).fetchall()
+
+                contratos_ids = [contrato[0] for contrato in contratos_a_processar]
+
+                # Excluir estes contratos da tabela de distribuição se já existirem
+                if contratos_ids:
+                    # Criar placeholders para parâmetros: ?, ?, ?...
+                    placeholders = ','.join(['?' for _ in contratos_ids])
+
+                    delete_existing_sql = text(f"""
+                        DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                        WHERE ID_EDITAL = ?
+                        AND ID_PERIODO = ?
+                        AND fkContratoSISCTR IN ({placeholders})
+                    """)
+
+                    # Criar lista de parâmetros: [edital_id, periodo_id, id1, id2, ...]
+                    params = [edital_id, periodo_id] + contratos_ids
+
+                    # Executar exclusão
+                    delete_result = connection.execute(delete_existing_sql, params)
+                    print(f"Registros existentes removidos: {delete_result.rowcount}")
+
+                # 8. Inserir na tabela de distribuição para cada CPF
                 insert_count = 0
                 for cpf, empresa_id in cpf_empresa_map.items():
                     # Buscar todos os contratos com este CPF
@@ -1088,7 +1123,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 # Commit da transação se tudo correu bem
                 transaction.commit()
                 print("\nProcessamento de contratos arrastáveis concluído com sucesso!")
-                logging.info(f"Processamento de contratos arrastáveis concluído: {insert_count} contratos")
+                logging.info(f"Processamento de contratos arrastáveis concluído: {insert_count} contratos inseridos")
 
                 return insert_count, True
 
@@ -1118,11 +1153,11 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
         return 0, False
 
-
 def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redistribuida=None):
     """
     Processa os contratos restantes (não arrastáveis) para redistribuição.
     Modificado para preservar distribuições anteriores e usar o critério especificado.
+    Corrigido para evitar problemas com a coluna VR_SD_DEVEDOR.
 
     Args:
         edital_id: ID do edital
@@ -1219,6 +1254,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 
                 # 4. Executar todo o processo em um único batch SQL
                 # Não tentamos capturar resultados diretamente do batch
+                # MODIFICAÇÃO: Removidas referências à coluna VR_SD_DEVEDOR onde necessário
                 sql_completo = text(f"""
                 -- 1. Criar tabela temporária com empresas remanescentes
                 IF OBJECT_ID('tempdb..#ASSESSORIAS_1') IS NOT NULL
@@ -1267,8 +1303,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 CREATE TABLE #DISTRIBUICAO_1 (
                     FkContratoSISCTR BIGINT,
                     ID INT,
-                    NR_CPF_CNPJ BIGINT,
-                    VR_SD_DEVEDOR DECIMAL(18,2)
+                    NR_CPF_CNPJ BIGINT
                 );
 
                 -- 4. Embaralhar contratos para distribuição aleatória
@@ -1278,7 +1313,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 ;WITH CTE AS ( 
                     SELECT
                         FkContratoSISCTR,
-                        VR_SD_DEVEDOR,
                         NR_CPF_CNPJ,
                         RowNum = ROW_NUMBER() OVER (ORDER BY NEWID())
                     FROM
@@ -1332,14 +1366,12 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                         INSERT INTO #DISTRIBUICAO_1 (
                             FkContratoSISCTR,
                             ID,
-                            NR_CPF_CNPJ,
-                            VR_SD_DEVEDOR
+                            NR_CPF_CNPJ
                         )
                         SELECT 
                             FkContratoSISCTR,
                             @ID,
-                            NR_CPF_CNPJ,
-                            VR_SD_DEVEDOR
+                            NR_CPF_CNPJ
                         FROM    
                             #DISTRIBUIVEIS
                         WHERE 
@@ -1355,6 +1387,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 DEALLOCATE PERCENTUAIS_CURSOR;
 
                 -- 11. Inserir os registros na tabela de distribuição, usando o critério específico
+                -- MODIFICADO: Removida a coluna VR_SD_DEVEDOR do INSERT
                 INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
                     [DT_REFERENCIA],
                     [ID_EDITAL],
@@ -1363,7 +1396,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     [COD_CRITERIO_SELECAO],
                     [COD_EMPRESA_COBRANCA],
                     [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR],
                     [CREATED_AT],
                     [UPDATED_AT],
                     [DELETED_AT]
@@ -1376,7 +1408,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     :criterio_id AS COD_CRITERIO_SELECAO,
                     ASS.ID_EMPRESA AS COD_EMPRESA_COBRANCA,
                     DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
                     GETDATE() AS [CREATED_AT],
                     NULL AS [UPDATED_AT],
                     NULL AS [DELETED_AT]
@@ -1469,7 +1500,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
         logging.error(f"Traceback: {trace_msg}")
 
         return 0, False
-
 
 def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_criterio):
     """
