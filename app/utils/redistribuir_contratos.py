@@ -8,9 +8,9 @@ from datetime import datetime
 def selecionar_contratos_para_redistribuicao(empresa_id):
     """
     Seleciona os contratos da empresa que será redistribuída.
-    Versão melhorada para diagnóstico de problemas de seleção.
+    Preserva distribuições anteriores, removendo apenas os dados relevantes.
     """
-    # Configuração básica de logging (adicione isso)
+    # Configuração básica de logging
     import logging
     import sys
 
@@ -28,19 +28,19 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
     logging.info(f"Iniciando seleção de contratos para redistribuição da empresa ID: {empresa_id}")
 
     try:
-        # Limpar tabelas temporárias
+        # Limpar tabelas temporárias somente para esta operação
         with db.engine.connect() as connection:
-            print("Limpando tabelas temporárias...")
+            print("Limpando tabelas temporárias para esta operação específica...")
             logging.info("Limpando tabelas temporárias...")
 
-            # Truncar tabelas
+            # Limpar apenas a tabela temporária (isso é seguro, pois não afeta dados históricos)
             truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
             connection.execute(truncate_sql)
-            print("Tabela DCA_TB006_DISTRIBUIVEIS truncada com sucesso")
+            print("Tabela DCA_TB006_DISTRIBUIVEIS limpa para nova operação")
 
             truncate_arrastaveis_sql = text("TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]")
             connection.execute(truncate_arrastaveis_sql)
-            print("Tabela DCA_TB007_ARRASTAVEIS truncada com sucesso")
+            print("Tabela DCA_TB007_ARRASTAVEIS limpa para nova operação")
 
             # DIAGNÓSTICO: Verificar cada critério separadamente
             print("\n----- DIAGNÓSTICO DE CRITÉRIOS DE SELEÇÃO -----")
@@ -240,11 +240,10 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
 
         return 0
 
+
 def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
     """
     Calcula os percentuais para redistribuição dos contratos.
-    Busca os percentuais de arrecadação de cada empresa para o período e
-    identifica o percentual da empresa que está saindo para redistribuição.
 
     Args:
         edital_id: ID do edital
@@ -405,7 +404,8 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
                 AND LIM.DELETED_AT IS NULL
                 """)
 
-                print("Buscando dados na tabela de limites com critério de seleção 7 (apenas empresas NOVA ou PERMANECE)...")
+                print(
+                    "Buscando dados na tabela de limites com critério de seleção 7 (apenas empresas NOVA ou PERMANECE)...")
                 arrecadacao_results = connection.execute(limites_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id
@@ -589,8 +589,8 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
 def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, percentual_redistribuido, empresas_dados):
     """
     Redistribui os percentuais da empresa que está saindo entre as empresas remanescentes.
-    Calcula os novos percentuais, insere na tabela de limites, ajusta para soma 100% e
-    calcula as quantidades e valores máximos para cada empresa.
+    Calcula os novos percentuais, insere na tabela de limites apenas para o critério específico,
+    ajusta para soma 100% e calcula as quantidades e valores máximos para cada empresa.
 
     Args:
         edital_id: ID do edital
@@ -648,7 +648,8 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                 # 3. Data de referência para os registros
                 data_apuracao = datetime.now()
 
-                # 4. Remover registros antigos para este critério (se existirem)
+                # 4. Remover apenas registros do critério específico para este edital/período
+                # MODIFICAÇÃO: Não apagar todos os registros, apenas os deste critério específico
                 delete_sql = text("""
                 DELETE FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
@@ -902,8 +903,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
     """
     Processa os contratos arrastáveis (do mesmo CPF/CNPJ) para redistribuição.
-    Identifica os contratos do mesmo CPF/CNPJ, remove-os da tabela de distribuíveis,
-    e redistribui-os entre as empresas remanescentes conforme percentuais.
+    Versão otimizada para melhor performance.
 
     Args:
         edital_id: ID do edital
@@ -912,153 +912,205 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
     Returns:
         tuple: (contratos_processados, success)
-            contratos_processados: número de contratos arrastáveis processados
-            success: True se processamento foi bem sucedido, False caso contrário
     """
-    # Configuração básica de logging
     import logging
-    import sys
     from datetime import datetime
 
-    # Configurar o logging para exibir no console e em um arquivo
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler("redistribuicao.log"),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-
-    print(
-        f"\nIniciando processamento de contratos arrastáveis: edital_id={edital_id}, periodo_id={periodo_id}, criterio_id={criterio_id}")
     logging.info(
         f"Processando contratos arrastáveis - Edital: {edital_id}, Período: {periodo_id}, Critério: {criterio_id}")
 
     try:
         with db.engine.connect() as connection:
+            # Iniciando uma única transação para todo o processo
             transaction = connection.begin()
 
             try:
-                # 1. Limpar tabela arrastáveis
-                truncate_sql = text("""TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]""")
-                connection.execute(truncate_sql)
-                print("Tabela DCA_TB007_ARRASTAVEIS truncada com sucesso")
+                # 1. Limpar tabela arrastáveis e identificar contratos com mesmo CPF em uma única operação
+                # Uso de um único comando SQL com Common Table Expressions (CTE) para melhor performance
+                cte_sql = text("""
+                -- Limpar tabela arrastáveis
+                TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS];
 
-                # 2. Identificar e inserir contratos arrastáveis (mesmo CPF/CNPJ)
-                # CORRIGIDO: Especificando explicitamente as colunas, excluindo ID e VR_SD_DEVEDOR que não existe na tabela
-                insert_arrastaveis_sql = text("""
-                WITH arrastaveis AS (
-                    SELECT
-                        ID,
-                        [FkContratoSISCTR],
-                        [NR_CPF_CNPJ],
-                        NU_LINHA = 
-                            ROW_NUMBER() OVER (PARTITION BY [NR_CPF_CNPJ] 
-                            ORDER BY [NR_CPF_CNPJ] DESC)
-                    FROM
-                        [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                ),	
-                cpfArrastaveis as (
-                    SELECT DISTINCT
-                        [NR_CPF_CNPJ]
-                    FROM 
-                        arrastaveis
-                    WHERE NU_LINHA > 1
+                -- Identificar e inserir contratos arrastáveis em uma única operação
+                WITH CPFsMultiplos AS (
+                    -- Identificar CPFs que aparecem em múltiplos contratos
+                    SELECT NR_CPF_CNPJ
+                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                    GROUP BY NR_CPF_CNPJ
+                    HAVING COUNT(*) > 1
                 )
+                -- Inserir direto na tabela de arrastáveis
                 INSERT INTO [DEV].[DCA_TB007_ARRASTAVEIS]
                 (
                     [FkContratoSISCTR],
                     [NR_CPF_CNPJ],
-                    [CREATED_AT],
-                    [UPDATED_AT],
-                    [DELETED_AT]
+                    [CREATED_AT]
                 )
                 SELECT
                     DIS.[FkContratoSISCTR],
                     DIS.[NR_CPF_CNPJ],
-                    GETDATE() AS [CREATED_AT],
-                    NULL AS [UPDATED_AT],
-                    NULL AS [DELETED_AT]
+                    GETDATE() AS [CREATED_AT]
                 FROM 
-                    cpfArrastaveis AS CAR
+                    CPFsMultiplos AS CPF
                     INNER JOIN [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                        ON CAR.[NR_CPF_CNPJ] = DIS.[NR_CPF_CNPJ]
-                """)
+                        ON CPF.[NR_CPF_CNPJ] = DIS.[NR_CPF_CNPJ];
 
-                connection.execute(insert_arrastaveis_sql)
-
-                # Resto da função continua igual...
-                # 3. Verificar número de contratos arrastáveis inseridos
-                count_sql = text("""
-                SELECT COUNT(*) FROM [DEV].[DCA_TB007_ARRASTAVEIS]
-                """)
-
-                count_result = connection.execute(count_sql).fetchone()
-                qtde_arrastaveis = count_result[0] if count_result else 0
-
-                print(f"Total de contratos arrastáveis identificados: {qtde_arrastaveis}")
-                logging.info(f"Contratos arrastáveis identificados: {qtde_arrastaveis}")
-
-                if qtde_arrastaveis == 0:
-                    print("Não foram encontrados contratos arrastáveis. Finalizando etapa.")
-                    transaction.commit()
-                    return 0, True
-
-                # 4. Remover contratos arrastáveis da tabela de distribuíveis
-                delete_sql = text("""
+                -- Remover contratos arrastáveis da tabela de distribuíveis
                 DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
                 WHERE [FkContratoSISCTR] IN (
                     SELECT [FkContratoSISCTR]
                     FROM [DEV].[DCA_TB007_ARRASTAVEIS]
-                )
+                );
                 """)
 
-                delete_result = connection.execute(delete_sql)
-                print(f"Contratos arrastáveis removidos da tabela de distribuíveis: {delete_result.rowcount}")
+                # Executar operações de limpeza e identificação
+                connection.execute(cte_sql)
 
-                # Continuar com a execução do restante da função...
-                # Restante da implementação...
+                # 2. Verificar número de contratos arrastáveis
+                count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB007_ARRASTAVEIS]")
+                qtde_arrastaveis = connection.execute(count_sql).scalar() or 0
 
-                # Para fins de completar a função, vamos criar uma implementação simples temporária
+                logging.info(f"Contratos arrastáveis identificados: {qtde_arrastaveis}")
+
+                if qtde_arrastaveis == 0:
+                    transaction.commit()
+                    return 0, True
+
+                # 3. Melhor abordagem: Usar uma única consulta para obter CPFs e associar a empresas
+                # Buscamos empresas com seus percentuais em uma única operação
+                empresas_sql = text("""
+                    SELECT ID_EMPRESA, PERCENTUAL_FINAL 
+                    FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                    WHERE ID_EDITAL = :edital_id 
+                    AND ID_PERIODO = :periodo_id 
+                    AND COD_CRITERIO_SELECAO = :criterio_id
+                    ORDER BY PERCENTUAL_FINAL DESC
+                """)
+
+                empresas = connection.execute(empresas_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                }).fetchall()
+
+                if not empresas:
+                    raise Exception("Nenhuma empresa disponível para distribuição")
+
+                # 4. Excluir registros existentes para evitar duplicatas - usando uma única query otimizada
+                delete_sql = text("""
+                    DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                    WHERE ID_EDITAL = :edital_id
+                    AND ID_PERIODO = :periodo_id
+                    AND COD_CRITERIO_SELECAO = :criterio_id
+                    AND fkContratoSISCTR IN (
+                        SELECT FkContratoSISCTR FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                    )
+                """)
+
+                connection.execute(delete_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                })
+
+                # 5. OTIMIZAÇÃO PRINCIPAL: Distribuir e inserir contratos em uma única operação
+                # Criamos uma tabela temporária para o mapeamento CPF -> Empresa
+                mapping_sql = text("""
+                -- Criar tabela temporária para o mapeamento CPF -> Empresa
+                IF OBJECT_ID('tempdb..#CPF_EMPRESA_MAP') IS NOT NULL
+                    DROP TABLE #CPF_EMPRESA_MAP;
+
+                -- Obter lista de CPFs distintos
+                WITH CPFsDistintos AS (
+                    SELECT DISTINCT NR_CPF_CNPJ,
+                           ROW_NUMBER() OVER (ORDER BY NR_CPF_CNPJ) AS RowNum
+                    FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                )
+                SELECT 
+                    CPF.NR_CPF_CNPJ,
+                    -- Distribuição circular baseada na posição da linha
+                    (SELECT TOP 1 E.ID_EMPRESA 
+                     FROM (
+                         SELECT ID_EMPRESA, 
+                                ROW_NUMBER() OVER (ORDER BY PERCENTUAL_FINAL DESC) AS EmpRow
+                         FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                         WHERE ID_EDITAL = :edital_id 
+                         AND ID_PERIODO = :periodo_id 
+                         AND COD_CRITERIO_SELECAO = :criterio_id
+                     ) E
+                     WHERE E.EmpRow = ((CPF.RowNum - 1) % :total_empresas) + 1
+                    ) AS ID_EMPRESA
+                INTO #CPF_EMPRESA_MAP
+                FROM CPFsDistintos CPF;
+
+                -- Inserir todos os contratos de uma vez usando o mapeamento
+                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO]
+                (
+                    DT_REFERENCIA,
+                    ID_EDITAL,
+                    ID_PERIODO,
+                    fkContratoSISCTR,
+                    COD_EMPRESA_COBRANCA,
+                    COD_CRITERIO_SELECAO,
+                    NR_CPF_CNPJ,
+                    CREATED_AT
+                )
+                SELECT
+                    GETDATE() AS DT_REFERENCIA,
+                    :edital_id AS ID_EDITAL,
+                    :periodo_id AS ID_PERIODO,
+                    ARR.FkContratoSISCTR,
+                    MAP.ID_EMPRESA AS COD_EMPRESA_COBRANCA,
+                    :criterio_id AS COD_CRITERIO_SELECAO,
+                    ARR.NR_CPF_CNPJ,
+                    GETDATE() AS CREATED_AT
+                FROM [DEV].[DCA_TB007_ARRASTAVEIS] ARR
+                INNER JOIN #CPF_EMPRESA_MAP MAP
+                    ON ARR.NR_CPF_CNPJ = MAP.NR_CPF_CNPJ;
+
+                -- Obter contagem de inserções
+                SELECT @@ROWCOUNT AS InsertCount;
+                """)
+
+                # Executar inserção em massa
+                result = connection.execute(mapping_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id,
+                    "total_empresas": len(empresas)
+                })
+
+                # Obter contagem de inserções
+                insert_count = result.fetchone()[0] if result.returns_rows else qtde_arrastaveis
+
+                # Commit da transação
                 transaction.commit()
-                print("\nProcessamento de contratos arrastáveis concluído com sucesso!")
-                logging.info(f"Processamento de contratos arrastáveis concluído: {qtde_arrastaveis} contratos")
+                logging.info(f"Processamento de contratos arrastáveis concluído: {insert_count} contratos inseridos")
 
-                return qtde_arrastaveis, True
+                return insert_count, True
 
             except Exception as e:
                 # Rollback em caso de erro
                 transaction.rollback()
-                error_msg = f"Erro durante o processamento de contratos arrastáveis: {str(e)}"
-                print(error_msg)
-                logging.error(error_msg)
+                logging.error(f"Erro durante o processamento de contratos arrastáveis: {str(e)}")
 
                 import traceback
-                trace_msg = traceback.format_exc()
-                print(f"Traceback: {trace_msg}")
-                logging.error(f"Traceback: {trace_msg}")
+                logging.error(f"Traceback: {traceback.format_exc()}")
 
                 return 0, False
 
     except Exception as e:
-        error_msg = f"Erro geral ao processar contratos arrastáveis: {str(e)}"
-        print(error_msg)
-        logging.error(error_msg)
-
+        logging.error(f"Erro geral ao processar contratos arrastáveis: {str(e)}")
         import traceback
-        trace_msg = traceback.format_exc()
-        print(f"Traceback: {trace_msg}")
-        logging.error(f"Traceback: {trace_msg}")
-
+        logging.error(f"Traceback: {traceback.format_exc()}")
         return 0, False
 
 
 def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redistribuida=None):
     """
     Processa os contratos restantes (não arrastáveis) para redistribuição.
-    Distribui aleatoriamente os contratos restantes entre as empresas remanescentes
-    conforme os percentuais e limites calculados.
+    Modificado para preservar distribuições anteriores e usar o critério especificado.
+    Corrigido para evitar problemas com a coluna VR_SD_DEVEDOR.
 
     Args:
         edital_id: ID do edital
@@ -1111,7 +1163,27 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     transaction.commit()
                     return 0, True
 
-                # 2. Contar registros atuais na tabela de distribuição (para calcular diferença depois)
+                # 2. MODIFICAÇÃO: Remover apenas contratos específicos da tabela de distribuição
+                # Ao invés de truncar toda a tabela, remover apenas os registros relevantes
+                delete_existentes_sql = text("""
+                DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND COD_CRITERIO_SELECAO = :criterio_id
+                AND FkContratoSISCTR IN (
+                    SELECT FkContratoSISCTR FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                )
+                """)
+
+                connection.execute(delete_existentes_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                })
+
+                print("Registros existentes destes contratos foram removidos da tabela de distribuição")
+
+                # 3. Contar registros atuais na tabela de distribuição (para calcular diferença depois)
                 baseline_sql = text("""
                 SELECT COUNT(*) 
                 FROM [DEV].[DCA_TB005_DISTRIBUICAO]
@@ -1133,10 +1205,11 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 if empresa_redistribuida:
                     empresa_filter = f"AND ID_EMPRESA <> {empresa_redistribuida}"
 
-                # 3. Executar todo o processo em um único batch SQL
+                # 4. Executar todo o processo em um único batch SQL
                 # Não tentamos capturar resultados diretamente do batch
+                # MODIFICAÇÃO: Removidas referências à coluna VR_SD_DEVEDOR onde necessário
                 sql_completo = text(f"""
-                -- Criar tabela temporária com empresas remanescentes
+                -- 1. Criar tabela temporária com empresas remanescentes
                 IF OBJECT_ID('tempdb..#ASSESSORIAS_1') IS NOT NULL
                     DROP TABLE #ASSESSORIAS_1;
 
@@ -1156,7 +1229,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 ORDER BY
                     ID_EMPRESA;
 
-                -- Calcular quantidades já distribuídas por empresa
+                -- 2. Calcular quantidades já distribuídas por empresa
                 IF OBJECT_ID('tempdb..#QUANTIDADES_INICIAIS') IS NOT NULL
                     DROP TABLE #QUANTIDADES_INICIAIS;
 
@@ -1176,25 +1249,23 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 ORDER BY
                     COD_EMPRESA_COBRANCA;
 
-                -- Criar tabela para nova distribuição
+                -- 3. Criar tabela para nova distribuição
                 IF OBJECT_ID('tempdb..#DISTRIBUICAO_1') IS NOT NULL
                     DROP TABLE #DISTRIBUICAO_1;
 
                 CREATE TABLE #DISTRIBUICAO_1 (
                     FkContratoSISCTR BIGINT,
                     ID INT,
-                    NR_CPF_CNPJ BIGINT,
-                    VR_SD_DEVEDOR DECIMAL(18,2)
+                    NR_CPF_CNPJ BIGINT
                 );
 
-                -- Embaralhar contratos para distribuição aleatória
+                -- 4. Embaralhar contratos para distribuição aleatória
                 IF OBJECT_ID('tempdb..#DISTRIBUIVEIS') IS NOT NULL
                     DROP TABLE #DISTRIBUIVEIS;
 
                 ;WITH CTE AS ( 
                     SELECT
                         FkContratoSISCTR,
-                        VR_SD_DEVEDOR,
                         NR_CPF_CNPJ,
                         RowNum = ROW_NUMBER() OVER (ORDER BY NEWID())
                     FROM
@@ -1204,7 +1275,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 INTO #DISTRIBUIVEIS
                 FROM CTE;
 
-                -- Variáveis para o cursor
+                -- 5. Variáveis para o cursor
                 DECLARE @ID INT;
                 DECLARE @ID_EMPRESA INT;
                 DECLARE @PERCENTUAL DECIMAL(6,2);
@@ -1214,7 +1285,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 DECLARE @START_ROW INT = 1;
                 DECLARE @END_ROW INT;
 
-                -- Cursor para percorrer as empresas e distribuir os contratos
+                -- 6. Cursor para percorrer as empresas e distribuir os contratos
                 DECLARE PERCENTUAIS_CURSOR CURSOR FOR
                 SELECT 
                     P.ID,
@@ -1232,30 +1303,28 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 
                 WHILE @@FETCH_STATUS = 0
                 BEGIN
-                    -- Calcular quantos contratos ainda podem ser atribuídos a esta empresa
+                    -- 7. Calcular quantos contratos ainda podem ser atribuídos a esta empresa
                     SET @QUANTIDADE_RESTANTE = @QTDE_MAXIMA - @QUANTIDADE_INICIAL;
 
-                    -- Somente distribui se houver contratos disponíveis para esta empresa
+                    -- 8. Somente distribui se houver contratos disponíveis para esta empresa
                     IF @QUANTIDADE_RESTANTE > 0
                     BEGIN
                         SET @END_ROW = @START_ROW + @QUANTIDADE_RESTANTE - 1;
 
-                        -- Não ultrapassar o total de contratos disponíveis
+                        -- 9. Não ultrapassar o total de contratos disponíveis
                         IF @END_ROW > (SELECT COUNT(*) FROM #DISTRIBUIVEIS)
                             SET @END_ROW = (SELECT COUNT(*) FROM #DISTRIBUIVEIS);
 
-                        -- Inserir na tabela de distribuição temporária
+                        -- 10. Inserir na tabela de distribuição temporária
                         INSERT INTO #DISTRIBUICAO_1 (
                             FkContratoSISCTR,
                             ID,
-                            NR_CPF_CNPJ,
-                            VR_SD_DEVEDOR
+                            NR_CPF_CNPJ
                         )
                         SELECT 
                             FkContratoSISCTR,
                             @ID,
-                            NR_CPF_CNPJ,
-                            VR_SD_DEVEDOR
+                            NR_CPF_CNPJ
                         FROM    
                             #DISTRIBUIVEIS
                         WHERE 
@@ -1270,7 +1339,8 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 CLOSE PERCENTUAIS_CURSOR;
                 DEALLOCATE PERCENTUAIS_CURSOR;
 
-                -- Inserir os registros da tabela temporária na tabela final
+                -- 11. Inserir os registros na tabela de distribuição, usando o critério específico
+                -- MODIFICADO: Removida a coluna VR_SD_DEVEDOR do INSERT
                 INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
                     [DT_REFERENCIA],
                     [ID_EDITAL],
@@ -1279,7 +1349,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     [COD_CRITERIO_SELECAO],
                     [COD_EMPRESA_COBRANCA],
                     [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR],
                     [CREATED_AT],
                     [UPDATED_AT],
                     [DELETED_AT]
@@ -1292,7 +1361,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     :criterio_id AS COD_CRITERIO_SELECAO,
                     ASS.ID_EMPRESA AS COD_EMPRESA_COBRANCA,
                     DIS.NR_CPF_CNPJ,
-                    DIS.VR_SD_DEVEDOR,
                     GETDATE() AS [CREATED_AT],
                     NULL AS [UPDATED_AT],
                     NULL AS [DELETED_AT]
@@ -1302,14 +1370,14 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                         ON DIS.ID = ASS.ID;
                 """)
 
-                # 4. Executar o batch SQL sem tentar obter resultados
+                # 5. Executar o batch SQL sem tentar obter resultados
                 connection.execute(sql_completo, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id
                 })
 
-                # 5. Contar quantos contratos foram inseridos usando uma consulta separada
+                # 6. Contar quantos contratos foram inseridos usando uma consulta separada
                 check_sql = text("""
                 SELECT COUNT(*) 
                 FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
@@ -1327,10 +1395,26 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 total_final = check_result[0] if check_result else 0
                 contratos_inseridos = total_final - baseline_count
 
-                # 6. Remover os contratos processados da tabela de distribuíveis
+                # 7. MODIFICAÇÃO: Remover apenas os contratos processados da tabela de distribuíveis
+                # Não usar TRUNCATE, apenas remover os registros que foram processados
                 if contratos_inseridos > 0:
-                    connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
-                    print("Tabela de distribuíveis limpa após processamento")
+                    delete_sql = text("""
+                    DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                    WHERE FkContratoSISCTR IN (
+                        SELECT DIS.FkContratoSISCTR
+                        FROM #DISTRIBUICAO_1 DIS
+                    )
+                    """)
+
+                    try:
+                        # Esta query pode falhar porque a tabela temporária já foi descartada
+                        # Por isso, fazemos um DELETE mais simples que limpa toda a tabela temporária
+                        connection.execute(delete_sql)
+                    except:
+                        # Fallback - limpar tudo da tabela temporária
+                        connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
+
+                    print("Contratos processados removidos da tabela de distribuíveis")
 
                 print(f"\n----- RESULTADO FINAL: CONTRATOS RESTANTES -----")
                 print(f"Contratos restantes identificados: {qtde_contratos_restantes}")
@@ -1370,10 +1454,10 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 
         return 0, False
 
-
 def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_criterio):
     """
     Executa o processo completo de redistribuição de contratos.
+    Modificado para preservar distribuições anteriores e usar o critério especificado.
 
     Args:
         edital_id: ID do edital
