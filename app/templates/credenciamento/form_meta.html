@@ -1,105 +1,417 @@
 {% extends "base.html" %}
 
 {% block content %}
-    <a href="{{ url_for('meta.lista_metas') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
+<style>
+    /* Sobrescrever o CSS padrão da form-container */
+    .meta-form-container {
+        max-width: 100% !important;
+        width: 95% !important;
+        margin: 0 auto;
+        padding: 20px;
+        background: none !important;
+        box-shadow: none !important;
+    }
 
-    <div class="form-container">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h1 class="mb-0">
-                    {% if meta %}Editar Meta de Avaliação{% else %}Nova Meta de Avaliação{% endif %}
-                </h1>
+    /* Card grande */
+    .meta-card {
+        min-height: 85vh;
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+    }
+
+    /* Container da tabela com altura fixa e scroll */
+    .table-wrapper {
+        max-height: 600px;
+        overflow-y: auto;
+        overflow-x: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background-color: white;
+    }
+
+    /* Tabela responsiva */
+    #tabelaMetasCalculadas {
+        width: 1400px; /* Largura fixa para evitar quebra */
+        font-size: 0.9rem;
+    }
+
+    #tabelaMetasCalculadas th,
+    #tabelaMetasCalculadas td {
+        padding: 12px 15px;
+        white-space: nowrap;
+        border-right: 1px solid #dee2e6;
+    }
+
+    /* Cabeçalho fixo da tabela */
+    #tabelaMetasCalculadas thead th {
+        position: sticky;
+        top: 0;
+        background-color: #6c63ff;
+        color: white;
+        z-index: 10;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    /* Largura específica das colunas */
+    #tabelaMetasCalculadas th:nth-child(1),
+    #tabelaMetasCalculadas td:nth-child(1) { width: 200px; text-align: left; }  /* Empresa */
+
+    #tabelaMetasCalculadas th:nth-child(2),
+    #tabelaMetasCalculadas td:nth-child(2) { width: 120px; text-align: center; }  /* Competência */
+
+    #tabelaMetasCalculadas th:nth-child(3),
+    #tabelaMetasCalculadas td:nth-child(3) { width: 100px; text-align: center; }  /* Dias Úteis */
+
+    #tabelaMetasCalculadas th:nth-child(4),
+    #tabelaMetasCalculadas td:nth-child(4) { width: 180px; text-align: right; }  /* Meta Global */
+
+    #tabelaMetasCalculadas th:nth-child(5),
+    #tabelaMetasCalculadas td:nth-child(5) { width: 130px; text-align: center; }  /* % Participação */
+
+    #tabelaMetasCalculadas th:nth-child(6),
+    #tabelaMetasCalculadas td:nth-child(6) { width: 200px; text-align: right; }  /* Meta Arrecadação */
+
+    #tabelaMetasCalculadas th:nth-child(7),
+    #tabelaMetasCalculadas td:nth-child(7) { width: 200px; text-align: right; }  /* Meta Acionamento */
+
+    #tabelaMetasCalculadas th:nth-child(8),
+    #tabelaMetasCalculadas td:nth-child(8) { width: 150px; text-align: center; }  /* Meta Liquidação */
+
+    #tabelaMetasCalculadas th:nth-child(9),
+    #tabelaMetasCalculadas td:nth-child(9) { width: 180px; text-align: right; }  /* Meta Bonificação */
+
+    /* Cores alternadas nas linhas */
+    #tabelaMetasCalculadas tbody tr:nth-child(odd) {
+        background-color: #f8f9fa;
+    }
+
+    #tabelaMetasCalculadas tbody tr:hover {
+        background-color: rgba(108, 99, 255, 0.1);
+    }
+
+    /* Destaque para valores */
+    .valor-destaque {
+        font-weight: 700;
+        color: #28a745;
+    }
+
+    .percentual-destaque {
+        font-weight: 700;
+        color: #007bff;
+    }
+
+    /* Botões grandes */
+    .btn-xl {
+        padding: 15px 40px;
+        font-size: 1.2rem;
+        font-weight: 500;
+    }
+
+    /* Ajuste do resultado do cálculo */
+    #resultadoCalculo {
+        margin-top: 30px;
+        animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<a href="{{ url_for('meta.lista_metas') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<div class="meta-form-container">
+    <div class="card meta-card">
+        <div class="card-header bg-primary text-white py-4">
+            <h1 class="mb-0 text-center">
+                <i class="fas fa-calculator me-3"></i>Calcular Metas de Avaliação
+            </h1>
+        </div>
+        <div class="card-body p-5">
+            <!-- Informação sobre o cálculo -->
+            <div class="alert alert-info alert-dismissible fade show mb-5" role="alert">
+                <h5 class="alert-heading mb-3">
+                    <i class="fas fa-info-circle me-2"></i>Cálculo Automático de Metas
+                </h5>
+                <p class="mb-3">Selecione o edital e período para calcular automaticamente as metas de todas as empresas participantes.</p>
+                <p class="mb-0"><strong>Importante:</strong> O cálculo será baseado nos dados do SISCOR e na distribuição de contratos já realizada.</p>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
-            <div class="card-body p-4">
-                <form method="POST">
-                    <div class="mb-3">
-                        <label class="form-label">Edital <span class="text-danger">*</span></label>
-                        <select class="form-select" name="edital_id" required>
-                            {% for edital in editais %}
-                                <option value="{{ edital.ID }}"
-                                    {% if meta and meta.ID_EDITAL == edital.ID %}selected{% endif %}>
-                                    {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Período <span class="text-danger">*</span></label>
-                        <select class="form-select" name="periodo_id" required>
-                            {% for periodo in periodos %}
-                                <option value="{{ periodo.ID }}"
-                                    {% if meta and meta.ID_PERIODO == periodo.ID %}selected{% endif %}>
-                                    {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
+            <!-- Seleção de Edital e Período -->
+            <div class="row g-4 mb-5">
+                <div class="col-lg-5">
+                    <label for="calc_edital_id" class="form-label fs-5 fw-semibold">
+                        Edital <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-lg" id="calc_edital_id" required>
+                        <option value="">Selecione um edital...</option>
+                        {% for edital in editais %}
+                            <option value="{{ edital.ID }}">
+                                {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Empresa <span class="text-danger">*</span></label>
-                        <select class="form-select" name="empresa_id" required>
-                            {% for empresa in empresas %}
-                                <option value="{{ empresa.ID }}"
-                                    {% if meta and meta.ID_EMPRESA == empresa.ID_EMPRESA %}selected{% endif %}>
-                                    {% if empresa.NO_EMPRESA_ABREVIADA %}
-                                        {{ empresa.NO_EMPRESA_ABREVIADA }} - {{ empresa.NO_EMPRESA }}
-                                    {% else %}
-                                        {{ empresa.NO_EMPRESA }}
-                                    {% endif %}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                <div class="col-lg-5">
+                    <label for="calc_periodo_id" class="form-label fs-5 fw-semibold">
+                        Período <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-lg" id="calc_periodo_id" required>
+                        <option value="">Selecione um período...</option>
+                        {% for periodo in periodos %}
+                            <option value="{{ periodo.ID }}">
+                                {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Competência <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="competencia"
-                               value="{{ meta.COMPETENCIA if meta }}"
-                               placeholder="YYYY-MM (ex: 2025-03)" required>
-                        <small class="text-muted">Formato: YYYY-MM (ano-mês)</small>
-                    </div>
+                <div class="col-lg-2 d-flex align-items-end">
+                    <button type="button" class="btn btn-success btn-xl w-100" id="btnCalcularMetas">
+                        <i class="fas fa-calculator me-2"></i> Calcular
+                    </button>
+                </div>
+            </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Meta de Arrecadação (R$)</label>
-                        <input type="number" class="form-control" name="meta_arrecadacao" step="0.01"
-                               value="{{ meta.META_ARRECADACAO if meta and meta.META_ARRECADACAO }}">
-                        <small class="text-muted">Valor decimal em Reais (R$)</small>
+            <!-- Resultados do cálculo -->
+            <div id="resultadoCalculo" style="display: none;">
+                <div class="card border-success border-2 shadow">
+                    <div class="card-header bg-success text-white py-4">
+                        <h3 class="mb-0 text-center">
+                            <i class="fas fa-chart-line me-2"></i>Metas Calculadas
+                        </h3>
                     </div>
+                    <div class="card-body p-4">
+                        <div class="mb-4 text-center">
+                            <h5 class="text-muted">Período de Avaliação:</h5>
+                            <p class="fs-3 fw-bold text-primary mb-0" id="periodoInfo"></p>
+                        </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Meta de Acionamento (R$)</label>
-                        <input type="number" class="form-control" name="meta_acionamento" step="0.01"
-                               value="{{ meta.META_ACIONAMENTO if meta and meta.META_ACIONAMENTO }}">
-                        <small class="text-muted">Valor decimal em Reais (R$)</small>
-                    </div>
+                        <div class="table-wrapper mb-4">
+                            <table class="table table-hover mb-0" id="tabelaMetasCalculadas">
+                                <thead>
+                                    <tr>
+                                        <th>Empresa</th>
+                                        <th>Competência</th>
+                                        <th>Dias Úteis</th>
+                                        <th>Meta Global</th>
+                                        <th>% Participação</th>
+                                        <th>Meta Arrecadação</th>
+                                        <th>Meta Acionamento</th>
+                                        <th>Meta Liquidação</th>
+                                        <th>Meta Bonificação</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
 
-                    <div class="mb-3">
-                        <label class="form-label">Meta de Liquidação</label>
-                        <input type="number" class="form-control" name="meta_liquidacao"
-                               value="{{ meta.META_LIQUIDACAO if meta and meta.META_LIQUIDACAO }}">
-                        <small class="text-muted">Valor inteiro</small>
-                    </div>
+                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                            <i class="fas fa-exclamation-triangle fs-4 me-3"></i>
+                            <div>
+                                <strong>Atenção!</strong> Por favor, revise cuidadosamente todos os valores calculados antes de salvar as metas.
+                            </div>
+                        </div>
 
-                    <div class="mb-4">
-                        <label class="form-label">Meta de Bonificação (R$)</label>
-                        <input type="number" class="form-control" name="meta_bonificacao" step="0.01"
-                               value="{{ meta.META_BONIFICACAO if meta and meta.META_BONIFICACAO }}">
-                        <small class="text-muted">Valor decimal em Reais (R$)</small>
+                        <div class="d-flex justify-content-center gap-3 mt-5">
+                            <button type="button" class="btn btn-secondary btn-xl" id="btnCancelarCalculo">
+                                <i class="fas fa-times me-2"></i> Cancelar
+                            </button>
+                            <button type="button" class="btn btn-primary btn-xl" id="btnSalvarMetasCalculadas">
+                                <i class="fas fa-save me-2"></i> Salvar Metas
+                            </button>
+                        </div>
                     </div>
+                </div>
+            </div>
 
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
-                            Cancelar
-                        </a>
-                        <button type="submit" class="btn btn-success">
-                            {% if meta %}Salvar{% else %}Cadastrar{% endif %}
-                        </button>
-                    </div>
-                </form>
+            <!-- Explicação do processo -->
+            <div class="card border-info mt-5">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-question-circle me-2"></i>Como funciona o cálculo automático?
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <ol class="fs-5 lh-lg">
+                        <li>Busca a quantidade de dias úteis de cada mês do período na tabela <code>AUX_TB004_CALENDARIO</code></li>
+                        <li>Obtém as metas globais do SISCOR para cada mês na tabela <code>COR_TB002_REPROGRAMACAO_ORCAMENTARIA_SISCOR</code></li>
+                        <li>Calcula a meta diária dividindo a meta mensal pelos dias úteis</li>
+                        <li>Calcula o percentual de participação de cada empresa baseado no saldo devedor da tabela <code>DCA_TB005_DISTRIBUICAO</code></li>
+                        <li>Aplica o percentual à meta global para obter a meta de cada empresa</li>
+                        <li>Grava os resultados na tabela <code>DCA_TB009_META_AVALIACAO</code></li>
+                    </ol>
+                </div>
             </div>
         </div>
     </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnCalcularMetas = document.getElementById('btnCalcularMetas');
+    const resultadoCalculo = document.getElementById('resultadoCalculo');
+    const tabelaMetasCalculadas = document.getElementById('tabelaMetasCalculadas');
+    const periodoInfo = document.getElementById('periodoInfo');
+
+    let metasCalculadas = [];
+
+    // Calcular metas
+    btnCalcularMetas.addEventListener('click', function() {
+        const editalId = document.getElementById('calc_edital_id').value;
+        const periodoId = document.getElementById('calc_periodo_id').value;
+
+        if (!editalId || !periodoId) {
+            showToast('Por favor, selecione um edital e período para calcular as metas.', 'warning');
+            return;
+        }
+
+        // Mostrar loading
+        btnCalcularMetas.disabled = true;
+        btnCalcularMetas.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Calculando...';
+
+        // Fazer requisição para calcular metas
+        const formData = new FormData();
+        formData.append('edital_id', editalId);
+        formData.append('periodo_id', periodoId);
+
+        fetch('{{ url_for("meta.calcular_metas") }}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Resposta do servidor:', data);
+
+            if (data.sucesso) {
+                if (data.metas && data.metas.length > 0) {
+                    metasCalculadas = data.metas;
+                    exibirMetasCalculadas(data.metas);
+                    periodoInfo.textContent = `${data.periodo.inicio} a ${data.periodo.fim}`;
+                    resultadoCalculo.style.display = 'block';
+
+                    // Scroll suave para os resultados
+                    resultadoCalculo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                    showToast('Nenhuma meta foi calculada. Verifique se há dados de distribuição para este período.', 'warning');
+                }
+            } else {
+                showToast('Erro ao calcular metas: ' + (data.erro || 'Erro desconhecido'), 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            showToast('Erro ao calcular metas: ' + error.message, 'danger');
+        })
+        .finally(() => {
+            btnCalcularMetas.disabled = false;
+            btnCalcularMetas.innerHTML = '<i class="fas fa-calculator me-2"></i> Calcular';
+        });
+    });
+
+    // Exibir metas calculadas na tabela
+    function exibirMetasCalculadas(metas) {
+        const tbody = tabelaMetasCalculadas.querySelector('tbody');
+        tbody.innerHTML = '';
+
+        metas.forEach((meta, index) => {
+            const row = tbody.insertRow();
+
+            row.innerHTML = `
+                <td class="fw-bold">${meta.empresa_nome}</td>
+                <td class="text-center">${meta.competencia}</td>
+                <td class="text-center">${meta.dias_uteis}</td>
+                <td class="text-end">R$ ${formatarMoeda(meta.meta_global)}</td>
+                <td class="text-center percentual-destaque">${meta.percentual_participacao.toFixed(2)}%</td>
+                <td class="text-end valor-destaque">R$ ${formatarMoeda(meta.meta_arrecadacao)}</td>
+                <td class="text-end">R$ ${formatarMoeda(meta.meta_acionamento)}</td>
+                <td class="text-center fw-bold">${meta.meta_liquidacao}</td>
+                <td class="text-end">R$ ${formatarMoeda(meta.meta_bonificacao)}</td>
+            `;
+        });
+    }
+
+    // Formatar moeda
+    function formatarMoeda(valor) {
+        return new Intl.NumberFormat('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(valor);
+    }
+
+    // Salvar metas calculadas
+    document.getElementById('btnSalvarMetasCalculadas').addEventListener('click', function() {
+        if (confirm('Confirma o salvamento das metas calculadas?\n\nEsta ação criará ou atualizará as metas no banco de dados.')) {
+            const editalId = document.getElementById('calc_edital_id').value;
+            const periodoId = document.getElementById('calc_periodo_id').value;
+
+            // Mostrar loading no botão
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Salvando...';
+
+            fetch('{{ url_for("meta.salvar_metas_calculadas") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    edital_id: editalId,
+                    periodo_id: periodoId,
+                    metas: metasCalculadas
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.sucesso) {
+                    showToast(data.mensagem, 'success');
+
+                    // Redirecionar após 2 segundos
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("meta.lista_metas") }}';
+                    }, 2000);
+                } else {
+                    showToast('Erro ao salvar metas: ' + data.erro, 'danger');
+
+                    // Reabilitar botão
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-save me-2"></i> Salvar Metas';
+                }
+            })
+            .catch(error => {
+                showToast('Erro ao salvar metas: ' + error, 'danger');
+
+                // Reabilitar botão
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-save me-2"></i> Salvar Metas';
+            });
+        }
+    });
+
+    // Cancelar cálculo
+    document.getElementById('btnCancelarCalculo').addEventListener('click', function() {
+        if (confirm('Deseja cancelar o cálculo?\n\nOs dados não salvos serão perdidos.')) {
+            resultadoCalculo.style.display = 'none';
+            metasCalculadas = [];
+            document.getElementById('calc_edital_id').value = '';
+            document.getElementById('calc_periodo_id').value = '';
+
+            // Scroll para o topo
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+});
+</script>
 {% endblock %}

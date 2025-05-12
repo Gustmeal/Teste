@@ -1156,7 +1156,6 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
         logging.error(error_msg)
         return 0, False
 
-
 def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_criterio):
     """
     Executa o processo completo de redistribuição de contratos.

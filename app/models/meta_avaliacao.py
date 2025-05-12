@@ -1,4 +1,4 @@
-# app/models/meta_avaliacao.py (atualizado)
+# app/models/meta_avaliacao.py
 from datetime import datetime
 from app import db
 
@@ -28,6 +28,28 @@ class MetaAvaliacao(db.Model):
     # Atributos adicionais para uso temporário
     empresa_nome = None
     empresa_nome_abreviado = None
+
+    @classmethod
+    def calcular_metas_periodo(cls, edital_id, periodo_id):
+        """Calcula metas para todas as empresas de um período"""
+        from app.utils.meta_calculator import MetaCalculator
+
+        calculator = MetaCalculator(edital_id, periodo_id)
+        return calculator.calcular_todas_metas()
+
+    def to_dict(self):
+        """Converte a meta para dicionário"""
+        return {
+            'id': self.ID,
+            'edital_id': self.ID_EDITAL,
+            'periodo_id': self.ID_PERIODO,
+            'empresa_id': self.ID_EMPRESA,
+            'competencia': self.COMPETENCIA,
+            'meta_arrecadacao': float(self.META_ARRECADACAO) if self.META_ARRECADACAO else 0,
+            'meta_acionamento': float(self.META_ACIONAMENTO) if self.META_ACIONAMENTO else 0,
+            'meta_liquidacao': int(self.META_LIQUIDACAO) if self.META_LIQUIDACAO else 0,
+            'meta_bonificacao': float(self.META_BONIFICACAO) if self.META_BONIFICACAO else 0
+        }
 
     def __repr__(self):
         return f'<MetaAvaliacao {self.ID} - Competência: {self.COMPETENCIA}>'
