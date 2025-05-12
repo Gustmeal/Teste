@@ -175,6 +175,39 @@
             </div>
         </div>
     </div>
+
+    <!-- NOVA SEÇÃO: Área para homologação da redistribuição -->
+    {% if resultados.success and resultados.contratos_redistribuidos > 0 %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Homologação da Redistribuição</h5>
+        </div>
+        <div class="card-body text-center">
+            <p class="mb-4">
+                <i class="fas fa-check-circle text-success fa-2x"></i><br>
+                Redistribuição concluída. Homologue os resultados para gerar o arquivo para importação no sistema.
+            </p>
+
+            <!-- Formulário para homologação -->
+            <form id="formHomologacao" action="{{ url_for('limite.homologar_redistribuicao') }}" method="POST">
+                <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                <input type="hidden" name="criterio_id" value="{{ request.form.get('criterio_id') or request.form.get('novo_criterio_cod') }}">
+                <input type="hidden" name="empresa_id" value="{{ request.form.get('empresa_id') }}">
+                <input type="hidden" name="download_arquivo" value="1" id="download_arquivo">
+
+                <div class="d-grid gap-2 d-md-block">
+                    <button type="button" class="btn btn-primary btn-lg me-2" onclick="iniciarHomologacao(false)">
+                        <i class="fas fa-check me-2"></i> Homologar
+                    </button>
+                    <button type="button" class="btn btn-success btn-lg" onclick="iniciarHomologacao(true)">
+                        <i class="fas fa-download me-2"></i> Homologar e Baixar Arquivo
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <!-- Processo descritivo -->
@@ -232,6 +265,28 @@
     </div>
 </div>
 
+<!-- Modal de confirmação de homologação -->
+<div class="modal fade" id="confirmacaoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalTitulo">Confirmar Homologação</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p id="modalMensagem">Deseja homologar a redistribuição?</p>
+                <p class="text-muted mb-0" id="modalDescricao">A homologação será registrada no histórico do sistema.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarHomologacao">
+                    <i class="fas fa-check me-2"></i> <span id="btnTextoConfirmar">Confirmar</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // Modal de novo critério
@@ -281,6 +336,65 @@
             // Fechar modal
             novoCriterioModal.hide();
         });
+
+        // Variável para controlar se o download será feito (homologação)
+        window.comDownload = false;
+
+        // Verificar se o botão de homologação existe
+        if (document.getElementById('btnConfirmarHomologacao')) {
+            // Configurar ação do botão de confirmar homologação
+            document.getElementById('btnConfirmarHomologacao').addEventListener('click', function() {
+                // Fechar o modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('confirmacaoModal'));
+                modal.hide();
+
+                // Se for com download, mostrar indicador de carregamento
+                if (window.comDownload) {
+                    // Usar o gerenciador de loading global (se disponível)
+                    if (window.autoLoadingManager) {
+                        window.autoLoadingManager.showLoading();
+
+                        // Esconder indicador após 3 segundos
+                        setTimeout(() => {
+                            window.autoLoadingManager.hideLoading();
+                            // Exibir notificação
+                            if (window.showToast) {
+                                window.showToast('Download iniciado com sucesso!', 'success');
+                            }
+                        }, 3000);
+                    }
+                }
+
+                // Submeter o formulário (isso iniciará o download via navegador se for o caso)
+                document.getElementById('formHomologacao').submit();
+            });
+        }
     });
+
+    // Função para iniciar a homologação
+    function iniciarHomologacao(download) {
+        // Configurar o tipo de homologação
+        window.comDownload = download;
+        document.getElementById('download_arquivo').value = download ? '1' : '0';
+
+        // Configurar o modal
+        document.getElementById('modalTitulo').textContent = download ?
+            'Homologar e Baixar Arquivo' : 'Confirmar Homologação';
+
+        document.getElementById('modalMensagem').textContent = download ?
+            'Deseja homologar a redistribuição e baixar o arquivo?' :
+            'Deseja homologar a redistribuição?';
+
+        document.getElementById('modalDescricao').textContent = download ?
+            'O arquivo será gerado e o download iniciará automaticamente.' :
+            'A homologação será registrada no histórico do sistema.';
+
+        document.getElementById('btnTextoConfirmar').textContent = download ?
+            'Homologar e Baixar' : 'Homologar';
+
+        // Exibir o modal
+        const modal = new bootstrap.Modal(document.getElementById('confirmacaoModal'));
+        modal.show();
+    }
 </script>
 {% endblock %}
