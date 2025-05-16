@@ -773,6 +773,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
         return False
 
 
+
 def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
     """
     Processa os contratos arrastáveis (do mesmo CPF/CNPJ) para redistribuição.
@@ -978,10 +979,10 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
         logging.error(error_msg)
         return 0, False
 
-
 def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redistribuida=None):
     """
     Processa os contratos restantes (não arrastáveis) para redistribuição.
+    Otimizado para performance e para distribuir contratos conforme percentuais de arrecadação.
     """
     logging.info(f"Processando demais contratos - Edital: {edital_id}, Período: {periodo_id}, Critério: {criterio_id}")
 
@@ -990,84 +991,208 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
             transaction = connection.begin()
 
             try:
-                # 1. Verificar contratos restantes na tabela
-                count_sql = text("""
-                SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                """)
+                # Executar o processamento completo em uma única operação SQL para máxima performance
+                sql_otimizado = text("""
+                -- Declaração de variáveis
+                DECLARE @EditalID INT = :edital_id;
+                DECLARE @PeriodoID INT = :periodo_id;
+                DECLARE @CriterioID INT = :criterio_id;
+                DECLARE @EmpresaRedistribuida INT = :empresa_redistribuida;
+                DECLARE @DataAtual DATETIME = GETDATE();
+                DECLARE @ContratosInseridos INT = 0;
 
-                count_result = connection.execute(count_sql).fetchone()
-                qtde_contratos_restantes = count_result[0] if count_result else 0
+                -- 1. Contar contratos restantes
+                DECLARE @QtdeContratosRestantes INT = (SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK));
 
-                print(f"Total de contratos restantes para distribuição: {qtde_contratos_restantes}")
+                IF @QtdeContratosRestantes = 0
+                BEGIN
+                    SELECT 0 AS ContratosInseridos;
+                    RETURN;
+                END
 
-                if qtde_contratos_restantes == 0:
-                    print("Não há contratos restantes para distribuir. Finalizando etapa.")
-                    transaction.commit()
-                    return 0, True
+                -- 2. Tabela temporária para as empresas e seus percentuais
+                DECLARE @Empresas TABLE (
+                    ID INT IDENTITY(1,1),
+                    ID_Empresa INT, 
+                    Percentual DECIMAL(10, 2),
+                    JaRecebeu INT DEFAULT 0,
+                    MetaTotal INT DEFAULT 0,
+                    AReceber INT DEFAULT 0
+                );
 
-                # 2. Contar registros atuais na tabela de distribuição (para cálculo da diferença)
-                baseline_sql = text("""
-                SELECT COUNT(*) 
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital_id 
-                  AND ID_PERIODO = :periodo_id 
-                  AND COD_CRITERIO_SELECAO = :criterio_id
-                """)
+                -- 3. Inserir empresas e seus percentuais
+                INSERT INTO @Empresas (ID_Empresa, Percentual)
+                SELECT 
+                    ID_EMPRESA, 
+                    PERCENTUAL_FINAL
+                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] WITH (NOLOCK)
+                WHERE 
+                    ID_EDITAL = @EditalID
+                    AND ID_PERIODO = @PeriodoID
+                    AND COD_CRITERIO_SELECAO = @CriterioID
+                    AND DELETED_AT IS NULL
+                    AND ((@EmpresaRedistribuida IS NULL) OR (ID_EMPRESA <> @EmpresaRedistribuida));
 
-                baseline_result = connection.execute(baseline_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "criterio_id": criterio_id
-                }).fetchone()
+                -- 4. Contar contratos já distribuídos por arrasto
+                UPDATE e
+                SET e.JaRecebeu = ISNULL(j.Quantidade, 0)
+                FROM @Empresas e
+                LEFT JOIN (
+                    SELECT 
+                        COD_EMPRESA_COBRANCA,
+                        COUNT(*) as Quantidade
+                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] WITH (NOLOCK)
+                    WHERE
+                        ID_EDITAL = @EditalID
+                        AND ID_PERIODO = @PeriodoID
+                        AND COD_CRITERIO_SELECAO = @CriterioID
+                    GROUP BY COD_EMPRESA_COBRANCA
+                ) j ON e.ID_Empresa = j.COD_EMPRESA_COBRANCA;
 
-                baseline_count = baseline_result[0] if baseline_result else 0
+                -- 5. Calcular totais
+                DECLARE @TotalJaDistribuido INT = (SELECT SUM(JaRecebeu) FROM @Empresas);
+                DECLARE @TotalContratos INT = @TotalJaDistribuido + @QtdeContratosRestantes;
 
-                # 3. Remover registros antigos antes de inserir novos
-                delete_existing_sql = text("""
+                -- 6. Calcular metas para cada empresa baseado no percentual de arrecadação
+                UPDATE @Empresas
+                SET 
+                    MetaTotal = FLOOR(@TotalContratos * (Percentual / 100.0)),
+                    AReceber = 0;
+
+                UPDATE @Empresas
+                SET AReceber = CASE 
+                    WHEN MetaTotal > JaRecebeu THEN MetaTotal - JaRecebeu
+                    ELSE 0
+                END;
+
+                -- 7. Ajustar para garantir que a soma das metas = número de contratos disponíveis
+                DECLARE @SomaAReceber INT = (SELECT SUM(AReceber) FROM @Empresas);
+
+                -- 7.1 Se existe excesso, distribuir às maiores empresas proporcionalmente
+                IF @SomaAReceber < @QtdeContratosRestantes
+                BEGIN
+                    DECLARE @Excesso INT = @QtdeContratosRestantes - @SomaAReceber;
+                    DECLARE @Contador INT = 0;
+
+                    WHILE @Contador < @Excesso
+                    BEGIN
+                        UPDATE TOP(1) @Empresas
+                        SET AReceber = AReceber + 1
+                        WHERE ID_Empresa IN (
+                            SELECT TOP 1 ID_Empresa
+                            FROM @Empresas
+                            ORDER BY Percentual DESC, ID_Empresa
+                            OFFSET (@Contador % (SELECT COUNT(*) FROM @Empresas)) ROWS
+                            FETCH NEXT 1 ROWS ONLY
+                        );
+
+                        SET @Contador = @Contador + 1;
+                    END
+                END
+                -- 7.2 Se existe déficit, reduzir das menores empresas proporcionalmente
+                ELSE IF @SomaAReceber > @QtdeContratosRestantes
+                BEGIN
+                    DECLARE @Deficit INT = @SomaAReceber - @QtdeContratosRestantes;
+                    SET @Contador = 0;
+
+                    WHILE @Contador < @Deficit
+                    BEGIN
+                        UPDATE TOP(1) @Empresas
+                        SET AReceber = AReceber - 1
+                        WHERE AReceber > 0
+                        AND ID_Empresa IN (
+                            SELECT TOP 1 ID_Empresa
+                            FROM @Empresas
+                            WHERE AReceber > 0
+                            ORDER BY Percentual ASC, ID_Empresa
+                            OFFSET (@Contador % (SELECT COUNT(*) FROM @Empresas WHERE AReceber > 0)) ROWS
+                            FETCH NEXT 1 ROWS ONLY
+                        );
+
+                        SET @Contador = @Contador + 1;
+                    END
+                END
+
+                -- 8. Verificar o resultado da distribuição por empresa
+                SELECT 
+                    e.ID_Empresa,
+                    e.Percentual,
+                    e.JaRecebeu,
+                    e.MetaTotal,
+                    e.AReceber,
+                    e.JaRecebeu + e.AReceber AS TotalFinal,
+                    CAST((e.JaRecebeu + e.AReceber) * 100.0 / @TotalContratos AS DECIMAL(10,2)) AS PctFinal
+                FROM @Empresas e
+                ORDER BY e.Percentual DESC;
+
+                -- 9. Remover registros antigos
                 DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                WHERE [ID_EDITAL] = :edital_id
-                  AND [ID_PERIODO] = :periodo_id
+                WHERE [ID_EDITAL] = @EditalID
+                  AND [ID_PERIODO] = @PeriodoID
                   AND [fkContratoSISCTR] IN (
                       SELECT [FkContratoSISCTR]
-                      FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
-                  )
-                """)
+                      FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK)
+                  );
 
-                delete_existing_result = connection.execute(delete_existing_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id
-                })
+                -- 10. Criar tabela temporária para distribuição
+                DECLARE @DistribuicaoTemp TABLE (
+                    RowNum INT IDENTITY(1,1),
+                    ContratoID BIGINT,
+                    CPF_CNPJ BIGINT,
+                    Saldo DECIMAL(18,2),
+                    EmpresaID INT
+                );
 
-                print(f"Registros antigos removidos da tabela de distribuição: {delete_existing_result.rowcount}")
+                -- 11. Inserir contratos com ordem aleatória
+                INSERT INTO @DistribuicaoTemp (ContratoID, CPF_CNPJ, Saldo)
+                SELECT 
+                    [FkContratoSISCTR],
+                    [NR_CPF_CNPJ],
+                    [VR_SD_DEVEDOR]
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK)
+                ORDER BY NEWID();
 
-                # 4. Inserir contratos restantes com distribuição proporcional
-                insert_sql = text("""
-                WITH EmpresasInfo AS (
-                    SELECT 
-                        L.[ID_EMPRESA],
-                        L.[QTDE_MAXIMA],
-                        L.[PERCENTUAL_FINAL],
-                        (SELECT COUNT(*) FROM [DEV].[DCA_TB005_DISTRIBUICAO] D
-                         WHERE D.COD_EMPRESA_COBRANCA = L.[ID_EMPRESA] 
-                         AND D.ID_EDITAL = :edital_id 
-                         AND D.ID_PERIODO = :periodo_id
-                         AND D.COD_CRITERIO_SELECAO = :criterio_id) AS QTDE_ATUAL
-                    FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] L
-                    WHERE 
-                        L.[ID_EDITAL] = :edital_id
-                        AND L.[ID_PERIODO] = :periodo_id
-                        AND L.[COD_CRITERIO_SELECAO] = :criterio_id
-                        AND L.[DELETED_AT] IS NULL
-                        AND (:empresa_redistribuida IS NULL OR L.[ID_EMPRESA] <> :empresa_redistribuida)
-                ),
-                ContratosOrdenados AS (
-                    SELECT 
-                        D.[FkContratoSISCTR],
-                        D.[NR_CPF_CNPJ],
-                        D.[VR_SD_DEVEDOR],
-                        ROW_NUMBER() OVER (ORDER BY NEWID()) AS RN
-                    FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] D
-                )
+                -- 12. Distribuir contratos para empresas
+                DECLARE @EmpresasReceberam TABLE (ID_Empresa INT, Recebidos INT DEFAULT 0);
+
+                INSERT INTO @EmpresasReceberam (ID_Empresa)
+                SELECT ID_Empresa FROM @Empresas;
+
+                DECLARE @ContratosProcessados INT = 0;
+
+                WHILE @ContratosProcessados < @QtdeContratosRestantes
+                BEGIN
+                    -- Encontrar próxima empresa que não atingiu meta
+                    DECLARE @EmpresaDestino INT;
+
+                    SELECT TOP 1 @EmpresaDestino = e.ID_Empresa
+                    FROM @Empresas e
+                    JOIN @EmpresasReceberam r ON e.ID_Empresa = r.ID_Empresa
+                    WHERE r.Recebidos < e.AReceber
+                    ORDER BY CAST(r.Recebidos AS FLOAT) / NULLIF(e.AReceber, 0), e.ID_Empresa;
+
+                    -- Se todas empresas atingiram meta, usar maior empresa
+                    IF @EmpresaDestino IS NULL
+                    BEGIN
+                        SELECT TOP 1 @EmpresaDestino = ID_Empresa 
+                        FROM @Empresas 
+                        ORDER BY Percentual DESC;
+                    END
+
+                    -- Atribuir empresa ao contrato atual
+                    UPDATE @DistribuicaoTemp
+                    SET EmpresaID = @EmpresaDestino
+                    WHERE RowNum = @ContratosProcessados + 1;
+
+                    -- Atualizar contador da empresa
+                    UPDATE @EmpresasReceberam
+                    SET Recebidos = Recebidos + 1
+                    WHERE ID_Empresa = @EmpresaDestino;
+
+                    SET @ContratosProcessados = @ContratosProcessados + 1;
+                END
+
+                -- 13. Inserir na tabela final
                 INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
                     [DT_REFERENCIA],
                     [ID_EDITAL],
@@ -1080,72 +1205,64 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     [CREATED_AT]
                 )
                 SELECT 
-                    GETDATE() AS [DT_REFERENCIA],
-                    :edital_id AS [ID_EDITAL],
-                    :periodo_id AS [ID_PERIODO],
-                    CO.[FkContratoSISCTR],
-                    :criterio_id AS [COD_CRITERIO_SELECAO],
-                    EI.[ID_EMPRESA] AS [COD_EMPRESA_COBRANCA],
-                    CO.[NR_CPF_CNPJ],
-                    CO.[VR_SD_DEVEDOR],
-                    GETDATE() AS [CREATED_AT]
-                FROM 
-                    ContratosOrdenados CO
-                    CROSS APPLY (
-                        SELECT TOP 1 [ID_EMPRESA]
-                        FROM EmpresasInfo
-                        WHERE QTDE_ATUAL < QTDE_MAXIMA
-                        ORDER BY 
-                            (QTDE_ATUAL * 1.0 / NULLIF(QTDE_MAXIMA, 0)) ASC,
-                            NEWID()
-                    ) AS EI
+                    @DataAtual,
+                    @EditalID,
+                    @PeriodoID,
+                    d.ContratoID,
+                    @CriterioID,
+                    d.EmpresaID,
+                    d.CPF_CNPJ,
+                    d.Saldo,
+                    @DataAtual
+                FROM @DistribuicaoTemp d;
+
+                SET @ContratosInseridos = @@ROWCOUNT;
+
+                -- 14. Verificar distribuição final por empresa
+                SELECT 
+                    e.ID_Empresa,
+                    ISNULL(ea.JaRecebeu, 0) + ISNULL(n.Novos, 0) AS TotalFinal,
+                    CAST((ISNULL(ea.JaRecebeu, 0) + ISNULL(n.Novos, 0)) * 100.0 / 
+                         (SELECT COUNT(*) FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
+                          WHERE ID_EDITAL = @EditalID AND ID_PERIODO = @PeriodoID AND COD_CRITERIO_SELECAO = @CriterioID)
+                         AS DECIMAL(10,2)) AS PctFinal
+                FROM (SELECT DISTINCT ID_Empresa FROM @Empresas) e
+                LEFT JOIN (
+                    SELECT COD_EMPRESA_COBRANCA, COUNT(*) AS JaRecebeu
+                    FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                    WHERE ID_EDITAL = @EditalID AND ID_PERIODO = @PeriodoID AND COD_CRITERIO_SELECAO = @CriterioID
+                          AND fkContratoSISCTR NOT IN (SELECT ContratoID FROM @DistribuicaoTemp)
+                    GROUP BY COD_EMPRESA_COBRANCA
+                ) ea ON e.ID_Empresa = ea.COD_EMPRESA_COBRANCA
+                LEFT JOIN (
+                    SELECT EmpresaID, COUNT(*) AS Novos
+                    FROM @DistribuicaoTemp
+                    GROUP BY EmpresaID
+                ) n ON e.ID_Empresa = n.EmpresaID
+                ORDER BY e.ID_Empresa;
+
+                -- 15. Limpar tabela de distribuíveis
+                IF @ContratosInseridos > 0
+                BEGIN
+                    TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS];
+                END
+
+                -- 16. Retornar contratos inseridos
+                SELECT @ContratosInseridos AS ContratosInseridos;
                 """)
 
-                insert_result = connection.execute(insert_sql, {
+                # Executar o SQL otimizado
+                result = connection.execute(sql_otimizado, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id,
                     "empresa_redistribuida": empresa_redistribuida
                 })
 
-                contratos_inseridos = insert_result.rowcount
-                print(f"Contratos restantes inseridos na tabela de distribuição: {contratos_inseridos}")
-
-                # 5. Verificar contagem final
-                if contratos_inseridos != qtde_contratos_restantes:
-                    print(
-                        f"ATENÇÃO: Diferença na contagem - restantes: {qtde_contratos_restantes}, inseridos: {contratos_inseridos}")
-                    logging.warning(
-                        f"Diferença na contagem de contratos restantes - {qtde_contratos_restantes} vs {contratos_inseridos}")
-
-                # 6. Limpar tabela de distribuíveis após processamento
-                if contratos_inseridos > 0:
-                    connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
-                    print("Tabela de distribuíveis limpa após processamento")
-
-                # 7. Contar total após inserção (para verificação)
-                final_count_sql = text("""
-                SELECT COUNT(*) 
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital_id 
-                  AND ID_PERIODO = :periodo_id 
-                  AND COD_CRITERIO_SELECAO = :criterio_id
-                """)
-
-                final_count_result = connection.execute(final_count_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "criterio_id": criterio_id
-                }).fetchone()
-
-                total_final = final_count_result[0] if final_count_result else 0
-                print(f"Total atualizado na tabela de distribuição: {total_final}")
-                print(f"Diferença após processamento: {total_final - baseline_count}")
+                contratos_inseridos = result.scalar() or 0
 
                 transaction.commit()
-                print("Processamento dos contratos restantes concluído com sucesso!")
-
-                # Retornar a contagem precisa
+                print(f"Processamento dos contratos restantes concluído: {contratos_inseridos} contratos")
                 return contratos_inseridos, True
 
             except Exception as e:
