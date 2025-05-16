@@ -243,12 +243,11 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
 def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
     """
     Calcula os percentuais para redistribuição dos contratos.
-
-    A distribuição é proporcional à arrecadação do maior edital e maior período.
-    Similar à lógica usada nas funções de distribuição de contratos.
+    CORRIGIDO: Trunca os percentuais e ajusta para garantir soma 100,00%
     """
     import logging
     import sys
+    import math  # Adicionado para truncamento
 
     logging.basicConfig(
         level=logging.INFO,
@@ -266,27 +265,12 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
 
     try:
         with db.engine.connect() as connection:
-            # 1. Buscar o maior edital e maior período disponíveis
-            max_edital_periodo_sql = text("""
-                SELECT 
-                    MAX(ID_EDITAL) as MAX_EDITAL,
-                    MAX(ID_PERIODO) as MAX_PERIODO
-                FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
-                WHERE DELETED_AT IS NULL
-            """)
+            # Função para truncar em duas casas decimais
+            def truncar_duas_casas(valor):
+                # Multiplica por 100, trunca e divide por 100
+                return math.trunc(valor * 100) / 100
 
-            max_result = connection.execute(max_edital_periodo_sql).fetchone()
-
-            if not max_result:
-                print("ERRO: Não foi possível encontrar edital/período máximo")
-                return 0, 0, []
-
-            max_edital = max_result[0]
-            max_periodo = max_result[1]
-
-            print(f"Usando maior edital: {max_edital}, maior período: {max_periodo}")
-
-            # 2. Buscar datas do período máximo
+            # 1. Buscar o período para obter datas
             periodo_sql = text("""
                 SELECT DT_INICIO, DT_FIM 
                 FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
@@ -296,167 +280,183 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
             """)
 
             periodo_result = connection.execute(periodo_sql, {
-                "edital_id": max_edital,
-                "periodo_id": max_periodo
+                "edital_id": edital_id,
+                "periodo_id": periodo_id
             }).fetchone()
 
             if not periodo_result:
-                # Se não encontrar o máximo, usa o período atual
-                periodo_result = connection.execute(periodo_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id
-                }).fetchone()
-
-                if not periodo_result:
-                    print("ERRO: Período não encontrado")
-                    return 0, 0, []
+                print("ERRO: Período não encontrado")
+                return 0, 0, []
 
             dt_inicio, dt_fim = periodo_result
             print(f"Período para cálculo: {dt_inicio} a {dt_fim}")
 
-            # 3. Buscar empresas participantes e suas arrecadações (similar ao distribuir_contratos)
-            arrecadacao_sql = text("""
-            WITH EmpresasParticipantes AS (
-                SELECT DISTINCT
-                    EP.ID_EMPRESA,
-                    EP.NO_EMPRESA,
-                    EP.NO_EMPRESA_ABREVIADA,
-                    EP.DS_CONDICAO
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
-                WHERE EP.ID_EDITAL = :edital_id
-                  AND EP.ID_PERIODO = :periodo_id
-                  AND EP.DELETED_AT IS NULL
-            ),
-            ArrecadacaoEmpresas AS (
-                SELECT 
-                    REE.CO_EMPRESA_COBRANCA,
-                    SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO_TOTAL
-                FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] REE
-                WHERE REE.DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim
-                GROUP BY REE.CO_EMPRESA_COBRANCA
-                HAVING SUM(REE.VR_ARRECADACAO_TOTAL) > 0
-            )
+            # 2. Buscar todas as empresas relevantes (NOVA, PERMANECE e a selecionada)
+            empresas_sql = text("""
             SELECT 
                 EP.ID_EMPRESA,
                 EP.NO_EMPRESA,
                 EP.NO_EMPRESA_ABREVIADA,
-                EP.DS_CONDICAO,
-                COALESCE(AE.VR_ARRECADACAO_TOTAL, 0) AS VR_ARRECADACAO,
-                -- Calcular percentual direto na query
-                CASE 
-                    WHEN (SELECT SUM(COALESCE(AE2.VR_ARRECADACAO_TOTAL, 0))
-                          FROM EmpresasParticipantes EP2
-                          LEFT JOIN ArrecadacaoEmpresas AE2 ON EP2.ID_EMPRESA = AE2.CO_EMPRESA_COBRANCA
-                          WHERE EP2.DS_CONDICAO IN ('NOVA', 'PERMANECE')) = 0
-                    THEN 0
-                    ELSE ROUND(
-                        (COALESCE(AE.VR_ARRECADACAO_TOTAL, 0) * 100.0) / 
-                        NULLIF((SELECT SUM(COALESCE(AE2.VR_ARRECADACAO_TOTAL, 0))
-                                FROM EmpresasParticipantes EP2
-                                LEFT JOIN ArrecadacaoEmpresas AE2 ON EP2.ID_EMPRESA = AE2.CO_EMPRESA_COBRANCA
-                                WHERE EP2.DS_CONDICAO IN ('NOVA', 'PERMANECE')), 0), 
-                        2)
-                END AS PERCENTUAL_ARRECADACAO
-            FROM EmpresasParticipantes EP
-            LEFT JOIN ArrecadacaoEmpresas AE ON EP.ID_EMPRESA = AE.CO_EMPRESA_COBRANCA
-            ORDER BY EP.ID_EMPRESA
+                EP.DS_CONDICAO
+            FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            WHERE EP.ID_EDITAL = :edital_id
+              AND EP.ID_PERIODO = :periodo_id
+              AND (EP.DS_CONDICAO IN ('NOVA', 'PERMANECE') OR EP.ID_EMPRESA = :empresa_id)
+              AND EP.DELETED_AT IS NULL
             """)
 
-            arrecadacao_results = connection.execute(arrecadacao_sql, {
+            empresas_result = connection.execute(empresas_sql, {
                 "edital_id": edital_id,
                 "periodo_id": periodo_id,
+                "empresa_id": empresa_id
+            }).fetchall()
+
+            if not empresas_result:
+                print("ERRO: Nenhuma empresa encontrada")
+                return 0, 0, []
+
+            # Criar lista de IDs de empresas relevantes
+            empresas_ids = [row[0] for row in empresas_result]
+            empresas_ids_str = ','.join(str(id) for id in empresas_ids)
+
+            # 3. Buscar arrecadação das empresas relevantes
+            arrecadacao_sql = text(f"""
+            SELECT 
+                REE.CO_EMPRESA_COBRANCA,
+                SUM(REE.VR_ARRECADACAO_TOTAL) AS VR_ARRECADACAO_TOTAL
+            FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] REE
+            WHERE REE.DT_ARRECADACAO BETWEEN :dt_inicio AND :dt_fim
+              AND REE.CO_EMPRESA_COBRANCA IN ({empresas_ids_str})
+            GROUP BY REE.CO_EMPRESA_COBRANCA
+            """)
+
+            arrecadacao_result = connection.execute(arrecadacao_sql, {
                 "dt_inicio": dt_inicio,
                 "dt_fim": dt_fim
             }).fetchall()
 
-            if not arrecadacao_results:
-                print("ERRO: Nenhuma empresa encontrada")
-                return 0, 0, []
-
-            # 4. Processar resultados
-            print("\n----- ARRECADAÇÃO E PERCENTUAIS -----")
-            empresas_dados = []
+            # 4. Calcular arrecadação total e processar dados
             total_arrecadacao = 0
-            total_arrecadacao_receptoras = 0
-            percentual_empresa_redistribuida = 0
-            arrecadacao_empresa_redistribuida = 0
+            arrecadacao_por_empresa = {}
 
-            for idx, emp in enumerate(arrecadacao_results):
-                id_empresa, nome, nome_abrev, ds_condicao, vr_arrecadacao, percentual = emp
+            for row in arrecadacao_result:
+                empresa_id_arr, vr_arrecadacao = row
                 vr_arrecadacao = float(vr_arrecadacao) if vr_arrecadacao else 0.0
-                percentual = float(percentual) if percentual else 0.0
-
+                arrecadacao_por_empresa[empresa_id_arr] = vr_arrecadacao
                 total_arrecadacao += vr_arrecadacao
 
-                if ds_condicao in ['NOVA', 'PERMANECE']:
-                    total_arrecadacao_receptoras += vr_arrecadacao
+            # 5. Processar dados das empresas
+            todas_empresas = []
+            empresa_saindo = None
+            empresas_receptoras = []
 
-                print(f"{idx + 1}. Empresa {id_empresa} ({nome_abrev or nome}): "
-                      f"R$ {vr_arrecadacao:,.2f} ({percentual:.2f}%)")
+            for row in empresas_result:
+                id_empresa, nome, nome_abrev, ds_condicao = row
+                vr_arrecadacao = arrecadacao_por_empresa.get(id_empresa, 0.0)
 
+                # Truncar o percentual em vez de arredondar
+                percentual = truncar_duas_casas(
+                    (vr_arrecadacao / total_arrecadacao * 100)) if total_arrecadacao > 0 else 0
+
+                empresa_info = {
+                    "id_empresa": id_empresa,
+                    "nome": nome,
+                    "nome_abreviado": nome_abrev or nome,
+                    "ds_condicao": ds_condicao,
+                    "vr_arrecadacao": vr_arrecadacao,
+                    "percentual": percentual
+                }
+
+                todas_empresas.append(empresa_info)
+
+                # Separar empresa que sai e receptoras
                 if id_empresa == empresa_id:
-                    arrecadacao_empresa_redistribuida = vr_arrecadacao
-                    print(f"   >>> Empresa que está saindo")
+                    empresa_saindo = empresa_info
+                elif ds_condicao in ('NOVA', 'PERMANECE'):
+                    empresas_receptoras.append(empresa_info)
 
-                elif ds_condicao in ['NOVA', 'PERMANECE']:
-                    empresas_dados.append({
-                        "id_empresa": id_empresa,
-                        "nome": nome,
-                        "nome_abreviado": nome_abrev or nome,
-                        "ds_condicao": ds_condicao,
-                        "vr_arrecadacao": vr_arrecadacao,
-                        "percentual": percentual
-                    })
+            if not empresa_saindo:
+                print(f"ERRO: Empresa específica {empresa_id} não encontrada")
+                return 0, 0, []
 
-            # 5. Calcular percentual da empresa que está saindo
-            if total_arrecadacao > 0:
-                percentual_empresa_redistribuida = (arrecadacao_empresa_redistribuida / total_arrecadacao) * 100
+            # 6. Calcular percentual da empresa que sai
+            percentual_empresa_saindo = empresa_saindo["percentual"]
+
+            print(f"\n----- DADOS DA EMPRESA QUE ESTÁ SAINDO -----")
+            print(f"Empresa: {empresa_saindo['id_empresa']} ({empresa_saindo['nome_abreviado']})")
+            print(f"Arrecadação: R$ {empresa_saindo['vr_arrecadacao']:,.2f}")
+            print(f"Arrecadação total relevante: R$ {total_arrecadacao:,.2f}")
+            print(f"Percentual da empresa: {percentual_empresa_saindo:.2f}%")
+
+            # 7. Calcular o adicional a ser distribuído para cada empresa receptora
+            qtde_receptoras = len(empresas_receptoras)
+            if qtde_receptoras > 0 and percentual_empresa_saindo > 0:
+                # MODIFICADO: Truncar o percentual adicional em duas casas decimais
+                percentual_adicional = truncar_duas_casas(percentual_empresa_saindo / qtde_receptoras)
             else:
-                percentual_empresa_redistribuida = 0.0
+                percentual_adicional = 0
 
-            print(f"\nTotal de arrecadação geral: R$ {total_arrecadacao:,.2f}")
-            print(f"Total arrecadação receptoras: R$ {total_arrecadacao_receptoras:,.2f}")
-            print(f"Arrecadação empresa saindo: R$ {arrecadacao_empresa_redistribuida:,.2f}")
-            print(f"Percentual empresa saindo: {percentual_empresa_redistribuida:.2f}%")
+            # 8. Aplicar o percentual adicional a cada empresa receptora
+            for empresa in empresas_receptoras:
+                empresa["percentual_original"] = empresa["percentual"]
+                empresa["adicional_redistribuido"] = percentual_adicional
+                # MODIFICADO: Truncar o percentual final em duas casas decimais
+                empresa["percentual_final"] = truncar_duas_casas(empresa["percentual"] + percentual_adicional)
 
-            # 6. Se não há arrecadação, distribuir igualmente (similar a distribuir_contratos)
-            if total_arrecadacao_receptoras == 0 and empresas_dados:
-                print("\nSem arrecadação. Distribuindo igualmente.")
-                qtde_empresas = len(empresas_dados)
-                percentual_igual = 100.0 / qtde_empresas if qtde_empresas > 0 else 0
+            # 9. AJUSTE MELHORADO: Distribuir 0,01% até completar 100%
+            soma_percentuais_finais = sum(e["percentual_final"] for e in empresas_receptoras)
+            diferenca_pontos = int(round((100.0 - soma_percentuais_finais) * 100))  # Diferença em pontos de 0,01%
 
-                for emp in empresas_dados:
-                    emp['percentual'] = percentual_igual
+            print(f"\nSoma dos percentuais após truncamento: {soma_percentuais_finais:.2f}%")
+            print(f"Diferença para 100%: {100.0 - soma_percentuais_finais:.2f}% ({diferenca_pontos} pontos de 0,01%)")
 
-                if percentual_empresa_redistribuida == 0:
-                    percentual_empresa_redistribuida = 100.0 / (qtde_empresas + 1)
+            if diferenca_pontos > 0:
+                # Ordenar empresas por arrecadação (do maior para o menor)
+                empresas_ordenadas = sorted(empresas_receptoras, key=lambda x: x["vr_arrecadacao"], reverse=True)
 
-            # 7. Normalizar percentuais para garantir soma = 100%
-            soma_percentuais = sum(emp['percentual'] for emp in empresas_dados)
-            if soma_percentuais > 0 and abs(soma_percentuais - 100.0) > 0.01:
-                print(f"\nAjustando percentuais. Soma atual: {soma_percentuais:.2f}%")
-                fator = 100.0 / soma_percentuais
-                for emp in empresas_dados:
-                    emp['percentual'] = round(emp['percentual'] * fator, 2)
+                # Loop para adicionar 0,01% até completar 100%
+                ajustes_por_empresa = {emp["id_empresa"]: 0 for emp in empresas_ordenadas}
 
-            # 8. Ajuste final para garantir exatamente 100%
-            soma_final = sum(emp['percentual'] for emp in empresas_dados)
-            if abs(soma_final - 100.0) > 0.01 and empresas_dados:
-                diferenca = 100.0 - soma_final
-                # Ajusta na empresa com maior arrecadação
-                maior_empresa = max(empresas_dados, key=lambda x: x['vr_arrecadacao'])
-                maior_empresa['percentual'] += diferenca
+                print("\nAjustando percentuais:")
 
-            print(f"\nResultado final:")
-            print(f"- Empresas receptoras: {len(empresas_dados)}")
-            print(f"- Percentual a redistribuir: {percentual_empresa_redistribuida:.2f}%")
+                while diferenca_pontos > 0:
+                    # Adicionar 0,01% para cada empresa, considerando distribuição justa
+                    empresas_para_ajustar = sorted(empresas_ordenadas,
+                                                   key=lambda x: (
+                                                   ajustes_por_empresa[x["id_empresa"]], -x["vr_arrecadacao"]))
 
-            # Mostrar distribuição final
-            print("\nDistribuição final dos percentuais:")
-            for emp in empresas_dados:
-                print(f"  {emp['id_empresa']}: {emp['percentual']:.2f}% (R$ {emp['vr_arrecadacao']:,.2f})")
+                    for empresa in empresas_para_ajustar:
+                        if diferenca_pontos <= 0:
+                            break
 
-            return percentual_empresa_redistribuida, total_arrecadacao, empresas_dados
+                        empresa["percentual_final"] += 0.01
+                        ajustes_por_empresa[empresa["id_empresa"]] += 1
+                        diferenca_pontos -= 1
+                        print(f"  Adicionando 0,01% à empresa {empresa['id_empresa']} - "
+                              f"Total: {empresa['percentual_final']:.2f}% (Ajuste #{ajustes_por_empresa[empresa['id_empresa']]})")
+
+            # 10. Verificação final
+            soma_final = sum(e["percentual_final"] for e in empresas_receptoras)
+
+            # Exibir resultados para verificação
+            print("\n----- DISTRIBUIÇÃO DE PERCENTUAIS -----")
+            print(f"Percentual da empresa saindo: {percentual_empresa_saindo:.2f}%")
+            print(f"Percentual adicional por empresa (truncado): {percentual_adicional:.2f}%")
+            print(f"Quantidade de empresas receptoras: {qtde_receptoras}")
+
+            print("\nEmpresas receptoras:")
+            for empresa in empresas_receptoras:
+                print(f"{empresa['id_empresa']} ({empresa['nome_abreviado']}): "
+                      f"{empresa['percentual_original']:.2f}% + {empresa['adicional_redistribuido']:.2f}% = "
+                      f"{empresa['percentual_final']:.2f}%")
+
+            print(f"\nSoma final dos percentuais: {soma_final:.2f}%")
+
+            # Se a soma não for exatamente 100%, há um problema
+            if abs(soma_final - 100.0) > 0.01:
+                print("ALERTA: Soma dos percentuais finais ainda não é 100%!")
+
+            return percentual_empresa_saindo, total_arrecadacao, empresas_receptoras
 
     except Exception as e:
         error_msg = f"Erro ao calcular percentuais: {str(e)}"
@@ -474,11 +474,12 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
 def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, percentual_redistribuido, empresas_dados):
     """
     Redistribui os percentuais da empresa que está saindo entre as empresas remanescentes.
-    CORREÇÃO: Gravar VR_ARRECADACAO corretamente
+    CORRIGIDO: Segue a ordem exata de redistribuição e ajuste
     """
     # Configuração básica de logging
     import logging
     import sys
+    import math  # Para truncamento
     from datetime import datetime
 
     # Configurar o logging para exibir no console e em um arquivo
@@ -501,6 +502,11 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
             transaction = connection.begin()
 
             try:
+                # Função para truncar em duas casas decimais
+                def truncar_duas_casas(valor):
+                    # Multiplica por 100, trunca e divide por 100
+                    return math.trunc(valor * 100) / 100
+
                 # 1. Verificar quantidade de empresas remanescentes
                 qtde_empresas_remanescentes = len(empresas_dados)
 
@@ -511,13 +517,12 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                     return False
 
                 print(f"Empresas remanescentes: {qtde_empresas_remanescentes}")
-                logging.info(f"Empresas remanescentes: {qtde_empresas_remanescentes}")
 
-                # 2. Calcular percentual unitário a ser redistribuído
-                percentual_unitario = percentual_redistribuido / qtde_empresas_remanescentes
+                # 2. ETAPA 1: Redistribuir percentual da empresa que sai igualmente
+                # Calcular percentual unitário a ser redistribuído (truncado)
+                percentual_unitario = truncar_duas_casas(percentual_redistribuido / qtde_empresas_remanescentes)
                 print(f"Percentual a redistribuir: {percentual_redistribuido:.2f}%")
-                print(f"Percentual unitário por empresa: {percentual_unitario:.2f}%")
-                logging.info(f"Percentual unitário por empresa: {percentual_unitario:.2f}%")
+                print(f"Percentual unitário por empresa (truncado): {percentual_unitario:.2f}%")
 
                 # 3. Data de referência para os registros
                 data_apuracao = datetime.now()
@@ -538,14 +543,72 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 
                 print(f"Registros antigos removidos para critério {criterio_id}")
 
-                # 5. Inserir novos percentuais para empresas remanescentes
+                # 5. ETAPA 1: Aplicar o percentual unitário sem arredondamento
+                print("\n----- REDISTRIBUIÇÃO DO PERCENTUAL -----")
+                for empresa in empresas_dados:
+                    percentual_original = empresa.get("percentual_original", empresa["percentual"])
+                    # Sem truncamento ou arredondamento na soma
+                    percentual_somado = percentual_original + percentual_unitario
+                    empresa["percentual_final"] = percentual_somado
+                    print(
+                        f"Empresa {empresa['id_empresa']}: {percentual_original:.2f}% + {percentual_unitario:.2f}% = {percentual_somado:.2f}%")
+
+                # 6. ETAPA 2: Verificar se a soma é exatamente 100%
+                soma_percentuais = sum(empresa["percentual_final"] for empresa in empresas_dados)
+                print(f"\n----- VERIFICAÇÃO DA SOMA -----")
+                print(f"Soma após redistribuição: {soma_percentuais:.2f}%")
+
+                # 7. ETAPA 3: Ajustar se necessário para chegar a 100%
+                if abs(soma_percentuais - 100.0) > 0.001:  # Pequena margem para erro de ponto flutuante
+                    print(f"\n----- AJUSTE PARA 100% -----")
+                    diferenca_pontos = int(round((100.0 - soma_percentuais) * 100))  # Diferença em pontos de 0,01%
+                    print(f"Diferença para 100%: {diferenca_pontos} pontos de 0,01%")
+
+                    if diferenca_pontos != 0:
+                        # Ordenar empresas por arrecadação (maior primeiro)
+                        empresas_ordenadas = sorted(empresas_dados, key=lambda x: x["vr_arrecadacao"], reverse=True)
+
+                        # Contador de ajustes por empresa
+                        ajustes_por_empresa = {e["id_empresa"]: 0 for e in empresas_dados}
+
+                        print("Iniciando ajustes:")
+                        while diferenca_pontos != 0:
+                            # Determinar se precisamos adicionar ou subtrair
+                            incremento = 0.01 if diferenca_pontos > 0 else -0.01
+
+                            # Ordenar priorizando empresas com menos ajustes, depois maior arrecadação
+                            ordem_empresas = sorted(empresas_ordenadas,
+                                                    key=lambda x: (
+                                                    ajustes_por_empresa[x["id_empresa"]], -x["vr_arrecadacao"]))
+
+                            # Se estamos subtraindo, inverter a ordem (começar pelas menores)
+                            if incremento < 0:
+                                ordem_empresas.reverse()
+
+                            for empresa in ordem_empresas:
+                                if diferenca_pontos == 0:
+                                    break
+
+                                empresa["percentual_final"] += incremento
+                                ajustes_por_empresa[empresa["id_empresa"]] += 1
+                                diferenca_pontos -= (1 if incremento > 0 else -1)
+
+                                print(
+                                    f"  {'Adicionando' if incremento > 0 else 'Subtraindo'} 0.01% à empresa {empresa['id_empresa']} - "
+                                    f"Novo percentual: {empresa['percentual_final']:.2f}%")
+
+                        # Verificar soma final após ajustes
+                        soma_final = sum(empresa["percentual_final"] for empresa in empresas_dados)
+                        print(f"Soma após ajustes: {soma_final:.2f}%")
+
+                # 8. Inserir novos percentuais para empresas remanescentes
                 print("\n----- INSERINDO NOVOS PERCENTUAIS -----")
 
                 for empresa in empresas_dados:
                     id_empresa = empresa["id_empresa"]
-                    vr_arrecadacao = empresa["vr_arrecadacao"]  # CORREÇÃO: Usar valor real de arrecadação
-                    percentual_original = empresa["percentual"]
-                    percentual_final = percentual_original + percentual_unitario
+                    vr_arrecadacao = empresa["vr_arrecadacao"]
+                    percentual_original = empresa.get("percentual_original", empresa["percentual"])
+                    percentual_final = empresa["percentual_final"]
 
                     insert_sql = text("""
                     INSERT INTO [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
@@ -564,68 +627,14 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                         "id_empresa": id_empresa,
                         "criterio_id": criterio_id,
                         "data_apuracao": data_apuracao,
-                        "vr_arrecadacao": vr_arrecadacao,  # CORREÇÃO: Gravar valor real de arrecadação
+                        "vr_arrecadacao": vr_arrecadacao,
                         "percentual_final": percentual_final
                     })
 
                     print(
                         f"Empresa {id_empresa}: {percentual_original:.2f}% + {percentual_unitario:.2f}% = {percentual_final:.2f}% (Arrec: {vr_arrecadacao:.2f})")
 
-                # 6. Ajustar percentuais para garantir soma 100%
-                print("\n----- AJUSTANDO PERCENTUAIS PARA SOMA 100% -----")
-
-                # Cria tabela temporária para ajuste de percentuais
-                adjust_sql = text("""
-                DECLARE @percentual100 TABLE (
-                    [ID_EMPRESA] INT,
-                    [PERCENTUAL_FINAL] DECIMAL(6,2)
-                );
-
-                ;WITH Percentuais AS (
-                    SELECT 
-                        [ID_EMPRESA],
-                        [PERCENTUAL_FINAL],
-                        SUM([PERCENTUAL_FINAL]) OVER () AS SomaPercentuais
-                    FROM 
-                        [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                    WHERE
-                        [ID_EDITAL] = :edital_id
-                        AND [ID_PERIODO] = :periodo_id
-                        AND [COD_CRITERIO_SELECAO] = :criterio_id
-                )
-                INSERT INTO @percentual100
-                SELECT	
-                    [ID_EMPRESA],
-                    CASE 
-                        WHEN RANK() OVER (ORDER BY [PERCENTUAL_FINAL] DESC) = 1 
-                        THEN [PERCENTUAL_FINAL] + (100.00 - SomaPercentuais)
-                        ELSE [PERCENTUAL_FINAL]
-                    END AS PERCENTUAL_FINAL
-                FROM
-                    Percentuais;
-
-                -- Atualizar percentuais finais
-                UPDATE LID
-                SET LID.[PERCENTUAL_FINAL] = P.[PERCENTUAL_FINAL]
-                FROM
-                    [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LID
-                    INNER JOIN @percentual100 AS P
-                        ON LID.[ID_EMPRESA] = P.[ID_EMPRESA]
-                WHERE
-                    LID.[ID_EDITAL] = :edital_id
-                    AND LID.[ID_PERIODO] = :periodo_id
-                    AND LID.[COD_CRITERIO_SELECAO] = :criterio_id;
-                """)
-
-                connection.execute(adjust_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "criterio_id": criterio_id
-                })
-
-                print("Percentuais ajustados para garantir soma 100%")
-
-                # 7. Contar contratos distribuíveis e calcular valor total
+                # 9. Contar contratos distribuíveis e calcular valor total
                 count_sql = text("""
                 SELECT 
                     COUNT(*) AS QTDE_CONTRATOS,
@@ -640,7 +649,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                 print(f"Total de contratos distribuíveis: {qtde_registros}")
                 print(f"Valor total: {valor_total:.2f}")
 
-                # 8. Atualizar quantidades e valores máximos
+                # 10. Atualizar quantidades e valores máximos
                 update_sql = text("""
                 UPDATE [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 SET 
@@ -662,7 +671,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 
                 print("Quantidades e valores máximos atualizados")
 
-                # 9. Verificar e distribuir sobras
+                # 11. Verificar e distribuir sobras
                 sobra_sql = text("""
                 DECLARE @SOBRA INT;
                 SET @SOBRA = :qtde_registros - (
@@ -709,35 +718,38 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 
                 print("Sobras distribuídas para as maiores empresas")
 
-                # 10. Verificar os resultados finais
+                # 12. Verificar os resultados finais
                 check_sql = text("""
                 SELECT 
-                    COUNT(*) as num_empresas,
-                    SUM(PERCENTUAL_FINAL) as soma_percentual,
-                    SUM(QTDE_MAXIMA) as soma_qtde
+                    ID_EMPRESA,
+                    PERCENTUAL_FINAL,
+                    QTDE_MAXIMA
                 FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE
                     [ID_EDITAL] = :edital_id
                     AND [ID_PERIODO] = :periodo_id
                     AND [COD_CRITERIO_SELECAO] = :criterio_id
+                ORDER BY PERCENTUAL_FINAL DESC
                 """)
 
                 check_result = connection.execute(check_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id
-                }).fetchone()
+                }).fetchall()
 
-                if check_result:
-                    num_empresas = check_result[0]
-                    soma_percentual = float(check_result[1]) if check_result[1] else 0
-                    soma_qtde = check_result[2] if check_result[2] else 0
+                print("\n----- LIMITES FINAIS POR EMPRESA -----")
+                total_percentual = 0
+                total_qtde = 0
 
-                    print(f"\n----- RESULTADO FINAL -----")
-                    print(f"Empresas: {num_empresas}")
-                    print(f"Soma dos percentuais: {soma_percentual:.2f}%")
-                    print(f"Soma das quantidades: {soma_qtde}")
-                    print(f"Quantidade original: {qtde_registros}")
+                for row in check_result:
+                    id_empresa, percentual, qtde = row
+                    total_percentual += float(percentual) if percentual else 0
+                    total_qtde += int(qtde) if qtde else 0
+                    print(f"Empresa {id_empresa}: {float(percentual):.2f}%, {int(qtde)} contratos")
+
+                print(f"TOTAL: {total_percentual:.2f}%, {total_qtde} contratos")
+                print(f"Total esperado: 100.00%, {qtde_registros} contratos")
 
                 # Commit da transação se tudo correu bem
                 transaction.commit()
@@ -771,12 +783,10 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
         logging.error(f"Traceback: {trace_msg}")
 
         return False
-
-
-
 def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
     """
     Processa os contratos arrastáveis (do mesmo CPF/CNPJ) para redistribuição.
+    MODIFICADO: Distribuição proporcional conforme percentuais de arrecadação
     """
     logging.info(
         f"Processando contratos arrastáveis - Edital: {edital_id}, Período: {periodo_id}, Critério: {criterio_id}")
@@ -792,6 +802,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 print("Tabela DCA_TB007_ARRASTAVEIS truncada com sucesso")
 
                 # 2. Identificar e inserir contratos arrastáveis (mesmo CPF/CNPJ)
+                # CORREÇÃO: Remover a coluna VR_SD_DEVEDOR que não existe na tabela
                 insert_arrastaveis_sql = text("""
                 WITH arrastaveis AS (
                     SELECT
@@ -860,7 +871,128 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 delete_result = connection.execute(delete_sql)
                 print(f"Contratos arrastáveis removidos da tabela de distribuíveis: {delete_result.rowcount}")
 
-                # 5. Remover registros antigos antes de inserir novos
+                # 5. Buscar informações de limites e quantidades já distribuídas por empresa
+                empresas_info_sql = text("""
+                SELECT 
+                    LD.ID_EMPRESA,
+                    LD.PERCENTUAL_FINAL,
+                    LD.QTDE_MAXIMA,
+                    COALESCE((
+                        SELECT COUNT(*) 
+                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] D 
+                        WHERE D.COD_EMPRESA_COBRANCA = LD.ID_EMPRESA
+                          AND D.ID_EDITAL = :edital_id
+                          AND D.ID_PERIODO = :periodo_id
+                          AND D.COD_CRITERIO_SELECAO = :criterio_id
+                    ), 0) AS QTDE_ATUAL,
+                    LD.VR_ARRECADACAO
+                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                WHERE LD.ID_EDITAL = :edital_id
+                  AND LD.ID_PERIODO = :periodo_id
+                  AND LD.COD_CRITERIO_SELECAO = :criterio_id
+                  AND LD.DELETED_AT IS NULL
+                ORDER BY LD.PERCENTUAL_FINAL DESC
+                """)
+
+                empresas_info_result = connection.execute(empresas_info_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                }).fetchall()
+
+                # Preparar estrutura de dados para empresas
+                empresas = []
+                for row in empresas_info_result:
+                    id_empresa, percentual, qtde_maxima, qtde_atual, vr_arrecadacao = row
+                    empresas.append({
+                        "id_empresa": id_empresa,
+                        "percentual": float(percentual) if percentual else 0.0,
+                        "qtde_maxima": int(qtde_maxima) if qtde_maxima else 0,
+                        "qtde_atual": int(qtde_atual) if qtde_atual else 0,
+                        "vr_arrecadacao": float(vr_arrecadacao) if vr_arrecadacao else 0.0,
+                        "qtde_disponivel": (int(qtde_maxima) if qtde_maxima else 0) - (
+                            int(qtde_atual) if qtde_atual else 0),
+                        "cpfs_atribuidos": set()  # Conjunto para controlar CPFs já atribuídos
+                    })
+
+                # Total disponível entre todas as empresas
+                total_disponivel = sum(emp["qtde_disponivel"] for emp in empresas)
+                if total_disponivel < qtde_arrastaveis:
+                    print(
+                        f"ALERTA: Capacidade disponível ({total_disponivel}) menor que contratos arrastáveis ({qtde_arrastaveis})")
+                    # Ajustar proporcionalmente
+                    for emp in empresas:
+                        if total_disponivel > 0:
+                            emp["qtde_disponivel_ajustada"] = round(
+                                emp["qtde_disponivel"] * qtde_arrastaveis / total_disponivel)
+                        else:
+                            emp["qtde_disponivel_ajustada"] = round(emp["percentual"] * qtde_arrastaveis / 100)
+                else:
+                    for emp in empresas:
+                        emp["qtde_disponivel_ajustada"] = emp["qtde_disponivel"]
+
+                # 6. Agrupar contratos por CPF/CNPJ - CORRIGIDA
+                cpf_group_sql = text("""
+                SELECT 
+                    ARR.NR_CPF_CNPJ,
+                    COUNT(*) AS NUM_CONTRATOS
+                FROM [DEV].[DCA_TB007_ARRASTAVEIS] ARR
+                GROUP BY ARR.NR_CPF_CNPJ
+                ORDER BY COUNT(*) DESC
+                """)
+
+                cpf_groups = connection.execute(cpf_group_sql).fetchall()
+
+                # 7. Distribuir CPFs por empresa
+                cpfs_distribuidos = {}  # Dicionário para mapear CPF -> empresa_id
+
+                # Ordenar empresas pelo percentual (do maior para o menor)
+                empresas_ordenadas = sorted(empresas, key=lambda x: x["percentual"], reverse=True)
+
+                # Ordenar CPFs pelo número de contratos (do maior para o menor)
+                cpf_groups_sorted = sorted(cpf_groups, key=lambda x: x[1], reverse=True)
+
+                # Distribuir CPFs para as empresas proporcionalmente
+                for cpf_info in cpf_groups_sorted:
+                    cpf = cpf_info[0]
+                    num_contratos = cpf_info[1]
+
+                    # Encontrar empresa com menor % de uso da capacidade
+                    empresa_escolhida = None
+                    menor_uso_percentual = float('inf')
+
+                    for emp in empresas_ordenadas:
+                        if emp["qtde_disponivel_ajustada"] <= 0:
+                            continue
+
+                        # Calcular % de uso (contratos atuais / quantidade máxima)
+                        if emp["qtde_maxima"] > 0:
+                            uso_percentual = emp["qtde_atual"] / emp["qtde_maxima"]
+                        else:
+                            uso_percentual = 1.0
+
+                        if uso_percentual < menor_uso_percentual:
+                            menor_uso_percentual = uso_percentual
+                            empresa_escolhida = emp
+
+                    # Se não encontrou empresa disponível, usar a maior
+                    if not empresa_escolhida and empresas_ordenadas:
+                        empresa_escolhida = empresas_ordenadas[0]
+
+                    # Atribuir CPF à empresa escolhida
+                    if empresa_escolhida:
+                        cpfs_distribuidos[cpf] = empresa_escolhida["id_empresa"]
+                        empresa_escolhida["qtde_atual"] += num_contratos
+                        empresa_escolhida["qtde_disponivel_ajustada"] -= num_contratos
+                        empresa_escolhida["cpfs_atribuidos"].add(cpf)
+
+                # 8. Inserir na tabela de distribuição
+                print("\nDistribuição por empresa:")
+                for emp in empresas:
+                    print(
+                        f"Empresa {emp['id_empresa']}: {len(emp['cpfs_atribuidos'])} CPFs, estimativa de {emp['qtde_atual']} contratos")
+
+                # 9. Excluir registros antigos antes de inserir
                 delete_existing_sql = text("""
                 DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
@@ -871,78 +1003,62 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                   )
                 """)
 
-                delete_existing_result = connection.execute(delete_existing_sql, {
+                connection.execute(delete_existing_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id
                 })
 
-                print(f"Registros antigos removidos da tabela de distribuição: {delete_existing_result.rowcount}")
-
-                # 6. Inserir novos registros na tabela de distribuição
-                insert_distribuicao_sql = text("""
-                WITH EmpresasOrdenadas AS (
+                # 10. Inserir na tabela final
+                contratos_inseridos = 0
+                for cpf, empresa_id in cpfs_distribuidos.items():
+                    insert_sql = text("""
+                    INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
+                        [DT_REFERENCIA],
+                        [ID_EDITAL],
+                        [ID_PERIODO],
+                        [fkContratoSISCTR],
+                        [COD_CRITERIO_SELECAO],
+                        [COD_EMPRESA_COBRANCA],
+                        [NR_CPF_CNPJ],
+                        [VR_SD_DEVEDOR],
+                        [CREATED_AT]
+                    )
                     SELECT 
-                        [ID_EMPRESA],
-                        [QTDE_MAXIMA],
-                        ROW_NUMBER() OVER (ORDER BY [QTDE_MAXIMA] DESC) AS RN
-                    FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                    WHERE 
-                        [ID_EDITAL] = :edital_id
-                        AND [ID_PERIODO] = :periodo_id
-                        AND [COD_CRITERIO_SELECAO] = :criterio_id
-                        AND [DELETED_AT] IS NULL
-                ),
-                ContratosNumerados AS (
-                    SELECT 
+                        GETDATE() AS [DT_REFERENCIA],
+                        :edital_id AS [ID_EDITAL],
+                        :periodo_id AS [ID_PERIODO],
                         ARR.[FkContratoSISCTR],
+                        :criterio_id AS [COD_CRITERIO_SELECAO],
+                        :empresa_id AS [COD_EMPRESA_COBRANCA],
                         ARR.[NR_CPF_CNPJ],
-                        ROW_NUMBER() OVER (ORDER BY ARR.[NR_CPF_CNPJ]) AS RN
-                    FROM [DEV].[DCA_TB007_ARRASTAVEIS] ARR
-                )
-                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
-                    [DT_REFERENCIA],
-                    [ID_EDITAL],
-                    [ID_PERIODO],
-                    [fkContratoSISCTR],
-                    [COD_CRITERIO_SELECAO],
-                    [COD_EMPRESA_COBRANCA],
-                    [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR],
-                    [CREATED_AT]
-                )
-                SELECT 
-                    GETDATE() AS [DT_REFERENCIA],
-                    :edital_id AS [ID_EDITAL],
-                    :periodo_id AS [ID_PERIODO],
-                    CN.[FkContratoSISCTR],
-                    :criterio_id AS [COD_CRITERIO_SELECAO],
-                    EO.[ID_EMPRESA] AS [COD_EMPRESA_COBRANCA],
-                    CN.[NR_CPF_CNPJ],
-                    SIT.[VR_SD_DEVEDOR],
-                    GETDATE() AS [CREATED_AT]
-                FROM 
-                    ContratosNumerados CN
-                    CROSS APPLY (
-                        SELECT TOP 1 EO.[ID_EMPRESA]
-                        FROM EmpresasOrdenadas EO
-                        WHERE (CN.RN % (SELECT COUNT(*) FROM EmpresasOrdenadas)) + 1 = EO.RN
-                    ) AS EO
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
-                        ON CN.[FkContratoSISCTR] = SIT.[fkContratoSISCTR]
-                """)
+                        SIT.[VR_SD_DEVEDOR],
+                        GETDATE() AS [CREATED_AT]
+                    FROM 
+                        [DEV].[DCA_TB007_ARRASTAVEIS] ARR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                            ON ARR.[FkContratoSISCTR] = SIT.[fkContratoSISCTR]
+                    WHERE
+                        ARR.[NR_CPF_CNPJ] = :cpf
+                    """)
 
-                insert_result = connection.execute(insert_distribuicao_sql, {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "criterio_id": criterio_id
-                })
+                    result = connection.execute(insert_sql, {
+                        "edital_id": edital_id,
+                        "periodo_id": periodo_id,
+                        "criterio_id": criterio_id,
+                        "empresa_id": empresa_id,
+                        "cpf": cpf
+                    })
 
-                contratos_inseridos = insert_result.rowcount
+                    contratos_inseridos += result.rowcount
+
                 print(f"Contratos arrastáveis inseridos na tabela de distribuição: {contratos_inseridos}")
 
-                # 7. Contar quantos contratos foram efetivamente redistribuídos
-                total_sql = text("""
-                SELECT COUNT(*) 
+                # 11. Verificar resultados finais
+                results_sql = text("""
+                SELECT 
+                    COD_EMPRESA_COBRANCA,
+                    COUNT(*) AS QTDE,
+                    COUNT(DISTINCT NR_CPF_CNPJ) AS QTDE_CPFS
                 FROM [DEV].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
@@ -951,20 +1067,25 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                       SELECT [FkContratoSISCTR]
                       FROM [DEV].[DCA_TB007_ARRASTAVEIS]
                   )
+                GROUP BY COD_EMPRESA_COBRANCA
+                ORDER BY COD_EMPRESA_COBRANCA
                 """)
 
-                total_processados = connection.execute(total_sql, {
+                check_results = connection.execute(results_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id
-                }).scalar()
+                }).fetchall()
 
-                print(f"Total de contratos arrastáveis redistribuídos: {total_processados}")
+                print("\nResultados finais por empresa:")
+                for row in check_results:
+                    empresa_id, qtde, qtde_cpfs = row
+                    print(f"Empresa {empresa_id}: {qtde} contratos, {qtde_cpfs} CPFs")
 
                 transaction.commit()
                 print("Processamento de contratos arrastáveis concluído com sucesso!")
 
-                return total_processados, True
+                return contratos_inseridos, True
 
             except Exception as e:
                 transaction.rollback()
@@ -982,7 +1103,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redistribuida=None):
     """
     Processa os contratos restantes (não arrastáveis) para redistribuição.
-    Otimizado para performance e para distribuir contratos conforme percentuais de arrecadação.
+    MODIFICADO: Distribuição proporcional conforme percentuais de arrecadação
     """
     logging.info(f"Processando demais contratos - Edital: {edital_id}, Período: {periodo_id}, Critério: {criterio_id}")
 
@@ -991,278 +1112,238 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
             transaction = connection.begin()
 
             try:
-                # Executar o processamento completo em uma única operação SQL para máxima performance
-                sql_otimizado = text("""
-                -- Declaração de variáveis
-                DECLARE @EditalID INT = :edital_id;
-                DECLARE @PeriodoID INT = :periodo_id;
-                DECLARE @CriterioID INT = :criterio_id;
-                DECLARE @EmpresaRedistribuida INT = :empresa_redistribuida;
-                DECLARE @DataAtual DATETIME = GETDATE();
-                DECLARE @ContratosInseridos INT = 0;
-
-                -- 1. Contar contratos restantes
-                DECLARE @QtdeContratosRestantes INT = (SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK));
-
-                IF @QtdeContratosRestantes = 0
-                BEGIN
-                    SELECT 0 AS ContratosInseridos;
-                    RETURN;
-                END
-
-                -- 2. Tabela temporária para as empresas e seus percentuais
-                DECLARE @Empresas TABLE (
-                    ID INT IDENTITY(1,1),
-                    ID_Empresa INT, 
-                    Percentual DECIMAL(10, 2),
-                    JaRecebeu INT DEFAULT 0,
-                    MetaTotal INT DEFAULT 0,
-                    AReceber INT DEFAULT 0
-                );
-
-                -- 3. Inserir empresas e seus percentuais
-                INSERT INTO @Empresas (ID_Empresa, Percentual)
-                SELECT 
-                    ID_EMPRESA, 
-                    PERCENTUAL_FINAL
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] WITH (NOLOCK)
-                WHERE 
-                    ID_EDITAL = @EditalID
-                    AND ID_PERIODO = @PeriodoID
-                    AND COD_CRITERIO_SELECAO = @CriterioID
-                    AND DELETED_AT IS NULL
-                    AND ((@EmpresaRedistribuida IS NULL) OR (ID_EMPRESA <> @EmpresaRedistribuida));
-
-                -- 4. Contar contratos já distribuídos por arrasto
-                UPDATE e
-                SET e.JaRecebeu = ISNULL(j.Quantidade, 0)
-                FROM @Empresas e
-                LEFT JOIN (
-                    SELECT 
-                        COD_EMPRESA_COBRANCA,
-                        COUNT(*) as Quantidade
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO] WITH (NOLOCK)
-                    WHERE
-                        ID_EDITAL = @EditalID
-                        AND ID_PERIODO = @PeriodoID
-                        AND COD_CRITERIO_SELECAO = @CriterioID
-                    GROUP BY COD_EMPRESA_COBRANCA
-                ) j ON e.ID_Empresa = j.COD_EMPRESA_COBRANCA;
-
-                -- 5. Calcular totais
-                DECLARE @TotalJaDistribuido INT = (SELECT SUM(JaRecebeu) FROM @Empresas);
-                DECLARE @TotalContratos INT = @TotalJaDistribuido + @QtdeContratosRestantes;
-
-                -- 6. Calcular metas para cada empresa baseado no percentual de arrecadação
-                UPDATE @Empresas
-                SET 
-                    MetaTotal = FLOOR(@TotalContratos * (Percentual / 100.0)),
-                    AReceber = 0;
-
-                UPDATE @Empresas
-                SET AReceber = CASE 
-                    WHEN MetaTotal > JaRecebeu THEN MetaTotal - JaRecebeu
-                    ELSE 0
-                END;
-
-                -- 7. Ajustar para garantir que a soma das metas = número de contratos disponíveis
-                DECLARE @SomaAReceber INT = (SELECT SUM(AReceber) FROM @Empresas);
-
-                -- 7.1 Se existe excesso, distribuir às maiores empresas proporcionalmente
-                IF @SomaAReceber < @QtdeContratosRestantes
-                BEGIN
-                    DECLARE @Excesso INT = @QtdeContratosRestantes - @SomaAReceber;
-                    DECLARE @Contador INT = 0;
-
-                    WHILE @Contador < @Excesso
-                    BEGIN
-                        UPDATE TOP(1) @Empresas
-                        SET AReceber = AReceber + 1
-                        WHERE ID_Empresa IN (
-                            SELECT TOP 1 ID_Empresa
-                            FROM @Empresas
-                            ORDER BY Percentual DESC, ID_Empresa
-                            OFFSET (@Contador % (SELECT COUNT(*) FROM @Empresas)) ROWS
-                            FETCH NEXT 1 ROWS ONLY
-                        );
-
-                        SET @Contador = @Contador + 1;
-                    END
-                END
-                -- 7.2 Se existe déficit, reduzir das menores empresas proporcionalmente
-                ELSE IF @SomaAReceber > @QtdeContratosRestantes
-                BEGIN
-                    DECLARE @Deficit INT = @SomaAReceber - @QtdeContratosRestantes;
-                    SET @Contador = 0;
-
-                    WHILE @Contador < @Deficit
-                    BEGIN
-                        UPDATE TOP(1) @Empresas
-                        SET AReceber = AReceber - 1
-                        WHERE AReceber > 0
-                        AND ID_Empresa IN (
-                            SELECT TOP 1 ID_Empresa
-                            FROM @Empresas
-                            WHERE AReceber > 0
-                            ORDER BY Percentual ASC, ID_Empresa
-                            OFFSET (@Contador % (SELECT COUNT(*) FROM @Empresas WHERE AReceber > 0)) ROWS
-                            FETCH NEXT 1 ROWS ONLY
-                        );
-
-                        SET @Contador = @Contador + 1;
-                    END
-                END
-
-                -- 8. Verificar o resultado da distribuição por empresa
-                SELECT 
-                    e.ID_Empresa,
-                    e.Percentual,
-                    e.JaRecebeu,
-                    e.MetaTotal,
-                    e.AReceber,
-                    e.JaRecebeu + e.AReceber AS TotalFinal,
-                    CAST((e.JaRecebeu + e.AReceber) * 100.0 / @TotalContratos AS DECIMAL(10,2)) AS PctFinal
-                FROM @Empresas e
-                ORDER BY e.Percentual DESC;
-
-                -- 9. Remover registros antigos
-                DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                WHERE [ID_EDITAL] = @EditalID
-                  AND [ID_PERIODO] = @PeriodoID
-                  AND [fkContratoSISCTR] IN (
-                      SELECT [FkContratoSISCTR]
-                      FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK)
-                  );
-
-                -- 10. Criar tabela temporária para distribuição
-                DECLARE @DistribuicaoTemp TABLE (
-                    RowNum INT IDENTITY(1,1),
-                    ContratoID BIGINT,
-                    CPF_CNPJ BIGINT,
-                    Saldo DECIMAL(18,2),
-                    EmpresaID INT
-                );
-
-                -- 11. Inserir contratos com ordem aleatória
-                INSERT INTO @DistribuicaoTemp (ContratoID, CPF_CNPJ, Saldo)
-                SELECT 
-                    [FkContratoSISCTR],
-                    [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR]
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WITH (NOLOCK)
-                ORDER BY NEWID();
-
-                -- 12. Distribuir contratos para empresas
-                DECLARE @EmpresasReceberam TABLE (ID_Empresa INT, Recebidos INT DEFAULT 0);
-
-                INSERT INTO @EmpresasReceberam (ID_Empresa)
-                SELECT ID_Empresa FROM @Empresas;
-
-                DECLARE @ContratosProcessados INT = 0;
-
-                WHILE @ContratosProcessados < @QtdeContratosRestantes
-                BEGIN
-                    -- Encontrar próxima empresa que não atingiu meta
-                    DECLARE @EmpresaDestino INT;
-
-                    SELECT TOP 1 @EmpresaDestino = e.ID_Empresa
-                    FROM @Empresas e
-                    JOIN @EmpresasReceberam r ON e.ID_Empresa = r.ID_Empresa
-                    WHERE r.Recebidos < e.AReceber
-                    ORDER BY CAST(r.Recebidos AS FLOAT) / NULLIF(e.AReceber, 0), e.ID_Empresa;
-
-                    -- Se todas empresas atingiram meta, usar maior empresa
-                    IF @EmpresaDestino IS NULL
-                    BEGIN
-                        SELECT TOP 1 @EmpresaDestino = ID_Empresa 
-                        FROM @Empresas 
-                        ORDER BY Percentual DESC;
-                    END
-
-                    -- Atribuir empresa ao contrato atual
-                    UPDATE @DistribuicaoTemp
-                    SET EmpresaID = @EmpresaDestino
-                    WHERE RowNum = @ContratosProcessados + 1;
-
-                    -- Atualizar contador da empresa
-                    UPDATE @EmpresasReceberam
-                    SET Recebidos = Recebidos + 1
-                    WHERE ID_Empresa = @EmpresaDestino;
-
-                    SET @ContratosProcessados = @ContratosProcessados + 1;
-                END
-
-                -- 13. Inserir na tabela final
-                INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
-                    [DT_REFERENCIA],
-                    [ID_EDITAL],
-                    [ID_PERIODO],
-                    [fkContratoSISCTR],
-                    [COD_CRITERIO_SELECAO],
-                    [COD_EMPRESA_COBRANCA],
-                    [NR_CPF_CNPJ],
-                    [VR_SD_DEVEDOR],
-                    [CREATED_AT]
-                )
-                SELECT 
-                    @DataAtual,
-                    @EditalID,
-                    @PeriodoID,
-                    d.ContratoID,
-                    @CriterioID,
-                    d.EmpresaID,
-                    d.CPF_CNPJ,
-                    d.Saldo,
-                    @DataAtual
-                FROM @DistribuicaoTemp d;
-
-                SET @ContratosInseridos = @@ROWCOUNT;
-
-                -- 14. Verificar distribuição final por empresa
-                SELECT 
-                    e.ID_Empresa,
-                    ISNULL(ea.JaRecebeu, 0) + ISNULL(n.Novos, 0) AS TotalFinal,
-                    CAST((ISNULL(ea.JaRecebeu, 0) + ISNULL(n.Novos, 0)) * 100.0 / 
-                         (SELECT COUNT(*) FROM [DEV].[DCA_TB005_DISTRIBUICAO] 
-                          WHERE ID_EDITAL = @EditalID AND ID_PERIODO = @PeriodoID AND COD_CRITERIO_SELECAO = @CriterioID)
-                         AS DECIMAL(10,2)) AS PctFinal
-                FROM (SELECT DISTINCT ID_Empresa FROM @Empresas) e
-                LEFT JOIN (
-                    SELECT COD_EMPRESA_COBRANCA, COUNT(*) AS JaRecebeu
-                    FROM [DEV].[DCA_TB005_DISTRIBUICAO]
-                    WHERE ID_EDITAL = @EditalID AND ID_PERIODO = @PeriodoID AND COD_CRITERIO_SELECAO = @CriterioID
-                          AND fkContratoSISCTR NOT IN (SELECT ContratoID FROM @DistribuicaoTemp)
-                    GROUP BY COD_EMPRESA_COBRANCA
-                ) ea ON e.ID_Empresa = ea.COD_EMPRESA_COBRANCA
-                LEFT JOIN (
-                    SELECT EmpresaID, COUNT(*) AS Novos
-                    FROM @DistribuicaoTemp
-                    GROUP BY EmpresaID
-                ) n ON e.ID_Empresa = n.EmpresaID
-                ORDER BY e.ID_Empresa;
-
-                -- 15. Limpar tabela de distribuíveis
-                IF @ContratosInseridos > 0
-                BEGIN
-                    TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS];
-                END
-
-                -- 16. Retornar contratos inseridos
-                SELECT @ContratosInseridos AS ContratosInseridos;
+                # 1. Verificar contratos restantes na tabela
+                count_sql = text("""
+                SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
                 """)
 
-                # Executar o SQL otimizado
-                result = connection.execute(sql_otimizado, {
+                count_result = connection.execute(count_sql).fetchone()
+                qtde_contratos_restantes = count_result[0] if count_result else 0
+
+                print(f"Total de contratos restantes para distribuição: {qtde_contratos_restantes}")
+
+                if qtde_contratos_restantes == 0:
+                    print("Não há contratos restantes para distribuir. Finalizando etapa.")
+                    transaction.commit()
+                    return 0, True
+
+                # 2. Buscar informações de limites e quantidades já distribuídas por empresa
+                empresas_info_sql = text("""
+                SELECT 
+                    LD.ID_EMPRESA,
+                    LD.PERCENTUAL_FINAL,
+                    LD.QTDE_MAXIMA,
+                    COALESCE((
+                        SELECT COUNT(*) 
+                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] D 
+                        WHERE D.COD_EMPRESA_COBRANCA = LD.ID_EMPRESA
+                          AND D.ID_EDITAL = :edital_id
+                          AND D.ID_PERIODO = :periodo_id
+                          AND D.COD_CRITERIO_SELECAO = :criterio_id
+                    ), 0) AS QTDE_ATUAL,
+                    LD.VR_ARRECADACAO
+                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                WHERE LD.ID_EDITAL = :edital_id
+                  AND LD.ID_PERIODO = :periodo_id
+                  AND LD.COD_CRITERIO_SELECAO = :criterio_id
+                  AND LD.DELETED_AT IS NULL
+                  AND (:empresa_redistribuida IS NULL OR LD.ID_EMPRESA <> :empresa_redistribuida)
+                ORDER BY LD.PERCENTUAL_FINAL DESC
+                """)
+
+                empresas_info_result = connection.execute(empresas_info_sql, {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
                     "criterio_id": criterio_id,
                     "empresa_redistribuida": empresa_redistribuida
+                }).fetchall()
+
+                # Preparar estrutura de dados para empresas
+                empresas = []
+                for row in empresas_info_result:
+                    id_empresa, percentual, qtde_maxima, qtde_atual, vr_arrecadacao = row
+                    empresas.append({
+                        "id_empresa": id_empresa,
+                        "percentual": float(percentual) if percentual else 0.0,
+                        "qtde_maxima": int(qtde_maxima) if qtde_maxima else 0,
+                        "qtde_atual": int(qtde_atual) if qtde_atual else 0,
+                        "vr_arrecadacao": float(vr_arrecadacao) if vr_arrecadacao else 0.0,
+                        "qtde_disponivel": (int(qtde_maxima) if qtde_maxima else 0) - (
+                            int(qtde_atual) if qtde_atual else 0)
+                    })
+
+                # Total disponível entre todas as empresas
+                total_disponivel = sum(emp["qtde_disponivel"] for emp in empresas)
+                if total_disponivel < qtde_contratos_restantes:
+                    print(
+                        f"ALERTA: Capacidade disponível ({total_disponivel}) menor que contratos restantes ({qtde_contratos_restantes})")
+                    # Ajustar proporcionalmente
+                    for emp in empresas:
+                        if total_disponivel > 0:
+                            emp["qtde_disponivel_ajustada"] = round(
+                                emp["qtde_disponivel"] * qtde_contratos_restantes / total_disponivel)
+                        else:
+                            emp["qtde_disponivel_ajustada"] = round(emp["percentual"] * qtde_contratos_restantes / 100)
+                else:
+                    for emp in empresas:
+                        emp["qtde_disponivel_ajustada"] = emp["qtde_disponivel"]
+
+                # 3. Imprimir informações para debug
+                print("\nLimites por empresa:")
+                for emp in empresas:
+                    print(f"Empresa {emp['id_empresa']}: {emp['percentual']:.2f}%, "
+                          f"Máx: {emp['qtde_maxima']}, Atual: {emp['qtde_atual']}, "
+                          f"Disponível: {emp['qtde_disponivel']}, Ajustado: {emp['qtde_disponivel_ajustada']}")
+
+                # 4. Excluir registros antigos antes de inserir
+                delete_existing_sql = text("""
+                DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE [ID_EDITAL] = :edital_id
+                  AND [ID_PERIODO] = :periodo_id
+                  AND [fkContratoSISCTR] IN (
+                      SELECT [FkContratoSISCTR]
+                      FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                  )
+                """)
+
+                connection.execute(delete_existing_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id
                 })
 
-                contratos_inseridos = result.scalar() or 0
+                # 5. Buscar contratos a distribuir
+                contratos_sql = text("""
+                SELECT 
+                    [FkContratoSISCTR],
+                    [NR_CPF_CNPJ],
+                    [VR_SD_DEVEDOR]
+                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                ORDER BY NEWID()  -- Ordenar aleatoriamente
+                """)
+
+                contratos = connection.execute(contratos_sql).fetchall()
+
+                # 6. Distribuir contratos por empresa
+                contratos_por_empresa = {}
+                for emp in empresas:
+                    contratos_por_empresa[emp["id_empresa"]] = []
+
+                # Distribuir contratos
+                for contrato in contratos:
+                    fkContratoSISCTR, nr_cpf_cnpj, vr_sd_devedor = contrato
+
+                    # Encontrar empresa com menor % de uso da capacidade
+                    empresa_escolhida = None
+                    menor_uso_percentual = float('inf')
+
+                    for emp in empresas:
+                        if emp["qtde_disponivel_ajustada"] <= 0:
+                            continue
+
+                        # Calcular % de uso (contratos atuais / quantidade máxima)
+                        if emp["qtde_maxima"] > 0:
+                            uso_percentual = (emp["qtde_atual"] + len(contratos_por_empresa[emp["id_empresa"]])) / emp[
+                                "qtde_maxima"]
+                        else:
+                            uso_percentual = 1.0
+
+                        if uso_percentual < menor_uso_percentual:
+                            menor_uso_percentual = uso_percentual
+                            empresa_escolhida = emp
+
+                    # Se não encontrou empresa disponível, usar a maior
+                    if not empresa_escolhida and empresas:
+                        empresa_escolhida = max(empresas, key=lambda x: x["percentual"])
+
+                    # Adicionar contrato à empresa escolhida
+                    if empresa_escolhida:
+                        contratos_por_empresa[empresa_escolhida["id_empresa"]].append({
+                            "fkContratoSISCTR": fkContratoSISCTR,
+                            "nr_cpf_cnpj": nr_cpf_cnpj,
+                            "vr_sd_devedor": vr_sd_devedor
+                        })
+                        empresa_escolhida["qtde_disponivel_ajustada"] -= 1
+
+                # 7. Inserir contratos na tabela de distribuição
+                contratos_inseridos = 0
+                for empresa_id, contratos in contratos_por_empresa.items():
+                    if not contratos:
+                        continue
+
+                    # Inserir em bloco para melhor performance
+                    for contrato in contratos:
+                        insert_sql = text("""
+                        INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
+                            [DT_REFERENCIA],
+                            [ID_EDITAL],
+                            [ID_PERIODO],
+                            [fkContratoSISCTR],
+                            [COD_CRITERIO_SELECAO],
+                            [COD_EMPRESA_COBRANCA],
+                            [NR_CPF_CNPJ],
+                            [VR_SD_DEVEDOR],
+                            [CREATED_AT]
+                        ) VALUES (
+                            GETDATE(),
+                            :edital_id,
+                            :periodo_id,
+                            :fkContratoSISCTR,
+                            :criterio_id,
+                            :empresa_id,
+                            :nr_cpf_cnpj,
+                            :vr_sd_devedor,
+                            GETDATE()
+                        )
+                        """)
+
+                        result = connection.execute(insert_sql, {
+                            "edital_id": edital_id,
+                            "periodo_id": periodo_id,
+                            "criterio_id": criterio_id,
+                            "empresa_id": empresa_id,
+                            "fkContratoSISCTR": contrato["fkContratoSISCTR"],
+                            "nr_cpf_cnpj": contrato["nr_cpf_cnpj"],
+                            "vr_sd_devedor": contrato["vr_sd_devedor"]
+                        })
+
+                        contratos_inseridos += 1
+
+                print(f"\nTotal de contratos restantes inseridos: {contratos_inseridos}")
+
+                # 8. Verificar resultados finais
+                results_sql = text("""
+                SELECT 
+                    COD_EMPRESA_COBRANCA,
+                    COUNT(*) AS QTDE
+                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                WHERE [ID_EDITAL] = :edital_id
+                  AND [ID_PERIODO] = :periodo_id
+                  AND [COD_CRITERIO_SELECAO] = :criterio_id
+                GROUP BY COD_EMPRESA_COBRANCA
+                ORDER BY COD_EMPRESA_COBRANCA
+                """)
+
+                check_results = connection.execute(results_sql, {
+                    "edital_id": edital_id,
+                    "periodo_id": periodo_id,
+                    "criterio_id": criterio_id
+                }).fetchall()
+
+                print("\nResultados finais por empresa:")
+                for row in check_results:
+                    empresa_id, qtde = row
+                    # Encontrar percentual dessa empresa
+                    percentual = next((emp["percentual"] for emp in empresas if emp["id_empresa"] == empresa_id), 0)
+                    print(f"Empresa {empresa_id}: {qtde} contratos ({percentual:.2f}%)")
+
+                # 9. Limpar tabela de distribuíveis após processamento
+                if contratos_inseridos > 0:
+                    connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
+                    print("Tabela de distribuíveis limpa após processamento")
 
                 transaction.commit()
-                print(f"Processamento dos contratos restantes concluído: {contratos_inseridos} contratos")
+                print("Processamento dos contratos restantes concluído com sucesso!")
+
                 return contratos_inseridos, True
 
             except Exception as e:
@@ -1282,16 +1363,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_criterio):
     """
     Executa o processo completo de redistribuição de contratos.
-    MODIFICADO: Para incluir resultado final por empresa e dados de arrecadação
-
-    Args:
-        edital_id: ID do edital
-        periodo_id: ID do período
-        empresa_id: ID da empresa que está saindo
-        cod_criterio: Código do critério de redistribuição
-
-    Returns:
-        dict: Resultados do processo incluindo resultado final por empresa
+    MODIFICADO: Redistribui valores de arrecadação e percentuais para visualização correta no template
     """
     # Configuração básica de logging
     import logging
@@ -1484,6 +1556,30 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
         print("\n----- ETAPA 6: BUSCANDO RESULTADO FINAL POR EMPRESA -----")
 
         with db.engine.connect() as connection:
+            # Buscar informações sobre a empresa que está saindo
+            empresa_saindo_sql = text("""
+            SELECT 
+                EP.ID_EMPRESA,
+                COALESCE(EP.NO_EMPRESA_ABREVIADA, EP.NO_EMPRESA) AS empresa_abrev,
+                (SELECT SUM(REE.VR_ARRECADACAO_TOTAL) 
+                 FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] REE
+                 WHERE REE.CO_EMPRESA_COBRANCA = EP.ID_EMPRESA) AS arrecadacao
+            FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            WHERE EP.ID_EDITAL = :edital_id
+              AND EP.ID_PERIODO = :periodo_id
+              AND EP.ID_EMPRESA = :empresa_id
+            """)
+
+            empresa_saindo_result = connection.execute(empresa_saindo_sql, {
+                "edital_id": edital_id,
+                "periodo_id": periodo_id,
+                "empresa_id": empresa_id
+            }).fetchone()
+
+            arrecadacao_empresa_saindo = float(empresa_saindo_result[2]) if empresa_saindo_result and \
+                                                                            empresa_saindo_result[2] else 0.0
+
+            # Agora buscar o resultado da distribuição
             result_sql = text("""
             SELECT 
                 LD.ID_EMPRESA AS cod_empresa,
@@ -1531,30 +1627,41 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
             total_saldo = 0
             total_arrecadacao_final = 0
 
+            # Calcular o adicional de arrecadação por empresa
+            qtde_empresas = len(result_rows)
+            adicional_arrecadacao = arrecadacao_empresa_saindo / qtde_empresas if qtde_empresas > 0 else 0
+
             print("\nResultados por empresa:")
             print("Empresa | Qtde | % | Saldo | % | Arrecadação | % Final")
             print("-" * 70)
 
             for row in result_rows:
+                # Valores originais do banco
+                cod_empresa, empresa_abrev, qtde, pct_qtde, saldo, pct_saldo, vr_arrecadacao, percentual_final = row
+
+                # Valores ajustados
+                vr_arrecadacao_ajustado = float(vr_arrecadacao) if vr_arrecadacao else 0.0
+                vr_arrecadacao_ajustado += adicional_arrecadacao  # Adicionar parte da empresa que saiu
+
                 empresa_result = {
-                    "cod_empresa": row[0],
-                    "empresa_abrev": row[1],
-                    "qtde": int(row[2]) if row[2] else 0,
-                    "pct_qtde": float(row[3]) if row[3] else 0.0,
-                    "saldo": float(row[4]) if row[4] else 0.0,
-                    "pct_saldo": float(row[5]) if row[5] else 0.0,
-                    "arrecadacao": float(row[6]) if row[6] else 0.0,
-                    "percentual_final": float(row[7]) if row[7] else 0.0
+                    "cod_empresa": cod_empresa,
+                    "empresa_abrev": empresa_abrev,
+                    "qtde": int(qtde) if qtde else 0,
+                    "pct_qtde": float(pct_qtde) if pct_qtde else 0.0,
+                    "saldo": float(saldo) if saldo else 0.0,
+                    "pct_saldo": float(pct_saldo) if pct_saldo else 0.0,
+                    "arrecadacao": vr_arrecadacao_ajustado,  # Valor redistribuído
+                    "percentual_final": float(percentual_final) if percentual_final else 0.0
                 }
                 resultados_por_empresa.append(empresa_result)
                 total_qtde += empresa_result["qtde"]
                 total_saldo += empresa_result["saldo"]
-                total_arrecadacao_final += empresa_result["arrecadacao"]
+                total_arrecadacao_final += vr_arrecadacao_ajustado
 
                 print(
                     f"{empresa_result['empresa_abrev']: <15} | {empresa_result['qtde']:>5} | {empresa_result['pct_qtde']:>5.2f}% | "
                     f"{empresa_result['saldo']:>10.2f} | {empresa_result['pct_saldo']:>5.2f}% | "
-                    f"{empresa_result['arrecadacao']:>12.2f} | {empresa_result['percentual_final']:>5.2f}%")
+                    f"{vr_arrecadacao_ajustado:>12.2f} | {empresa_result['percentual_final']:>5.2f}%")
 
             print("-" * 70)
             print(
