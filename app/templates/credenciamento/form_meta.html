@@ -2,124 +2,53 @@
 
 {% block content %}
 <style>
-    /* Sobrescrever o CSS padrão da form-container */
     .meta-form-container {
         max-width: 100% !important;
         width: 95% !important;
         margin: 0 auto;
         padding: 20px;
-        background: none !important;
-        box-shadow: none !important;
     }
 
-    /* Card grande */
     .meta-card {
         min-height: 85vh;
         background-color: rgba(255, 255, 255, 0.95);
         border-radius: 12px;
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(10px);
     }
 
-    /* Container da tabela com altura fixa e scroll */
     .table-wrapper {
         max-height: 600px;
         overflow-y: auto;
         overflow-x: auto;
         border: 1px solid #dee2e6;
         border-radius: 8px;
-        background-color: white;
     }
 
-    /* Tabela responsiva */
     #tabelaMetasCalculadas {
-        width: 1400px; /* Largura fixa para evitar quebra */
+        width: 1500px;
         font-size: 0.9rem;
     }
 
-    #tabelaMetasCalculadas th,
-    #tabelaMetasCalculadas td {
-        padding: 12px 15px;
-        white-space: nowrap;
-        border-right: 1px solid #dee2e6;
-    }
-
-    /* Cabeçalho fixo da tabela */
     #tabelaMetasCalculadas thead th {
         position: sticky;
         top: 0;
         background-color: #6c63ff;
         color: white;
         z-index: 10;
-        font-weight: 600;
         text-align: center;
     }
 
-    /* Largura específica das colunas */
-    #tabelaMetasCalculadas th:nth-child(1),
-    #tabelaMetasCalculadas td:nth-child(1) { width: 200px; text-align: left; }  /* Empresa */
-
-    #tabelaMetasCalculadas th:nth-child(2),
-    #tabelaMetasCalculadas td:nth-child(2) { width: 120px; text-align: center; }  /* Competência */
-
-    #tabelaMetasCalculadas th:nth-child(3),
-    #tabelaMetasCalculadas td:nth-child(3) { width: 100px; text-align: center; }  /* Dias Úteis */
-
-    #tabelaMetasCalculadas th:nth-child(4),
-    #tabelaMetasCalculadas td:nth-child(4) { width: 180px; text-align: right; }  /* Meta Global */
-
-    #tabelaMetasCalculadas th:nth-child(5),
-    #tabelaMetasCalculadas td:nth-child(5) { width: 130px; text-align: center; }  /* % Participação */
-
-    #tabelaMetasCalculadas th:nth-child(6),
-    #tabelaMetasCalculadas td:nth-child(6) { width: 200px; text-align: right; }  /* Meta Arrecadação */
-
-    #tabelaMetasCalculadas th:nth-child(7),
-    #tabelaMetasCalculadas td:nth-child(7) { width: 200px; text-align: right; }  /* Meta Acionamento */
-
-    #tabelaMetasCalculadas th:nth-child(8),
-    #tabelaMetasCalculadas td:nth-child(8) { width: 150px; text-align: center; }  /* Meta Liquidação */
-
-    #tabelaMetasCalculadas th:nth-child(9),
-    #tabelaMetasCalculadas td:nth-child(9) { width: 180px; text-align: right; }  /* Meta Bonificação */
-
-    /* Cores alternadas nas linhas */
-    #tabelaMetasCalculadas tbody tr:nth-child(odd) {
-        background-color: #f8f9fa;
-    }
-
-    #tabelaMetasCalculadas tbody tr:hover {
-        background-color: rgba(108, 99, 255, 0.1);
-    }
-
-    /* Destaque para valores */
-    .valor-destaque {
-        font-weight: 700;
-        color: #28a745;
-    }
-
-    .percentual-destaque {
-        font-weight: 700;
-        color: #007bff;
-    }
-
-    /* Botões grandes */
-    .btn-xl {
-        padding: 15px 40px;
-        font-size: 1.2rem;
-        font-weight: 500;
-    }
-
-    /* Ajuste do resultado do cálculo */
-    #resultadoCalculo {
-        margin-top: 30px;
-        animation: fadeIn 0.5s ease-in;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
+    /* Larguras das colunas conforme documento */
+    .col-empresa { width: 200px; }
+    .col-competencia { width: 100px; }
+    .col-dias-uteis { width: 80px; }
+    .col-meta-global { width: 150px; }
+    .col-meta-diaria { width: 130px; }
+    .col-participacao { width: 100px; }
+    .col-arrecadacao { width: 150px; }
+    .col-acionamento { width: 130px; }
+    .col-liquidacao { width: 120px; }
+    .col-bonificacao { width: 140px; }
 </style>
 
 <a href="{{ url_for('meta.lista_metas') }}" class="btn-back">
@@ -134,14 +63,28 @@
             </h1>
         </div>
         <div class="card-body p-5">
-            <!-- Informação sobre o cálculo -->
-            <div class="alert alert-info alert-dismissible fade show mb-5" role="alert">
-                <h5 class="alert-heading mb-3">
-                    <i class="fas fa-info-circle me-2"></i>Cálculo Automático de Metas
-                </h5>
-                <p class="mb-3">Selecione o edital e período para calcular automaticamente as metas de todas as empresas participantes.</p>
-                <p class="mb-0"><strong>Importante:</strong> O cálculo será baseado nos dados do SISCOR e na distribuição de contratos já realizada.</p>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <!-- Informação sobre o processo de cálculo -->
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Como funciona o cálculo?</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>O aplicativo deverá:</strong></p>
+                    <ol>
+                        <li>Calcular a quantidade de dias úteis do mês para os meses envolvidos no período avaliativo</li>
+                        <li>Buscar os valores das metas globais mensais do SISCOR na tabela <code>BDG.COR_TB002_REPROGRAMACAO_ORCAMENTARIA_SISCOR</code></li>
+                        <li>Calcular o valor da meta diária dividindo o valor do mês da meta do SISCOR pela quantidade de dias do mês</li>
+                        <li>Calcular a quantidade de dias úteis mensais do período avaliativo</li>
+                        <li>Calcular o valor da meta por dia útil do período avaliativo considerando o valor por dia útil das metas e a quantidade de dias úteis do período avaliativo</li>
+                        <li>Calcular o percentual de participação de cada empresa em relação ao saldo devedor total dos contratos distribuídos</li>
+                        <li>A meta no mês de cada empresa será calculada pelo valor calculado da meta mensal do período avaliativo multiplicado pelo percentual de participação do saldo devedor de cada empresa</li>
+                        <li>Os resultados dos cálculos deverão ser gravados na tabela <code>DCA_TB009_META_AVALIACAO</code></li>
+                    </ol>
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Importante:</strong> É necessário que o processo de distribuição dos contratos tenha sido concluído com sucesso para o cálculo das metas uma vez que este depende dos valores apurados no processo de distribuição.
+                    </div>
+                </div>
             </div>
 
             <!-- Seleção de Edital e Período -->
@@ -168,7 +111,7 @@
                         <option value="">Selecione um período...</option>
                         {% for periodo in periodos %}
                             <option value="{{ periodo.ID }}">
-                                {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                                Período {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
                             </option>
                         {% endfor %}
                     </select>
@@ -176,49 +119,40 @@
 
                 <div class="col-lg-2 d-flex align-items-end">
                     <button type="button" class="btn btn-success btn-xl w-100" id="btnCalcularMetas">
-                        <i class="fas fa-calculator me-2"></i> Calcular
+                        <i class="fas fa-calculator me-2"></i> Calcular Metas
                     </button>
                 </div>
             </div>
 
             <!-- Resultados do cálculo -->
             <div id="resultadoCalculo" style="display: none;">
-                <div class="card border-success border-2 shadow">
+                <div class="card border-success border-2">
                     <div class="card-header bg-success text-white py-4">
                         <h3 class="mb-0 text-center">
-                            <i class="fas fa-chart-line me-2"></i>Metas Calculadas
+                            <i class="fas fa-chart-line me-2"></i>Cálculo das metas por mês por empresa
                         </h3>
                     </div>
                     <div class="card-body p-4">
-                        <div class="mb-4 text-center">
-                            <h5 class="text-muted">Período de Avaliação:</h5>
-                            <p class="fs-3 fw-bold text-primary mb-0" id="periodoInfo"></p>
-                        </div>
+                        <p class="text-center mb-3">Os valores de cada assessoria, mês a mês, deverão ser demonstrados na tela para conferência e validação dos gestores.</p>
 
                         <div class="table-wrapper mb-4">
                             <table class="table table-hover mb-0" id="tabelaMetasCalculadas">
                                 <thead>
                                     <tr>
-                                        <th>Empresa</th>
-                                        <th>Competência</th>
-                                        <th>Dias Úteis</th>
-                                        <th>Meta Global</th>
-                                        <th>% Participação</th>
-                                        <th>Meta Arrecadação</th>
-                                        <th>Meta Acionamento</th>
-                                        <th>Meta Liquidação</th>
-                                        <th>Meta Bonificação</th>
+                                        <th class="col-empresa">Empresa</th>
+                                        <th class="col-competencia">Competência</th>
+                                        <th class="col-dias-uteis">Dias Úteis</th>
+                                        <th class="col-meta-global">Meta Global</th>
+                                        <th class="col-meta-diaria">Meta Diária</th>
+                                        <th class="col-participacao">% Participação</th>
+                                        <th class="col-arrecadacao">Meta Arrecadação</th>
+                                        <th class="col-acionamento">Meta Acionamento</th>
+                                        <th class="col-liquidacao">Meta Liquidação</th>
+                                        <th class="col-bonificacao">Meta Bonificação</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
                             </table>
-                        </div>
-
-                        <div class="alert alert-warning d-flex align-items-center" role="alert">
-                            <i class="fas fa-exclamation-triangle fs-4 me-3"></i>
-                            <div>
-                                <strong>Atenção!</strong> Por favor, revise cuidadosamente todos os valores calculados antes de salvar as metas.
-                            </div>
                         </div>
 
                         <div class="d-flex justify-content-center gap-3 mt-5">
@@ -226,31 +160,13 @@
                                 <i class="fas fa-times me-2"></i> Cancelar
                             </button>
                             <button type="button" class="btn btn-primary btn-xl" id="btnSalvarMetasCalculadas">
-                                <i class="fas fa-save me-2"></i> Salvar Metas
+                                <i class="fas fa-save me-2"></i> Gravar Metas
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Explicação do processo -->
-            <div class="card border-info mt-5">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-question-circle me-2"></i>Como funciona o cálculo automático?
-                    </h5>
-                </div>
-                <div class="card-body p-4">
-                    <ol class="fs-5 lh-lg">
-                        <li>Busca a quantidade de dias úteis de cada mês do período na tabela <code>AUX_TB004_CALENDARIO</code></li>
-                        <li>Obtém as metas globais do SISCOR para cada mês na tabela <code>COR_TB002_REPROGRAMACAO_ORCAMENTARIA_SISCOR</code></li>
-                        <li>Calcula a meta diária dividindo a meta mensal pelos dias úteis</li>
-                        <li>Calcula o percentual de participação de cada empresa baseado no saldo devedor da tabela <code>DCA_TB005_DISTRIBUICAO</code></li>
-                        <li>Aplica o percentual à meta global para obter a meta de cada empresa</li>
-                        <li>Grava os resultados na tabela <code>DCA_TB009_META_AVALIACAO</code></li>
-                    </ol>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -260,7 +176,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnCalcularMetas = document.getElementById('btnCalcularMetas');
     const resultadoCalculo = document.getElementById('resultadoCalculo');
     const tabelaMetasCalculadas = document.getElementById('tabelaMetasCalculadas');
-    const periodoInfo = document.getElementById('periodoInfo');
 
     let metasCalculadas = [];
 
@@ -278,7 +193,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btnCalcularMetas.disabled = true;
         btnCalcularMetas.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Calculando...';
 
-        // Fazer requisição para calcular metas
+        // Fazer requisição
         const formData = new FormData();
         formData.append('edital_id', editalId);
         formData.append('periodo_id', periodoId);
@@ -287,61 +202,55 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
+        .then(response => response.json())
         .then(data => {
-            console.log('Resposta do servidor:', data);
-
             if (data.sucesso) {
-                if (data.metas && data.metas.length > 0) {
-                    metasCalculadas = data.metas;
-                    exibirMetasCalculadas(data.metas);
-                    periodoInfo.textContent = `${data.periodo.inicio} a ${data.periodo.fim}`;
-                    resultadoCalculo.style.display = 'block';
+                metasCalculadas = data.metas;
+                exibirMetasCalculadas(data.metas);
+                resultadoCalculo.style.display = 'block';
 
-                    // Scroll suave para os resultados
-                    resultadoCalculo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                    showToast('Nenhuma meta foi calculada. Verifique se há dados de distribuição para este período.', 'warning');
-                }
+                // Scroll para resultados
+                resultadoCalculo.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
-                showToast('Erro ao calcular metas: ' + (data.erro || 'Erro desconhecido'), 'danger');
+                showToast('Erro ao calcular metas: ' + data.erro, 'danger');
             }
         })
         .catch(error => {
-            console.error('Erro:', error);
-            showToast('Erro ao calcular metas: ' + error.message, 'danger');
+            showToast('Erro ao calcular metas: ' + error, 'danger');
         })
         .finally(() => {
             btnCalcularMetas.disabled = false;
-            btnCalcularMetas.innerHTML = '<i class="fas fa-calculator me-2"></i> Calcular';
+            btnCalcularMetas.innerHTML = '<i class="fas fa-calculator me-2"></i> Calcular Metas';
         });
     });
 
-    // Exibir metas calculadas na tabela
+    // Exibir metas calculadas
     function exibirMetasCalculadas(metas) {
         const tbody = tabelaMetasCalculadas.querySelector('tbody');
         tbody.innerHTML = '';
 
-        metas.forEach((meta, index) => {
+        metas.forEach((meta) => {
             const row = tbody.insertRow();
 
             row.innerHTML = `
                 <td class="fw-bold">${meta.empresa_nome}</td>
-                <td class="text-center">${meta.competencia}</td>
+                <td class="text-center">${formatarCompetencia(meta.competencia)}</td>
                 <td class="text-center">${meta.dias_uteis}</td>
                 <td class="text-end">R$ ${formatarMoeda(meta.meta_global)}</td>
-                <td class="text-center percentual-destaque">${meta.percentual_participacao.toFixed(2)}%</td>
-                <td class="text-end valor-destaque">R$ ${formatarMoeda(meta.meta_arrecadacao)}</td>
-                <td class="text-end">R$ ${formatarMoeda(meta.meta_acionamento)}</td>
-                <td class="text-center fw-bold">${meta.meta_liquidacao}</td>
+                <td class="text-end">R$ ${formatarMoeda(meta.meta_diaria)}</td>
+                <td class="text-center fw-bold text-primary">${meta.percentual_participacao.toFixed(2)}%</td>
+                <td class="text-end fw-bold text-success">R$ ${formatarMoeda(meta.meta_arrecadacao)}</td>
+                <td class="text-end">${formatarNumero(meta.meta_acionamento)}</td>
+                <td class="text-center">${meta.meta_liquidacao}</td>
                 <td class="text-end">R$ ${formatarMoeda(meta.meta_bonificacao)}</td>
             `;
         });
+    }
+
+    // Formatar competência
+    function formatarCompetencia(competencia) {
+        const [ano, mes] = competencia.split('-');
+        return `${mes}/${ano}`;
     }
 
     // Formatar moeda
@@ -352,15 +261,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }).format(valor);
     }
 
-    // Salvar metas calculadas
+    // Formatar número
+    function formatarNumero(valor) {
+        return new Intl.NumberFormat('pt-BR').format(valor);
+    }
+
+    // Salvar metas
     document.getElementById('btnSalvarMetasCalculadas').addEventListener('click', function() {
-        if (confirm('Confirma o salvamento das metas calculadas?\n\nEsta ação criará ou atualizará as metas no banco de dados.')) {
+        if (confirm('Confirma a gravação das metas calculadas?\n\nOs valores serão gravados na tabela DCA_TB009_META_AVALIACAO.')) {
             const editalId = document.getElementById('calc_edital_id').value;
             const periodoId = document.getElementById('calc_periodo_id').value;
 
-            // Mostrar loading no botão
             this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Salvando...';
+            this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Gravando...';
 
             fetch('{{ url_for("meta.salvar_metas_calculadas") }}', {
                 method: 'POST',
@@ -377,38 +290,30 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 if (data.sucesso) {
                     showToast(data.mensagem, 'success');
-
-                    // Redirecionar após 2 segundos
                     setTimeout(() => {
                         window.location.href = '{{ url_for("meta.lista_metas") }}';
                     }, 2000);
                 } else {
-                    showToast('Erro ao salvar metas: ' + data.erro, 'danger');
-
-                    // Reabilitar botão
+                    showToast('Erro ao gravar metas: ' + data.erro, 'danger');
                     this.disabled = false;
-                    this.innerHTML = '<i class="fas fa-save me-2"></i> Salvar Metas';
+                    this.innerHTML = '<i class="fas fa-save me-2"></i> Gravar Metas';
                 }
             })
             .catch(error => {
-                showToast('Erro ao salvar metas: ' + error, 'danger');
-
-                // Reabilitar botão
+                showToast('Erro ao gravar metas: ' + error, 'danger');
                 this.disabled = false;
-                this.innerHTML = '<i class="fas fa-save me-2"></i> Salvar Metas';
+                this.innerHTML = '<i class="fas fa-save me-2"></i> Gravar Metas';
             });
         }
     });
 
-    // Cancelar cálculo
+    // Cancelar
     document.getElementById('btnCancelarCalculo').addEventListener('click', function() {
         if (confirm('Deseja cancelar o cálculo?\n\nOs dados não salvos serão perdidos.')) {
             resultadoCalculo.style.display = 'none';
             metasCalculadas = [];
             document.getElementById('calc_edital_id').value = '';
             document.getElementById('calc_periodo_id').value = '';
-
-            // Scroll para o topo
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });

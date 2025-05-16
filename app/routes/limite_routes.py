@@ -2020,6 +2020,80 @@ def redistribuir_contratos():
         return redirect(url_for('limite.lista_limites'))
 
 
+def obter_resultados_finais_redistribuicao(edital_id, periodo_id, criterio_id):
+    """
+    Obter os resultados finais da redistribuição por empresa
+    """
+    try:
+        query = text("""
+        SELECT 
+            LD.ID_EMPRESA AS cod_empresa,
+            EP.NO_EMPRESA_ABREVIADA AS empresa_abrev,
+            COUNT(D.fkContratoSISCTR) AS qtde,
+            COALESCE(SUM(D.VR_SD_DEVEDOR), 0) AS saldo,
+            LD.VR_ARRECADACAO
+        FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+        LEFT JOIN [DEV].[DCA_TB005_DISTRIBUICAO] D
+            ON LD.ID_EMPRESA = D.COD_EMPRESA_COBRANCA
+            AND D.ID_EDITAL = :edital_id
+            AND D.ID_PERIODO = :periodo_id
+            AND D.COD_CRITERIO_SELECAO = :criterio_id
+        LEFT JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            ON LD.ID_EMPRESA = EP.ID_EMPRESA
+            AND EP.ID_EDITAL = :edital_id
+            AND EP.ID_PERIODO = :periodo_id
+        WHERE LD.ID_EDITAL = :edital_id
+            AND LD.ID_PERIODO = :periodo_id
+            AND LD.COD_CRITERIO_SELECAO = :criterio_id
+            AND LD.DELETED_AT IS NULL
+        GROUP BY LD.ID_EMPRESA, EP.NO_EMPRESA_ABREVIADA, LD.VR_ARRECADACAO
+        ORDER BY LD.ID_EMPRESA
+        """)
+
+        resultados = db.session.execute(query, {
+            "edital_id": edital_id,
+            "periodo_id": periodo_id,
+            "criterio_id": criterio_id
+        }).fetchall()
+
+        resultados_formatados = []
+        total_qtde = 0
+        total_saldo = 0
+        total_arrecadacao = 0
+
+        for row in resultados:
+            resultado = {
+                "cod_empresa": row.cod_empresa,
+                "empresa_abrev": row.empresa_abrev or f"Empresa {row.cod_empresa}",
+                "qtde": int(row.qtde) if row.qtde else 0,
+                "saldo": float(row.saldo) if row.saldo else 0.0,
+                "arrecadacao": float(row.VR_ARRECADACAO) if row.VR_ARRECADACAO else 0.0
+            }
+
+            resultados_formatados.append(resultado)
+            total_qtde += resultado["qtde"]
+            total_saldo += resultado["saldo"]
+            total_arrecadacao += resultado["arrecadacao"]
+
+        # Calcular percentuais
+        for resultado in resultados_formatados:
+            resultado["pct_qtde"] = (resultado["qtde"] / total_qtde * 100) if total_qtde > 0 else 0
+            resultado["pct_saldo"] = (resultado["saldo"] / total_saldo * 100) if total_saldo > 0 else 0
+            resultado["pct_arrecadacao"] = (
+                        resultado["arrecadacao"] / total_arrecadacao * 100) if total_arrecadacao > 0 else 0
+
+        return {
+            "resultados": resultados_formatados,
+            "total_qtde": total_qtde,
+            "total_saldo": total_saldo,
+            "total_arrecadacao": total_arrecadacao
+        }
+
+    except Exception as e:
+        logging.error(f"Erro ao obter resultados finais da redistribuição: {str(e)}")
+        return None
+
+
 @limite_bp.route('/limites/homologar-redistribuicao', methods=['POST'])
 @login_required
 def homologar_redistribuicao():

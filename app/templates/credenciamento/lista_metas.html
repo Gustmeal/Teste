@@ -1,363 +1,301 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container fade-in">
-    <a href="{{ url_for('credenciamento.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
-   <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Metas de Avaliação</h1>
-        <div>
-            <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-info me-2">
-                <i class="fas fa-list"></i> Visualizar Tudo
-            </a>
-            <a href="{{ url_for('meta.nova_meta') }}" class="btn btn-success">
-                + Nova Meta
-            </a>
-        </div>
-</div>
-
-    <!-- Filtros -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Filtros</h5>
-        </div>
-        <div class="card-body">
-            <form method="GET" action="{{ url_for('meta.lista_metas') }}" class="row g-3" id="filtroForm">
-                <div class="col-md-6 col-lg-3">
-                    <label class="form-label">Edital</label>
-                    <select name="edital_id" class="form-select" id="filtroEdital">
-                        <option value="">Todos</option>
-                        {% for edital in editais %}
-                        <option value="{{ edital.ID }}" {% if filtro_edital_id == edital.ID %}selected{% endif %}>
-                            {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <label class="form-label">Período</label>
-                    <select name="periodo_id" class="form-select" id="filtroPeriodo">
-                        <option value="">Todos</option>
-                        {% for periodo in periodos %}
-                        <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
-                            {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <label class="form-label">Empresa</label>
-                    <select name="empresa_id" class="form-select" id="filtroEmpresa">
-                        <option value="">Todas</option>
-                        {% for empresa in empresas %}
-                        <option value="{{ empresa.ID }}" {% if filtro_empresa_id == empresa.ID %}selected{% endif %}>
-                            {% if empresa.NO_EMPRESA_ABREVIADA %}
-                                {{ empresa.NO_EMPRESA_ABREVIADA }}
-                            {% else %}
-                                {{ empresa.NO_EMPRESA }}
-                            {% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <label class="form-label">Competência</label>
-                    <select name="competencia" class="form-select" id="filtroCompetencia">
-                        <option value="">Todas</option>
-                        {% for comp in competencias %}
-                        <option value="{{ comp }}" {% if filtro_competencia == comp %}selected{% endif %}>
-                            {{ comp }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-12 text-end">
-                    <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary me-2">Limpar</a>
-                    <button type="submit" class="btn btn-primary">Filtrar</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Barra de pesquisa -->
-    <div class="search-container mb-4">
-        <input type="text" id="metasSearch" class="form-control search-input" placeholder="Pesquisar metas">
-        <i class="fas fa-search search-icon"></i>
-    </div>
-
-    <div class="card shadow">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="metasTable">
-                <thead>
-                    <tr>
-                        <th>Competência</th>
-                        <th>Edital</th>
-                        <th>Período</th>
-                        <th>Empresa</th>
-                        <th class="text-end">Meta Arrecadação</th>
-                        <th class="text-end">Meta Acionamento</th>
-                        <th class="text-end">Meta Liquidação</th>
-                        <th class="text-end">Meta Bonificação</th>
-                        <th class="text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for meta in metas %}
-                    <tr>
-                        <td class="fw-bold">{{ meta.COMPETENCIA }}</td>
-                        <td>{{ meta.edital.NU_EDITAL }}/{{ meta.edital.ANO }}</td>
-                        <td>{{ meta.periodo.ID_PERIODO }}</td>
-                        <td>
-                            {% if meta.empresa_nome_abreviado %}
-                                {{ meta.empresa_nome_abreviado }}
-                            {% else %}
-                                {{ meta.empresa_nome }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">{{ meta.META_ARRECADACAO|br_currency if meta.META_ARRECADACAO else "-" }}</td>
-                        <td class="text-end">{{ meta.META_ACIONAMENTO|br_currency if meta.META_ACIONAMENTO else "-" }}</td>
-                        <td class="text-end">{{ meta.META_LIQUIDACAO|br_number if meta.META_LIQUIDACAO else "-" }}</td>
-                        <td class="text-end">{{ meta.META_BONIFICACAO|br_currency if meta.META_BONIFICACAO else "-" }}</td>
-                        <td class="text-center">
-                            <a href="{{ url_for('meta.editar_meta', id=meta.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1">
-                                <i class="fas fa-edit"></i>
-                            </a>
-                            <a href="javascript:void(0);"
-                               onclick="confirmarExclusao({{ meta.ID }}, '{{ meta.COMPETENCIA }}');"
-                               class="btn btn-sm btn-outline-danger">
-                                <i class="fas fa-trash"></i>
-                            </a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="9" class="text-center py-4 text-muted">
-                            <i class="fas fa-chart-line fa-2x mb-3"></i>
-                            <p class="mb-0">Nenhuma meta de avaliação encontrada</p>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Estilos para ajustar o tamanho da tabela -->
 <style>
-    /* Compactar a tabela */
-    #metasTable {
-        font-size: 0.85rem;
+    .table-wrapper {
+        overflow-x: auto;
+        border-radius: 8px;
+        background-color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
-    #metasTable th,
-    #metasTable td {
-        padding: 0.5rem;
+    .filter-container {
+        background-color: rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
     }
 
-    /* Diminuir o tamanho dos botões de ação */
-    #metasTable .btn-sm {
-        padding: 0.2rem 0.4rem;
-        font-size: 0.75rem;
+    .meta-value {
+        font-weight: 600;
+        color: #28a745;
     }
 
-    /* Aumentar o tamanho do container */
-    .editais-container {
-        max-width: 100%;
-        padding: 0 0.5rem;
-    }
-
-    /* Permitir quebra de texto no cabeçalho */
-    #metasTable th {
-        word-break: break-word;
-        white-space: normal;
-    }
-
-    /* Definir tamanhos específicos para colunas */
-    #metasTable th:nth-child(1) {
-        width: 9%;  /* Competência */
-    }
-    #metasTable th:nth-child(2) {
-        width: 8%;  /* Edital */
-    }
-    #metasTable th:nth-child(3) {
-        width: 7%;  /* Período */
-    }
-    #metasTable th:nth-child(4) {
-        width: 11%; /* Empresa */
-    }
-    #metasTable th:nth-child(5) {
-        width: 15%; /* Meta Arrecadação */
-    }
-    #metasTable th:nth-child(6) {
-        width: 15%; /* Meta Acionamento */
-    }
-    #metasTable th:nth-child(7) {
-        width: 12%; /* Meta Liquidação */
-    }
-    #metasTable th:nth-child(8) {
-        width: 15%; /* Meta Bonificação */
-    }
-    #metasTable th:nth-child(9) {
-        width: 8%;  /* Ações */
+    .percentage-value {
+        font-weight: 600;
+        color: #007bff;
     }
 </style>
 
-<!-- Modal de confirmação para exclusão -->
-<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="header-with-back">
+            <i class="fas fa-chart-line me-2"></i>Metas de Avaliação
+        </h1>
+        <a href="{{ url_for('meta.nova_meta') }}" class="btn btn-success">
+            <i class="fas fa-calculator me-2"></i> Calcular Metas
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filter-container">
+        <form method="get" action="{{ url_for('meta.lista_metas') }}" class="row g-3">
+            <div class="col-md-3">
+                <label for="edital_id" class="form-label">Edital</label>
+                <select class="form-select" id="edital_id" name="edital_id">
+                    <option value="">Todos</option>
+                    {% for edital in editais %}
+                    <option value="{{ edital.ID }}" {% if filtro_edital_id == edital.ID %}selected{% endif %}>
+                        {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="periodo_id" class="form-label">Período</label>
+                <select class="form-select" id="periodo_id" name="periodo_id">
+                    <option value="">Todos</option>
+                    {% for periodo in periodos %}
+                    <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
+                        Período {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="empresa_id" class="form-label">Empresa</label>
+                <select class="form-select" id="empresa_id" name="empresa_id">
+                    <option value="">Todas</option>
+                    {% for empresa in empresas %}
+                    <option value="{{ empresa.ID }}" {% if filtro_empresa_id == empresa.ID %}selected{% endif %}>
+                        {{ empresa.NO_EMPRESA_ABREVIADA or empresa.NO_EMPRESA }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label for="competencia" class="form-label">Competência</label>
+                <select class="form-select" id="competencia" name="competencia">
+                    <option value="">Todas</option>
+                    {% for comp in competencias %}
+                    <option value="{{ comp }}" {% if filtro_competencia == comp %}selected{% endif %}>
+                        {{ comp|replace('-', '/') }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search me-2"></i> Filtrar
+                </button>
+                <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
+                    <i class="fas fa-undo me-2"></i> Limpar Filtros
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tabela de Metas -->
+    <div class="table-wrapper">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Edital</th>
+                    <th>Período</th>
+                    <th>Empresa</th>
+                    <th>Competência</th>
+                    <th class="text-end">Meta Arrecadação</th>
+                    <th class="text-end">Meta Acionamento</th>
+                    <th class="text-center">Meta Liquidação</th>
+                    <th class="text-end">Meta Bonificação</th>
+                    <th class="text-center">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if metas %}
+                    {% for meta in metas %}
+                    <tr>
+                        <td>{{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}</td>
+                        <td>Período {{ meta.NUM_PERIODO }}</td>
+                        <td>{{ meta.NO_EMPRESA_ABREVIADA or meta.NO_EMPRESA }}</td>
+                        <td class="text-center">{{ meta.COMPETENCIA|replace('-', '/') }}</td>
+                        <td class="text-end meta-value">R$ {{ "{:,.2f}".format(meta.META_ARRECADACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(meta.META_ACIONAMENTO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">{{ "{:,.0f}".format(meta.META_LIQUIDACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-end">R$ {{ "{:,.2f}".format(meta.META_BONIFICACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">
+                            <div class="btn-group btn-group-sm">
+                                <a href="#"
+                                   class="btn btn-outline-info btn-view-details"
+                                   data-bs-toggle="tooltip"
+                                   title="Ver detalhes"
+                                   data-meta-id="{{ meta.ID }}"
+                                   data-edital="{{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}"
+                                   data-periodo="{{ meta.NUM_PERIODO }}"
+                                   data-empresa="{{ meta.NO_EMPRESA_ABREVIADA or meta.NO_EMPRESA }}"
+                                   data-competencia="{{ meta.COMPETENCIA }}"
+                                   data-arrecadacao="{{ meta.META_ARRECADACAO }}"
+                                   data-acionamento="{{ meta.META_ACIONAMENTO }}"
+                                   data-liquidacao="{{ meta.META_LIQUIDACAO }}"
+                                   data-bonificacao="{{ meta.META_BONIFICACAO }}">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ url_for('meta.excluir_meta', id=meta.ID) }}"
+                                   class="btn btn-outline-danger"
+                                   data-bs-toggle="tooltip"
+                                   title="Excluir"
+                                   onclick="return confirm('Tem certeza que deseja excluir esta meta?')">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4">
+                            <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Nenhuma meta cadastrada</p>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal de Detalhes -->
+<div class="modal fade" id="detalhesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">Confirmar Exclusão</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-chart-line me-2"></i>Detalhes da Meta
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Tem certeza que deseja remover a meta de avaliação para <span id="metaCompetencia" class="fw-bold"></span>?</p>
-                <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Edital:</h6>
+                        <p id="modal-edital" class="fw-bold"></p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Período:</h6>
+                        <p id="modal-periodo" class="fw-bold"></p>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <h6>Empresa:</h6>
+                        <p id="modal-empresa" class="fw-bold"></p>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Competência:</h6>
+                        <p id="modal-competencia" class="fw-bold"></p>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Meta de Arrecadação</h6>
+                                <h3 class="text-success" id="modal-arrecadacao"></h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Meta de Acionamento</h6>
+                                <h3 class="text-primary" id="modal-acionamento"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Meta de Liquidação</h6>
+                                <h3 class="text-info" id="modal-liquidacao"></h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted">Meta de Bonificação</h6>
+                                <h3 class="text-warning" id="modal-bonificacao"></h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">Sim, Remover</a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        setupTableFilter('metasSearch', 'metasTable');
-
-        // Configurar a exclusão da meta
-        window.confirmarExclusao = function(id, competencia) {
-            document.getElementById('metaCompetencia').textContent = competencia;
-            document.getElementById('btnConfirmarExclusao').href = "{{ url_for('meta.excluir_meta', id=0) }}".replace('0', id);
-            const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
-            modal.show();
-        };
-
-        // Inicializar filtros dinâmicos
-        const relationships = {{ relationships|tojson }};
-
-        // Elementos dos filtros
-        const filtroEdital = document.getElementById('filtroEdital');
-        const filtroPeriodo = document.getElementById('filtroPeriodo');
-        const filtroEmpresa = document.getElementById('filtroEmpresa');
-        const filtroCompetencia = document.getElementById('filtroCompetencia');
-
-        // Cópia das opções originais para cada filtro
-        const periodosOriginais = [...filtroPeriodo.options].map(opt => ({
-            value: opt.value,
-            text: opt.text
-        }));
-
-        const empresasOriginais = [...filtroEmpresa.options].map(opt => ({
-            value: opt.value,
-            text: opt.text
-        }));
-
-        const competenciasOriginais = [...filtroCompetencia.options].map(opt => ({
-            value: opt.value,
-            text: opt.text
-        }));
-
-        // Função para atualizar os filtros dinamicamente
-        function atualizarFiltros() {
-            const editalSelecionado = filtroEdital.value;
-            const periodoSelecionado = filtroPeriodo.value;
-            const empresaSelecionada = filtroEmpresa.value;
-
-            // Filtrar relacionamentos com base nas seleções
-            let filteredRels = [...relationships];
-
-            if (editalSelecionado) {
-                filteredRels = filteredRels.filter(rel => rel.edital_id == editalSelecionado);
-            }
-
-            if (periodoSelecionado) {
-                filteredRels = filteredRels.filter(rel => rel.periodo_id == periodoSelecionado);
-            }
-
-            if (empresaSelecionada) {
-                filteredRels = filteredRels.filter(rel => rel.empresa_id == empresaSelecionada);
-            }
-
-            // Extrair valores únicos dos relacionamentos filtrados
-            const periodoIdsUnicos = [...new Set(filteredRels.map(rel => rel.periodo_id))];
-            const empresaIdsUnicos = [...new Set(filteredRels.map(rel => rel.empresa_id))];
-            const competenciasUnicas = [...new Set(filteredRels.map(rel => rel.competencia))];
-
-            // Atualizar opções dos filtros
-            // Períodos
-            if (!periodoSelecionado || periodoIdsUnicos.length === 0) {
-                // Limpar e restaurar as opções originais
-                filtroPeriodo.innerHTML = '';
-                filtroPeriodo.appendChild(new Option('Todos', ''));
-                periodosOriginais.filter(p => p.value !== '').forEach(p => {
-                    if (!editalSelecionado || periodoIdsUnicos.includes(parseInt(p.value))) {
-                        filtroPeriodo.appendChild(new Option(p.text, p.value));
-                    }
-                });
-            }
-
-            // Empresas
-            if (!empresaSelecionada || empresaIdsUnicos.length === 0) {
-                // Limpar e restaurar as opções originais
-                filtroEmpresa.innerHTML = '';
-                filtroEmpresa.appendChild(new Option('Todas', ''));
-                empresasOriginais.filter(e => e.value !== '').forEach(e => {
-                    if ((!editalSelecionado && !periodoSelecionado) || empresaIdsUnicos.includes(parseInt(e.value))) {
-                        filtroEmpresa.appendChild(new Option(e.text, e.value));
-                    }
-                });
-            }
-
-            // Competências
-            if (filtroCompetencia.value === '' || competenciasUnicas.length === 0) {
-                // Limpar e restaurar as opções originais
-                filtroCompetencia.innerHTML = '';
-                filtroCompetencia.appendChild(new Option('Todas', ''));
-                competenciasOriginais.filter(c => c.value !== '').forEach(c => {
-                    if ((!editalSelecionado && !periodoSelecionado && !empresaSelecionada) ||
-                        competenciasUnicas.includes(c.value)) {
-                        filtroCompetencia.appendChild(new Option(c.text, c.value));
-                    }
-                });
-            }
-        }
-
-        // Adicionar event listeners
-        filtroEdital.addEventListener('change', function() {
-            // Limpar valores selecionados nos outros filtros
-            filtroPeriodo.value = '';
-            filtroEmpresa.value = '';
-            filtroCompetencia.value = '';
-
-            // Atualizar filtros
-            atualizarFiltros();
-        });
-
-        filtroPeriodo.addEventListener('change', function() {
-            // Limpar valores selecionados nos outros filtros
-            filtroEmpresa.value = '';
-            filtroCompetencia.value = '';
-
-            // Atualizar filtros
-            atualizarFiltros();
-        });
-
-        filtroEmpresa.addEventListener('change', function() {
-            // Limpar valor selecionado no filtro de competência
-            filtroCompetencia.value = '';
-
-            // Atualizar filtros
-            atualizarFiltros();
-        });
-
-        // Inicializar filtros
-        atualizarFiltros();
+document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
     });
+
+    // Modal de detalhes
+    const detalhesModal = new bootstrap.Modal(document.getElementById('detalhesModal'));
+
+    // Função para formatar número brasileiro
+    function formatarMoedaBR(valor) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(valor);
+    }
+
+    function formatarNumeroBR(valor) {
+        return new Intl.NumberFormat('pt-BR').format(valor);
+    }
+
+    // Adicionar evento de clique para ver detalhes
+    document.querySelectorAll('.btn-view-details').forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Obter dados do botão
+            const edital = this.dataset.edital;
+            const periodo = this.dataset.periodo;
+            const empresa = this.dataset.empresa;
+            const competencia = this.dataset.competencia;
+            const arrecadacao = parseFloat(this.dataset.arrecadacao);
+            const acionamento = parseFloat(this.dataset.acionamento);
+            const liquidacao = parseFloat(this.dataset.liquidacao);
+            const bonificacao = parseFloat(this.dataset.bonificacao);
+
+            // Preencher modal
+            document.getElementById('modal-edital').textContent = edital;
+            document.getElementById('modal-periodo').textContent = 'Período ' + periodo;
+            document.getElementById('modal-empresa').textContent = empresa;
+            document.getElementById('modal-competencia').textContent = competencia.replace('-', '/');
+            document.getElementById('modal-arrecadacao').textContent = formatarMoedaBR(arrecadacao);
+            document.getElementById('modal-acionamento').textContent = formatarNumeroBR(acionamento);
+            document.getElementById('modal-liquidacao').textContent = formatarNumeroBR(liquidacao);
+            document.getElementById('modal-bonificacao').textContent = formatarMoedaBR(bonificacao);
+
+            // Mostrar modal
+            detalhesModal.show();
+        });
+    });
+});
 </script>
 {% endblock %}

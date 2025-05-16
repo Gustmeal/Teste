@@ -176,6 +176,87 @@
         </div>
     </div>
 
+<!-- Resultado Final da Redistribuição por Empresa -->
+{% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Resultado Final da Redistribuição por Empresa</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped">
+                <thead class="bg-primary text-white">
+                    <tr>
+                        <th>COD</th>
+                        <th>NO_EMPRESA_ABREVIADA</th>
+                        <th class="text-end">ARRECADAÇÃO</th>
+                        <th class="text-center">%</th>
+                        <th class="text-center">QTDE</th>
+                        <th class="text-center">%</th>
+                        <th class="text-end">SALDO</th>
+                        <th class="text-center">%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for resultado in resultados.resultados_finais.resultados %}
+                    <tr>
+                        <td>{{ resultado.cod_empresa }}</td>
+                        <td>{{ resultado.empresa_abrev }}</td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultado.arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">
+                            {% if resultados.resultados_finais.total_arrecadacao > 0 %}
+                                {{ "%.2f%%"|format((resultado.arrecadacao / resultados.resultados_finais.total_arrecadacao) * 100) }}
+                            {% else %}
+                                0,00%
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ "{:,.0f}".format(resultado.qtde).replace(',', '.') }}</td>
+                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_qtde) }}</td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultado.saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_saldo) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-secondary">
+                    <tr class="fw-bold">
+                        <td colspan="2">TOTAL</td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">
+                            {# Soma real dos percentuais de arrecadação #}
+                            {% set soma_pct_arrecadacao = 0 %}
+                            {% for resultado in resultados.resultados_finais.resultados %}
+                                {% if resultados.resultados_finais.total_arrecadacao > 0 %}
+                                    {% set soma_pct_arrecadacao = soma_pct_arrecadacao + ((resultado.arrecadacao / resultados.resultados_finais.total_arrecadacao) * 100) %}
+                                {% endif %}
+                            {% endfor %}
+                            {{ "%.2f%%"|format(soma_pct_arrecadacao) }}
+                        </td>
+                        <td class="text-center">{{ "{:,.0f}".format(resultados.resultados_finais.total_qtde).replace(',', '.') }}</td>
+                        <td class="text-center">
+                            {# Soma real dos percentuais de quantidade #}
+                            {% set soma_pct_qtde = 0 %}
+                            {% for resultado in resultados.resultados_finais.resultados %}
+                                {% set soma_pct_qtde = soma_pct_qtde + resultado.pct_qtde %}
+                            {% endfor %}
+                            {{ "%.2f%%"|format(soma_pct_qtde) }}
+                        </td>
+                        <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">
+                            {# Soma real dos percentuais de saldo #}
+                            {% set soma_pct_saldo = 0 %}
+                            {% for resultado in resultados.resultados_finais.resultados %}
+                                {% set soma_pct_saldo = soma_pct_saldo + resultado.pct_saldo %}
+                            {% endfor %}
+                            {{ "%.2f%%"|format(soma_pct_saldo) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
     <!-- NOVA SEÇÃO: Área para homologação da redistribuição -->
     {% if resultados.success and resultados.contratos_redistribuidos > 0 %}
     <div class="card shadow mb-4">
