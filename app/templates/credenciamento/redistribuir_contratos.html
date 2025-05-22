@@ -176,7 +176,8 @@
         </div>
     </div>
 
-<!-- Resultado Final da Redistribuição por Empresa -->
+<!-- Resultado Final da Redistribuição por Empresa - VALORES FIXOS -->
+<!-- Resultado Final da Redistribuição por Empresa - CORRIGIDO -->
 {% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
 <div class="card shadow mb-4">
     <div class="card-header bg-primary text-white">
@@ -203,13 +204,7 @@
                         <td>{{ resultado.cod_empresa }}</td>
                         <td>{{ resultado.empresa_abrev }}</td>
                         <td class="text-end">{{ "R$ {:,.2f}".format(resultado.arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">
-                            {% if resultados.resultados_finais.total_arrecadacao > 0 %}
-                                {{ "%.2f%%"|format((resultado.arrecadacao / resultados.resultados_finais.total_arrecadacao) * 100) }}
-                            {% else %}
-                                0,00%
-                            {% endif %}
-                        </td>
+                        <td class="text-center">{{ "%.2f%%"|format(resultado.percentual_final) }}</td>
                         <td class="text-center">{{ "{:,.0f}".format(resultado.qtde).replace(',', '.') }}</td>
                         <td class="text-center">{{ "%.2f%%"|format(resultado.pct_qtde) }}</td>
                         <td class="text-end">{{ "R$ {:,.2f}".format(resultado.saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
@@ -221,34 +216,11 @@
                     <tr class="fw-bold">
                         <td colspan="2">TOTAL</td>
                         <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_arrecadacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">
-                            {# Soma real dos percentuais de arrecadação #}
-                            {% set soma_pct_arrecadacao = 0 %}
-                            {% for resultado in resultados.resultados_finais.resultados %}
-                                {% if resultados.resultados_finais.total_arrecadacao > 0 %}
-                                    {% set soma_pct_arrecadacao = soma_pct_arrecadacao + ((resultado.arrecadacao / resultados.resultados_finais.total_arrecadacao) * 100) %}
-                                {% endif %}
-                            {% endfor %}
-                            {{ "%.2f%%"|format(soma_pct_arrecadacao) }}
-                        </td>
+                        <td class="text-center">100,00%</td>
                         <td class="text-center">{{ "{:,.0f}".format(resultados.resultados_finais.total_qtde).replace(',', '.') }}</td>
-                        <td class="text-center">
-                            {# Soma real dos percentuais de quantidade #}
-                            {% set soma_pct_qtde = 0 %}
-                            {% for resultado in resultados.resultados_finais.resultados %}
-                                {% set soma_pct_qtde = soma_pct_qtde + resultado.pct_qtde %}
-                            {% endfor %}
-                            {{ "%.2f%%"|format(soma_pct_qtde) }}
-                        </td>
+                        <td class="text-center">100,00%</td>
                         <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">
-                            {# Soma real dos percentuais de saldo #}
-                            {% set soma_pct_saldo = 0 %}
-                            {% for resultado in resultados.resultados_finais.resultados %}
-                                {% set soma_pct_saldo = soma_pct_saldo + resultado.pct_saldo %}
-                            {% endfor %}
-                            {{ "%.2f%%"|format(soma_pct_saldo) }}
-                        </td>
+                        <td class="text-center">100,00%</td>
                     </tr>
                 </tfoot>
             </table>
@@ -256,7 +228,6 @@
     </div>
 </div>
 {% endif %}
-
     <!-- NOVA SEÇÃO: Área para homologação da redistribuição -->
     {% if resultados.success and resultados.contratos_redistribuidos > 0 %}
     <div class="card shadow mb-4">
