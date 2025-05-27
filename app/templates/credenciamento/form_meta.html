@@ -4,51 +4,125 @@
 <style>
     .meta-form-container {
         max-width: 100% !important;
-        width: 95% !important;
+        width: 98% !important;
         margin: 0 auto;
-        padding: 20px;
+        padding: 10px;
     }
 
     .meta-card {
-        min-height: 85vh;
+        min-height: 90vh;
         background-color: rgba(255, 255, 255, 0.95);
         border-radius: 12px;
         box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     }
 
     .table-wrapper {
-        max-height: 600px;
-        overflow-y: auto;
-        overflow-x: auto;
+        overflow: auto;
         border: 1px solid #dee2e6;
         border-radius: 8px;
+        max-height: 600px;
     }
 
-    #tabelaMetasCalculadas {
-        width: 1500px;
-        font-size: 0.9rem;
+    #tabelaResumoMetas {
+        width: 100%;
+        min-width: 1400px;
+        font-size: 0.85rem;
     }
 
-    #tabelaMetasCalculadas thead th {
+    #tabelaResumoMetas thead th {
         position: sticky;
         top: 0;
         background-color: #6c63ff;
         color: white;
         z-index: 10;
         text-align: center;
+        vertical-align: middle;
+        font-weight: 600;
+        padding: 10px 5px;
+        border: 1px solid #5b52e5;
     }
 
-    /* Larguras das colunas conforme documento */
-    .col-empresa { width: 200px; }
-    .col-competencia { width: 100px; }
-    .col-dias-uteis { width: 80px; }
-    .col-meta-global { width: 150px; }
-    .col-meta-diaria { width: 130px; }
-    .col-participacao { width: 100px; }
-    .col-arrecadacao { width: 150px; }
-    .col-acionamento { width: 130px; }
-    .col-liquidacao { width: 120px; }
-    .col-bonificacao { width: 140px; }
+    #tabelaResumoMetas tbody td {
+        text-align: center;
+        vertical-align: middle;
+        padding: 8px 5px;
+        border: 1px solid #dee2e6;
+    }
+
+    .col-empresa {
+        width: 200px;
+        text-align: left !important;
+        font-weight: 600;
+    }
+
+    .col-mes {
+        width: 120px;
+    }
+
+    .col-total {
+        width: 140px;
+        font-weight: 700;
+        background-color: #f8f9fa;
+    }
+
+    .row-header {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+
+    .row-incremento {
+        background-color: #e9ecef;
+        font-weight: 700;
+    }
+
+    .row-meta-estendida {
+        background-color: #d6f5d6;
+        font-weight: 700;
+    }
+
+    .valor-monetario {
+        text-align: right !important;
+        font-family: 'Courier New', monospace;
+        white-space: nowrap;
+    }
+
+    .valor-percentual {
+        font-weight: 600;
+        color: #007bff;
+    }
+
+    .section-title {
+        background-color: #6c63ff;
+        color: white;
+        padding: 10px;
+        margin: 20px 0 10px 0;
+        border-radius: 5px;
+        font-weight: 600;
+    }
+
+    .table-detail {
+        width: 100%;
+        font-size: 0.9rem;
+        margin-top: 30px;
+    }
+
+    .table-detail th {
+        background-color: #495057;
+        color: white;
+        font-weight: 600;
+        text-align: center;
+        padding: 10px;
+    }
+
+    .table-detail td {
+        padding: 8px;
+        text-align: center;
+        border: 1px solid #dee2e6;
+    }
+
+    .text-smaller {
+        font-size: 0.8rem;
+    }
 </style>
 
 <a href="{{ url_for('meta.lista_metas') }}" class="btn-back">
@@ -62,23 +136,24 @@
                 <i class="fas fa-calculator me-3"></i>Calcular Metas de Avaliação
             </h1>
         </div>
-        <div class="card-body p-5">
-            <!-- Informação sobre o processo de cálculo -->
+        <div class="card-body p-4">
+            <!-- Informação sobre o processo -->
             <div class="card mb-4">
                 <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Como funciona o cálculo?</h5>
+                    <h5 class="mb-0">Processo de Cálculo de Metas</h5>
                 </div>
                 <div class="card-body">
-                    <p><strong>O aplicativo deverá:</strong></p>
+                    <p><strong>O aplicativo realiza os seguintes cálculos:</strong></p>
                     <ol>
-                        <li>Calcular a quantidade de dias úteis do mês para os meses envolvidos no período avaliativo</li>
-                        <li>Buscar os valores das metas globais mensais do SISCOR na tabela <code>BDG.COR_TB002_REPROGRAMACAO_ORCAMENTARIA_SISCOR</code></li>
-                        <li>Calcular o valor da meta diária dividindo o valor do mês da meta do SISCOR pela quantidade de dias do mês</li>
-                        <li>Calcular a quantidade de dias úteis mensais do período avaliativo</li>
-                        <li>Calcular o valor da meta por dia útil do período avaliativo considerando o valor por dia útil das metas e a quantidade de dias úteis do período avaliativo</li>
-                        <li>Calcular o percentual de participação de cada empresa em relação ao saldo devedor total dos contratos distribuídos</li>
-                        <li>A meta no mês de cada empresa será calculada pelo valor calculado da meta mensal do período avaliativo multiplicado pelo percentual de participação do saldo devedor de cada empresa</li>
-                        <li>Os resultados dos cálculos deverão ser gravados na tabela <code>DCA_TB009_META_AVALIACAO</code></li>
+                        <li>Calcula a quantidade de dias úteis do mês para os meses envolvidos no período avaliativo</li>
+                        <li>Busca os valores das metas globais mensais do SISCOR na tabela <code>BDG.COR_TB002_REPROGRAMACAO_ORCAMENTARIA_SISCOR</code></li>
+                        <li>Calcula o valor da meta diária dividindo o valor do mês da meta do SISCOR pela quantidade de dias do mês</li>
+                        <li>Calcula a quantidade de dias úteis mensais do período avaliativo</li>
+                        <li>Calcula o valor da meta por dia útil do período avaliativo considerando o valor por dia útil das metas e a quantidade de dias úteis do período avaliativo</li>
+                        <li>Aplica o incremento de 10% (fator 1,10) sobre a meta do período para obter a META ESTENDIDA</li>
+                        <li>Calcula o percentual de participação de cada empresa em relação ao saldo devedor total dos contratos distribuídos</li>
+                        <li>A meta no mês de cada empresa será calculada pelo valor da META ESTENDIDA multiplicado pelo percentual de participação do saldo devedor de cada empresa</li>
+                        <li>Os resultados dos cálculos serão gravados nas tabelas <code>DCA_TB009_META_AVALIACAO</code> e <code>DCA_TB010_META_SEMESTRAL</code></li>
                     </ol>
                     <div class="alert alert-warning mt-3">
                         <i class="fas fa-exclamation-triangle me-2"></i>
@@ -88,7 +163,7 @@
             </div>
 
             <!-- Seleção de Edital e Período -->
-            <div class="row g-4 mb-5">
+            <div class="row g-4 mb-4">
                 <div class="col-lg-5">
                     <label for="calc_edital_id" class="form-label fs-5 fw-semibold">
                         Edital <span class="text-danger">*</span>
@@ -118,7 +193,7 @@
                 </div>
 
                 <div class="col-lg-2 d-flex align-items-end">
-                    <button type="button" class="btn btn-success btn-xl w-100" id="btnCalcularMetas">
+                    <button type="button" class="btn btn-success btn-lg w-100" id="btnCalcularMetas">
                         <i class="fas fa-calculator me-2"></i> Calcular Metas
                     </button>
                 </div>
@@ -129,37 +204,61 @@
                 <div class="card border-success border-2">
                     <div class="card-header bg-success text-white py-4">
                         <h3 class="mb-0 text-center">
-                            <i class="fas fa-chart-line me-2"></i>Cálculo das metas por mês por empresa
+                            <i class="fas fa-chart-line me-2"></i>CÁLCULO DAS METAS DAS ASSESSORIAS
                         </h3>
                     </div>
                     <div class="card-body p-4">
-                        <p class="text-center mb-3">Os valores de cada assessoria, mês a mês, deverão ser demonstrados na tela para conferência e validação dos gestores.</p>
+                        <p class="text-center mb-4">Os valores de cada assessoria, mês a mês, deverão ser demonstrados na tela para conferência e validação dos gestores.</p>
 
+                        <!-- Tabela resumo igual à imagem -->
                         <div class="table-wrapper mb-4">
-                            <table class="table table-hover mb-0" id="tabelaMetasCalculadas">
+                            <table class="table table-bordered table-hover mb-0" id="tabelaResumoMetas">
                                 <thead>
                                     <tr>
-                                        <th class="col-empresa">Empresa</th>
-                                        <th class="col-competencia">Competência</th>
-                                        <th class="col-dias-uteis">Dias Úteis</th>
-                                        <th class="col-meta-global">Meta Global</th>
-                                        <th class="col-meta-diaria">Meta Diária</th>
-                                        <th class="col-participacao">% Participação</th>
-                                        <th class="col-arrecadacao">Meta Arrecadação</th>
-                                        <th class="col-acionamento">Meta Acionamento</th>
-                                        <th class="col-liquidacao">Meta Liquidação</th>
-                                        <th class="col-bonificacao">Meta Bonificação</th>
+                                        <th rowspan="2" class="col-empresa">DISTRIBUIÇÃO MÊS A MÊS</th>
+                                        <th colspan="7" id="meses-header">MESES DO PERÍODO</th>
+                                        <th rowspan="2" class="col-total">TOTAL</th>
+                                    </tr>
+                                    <tr id="meses-columns">
+                                        <!-- Colunas dos meses serão inseridas dinamicamente -->
                                     </tr>
                                 </thead>
-                                <tbody></tbody>
+                                <tbody id="corpoTabelaResumo">
+                                    <!-- Conteúdo será inserido dinamicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Tabela detalhada -->
+                        <h4 class="section-title">Detalhamento das Metas por Empresa e Competência</h4>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-bordered table-detail">
+                                <thead>
+                                    <tr>
+                                        <th>Empresa</th>
+                                        <th>Competência</th>
+                                        <th>Dias Úteis Mês</th>
+                                        <th>Meta SISCOR</th>
+                                        <th>Meta Diária</th>
+                                        <th>Dias Úteis Período</th>
+                                        <th>Meta Período</th>
+                                        <th>Meta Estendida</th>
+                                        <th>% Participação</th>
+                                        <th>Meta Arrecadação</th>
+                                        <th>Meta Bonificação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaDetalhada">
+                                    <!-- Conteúdo será inserido dinamicamente -->
+                                </tbody>
                             </table>
                         </div>
 
                         <div class="d-flex justify-content-center gap-3 mt-5">
-                            <button type="button" class="btn btn-secondary btn-xl" id="btnCancelarCalculo">
+                            <button type="button" class="btn btn-secondary btn-lg" id="btnCancelarCalculo">
                                 <i class="fas fa-times me-2"></i> Cancelar
                             </button>
-                            <button type="button" class="btn btn-primary btn-xl" id="btnSalvarMetasCalculadas">
+                            <button type="button" class="btn btn-primary btn-lg" id="btnSalvarMetasCalculadas">
                                 <i class="fas fa-save me-2"></i> Gravar Metas
                             </button>
                         </div>
@@ -175,9 +274,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const btnCalcularMetas = document.getElementById('btnCalcularMetas');
     const resultadoCalculo = document.getElementById('resultadoCalculo');
-    const tabelaMetasCalculadas = document.getElementById('tabelaMetasCalculadas');
-
-    let metasCalculadas = [];
+    let metasCalculadas = null;
 
     // Calcular metas
     btnCalcularMetas.addEventListener('click', function() {
@@ -189,11 +286,9 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Mostrar loading
         btnCalcularMetas.disabled = true;
         btnCalcularMetas.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Calculando...';
 
-        // Fazer requisição
         const formData = new FormData();
         formData.append('edital_id', editalId);
         formData.append('periodo_id', periodoId);
@@ -206,10 +301,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(data => {
             if (data.sucesso) {
                 metasCalculadas = data.metas;
-                exibirMetasCalculadas(data.metas);
+                exibirResultados(data.metas);
                 resultadoCalculo.style.display = 'block';
-
-                // Scroll para resultados
                 resultadoCalculo.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
                 showToast('Erro ao calcular metas: ' + data.erro, 'danger');
@@ -224,38 +317,180 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Exibir metas calculadas
-    function exibirMetasCalculadas(metas) {
-        const tbody = tabelaMetasCalculadas.querySelector('tbody');
-        tbody.innerHTML = '';
+    // Exibir resultados
+    function exibirResultados(metas) {
+        // Montar cabeçalho com meses
+        const mesesColumns = document.getElementById('meses-columns');
+        mesesColumns.innerHTML = '';
 
-        metas.forEach((meta) => {
-            const row = tbody.insertRow();
+        metas.meses.forEach(mes => {
+            const th = document.createElement('th');
+            th.className = 'col-mes';
+            th.textContent = mes.nome_mes;
+            mesesColumns.appendChild(th);
+        });
 
+        // Montar corpo da tabela resumo
+        const corpoTabela = document.getElementById('corpoTabelaResumo');
+        corpoTabela.innerHTML = '';
+
+        // Linha 1: Dias úteis do mês
+        const rowDiasUteis = corpoTabela.insertRow();
+        rowDiasUteis.className = 'row-header';
+        rowDiasUteis.innerHTML = '<td class="col-empresa">DIAS ÚTEIS DO MÊS</td>';
+        let totalDiasUteis = 0;
+        metas.meses.forEach(mes => {
+            const dias = metas.dias_uteis[mes.ano_mes].total;
+            totalDiasUteis += dias;
+            rowDiasUteis.innerHTML += `<td>${dias}</td>`;
+        });
+        rowDiasUteis.innerHTML += `<td class="col-total">${totalDiasUteis}</td>`;
+
+        // Linha 2: Meta MESAL SISCOR
+        const rowMetaSiscor = corpoTabela.insertRow();
+        rowMetaSiscor.className = 'row-header';
+        rowMetaSiscor.innerHTML = '<td class="col-empresa">META MESAL SISCOR</td>';
+        let totalMetaSiscor = 0;
+        metas.meses.forEach(mes => {
+            const valor = metas.metas_siscor[mes.ano_mes];
+            totalMetaSiscor += valor;
+            rowMetaSiscor.innerHTML += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+        });
+        rowMetaSiscor.innerHTML += `<td class="col-total valor-monetario">${formatarMoeda(totalMetaSiscor)}</td>`;
+
+        // Linha 3: Meta MESAL SISCOR por dia útil
+        const rowMetaDiaria = corpoTabela.insertRow();
+        rowMetaDiaria.className = 'row-header';
+        rowMetaDiaria.innerHTML = '<td class="col-empresa text-smaller">META MESAL SISCOR POR DIA ÚTIL DO MÊS</td>';
+        metas.meses.forEach(mes => {
+            const valor = metas.metas_diarias[mes.ano_mes];
+            rowMetaDiaria.innerHTML += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+        });
+        rowMetaDiaria.innerHTML += '<td class="col-total">-</td>';
+
+        // Linha 4: Dias úteis do período
+        const rowDiasUteisPeriodo = corpoTabela.insertRow();
+        rowDiasUteisPeriodo.className = 'row-header';
+        rowDiasUteisPeriodo.innerHTML = '<td class="col-empresa text-smaller">DIAS ÚTEIS POR MÊS DO PERÍODO AVALIATIVO</td>';
+        let totalDiasUteisPeriodo = 0;
+        metas.meses.forEach(mes => {
+            const dias = metas.dias_uteis[mes.ano_mes].periodo;
+            totalDiasUteisPeriodo += dias;
+            rowDiasUteisPeriodo.innerHTML += `<td>${dias}</td>`;
+        });
+        rowDiasUteisPeriodo.innerHTML += `<td class="col-total">${totalDiasUteisPeriodo}</td>`;
+
+        // Linha 5: Meta MESAL período avaliativo
+        const rowMetaPeriodo = corpoTabela.insertRow();
+        rowMetaPeriodo.className = 'row-header';
+        rowMetaPeriodo.innerHTML = '<td class="col-empresa">META MESAL PERÍODO AVALIATIVO</td>';
+        let totalMetaPeriodo = 0;
+        metas.meses.forEach(mes => {
+            const valor = metas.metas_periodo[mes.ano_mes];
+            totalMetaPeriodo += valor;
+            rowMetaPeriodo.innerHTML += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+        });
+        rowMetaPeriodo.innerHTML += `<td class="col-total valor-monetario">${formatarMoeda(totalMetaPeriodo)}</td>`;
+
+        // Linha 6: Incremento na meta
+        const rowIncremento = corpoTabela.insertRow();
+        rowIncremento.className = 'row-incremento';
+        rowIncremento.innerHTML = '<td class="col-empresa">INCREMENTO NA META</td>';
+        metas.meses.forEach(mes => {
+            rowIncremento.innerHTML += `<td>${metas.incremento_meta.toFixed(2)}</td>`;
+        });
+        rowIncremento.innerHTML += `<td class="col-total">${metas.incremento_meta.toFixed(2)}</td>`;
+
+        // Linha 7: Meta estendida
+        const rowMetaEstendida = corpoTabela.insertRow();
+        rowMetaEstendida.className = 'row-meta-estendida';
+        rowMetaEstendida.innerHTML = '<td class="col-empresa">META ESTENDIDA</td>';
+        let totalMetaEstendida = 0;
+        metas.meses.forEach(mes => {
+            const valor = metas.metas_estendidas[mes.ano_mes];
+            totalMetaEstendida += valor;
+            rowMetaEstendida.innerHTML += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+        });
+        rowMetaEstendida.innerHTML += `<td class="col-total valor-monetario">${formatarMoeda(totalMetaEstendida)}</td>`;
+
+        // Linha separadora
+        const rowSeparador = corpoTabela.insertRow();
+        rowSeparador.innerHTML = '<td colspan="9" style="height: 20px; background-color: #f8f9fa;"></td>';
+
+        // Cabeçalho das empresas
+        const rowHeaderEmpresas = corpoTabela.insertRow();
+        rowHeaderEmpresas.className = 'row-header';
+        rowHeaderEmpresas.innerHTML = '<td class="col-empresa"># EMPRESA SD (1) %SD</td>';
+        metas.meses.forEach(mes => {
+            rowHeaderEmpresas.innerHTML += `<td>${mes.nome_mes}</td>`;
+        });
+        rowHeaderEmpresas.innerHTML += `<td class="col-total">TOTAL</td>`;
+
+        // Linhas das empresas
+        metas.empresas.forEach((empresa, index) => {
+            const row = corpoTabela.insertRow();
+
+            // Coluna empresa com SD e percentual
+            row.innerHTML = `<td class="col-empresa">${index + 1}. ${empresa.nome_abreviado} R$ ${formatarNumero(empresa.saldo_devedor)} ${empresa.percentual.toFixed(8)}%</td>`;
+
+            // Colunas dos meses
+            metas.meses.forEach(mes => {
+                const metaMes = empresa.metas_mensais[mes.ano_mes];
+                row.innerHTML += `<td class="valor-monetario">${formatarMoeda(metaMes.meta_arrecadacao)}</td>`;
+            });
+
+            // Coluna total
+            row.innerHTML += `<td class="col-total valor-monetario">${formatarMoeda(empresa.total_arrecadacao)}</td>`;
+        });
+
+        // Linha de total geral
+        const rowTotal = corpoTabela.insertRow();
+        rowTotal.className = 'row-header';
+        rowTotal.innerHTML = `<td class="col-empresa">TOTAL R$ ${formatarNumero(metas.total_saldo_devedor)} 100,00000000%</td>`;
+
+        metas.meses.forEach(mes => {
+            let totalMes = 0;
+            metas.empresas.forEach(empresa => {
+                totalMes += empresa.metas_mensais[mes.ano_mes].meta_arrecadacao;
+            });
+            rowTotal.innerHTML += `<td class="valor-monetario">${formatarMoeda(totalMes)}</td>`;
+        });
+
+        let totalGeral = 0;
+        metas.empresas.forEach(empresa => {
+            totalGeral += empresa.total_arrecadacao;
+        });
+        rowTotal.innerHTML += `<td class="col-total valor-monetario">${formatarMoeda(totalGeral)}</td>`;
+
+        // Linha final
+        const rowFinal = corpoTabela.insertRow();
+        rowFinal.innerHTML = '<td colspan="9" class="text-center text-muted">(1) Saldo devedor calculado na distribuição dos contratos</td>';
+
+        // Preencher tabela detalhada
+        const tabelaDetalhada = document.getElementById('tabelaDetalhada');
+        tabelaDetalhada.innerHTML = '';
+
+        metas.metas_detalhadas.forEach(meta => {
+            const row = tabelaDetalhada.insertRow();
             row.innerHTML = `
-                <td class="fw-bold">${meta.empresa_nome}</td>
-                <td class="text-center">${formatarCompetencia(meta.competencia)}</td>
-                <td class="text-center">${meta.dias_uteis}</td>
-                <td class="text-end">R$ ${formatarMoeda(meta.meta_global)}</td>
-                <td class="text-end">R$ ${formatarMoeda(meta.meta_diaria)}</td>
-                <td class="text-center fw-bold text-primary">${meta.percentual_participacao.toFixed(2)}%</td>
-                <td class="text-end fw-bold text-success">R$ ${formatarMoeda(meta.meta_arrecadacao)}</td>
-                <td class="text-end">${formatarNumero(meta.meta_acionamento)}</td>
-                <td class="text-center">${meta.meta_liquidacao}</td>
-                <td class="text-end">R$ ${formatarMoeda(meta.meta_bonificacao)}</td>
+                <td>${meta.nome_empresa}</td>
+                <td>${meta.competencia}</td>
+                <td>${meta.dias_uteis_total}</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_siscor)}</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_diaria)}</td>
+                <td>${meta.dias_uteis_periodo}</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_periodo)}</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_estendida)}</td>
+                <td class="valor-percentual">${meta.percentual.toFixed(2)}%</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_arrecadacao)}</td>
+                <td class="valor-monetario">${formatarMoeda(meta.meta_bonificacao)}</td>
             `;
         });
     }
 
-    // Formatar competência
-    function formatarCompetencia(competencia) {
-        const [ano, mes] = competencia.split('-');
-        return `${mes}/${ano}`;
-    }
-
     // Formatar moeda
     function formatarMoeda(valor) {
-        return new Intl.NumberFormat('pt-BR', {
+        return 'R$ ' + new Intl.NumberFormat('pt-BR', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         }).format(valor);
@@ -263,12 +498,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Formatar número
     function formatarNumero(valor) {
-        return new Intl.NumberFormat('pt-BR').format(valor);
+        return new Intl.NumberFormat('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(valor);
     }
 
     // Salvar metas
     document.getElementById('btnSalvarMetasCalculadas').addEventListener('click', function() {
-        if (confirm('Confirma a gravação das metas calculadas?\n\nOs valores serão gravados na tabela DCA_TB009_META_AVALIACAO.')) {
+        if (confirm('Confirma a gravação das metas calculadas?\n\nOs valores serão gravados nas tabelas DCA_TB009_META_AVALIACAO e DCA_TB010_META_SEMESTRAL.')) {
             const editalId = document.getElementById('calc_edital_id').value;
             const periodoId = document.getElementById('calc_periodo_id').value;
 
@@ -311,7 +549,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('btnCancelarCalculo').addEventListener('click', function() {
         if (confirm('Deseja cancelar o cálculo?\n\nOs dados não salvos serão perdidos.')) {
             resultadoCalculo.style.display = 'none';
-            metasCalculadas = [];
+            metasCalculadas = null;
             document.getElementById('calc_edital_id').value = '';
             document.getElementById('calc_periodo_id').value = '';
             window.scrollTo({ top: 0, behavior: 'smooth' });

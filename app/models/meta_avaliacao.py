@@ -11,31 +11,31 @@ class MetaAvaliacao(db.Model):
     ID_EDITAL = db.Column(db.Integer, nullable=False)
     ID_PERIODO = db.Column(db.Integer, nullable=False)
     ID_EMPRESA = db.Column(db.Integer, nullable=False)
-    COMPETENCIA = db.Column(db.String(7), nullable=False)
-    META_ARRECADACAO = db.Column(db.Numeric(18, 2), nullable=True)
-    META_ACIONAMENTO = db.Column(db.Numeric(18, 2), nullable=True)
-    META_LIQUIDACAO = db.Column(db.Numeric(18, 2), nullable=True)
-    META_BONIFICACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    ANO_MES_COMPETENCIA = db.Column(db.String(7), nullable=False)  # Formato: YYYY-MM
+    VR_META_ARRECADACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_META_ACIONAMENTO = db.Column(db.Integer, nullable=True)
+    QTDE_META_LIQUIDACAO = db.Column(db.Integer, nullable=True)
+    QTDE_META_BONIFICACAO = db.Column(db.Numeric(18, 2), nullable=True)
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
 
     def __repr__(self):
-        return f'<MetaAvaliacao {self.ID} - Competência: {self.COMPETENCIA}>'
+        return f'<MetaAvaliacao {self.ID} - Competência: {self.ANO_MES_COMPETENCIA}>'
 
 
 class MetaSemestral(db.Model):
     __tablename__ = 'DCA_TB010_META_SEMESTRAL'
-    __table_args__ = {'schema': 'BDG'}
+    __table_args__ = {'schema': 'DEV'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ID_EDITAL = db.Column(db.Integer, nullable=False)
     ID_PERIODO = db.Column(db.Integer, nullable=False)
-    COD_EMPRESA_COBRANCA = db.Column(db.Integer, nullable=False)
+    ID_EMPRESA = db.Column(db.Integer, nullable=False)
     NO_ABREVIADO_EMPRESA = db.Column(db.String(30), nullable=True)
-    VR_SD_DEVEDOR = db.Column(db.Numeric(18, 2), nullable=True)
-    PERC_EMPRESA = db.Column(db.Numeric(5, 2), nullable=True)
-    META_TOTAL_PERC = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_SALDO_DEVEDOR = db.Column(db.Numeric(18, 2), nullable=True)
+    PERC_SD_EMPRESA = db.Column(db.Numeric(5, 2), nullable=True)
+    VR_META_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)

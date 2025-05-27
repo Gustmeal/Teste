@@ -25,6 +25,11 @@
         font-weight: 600;
         color: #007bff;
     }
+
+    .null-value {
+        color: #6c757d;
+        font-style: italic;
+    }
 </style>
 
 <div class="container-fluid">
@@ -109,7 +114,7 @@
                     <th>Empresa</th>
                     <th>Competência</th>
                     <th class="text-end">Meta Arrecadação</th>
-                    <th class="text-end">Meta Acionamento</th>
+                    <th class="text-center">Meta Acionamento</th>
                     <th class="text-center">Meta Liquidação</th>
                     <th class="text-end">Meta Bonificação</th>
                     <th class="text-center">Ações</th>
@@ -124,8 +129,20 @@
                         <td>{{ meta.NO_EMPRESA_ABREVIADA or meta.NO_EMPRESA }}</td>
                         <td class="text-center">{{ meta.COMPETENCIA|replace('-', '/') }}</td>
                         <td class="text-end meta-value">R$ {{ "{:,.2f}".format(meta.META_ARRECADACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(meta.META_ACIONAMENTO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">{{ "{:,.0f}".format(meta.META_LIQUIDACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        <td class="text-center">
+                            {% if meta.META_ACIONAMENTO is none %}
+                                <span class="null-value">-</span>
+                            {% else %}
+                                {{ "{:,.0f}".format(meta.META_ACIONAMENTO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if meta.META_LIQUIDACAO is none %}
+                                <span class="null-value">-</span>
+                            {% else %}
+                                {{ "{:,.0f}".format(meta.META_LIQUIDACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% endif %}
+                        </td>
                         <td class="text-end">R$ {{ "{:,.2f}".format(meta.META_BONIFICACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         <td class="text-center">
                             <div class="btn-group btn-group-sm">
@@ -278,8 +295,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const empresa = this.dataset.empresa;
             const competencia = this.dataset.competencia;
             const arrecadacao = parseFloat(this.dataset.arrecadacao);
-            const acionamento = parseFloat(this.dataset.acionamento);
-            const liquidacao = parseFloat(this.dataset.liquidacao);
+            const acionamento = this.dataset.acionamento;
+            const liquidacao = this.dataset.liquidacao;
             const bonificacao = parseFloat(this.dataset.bonificacao);
 
             // Preencher modal
@@ -288,8 +305,24 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('modal-empresa').textContent = empresa;
             document.getElementById('modal-competencia').textContent = competencia.replace('-', '/');
             document.getElementById('modal-arrecadacao').textContent = formatarMoedaBR(arrecadacao);
-            document.getElementById('modal-acionamento').textContent = formatarNumeroBR(acionamento);
-            document.getElementById('modal-liquidacao').textContent = formatarNumeroBR(liquidacao);
+
+            // Tratar valores NULL
+            if (acionamento === 'None' || acionamento === null) {
+                document.getElementById('modal-acionamento').textContent = '-';
+                document.getElementById('modal-acionamento').className = 'text-muted';
+            } else {
+                document.getElementById('modal-acionamento').textContent = formatarNumeroBR(parseFloat(acionamento));
+                document.getElementById('modal-acionamento').className = 'text-primary';
+            }
+
+            if (liquidacao === 'None' || liquidacao === null) {
+                document.getElementById('modal-liquidacao').textContent = '-';
+                document.getElementById('modal-liquidacao').className = 'text-muted';
+            } else {
+                document.getElementById('modal-liquidacao').textContent = formatarNumeroBR(parseFloat(liquidacao));
+                document.getElementById('modal-liquidacao').className = 'text-info';
+            }
+
             document.getElementById('modal-bonificacao').textContent = formatarMoedaBR(bonificacao);
 
             // Mostrar modal
@@ -299,3 +332,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+
+
