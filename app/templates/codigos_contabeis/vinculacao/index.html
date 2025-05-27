@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('codigo_contabil.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>Sistema de Vinculação</h1>
+    <p class="text-secondary">Vinculação de Itens SISCOR com Códigos Contábeis</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon vinculacao-color mx-auto">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title">Total Vinculações</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_vinculacoes }}">0</h2>
+                    <p class="text-muted">Vinculações criadas</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon year-color mx-auto">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <h3 class="system-title">Ano {{ ano_atual }}</h3>
+                    <h2 class="text-success counter" data-target="{{ vinculacoes_ano_atual }}">0</h2>
+                    <p class="text-muted">Vinculações do ano</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon siscor-color mx-auto">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <h3 class="system-title">Itens SISCOR</h3>
+                    <h2 class="text-info counter" data-target="{{ itens_siscor }}">0</h2>
+                    <p class="text-muted">Itens disponíveis</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon codes-color mx-auto">
+                        <i class="fas fa-calculator"></i>
+                    </div>
+                    <h3 class="system-title">Códigos Contábeis</h3>
+                    <h2 class="text-warning counter" data-target="{{ codigos_disponiveis }}">0</h2>
+                    <p class="text-muted">Códigos disponíveis</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon manage-color mx-auto">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="system-title">Gerenciar Vinculações</h3>
+                    <p class="text-muted mb-4">
+                        Visualize, edite e gerencie todas as vinculações entre itens SISCOR e códigos contábeis.
+                    </p>
+                    <a href="{{ url_for('vinculacao.lista_vinculacoes') }}" class="btn btn-access">
+                        <i class="fas fa-eye me-2"></i> Ver Vinculações
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon add-color mx-auto">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h3 class="system-title">Nova Vinculação</h3>
+                    <p class="text-muted mb-4">
+                        Crie novas vinculações entre itens do SISCOR e códigos contábeis do sistema.
+                    </p>
+                    <a href="{{ url_for('vinculacao.nova_vinculacao') }}" class="btn btn-access">
+                        <i class="fas fa-plus me-2"></i> Criar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas vinculações criadas -->
+    {% if ultimas_vinculacoes %}
+    <div class="card shadow mt-5">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Últimas Vinculações Criadas</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Código</th>
+                            <th>Arquivo</th>
+                            <th>Ano</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vinculacao in ultimas_vinculacoes %}
+                        <tr>
+                            <td class="fw-bold">{{ vinculacao.ID_ITEM }}</td>
+                            <td>{{ vinculacao.CODIGO }}</td>
+                            <td>{{ vinculacao.DSC_ARQUIVO or '-' }}</td>
+                            <td>{{ vinculacao.ANO }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .vinculacao-color {
+        background-color: #e83e8c;
+    }
+
+    .year-color {
+        background-color: #28a745;
+    }
+
+    .siscor-color {
+        background-color: #17a2b8;
+    }
+
+    .codes-color {
+        background-color: #6f42c1;
+    }
+
+    .manage-color {
+        background-color: #007bff;
+    }
+
+    .add-color {
+        background-color: #fd7e14;
+    }
+</style>
+{% endblock %}

@@ -90,6 +90,12 @@ def create_app():
     from app.routes.criterio_routes import criterio_bp
     app.register_blueprint(criterio_bp)
 
+    from app.routes.codigo_contabil_routes import codigo_contabil_bp
+    app.register_blueprint(codigo_contabil_bp)
+
+    from app.routes.vinculacao_routes import vinculacao_bp
+    app.register_blueprint(vinculacao_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

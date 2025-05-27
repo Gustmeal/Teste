@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <a href="{{ url_for('codigo_contabil.lista_codigos') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="form-container fade-in">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h1 class="mb-0">
+                    {% if codigo %}Editar Código Contábil{% else %}Novo Código Contábil{% endif %}
+                </h1>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" id="codigoForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Código <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="codigo" id="codigo"
+                                   value="{{ codigo.CODIGO if codigo }}"
+                                   placeholder="Ex: 1.400.010.800" required>
+                            <div class="form-text">
+                                Use pontos como separadores a cada 3 dígitos (Ex: 1.400.010.800)
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Código Rubrica</label>
+                            <input type="text" class="form-control" id="cod_rubrica"
+                                   value="{{ codigo.COD_RUBRICA if codigo else '' }}"
+                                   readonly style="background-color: #f8f9fa;">
+                            <div class="form-text">
+                                Gerado automaticamente (código sem pontos)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição do Código <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="dsc_codigo"
+                               value="{{ codigo.DSC_CODIGO if codigo }}"
+                               placeholder="Ex: RECEITAS DE CAPITAL"
+                               maxlength="255" required>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Quebra</label>
+                            <select name="no_quebra" class="form-select">
+                                <option value="">Selecione uma quebra</option>
+                                {% for quebra in quebras_disponiveis %}
+                                    <option value="{{ quebra }}"
+                                            {% if codigo and codigo.NO_QUEBRA == quebra %}selected{% endif %}>
+                                        {{ quebra }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">
+                                Opcional - Selecione uma quebra disponível
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Totalização</label>
+                            <select name="ind_totalizacao" class="form-select">
+                                <option value="nenhum"
+                                        {% if not codigo or codigo.IND_TOTALIZACAO is none %}selected{% endif %}>
+                                    Nenhum
+                                </option>
+                                <option value="1"
+                                        {% if codigo and codigo.IND_TOTALIZACAO == 1 %}selected{% endif %}>
+                                    1 - Sim
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">Ano <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" name="ano"
+                                   value="{{ codigo.ANO if codigo else ano_atual }}"
+                                   min="2000" max="{{ current_year + 5 }}" required>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('codigo_contabil.lista_codigos') }}" class="btn btn-secondary">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-success submit-btn">
+                            <span class="btn-text">{% if codigo %}Salvar{% else %}Cadastrar{% endif %}</span>
+                            <span class="spinner d-none">
+                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                                Processando...
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('codigoForm');
+        const codigoInput = document.getElementById('codigo');
+        const rubricaInput = document.getElementById('cod_rubrica');
+
+        // Função para formatar código com pontos a cada 3 dígitos
+        function formatarCodigo(valor) {
+            // Remove tudo que não é número
+            let numeros = valor.replace(/\D/g, '');
+
+            // Se não tem números, retorna vazio
+            if (!numeros) return '';
+
+            // Adiciona pontos a cada 3 dígitos da direita para esquerda
+            let formatted = '';
+            let contador = 0;
+
+            for (let i = numeros.length - 1; i >= 0; i--) {
+                if (contador > 0 && contador % 3 === 0) {
+                    formatted = '.' + formatted;
+                }
+                formatted = numeros[i] + formatted;
+                contador++;
+            }
+
+            return formatted;
+        }
+
+        // Função para atualizar rubrica (APENAS números)
+        function atualizarRubrica() {
+            // Pega o valor do campo código
+            let valorCodigo = codigoInput.value;
+            // Remove TODOS os pontos
+            let apenasNumeros = valorCodigo.replace(/\./g, '');
+            // Coloca APENAS os números no campo rubrica
+            rubricaInput.value = apenasNumeros;
+
+            console.log('Código:', valorCodigo, 'Rubrica:', apenasNumeros); // Para debug
+        }
+
+        // Evento de digitação no campo código
+        codigoInput.addEventListener('input', function() {
+            const cursorPos = this.selectionStart;
+            const valorOriginal = this.value;
+
+            // Formatar com pontos
+            const valorFormatado = formatarCodigo(valorOriginal);
+            this.value = valorFormatado;
+
+            // Atualizar rubrica SEM pontos
+            atualizarRubrica();
+
+            // Ajustar cursor
+            const diferenca = valorFormatado.length - valorOriginal.length;
+            let novaPosicao = cursorPos + diferenca;
+            if (novaPosicao > valorFormatado.length) {
+                novaPosicao = valorFormatado.length;
+            }
+            this.setSelectionRange(novaPosicao, novaPosicao);
+        });
+
+        // Inicializar valores quando a página carrega
+        function inicializar() {
+            // Se há valor no campo código, formatar
+            if (codigoInput.value) {
+                codigoInput.value = formatarCodigo(codigoInput.value);
+            }
+            // Sempre atualizar a rubrica
+            atualizarRubrica();
+        }
+
+        // Executar inicialização
+        inicializar();
+
+        // Submit do formulário
+        form.addEventListener('submit', function(e) {
+            const submitBtn = this.querySelector('.submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+
+            btnText.classList.add('d-none');
+            spinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+        });
+
+        // Forçar atualização da rubrica quando o campo código perde o foco
+        codigoInput.addEventListener('blur', function() {
+            atualizarRubrica();
+        });
+    });
+</script>
+{% endblock %}

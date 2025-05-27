@@ -58,7 +58,6 @@
                 <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
 
                 <!-- Menu Credenciamento -->
-                <!-- Menu Credenciamento/Assessoria de Cobranças na sidebar -->
                 <li class="sidebar-dropdown">
                     <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Assessoria de Cobranças <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
                     <ul class="sidebar-submenu">
@@ -71,9 +70,19 @@
                     </ul>
                 </li>
 
+                <!-- NOVO Menu Códigos Contábeis -->
+                <li class="sidebar-dropdown">
+                    <a href="#" class="has-dropdown"><i class="fas fa-calculator"></i> Códigos Contábeis <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
+                    <ul class="sidebar-submenu">
+                        <li><a href="{{ url_for('codigo_contabil.lista_codigos') }}"><i class="fas fa-list"></i> Gerenciar Códigos</a></li>
+                        <li><a href="{{ url_for('codigo_contabil.novo_codigo') }}"><i class="fas fa-plus"></i> Novo Código</a></li>
+                    </ul>
+                </li>
+
                 <li><a href="{{ url_for('feedback.index') }}"><i class="fas fa-comment-alt"></i> Feedback</a></li>
                 <li><a href="{{ url_for('chat.index') }}"><i class="fas fa-comments"></i> Chat</a></li>
                 <li><a href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt"></i> Conversor de Documentos</a></li>
+                <li><a href="{{ url_for('vinculacao.index') }}"><i class="fas fa-link"></i> Vinculação</a></li>
 
                 <li class="mt-3">
                     <hr class="dropdown-divider mx-3">
@@ -137,6 +146,24 @@
                             </a></li>
                             <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank">
                                 <i class="fas fa-book me-2"></i> Manual do Usuário
+                            </a></li>
+                        </ul>
+                    </li>
+
+                    <!-- NOVO Menu Códigos Contábeis -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="codigosDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-calculator me-1"></i> Códigos Contábeis
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="codigosDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.lista_codigos') }}">
+                                <i class="fas fa-list me-2"></i> Gerenciar Códigos
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.novo_codigo') }}">
+                                <i class="fas fa-plus me-2"></i> Novo Código
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('vinculacao.index') }}">
+                                <i class="fas fa-link me-2"></i> Vinculação
                             </a></li>
                         </ul>
                     </li>

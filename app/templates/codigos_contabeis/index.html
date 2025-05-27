@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <h1>Sistema de Códigos Contábeis</h1>
+    <p class="text-secondary">Gerenciamento de códigos contábeis do PDG</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon codes-color mx-auto">
+                        <i class="fas fa-calculator"></i>
+                    </div>
+                    <h3 class="system-title">Total de Códigos</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_codigos }}">0</h2>
+                    <p class="text-muted">Códigos cadastrados</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon year-color mx-auto">
+                        <i class="fas fa-calendar-alt"></i>
+                    </div>
+                    <h3 class="system-title">Ano {{ ano_atual }}</h3>
+                    <h2 class="text-success counter" data-target="{{ codigos_ano_atual }}">0</h2>
+                    <p class="text-muted">Códigos do ano atual</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon recent-color mx-auto">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h3 class="system-title">Últimos Cadastros</h3>
+                    <h2 class="text-info">{{ ultimos_codigos|length }}</h2>
+                    <p class="text-muted">Códigos recentes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon manage-color mx-auto">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="system-title">Gerenciar Códigos</h3>
+                    <p class="text-muted mb-4">
+                        Visualize, edite e gerencie todos os códigos contábeis cadastrados no sistema.
+                    </p>
+                    <a href="{{ url_for('codigo_contabil.lista_codigos') }}" class="btn btn-access">
+                        <i class="fas fa-eye me-2"></i> Ver Códigos
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon add-color mx-auto">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h3 class="system-title">Novo Código</h3>
+                    <p class="text-muted mb-4">
+                        Cadastre novos códigos contábeis no sistema seguindo a estrutura do PDG.
+                    </p>
+                    <a href="{{ url_for('codigo_contabil.novo_codigo') }}" class="btn btn-access">
+                        <i class="fas fa-plus me-2"></i> Cadastrar Código
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOVO Card de Vinculação -->
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon vinculacao-color mx-auto">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title">Vinculação</h3>
+                    <p class="text-muted mb-4">
+                        Gerencie vinculações entre itens SISCOR e códigos contábeis do sistema.
+                    </p>
+                    <a href="{{ url_for('vinculacao.index') }}" class="btn btn-access">
+                        <i class="fas fa-link me-2"></i> Acessar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .system-icon {
+        font-size: 2.5rem;
+        margin-bottom: 1.5rem;
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        line-height: 80px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+
+    .codes-color {
+        background-color: #6f42c1;
+    }
+
+    .year-color {
+        background-color: #28a745;
+    }
+
+    .recent-color {
+        background-color: #17a2b8;
+    }
+
+    .manage-color {
+        background-color: #007bff;
+    }
+
+    .add-color {
+        background-color: #fd7e14;
+    }
+
+    .vinculacao-color {
+        background-color: #e83e8c;
+    }
+
+    .counter {
+        font-size: 2.5rem;
+        font-weight: 700;
+    }
+</style>
+{% endblock %}
