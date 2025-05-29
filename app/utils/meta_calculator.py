@@ -9,7 +9,7 @@ import calendar
 
 
 class MetaCalculator:
-    def __init__(self, edital_id, periodo_id):
+    def __init__(self, edital_id, periodo_id, fator_incremento=1.00):
         self.edital_id = edital_id
         self.periodo_id = periodo_id
         self.periodo_info = None
@@ -21,7 +21,9 @@ class MetaCalculator:
         self.metas_estendidas = {}
         self.distribuicoes = []
         self.total_saldo_devedor = Decimal('0')
-        self.incremento_meta = Decimal('1.10')  # Incremento de 10% na meta
+        self.incremento_meta = Decimal(str(fator_incremento))
+        self.total_meta_siscor = Decimal('0')
+        self.total_dias_uteis_periodo = 0
 
     def calcular_metas_completas(self):
         """Executa todo o processo de cálculo de metas"""
@@ -42,8 +44,8 @@ class MetaCalculator:
         # 5. Calcular metas diárias
         self._calcular_metas_diarias()
 
-        # 6. Calcular metas do período avaliativo
-        self._calcular_metas_periodo()
+        # 6. Calcular metas do período avaliativo (redistribuído)
+        self._calcular_metas_periodo_redistribuido()
 
         # 7. Calcular metas estendidas (com incremento)
         self._calcular_metas_estendidas()
@@ -112,6 +114,8 @@ class MetaCalculator:
 
     def _calcular_dias_uteis_todos_meses(self):
         """Calcula dias úteis de todos os meses do período"""
+        self.total_dias_uteis_periodo = 0
+
         for mes in self.meses_periodo:
             # Query para dias úteis totais do mês
             sql_total = text("""
@@ -127,7 +131,7 @@ class MetaCalculator:
                 'mes': mes['mes']
             }).fetchone()
 
-            dias_uteis_total = result_total[0] if result_total and result_total[0] else 0
+            dias_uteis_total = result_total[0] if result_total and result_total[0] else 22
 
             # Query para dias úteis dentro do período avaliativo
             sql_periodo = text("""
@@ -156,6 +160,7 @@ class MetaCalculator:
             }).fetchone()
 
             dias_uteis_periodo = result_periodo[0] if result_periodo and result_periodo[0] else 0
+            self.total_dias_uteis_periodo += dias_uteis_periodo
 
             self.dias_uteis_periodo[mes['ano_mes']] = {
                 'total': dias_uteis_total,
@@ -164,6 +169,8 @@ class MetaCalculator:
 
     def _obter_metas_siscor_todos_meses(self):
         """Obtém metas SISCOR de todos os meses"""
+        self.total_meta_siscor = Decimal('0')
+
         for mes in self.meses_periodo:
             sql = text("""
                 WITH FaseAtual AS (
@@ -187,6 +194,7 @@ class MetaCalculator:
 
             meta_valor = Decimal(str(result[0])) if result and result[0] else Decimal('0')
             self.metas_siscor[mes['ano_mes']] = meta_valor
+            self.total_meta_siscor += meta_valor
 
     def _calcular_metas_diarias(self):
         """Calcula metas diárias para cada mês"""
@@ -203,15 +211,20 @@ class MetaCalculator:
 
             self.metas_diarias[ano_mes] = meta_diaria
 
-    def _calcular_metas_periodo(self):
-        """Calcula metas do período avaliativo (meta diária × dias úteis do período)"""
+    def _calcular_metas_periodo_redistribuido(self):
+        """Calcula metas do período com redistribuição proporcional"""
+        # Meta por dia útil = Total meta SISCOR ÷ Total dias úteis período
+        if self.total_dias_uteis_periodo > 0:
+            meta_por_dia_util = self.total_meta_siscor / Decimal(str(self.total_dias_uteis_periodo))
+        else:
+            meta_por_dia_util = Decimal('0')
+
         for mes in self.meses_periodo:
             ano_mes = mes['ano_mes']
             dias_periodo = self.dias_uteis_periodo[ano_mes]['periodo']
-            meta_diaria = self.metas_diarias[ano_mes]
 
-            # Meta do período = meta diária × dias úteis do período
-            meta_periodo = meta_diaria * dias_periodo
+            # Meta período = Meta por dia útil × dias úteis do período no mês
+            meta_periodo = meta_por_dia_util * Decimal(str(dias_periodo))
             meta_periodo = meta_periodo.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
             self.metas_periodo[ano_mes] = meta_periodo
@@ -222,20 +235,21 @@ class MetaCalculator:
             ano_mes = mes['ano_mes']
             meta_periodo = self.metas_periodo[ano_mes]
 
-            # Meta estendida = meta período × incremento (1,10)
+            # Meta estendida = meta período × incremento
             meta_estendida = meta_periodo * self.incremento_meta
             meta_estendida = meta_estendida.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
             self.metas_estendidas[ano_mes] = meta_estendida
 
     def _obter_distribuicoes(self):
-        """Obtém distribuições e calcula percentuais"""
+        """Obtém distribuições e calcula percentuais - INCLUINDO EMPRESAS DESCREDENCIADAS"""
         sql = text("""
             SELECT 
                 e.ID_EMPRESA,
                 e.NO_EMPRESA_ABREVIADA,
                 e.NO_EMPRESA,
-                SUM(d.VR_SD_DEVEDOR) as SALDO_EMPRESA
+                SUM(d.VR_SD_DEVEDOR) as SALDO_EMPRESA,
+                e.DS_CONDICAO
             FROM DEV.DCA_TB005_DISTRIBUICAO d
             JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES e 
                 ON d.COD_EMPRESA_COBRANCA = e.ID_EMPRESA
@@ -245,7 +259,7 @@ class MetaCalculator:
             AND d.ID_PERIODO = :periodo_id
             AND d.DELETED_AT IS NULL
             AND e.DELETED_AT IS NULL
-            GROUP BY e.ID_EMPRESA, e.NO_EMPRESA_ABREVIADA, e.NO_EMPRESA
+            GROUP BY e.ID_EMPRESA, e.NO_EMPRESA_ABREVIADA, e.NO_EMPRESA, e.DS_CONDICAO
             ORDER BY e.NO_EMPRESA_ABREVIADA
         """)
 
@@ -257,26 +271,31 @@ class MetaCalculator:
         self.distribuicoes = []
         self.total_saldo_devedor = Decimal('0')
 
+        # Primeiro, coletar todas as empresas e seus saldos
+        todas_empresas = []
         for row in result:
             empresa_data = {
                 'id_empresa': row[0],
                 'nome_abreviado': row[1] or row[2][:30],
                 'nome': row[2],
-                'saldo': Decimal(str(row[3]))
+                'saldo': Decimal(str(row[3])),
+                'condicao': row[4] if row[4] else 'ATIVA'
             }
-            self.distribuicoes.append(empresa_data)
+            todas_empresas.append(empresa_data)
             self.total_saldo_devedor += empresa_data['saldo']
 
-        # Calcular percentuais
-        for dist in self.distribuicoes:
+        # Calcular percentuais baseado no saldo devedor total
+        for empresa in todas_empresas:
             if self.total_saldo_devedor > 0:
-                percentual = (dist['saldo'] / self.total_saldo_devedor * 100)
-                dist['percentual'] = percentual.quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
+                percentual = (empresa['saldo'] / self.total_saldo_devedor * 100)
+                empresa['percentual'] = percentual.quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
             else:
-                dist['percentual'] = Decimal('0')
+                empresa['percentual'] = Decimal('0')
+
+            self.distribuicoes.append(empresa)
 
     def _calcular_metas_empresas(self):
-        """Calcula metas para cada empresa"""
+        """Calcula metas para cada empresa - INCLUINDO DESCREDENCIADAS"""
         resultado = {
             'periodo_info': self.periodo_info,
             'meses': self.meses_periodo,
@@ -287,11 +306,12 @@ class MetaCalculator:
             'incremento_meta': float(self.incremento_meta),
             'metas_estendidas': {k: float(v) for k, v in self.metas_estendidas.items()},
             'total_saldo_devedor': float(self.total_saldo_devedor),
+            'total_meta_siscor': float(self.total_meta_siscor),
             'empresas': [],
             'metas_detalhadas': []
         }
 
-        # Calcular para cada empresa
+        # Calcular para TODAS as empresas (incluindo descredenciadas)
         for idx, dist in enumerate(self.distribuicoes):
             empresa_metas = {
                 'id_empresa': dist['id_empresa'],
@@ -299,6 +319,7 @@ class MetaCalculator:
                 'nome': dist['nome'],
                 'saldo_devedor': float(dist['saldo']),
                 'percentual': float(dist['percentual']),
+                'condicao': dist['condicao'],
                 'metas_mensais': {}
             }
 
@@ -315,6 +336,12 @@ class MetaCalculator:
                     Decimal('0.01'), rounding=ROUND_HALF_UP
                 )
 
+                # Para empresas descredenciadas, a meta pode ser zero em alguns meses
+                if dist['condicao'] == 'DESCREDENCIADA NO PERÍODO':
+                    # Aqui você pode adicionar lógica específica se necessário
+                    # Por exemplo, zerar metas após determinada data
+                    pass
+
                 # Meta de bonificação = 5% da meta de arrecadação
                 meta_bonificacao = (meta_arrecadacao * Decimal('0.05')).quantize(
                     Decimal('0.01'), rounding=ROUND_HALF_UP
@@ -322,8 +349,8 @@ class MetaCalculator:
 
                 empresa_metas['metas_mensais'][ano_mes] = {
                     'meta_arrecadacao': float(meta_arrecadacao),
-                    'meta_acionamento': None,  # Será null conforme solicitado
-                    'meta_liquidacao': None,  # Será null conforme solicitado
+                    'meta_acionamento': None,
+                    'meta_liquidacao': None,
                     'meta_bonificacao': float(meta_bonificacao)
                 }
 
@@ -346,7 +373,8 @@ class MetaCalculator:
                     'meta_arrecadacao': float(meta_arrecadacao),
                     'meta_acionamento': None,
                     'meta_liquidacao': None,
-                    'meta_bonificacao': float(meta_bonificacao)
+                    'meta_bonificacao': float(meta_bonificacao),
+                    'condicao_empresa': dist['condicao']
                 })
 
             empresa_metas['total_arrecadacao'] = float(total_arrecadacao)
@@ -380,11 +408,11 @@ class MetaCalculator:
                     ID_EDITAL=self.edital_id,
                     ID_PERIODO=self.periodo_id,
                     ID_EMPRESA=meta['id_empresa'],
-                    ANO_MES_COMPETENCIA=meta['competencia'],
-                    VR_META_ARRECADACAO=Decimal(str(meta['meta_arrecadacao'])),
-                    VR_META_ACIONAMENTO=None,  # NULL conforme solicitado
-                    QTDE_META_LIQUIDACAO=None,  # NULL conforme solicitado
-                    QTDE_META_BONIFICACAO=Decimal(str(meta['meta_bonificacao']))
+                    COMPETENCIA=meta['competencia'],
+                    META_ARRECADACAO=Decimal(str(meta['meta_arrecadacao'])),
+                    META_ACIONAMENTO=None,
+                    META_LIQUIDACAO=None,
+                    META_BONIFICACAO=Decimal(str(meta['meta_bonificacao']))
                 )
                 db.session.add(nova_meta)
 

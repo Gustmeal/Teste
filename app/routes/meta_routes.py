@@ -29,18 +29,18 @@ def lista_metas():
     empresa_id = request.args.get('empresa_id', type=int)
     competencia = request.args.get('competencia', type=str)
 
-    # Montar query base - ordenar por maior edital e período
+    # Montar query base - usando os nomes corretos das colunas
     query = """
         SELECT 
             m.ID,
             m.ID_EDITAL,
             m.ID_PERIODO,
             m.ID_EMPRESA,
-            m.ANO_MES_COMPETENCIA,
-            m.VR_META_ARRECADACAO,
-            m.VR_META_ACIONAMENTO,
-            m.QTDE_META_LIQUIDACAO,
-            m.QTDE_META_BONIFICACAO,
+            m.COMPETENCIA,
+            m.META_ARRECADACAO,
+            m.META_ACIONAMENTO,
+            m.META_LIQUIDACAO,
+            m.META_BONIFICACAO,
             e.NO_EMPRESA,
             e.NO_EMPRESA_ABREVIADA,
             ed.DESCRICAO,
@@ -72,11 +72,11 @@ def lista_metas():
         query += " AND m.ID_EMPRESA = :empresa_id"
         params['empresa_id'] = empresa_id
     if competencia:
-        query += " AND m.ANO_MES_COMPETENCIA = :competencia"
+        query += " AND m.COMPETENCIA = :competencia"
         params['competencia'] = competencia
 
     # Ordenar por maior edital e período primeiro
-    query += " ORDER BY m.ID_EDITAL DESC, p.ID_PERIODO DESC, m.ANO_MES_COMPETENCIA, e.NO_EMPRESA_ABREVIADA"
+    query += " ORDER BY m.ID_EDITAL DESC, p.ID_PERIODO DESC, m.COMPETENCIA, e.NO_EMPRESA_ABREVIADA"
 
     result = db.session.execute(text(query), params)
 
@@ -89,8 +89,8 @@ def lista_metas():
             'ID_EMPRESA': row[3],
             'COMPETENCIA': row[4],
             'META_ARRECADACAO': float(row[5]) if row[5] else 0,
-            'META_ACIONAMENTO': row[6],  # Pode ser NULL
-            'META_LIQUIDACAO': row[7],   # Pode ser NULL
+            'META_ACIONAMENTO': float(row[6]) if row[6] else None,
+            'META_LIQUIDACAO': float(row[7]) if row[7] else None,
             'META_BONIFICACAO': float(row[8]) if row[8] else 0,
             'NO_EMPRESA': row[9],
             'NO_EMPRESA_ABREVIADA': row[10],
@@ -128,10 +128,10 @@ def lista_metas():
 
     # Buscar competências distintas
     sql_comp = text("""
-        SELECT DISTINCT ANO_MES_COMPETENCIA 
+        SELECT DISTINCT COMPETENCIA 
         FROM DEV.DCA_TB009_META_AVALIACAO 
         WHERE DELETED_AT IS NULL 
-        ORDER BY ANO_MES_COMPETENCIA DESC
+        ORDER BY COMPETENCIA DESC
     """)
     competencias = [row[0] for row in db.session.execute(sql_comp)]
 
@@ -170,9 +170,10 @@ def calcular_metas():
     try:
         edital_id = int(request.form['edital_id'])
         periodo_id = int(request.form['periodo_id'])
+        fator_incremento = float(request.form.get('fator_incremento', 1.00))
 
         # Usar MetaCalculator
-        calculator = MetaCalculator(edital_id, periodo_id)
+        calculator = MetaCalculator(edital_id, periodo_id, fator_incremento)
         metas_calculadas = calculator.calcular_metas_completas()
 
         # Obter período para retornar as datas
@@ -193,7 +194,6 @@ def calcular_metas():
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
-
 
 @meta_bp.route('/metas/salvar-calculadas', methods=['POST'])
 @login_required
@@ -240,7 +240,7 @@ def excluir_meta(id):
             acao='excluir',
             entidade='meta',
             entidade_id=meta.ID,
-            descricao=f'Exclusão de meta de avaliação para {meta.ANO_MES_COMPETENCIA}',
+            descricao=f'Exclusão de meta de avaliação para {meta.COMPETENCIA}',
             dados_antigos={'deleted_at': None},
             dados_novos={'deleted_at': meta.DELETED_AT.strftime('%Y-%m-%d %H:%M:%S')}
         )

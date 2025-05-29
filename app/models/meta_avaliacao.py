@@ -11,17 +11,17 @@ class MetaAvaliacao(db.Model):
     ID_EDITAL = db.Column(db.Integer, nullable=False)
     ID_PERIODO = db.Column(db.Integer, nullable=False)
     ID_EMPRESA = db.Column(db.Integer, nullable=False)
-    ANO_MES_COMPETENCIA = db.Column(db.String(7), nullable=False)  # Formato: YYYY-MM
-    VR_META_ARRECADACAO = db.Column(db.Numeric(18, 2), nullable=True)
-    VR_META_ACIONAMENTO = db.Column(db.Integer, nullable=True)
-    QTDE_META_LIQUIDACAO = db.Column(db.Integer, nullable=True)
-    QTDE_META_BONIFICACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    COMPETENCIA = db.Column(db.String(7), nullable=False)  # Formato: YYYY-MM
+    META_ARRECADACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    META_ACIONAMENTO = db.Column(db.Numeric(18, 2), nullable=True)
+    META_LIQUIDACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    META_BONIFICACAO = db.Column(db.Numeric(18, 2), nullable=True)
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
 
     def __repr__(self):
-        return f'<MetaAvaliacao {self.ID} - Competência: {self.ANO_MES_COMPETENCIA}>'
+        return f'<MetaAvaliacao {self.ID} - Competência: {self.COMPETENCIA}>'
 
 
 class MetaSemestral(db.Model):
