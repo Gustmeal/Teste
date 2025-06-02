@@ -45,15 +45,22 @@
                         <small class="text-muted">Selecione a empresa participante do período (Total: {{ empresas|length }})</small>
                     </div>
 
-                    <div class="mb-4">
+                    <div class="mb-3">
                         <label class="form-label">Condição <span class="text-danger">*</span></label>
-                        <select class="form-select" name="ds_condicao" required>
+                        <select class="form-select" name="ds_condicao" id="ds_condicao" required>
                             <option value="">Selecione uma condição</option>
                             {% for condicao in condicoes %}
                                 <option value="{{ condicao }}">{{ condicao }}</option>
                             {% endfor %}
                         </select>
                         <small class="text-muted">Selecione a condição da empresa para este período</small>
+                    </div>
+
+                    <!-- Campo de data de descredenciamento - aparece apenas quando condição for "DESCREDENCIADA NO PERÍODO" -->
+                    <div class="mb-4" id="campo_data_descredenciamento" style="display: none;">
+                        <label class="form-label">Data de Descredenciamento <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" name="dt_descredenciamento" id="dt_descredenciamento">
+                        <small class="text-muted">Informe a data em que a empresa foi descredenciada no período</small>
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -68,4 +75,53 @@
             </div>
         </div>
     </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectCondicao = document.getElementById('ds_condicao');
+    const campoDataDescredenciamento = document.getElementById('campo_data_descredenciamento');
+    const inputDataDescredenciamento = document.getElementById('dt_descredenciamento');
+
+    // Função para controlar a exibição do campo de data
+    function controlarCampoData() {
+        const condicaoSelecionada = selectCondicao.value;
+
+        if (condicaoSelecionada === 'DESCREDENCIADA NO PERÍODO') {
+            // Mostrar campo de data e torná-lo obrigatório
+            campoDataDescredenciamento.style.display = 'block';
+            inputDataDescredenciamento.required = true;
+
+            // Adicionar animação suave
+            setTimeout(() => {
+                campoDataDescredenciamento.classList.add('fade-in');
+            }, 100);
+        } else {
+            // Esconder campo de data e remover obrigatoriedade
+            campoDataDescredenciamento.style.display = 'none';
+            inputDataDescredenciamento.required = false;
+            inputDataDescredenciamento.value = '';
+            campoDataDescredenciamento.classList.remove('fade-in');
+        }
+    }
+
+    // Escutar mudanças na seleção de condição
+    selectCondicao.addEventListener('change', controlarCampoData);
+
+    // Validação do formulário
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const condicaoSelecionada = selectCondicao.value;
+        const dataPreenchida = inputDataDescredenciamento.value;
+
+        // Se condição for "DESCREDENCIADA NO PERÍODO" e data não estiver preenchida
+        if (condicaoSelecionada === 'DESCREDENCIADA NO PERÍODO' && !dataPreenchida) {
+            e.preventDefault();
+            alert('Para empresas com condição "DESCREDENCIADA NO PERÍODO" é obrigatório informar a data de descredenciamento.');
+            inputDataDescredenciamento.focus();
+            return false;
+        }
+    });
+});
+</script>
+
 {% endblock %}

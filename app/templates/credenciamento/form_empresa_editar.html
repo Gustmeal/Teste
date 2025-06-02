@@ -32,20 +32,31 @@
 
                     <div class="mb-3">
                         <label class="form-label">Condição <span class="text-danger">*</span></label>
-                        <select name="ds_condicao" class="form-select" required>
+                        <select name="ds_condicao" class="form-select" id="ds_condicao" required>
                             {% for condicao in condicoes %}
                                 <option value="{{ condicao }}" {% if empresa.DS_CONDICAO == condicao %}selected{% endif %}>
                                     {{ condicao }}
                                 </option>
                             {% endfor %}
                         </select>
+                    </div>
+
+                    <!-- Campo de data de descredenciamento - aparece apenas quando condição for "DESCREDENCIADA NO PERÍODO" -->
+                    <div class="mb-3" id="campo_data_descredenciamento" {% if empresa.DS_CONDICAO != 'DESCREDENCIADA NO PERÍODO' %}style="display: none;"{% endif %}>
+                        <label class="form-label">Data de Descredenciamento <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" name="dt_descredenciamento" id="dt_descredenciamento"
+                               value="{% if empresa.DT_DESCREDENCIAMENTO %}{{ empresa.DT_DESCREDENCIAMENTO.strftime('%Y-%m-%d') }}{% endif %}">
+                        <small class="text-muted">Informe a data em que a empresa foi descredenciada no período</small>
+                    </div>
+
+                    <div class="mb-4">
                         <div class="form-text mt-2">
-                            <p><strong>Legenda:</strong></p>
+                            <p><strong>Legenda das Condições:</strong></p>
                             <ul>
                                 <li><strong>NOVA</strong>: Empresa que começou a participar neste período</li>
                                 <li><strong>PERMANECE</strong>: Empresa que continua de um período anterior</li>
                                 <li><strong>DESCREDENCIADA</strong>: Empresa que saiu em um período anterior</li>
-                                <li><strong>DESCREDENCIADA NO PERÍODO</strong>: Empresa que está saindo no período atual</li>
+                                <li><strong>DESCREDENCIADA NO PERÍODO</strong>: Empresa que está saindo no período atual (requer data de descredenciamento)</li>
                             </ul>
                         </div>
                     </div>
@@ -62,4 +73,61 @@
             </div>
         </div>
     </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectCondicao = document.getElementById('ds_condicao');
+    const campoDataDescredenciamento = document.getElementById('campo_data_descredenciamento');
+    const inputDataDescredenciamento = document.getElementById('dt_descredenciamento');
+
+    // Função para controlar a exibição do campo de data
+    function controlarCampoData() {
+        const condicaoSelecionada = selectCondicao.value;
+
+        if (condicaoSelecionada === 'DESCREDENCIADA NO PERÍODO') {
+            // Mostrar campo de data e torná-lo obrigatório
+            campoDataDescredenciamento.style.display = 'block';
+            inputDataDescredenciamento.required = true;
+
+            // Adicionar animação suave
+            setTimeout(() => {
+                campoDataDescredenciamento.classList.add('fade-in');
+            }, 100);
+        } else {
+            // Esconder campo de data e remover obrigatoriedade
+            campoDataDescredenciamento.style.display = 'none';
+            inputDataDescredenciamento.required = false;
+
+            // Se mudou de "DESCREDENCIADA NO PERÍODO" para outra condição, limpar a data
+            if (selectCondicao.value !== '{{ empresa.DS_CONDICAO }}') {
+                inputDataDescredenciamento.value = '';
+            }
+
+            campoDataDescredenciamento.classList.remove('fade-in');
+        }
+    }
+
+    // Controlar campo inicial baseado na condição atual
+    controlarCampoData();
+
+    // Escutar mudanças na seleção de condição
+    selectCondicao.addEventListener('change', controlarCampoData);
+
+    // Validação do formulário
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const condicaoSelecionada = selectCondicao.value;
+        const dataPreenchida = inputDataDescredenciamento.value;
+
+        // Se condição for "DESCREDENCIADA NO PERÍODO" e data não estiver preenchida
+        if (condicaoSelecionada === 'DESCREDENCIADA NO PERÍODO' && !dataPreenchida) {
+            e.preventDefault();
+            alert('Para empresas com condição "DESCREDENCIADA NO PERÍODO" é obrigatório informar a data de descredenciamento.');
+            inputDataDescredenciamento.focus();
+            return false;
+        }
+    });
+});
+</script>
+
 {% endblock %}

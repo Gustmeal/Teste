@@ -49,6 +49,7 @@
                         <th>Nome</th>
                         <th>Nome Abreviado</th>
                         <th>Condição</th>
+                        <th>Data Descredenciamento</th>
                         <th class="text-center">Ações</th>
                     </tr>
                 </thead>
@@ -72,20 +73,34 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
+                            {% if empresa.DT_DESCREDENCIAMENTO %}
+                                <span class="badge bg-secondary">
+                                    <i class="fas fa-calendar-times me-1"></i>
+                                    {{ empresa.DT_DESCREDENCIAMENTO.strftime('%d/%m/%Y') }}
+                                </span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
                             <a href="{{ url_for('empresa.editar_empresa', id=empresa.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1" title="Editar Empresa">
+                               class="btn btn-sm btn-outline-primary me-1"
+                               title="Editar Empresa"
+                               data-bs-toggle="tooltip">
                                 <i class="fas fa-edit"></i>
                             </a>
                             <a href="javascript:void(0);"
                                onclick="confirmarExclusao({{ empresa.ID }}, '{{ empresa.NO_EMPRESA }}');"
-                               class="btn btn-sm btn-outline-danger" title="Remover Empresa">
+                               class="btn btn-sm btn-outline-danger"
+                               title="Remover Empresa"
+                               data-bs-toggle="tooltip">
                                 <i class="fas fa-trash"></i>
                             </a>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center py-4 text-muted">
+                        <td colspan="6" class="text-center py-4 text-muted">
                             <i class="fas fa-inbox fa-2x mb-3"></i>
                             <p class="mb-0">Nenhuma empresa cadastrada para este período</p>
                         </td>
@@ -93,6 +108,25 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Legenda das condições -->
+    <div class="card mt-4">
+        <div class="card-header bg-light">
+            <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Legenda das Condições</h6>
+        </div>
+        <div class="card-body py-3">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-1"><span class="badge bg-info me-2">NOVA</span> Empresa iniciando participação neste período</p>
+                    <p class="mb-1"><span class="badge bg-success me-2">PERMANECE</span> Empresa continuando de período anterior</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1"><span class="badge bg-warning me-2">DESCREDENCIADA</span> Empresa que saiu em período anterior</p>
+                    <p class="mb-1"><span class="badge bg-danger me-2">DESCREDENCIADA NO PERÍODO</span> Empresa saindo no período atual</p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
