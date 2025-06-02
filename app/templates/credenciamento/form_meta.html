@@ -50,7 +50,7 @@
     }
 
     .col-empresa {
-        width: 200px;
+        width: 250px;
         text-align: left !important;
         font-weight: 600;
     }
@@ -124,11 +124,23 @@
         font-size: 0.8rem;
     }
 
-    .fator-incremento-group {
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 8px;
-        border: 2px solid #6c63ff;
+    .empresa-info {
+        font-size: 0.75rem;
+    }
+
+    /* Estilo para o input de incremento */
+    #calc_fator_incremento {
+        font-size: 1.25rem;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    .incremento-info {
+        background-color: #e7f3ff;
+        border-left: 4px solid #0066cc;
+        padding: 10px;
+        margin-top: 5px;
+        font-size: 0.875rem;
     }
 </style>
 
@@ -157,7 +169,7 @@
                         <li>Calcula o valor da meta diária dividindo o valor do mês da meta do SISCOR pela quantidade de dias do mês</li>
                         <li>Calcula a quantidade de dias úteis mensais do período avaliativo</li>
                         <li>Calcula o valor da meta por dia útil do período avaliativo considerando o valor por dia útil das metas e a quantidade de dias úteis do período avaliativo</li>
-                        <li>Aplica o incremento definido pelo usuário sobre a meta do período para obter a META ESTENDIDA (padrão: 1,00)</li>
+                        <li>Aplica o incremento definido sobre a meta do período para obter a META ESTENDIDA</li>
                         <li>Calcula o percentual de participação de cada empresa em relação ao saldo devedor total dos contratos distribuídos</li>
                         <li>A meta no mês de cada empresa será calculada pelo valor da META ESTENDIDA multiplicado pelo percentual de participação do saldo devedor de cada empresa</li>
                         <li>Os resultados dos cálculos serão gravados nas tabelas <code>DCA_TB009_META_AVALIACAO</code> e <code>DCA_TB010_META_SEMESTRAL</code></li>
@@ -169,9 +181,9 @@
                 </div>
             </div>
 
-            <!-- Seleção de Edital e Período -->
+            <!-- Seleção de Edital, Período e Incremento -->
             <div class="row g-4 mb-4">
-                <div class="col-lg-5">
+                <div class="col-lg-4">
                     <label for="calc_edital_id" class="form-label fs-5 fw-semibold">
                         Edital <span class="text-danger">*</span>
                     </label>
@@ -199,30 +211,31 @@
                     </select>
                 </div>
 
-                <div class="col-lg-3">
-                    <div class="fator-incremento-group">
-                        <label for="fator_incremento" class="form-label fw-semibold">
-                            Fator de Incremento <span class="text-danger">*</span>
-                            <i class="fas fa-info-circle ms-1" data-bs-toggle="tooltip"
-                               title="Fator multiplicador para a meta do período. Exemplo: 1,10 = incremento de 10%"></i>
-                        </label>
-                        <input type="number"
-                               class="form-control form-control-lg text-center fw-bold"
-                               id="fator_incremento"
-                               value="1.00"
-                               min="0.01"
-                               max="10.00"
-                               step="0.01"
-                               required>
-                        <small class="text-muted">Padrão: 1,00 (sem incremento)</small>
+                <div class="col-lg-2">
+                    <label for="calc_fator_incremento" class="form-label fs-5 fw-semibold">
+                        Fator de Incremento <span class="text-danger">*</span>
+                    </label>
+                    <input type="number"
+                           class="form-control form-control-lg"
+                           id="calc_fator_incremento"
+                           value="1.00"
+                           min="0.50"
+                           max="2.00"
+                           step="0.01"
+                           required>
+                    <div class="incremento-info">
+                        <strong>Exemplos:</strong><br>
+                        1.00 = Sem incremento (0%)<br>
+                        1.10 = Incremento de 10%<br>
+                        1.20 = Incremento de 20%
                     </div>
                 </div>
-            </div>
 
-            <div class="text-center mb-4">
-                <button type="button" class="btn btn-success btn-lg px-5" id="btnCalcularMetas">
-                    <i class="fas fa-calculator me-2"></i> Calcular Metas
-                </button>
+                <div class="col-lg-2 d-flex align-items-end">
+                    <button type="button" class="btn btn-success btn-lg w-100" id="btnCalcularMetas">
+                        <i class="fas fa-calculator me-2"></i> Calcular Metas
+                    </button>
+                </div>
             </div>
 
             <!-- Resultados do cálculo -->
@@ -230,7 +243,7 @@
                 <div class="card border-success border-2">
                     <div class="card-header bg-success text-white py-4">
                         <h3 class="mb-0 text-center">
-                            <i class="fas fa-chart-line me-2"></i>CÁLCULO DAS METAS DAS ASSESSORIAS
+                            <i class="fas fa-chart-line me-2"></i>CÁLCULO DAS METAS DAS ASSESSORIAS <span id="titulo-edital-periodo"></span>
                         </h3>
                     </div>
                     <div class="card-body p-4">
@@ -298,37 +311,23 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-
     const btnCalcularMetas = document.getElementById('btnCalcularMetas');
     const resultadoCalculo = document.getElementById('resultadoCalculo');
     let metasCalculadas = null;
-
-    // Formatar campo de fator ao sair do foco
-    document.getElementById('fator_incremento').addEventListener('blur', function() {
-        const valor = parseFloat(this.value);
-        if (!isNaN(valor)) {
-            this.value = valor.toFixed(2);
-        }
-    });
 
     // Calcular metas
     btnCalcularMetas.addEventListener('click', function() {
         const editalId = document.getElementById('calc_edital_id').value;
         const periodoId = document.getElementById('calc_periodo_id').value;
-        const fatorIncremento = document.getElementById('fator_incremento').value;
+        const fatorIncremento = document.getElementById('calc_fator_incremento').value;
 
         if (!editalId || !periodoId) {
             showToast('Por favor, selecione um edital e período para calcular as metas.', 'warning');
             return;
         }
 
-        if (!fatorIncremento || parseFloat(fatorIncremento) <= 0) {
-            showToast('Por favor, informe um fator de incremento válido.', 'warning');
+        if (!fatorIncremento || parseFloat(fatorIncremento) < 0.5 || parseFloat(fatorIncremento) > 2.0) {
+            showToast('Por favor, informe um fator de incremento válido entre 0.50 e 2.00.', 'warning');
             return;
         }
 
@@ -366,6 +365,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Exibir resultados
     function exibirResultados(metas) {
+        // Atualizar título com edital e período
+        document.getElementById('titulo-edital-periodo').textContent =
+            `EDITAL ${metas.periodo_info.nu_edital} PERÍODO ${metas.periodo_info.id_periodo} (${formatarData(metas.periodo_info.dt_inicio)} - ${formatarData(metas.periodo_info.dt_fim)})`;
+
         // Montar cabeçalho com meses
         const mesesColumns = document.getElementById('meses-columns');
         mesesColumns.innerHTML = '';
@@ -444,9 +447,9 @@ document.addEventListener('DOMContentLoaded', function() {
         rowIncremento.className = 'row-incremento';
         rowIncremento.innerHTML = '<td class="col-empresa">INCREMENTO NA META</td>';
         metas.meses.forEach(mes => {
-            rowIncremento.innerHTML += `<td>${metas.incremento_meta.toFixed(2).replace('.', ',')}</td>`;
+            rowIncremento.innerHTML += `<td>${metas.incremento_meta.toFixed(2)}</td>`;
         });
-        rowIncremento.innerHTML += `<td class="col-total">${metas.incremento_meta.toFixed(2).replace('.', ',')}</td>`;
+        rowIncremento.innerHTML += `<td class="col-total">${metas.incremento_meta.toFixed(2)}</td>`;
 
         // Linha 7: Meta estendida
         const rowMetaEstendida = corpoTabela.insertRow();
@@ -467,23 +470,19 @@ document.addEventListener('DOMContentLoaded', function() {
         // Cabeçalho das empresas
         const rowHeaderEmpresas = corpoTabela.insertRow();
         rowHeaderEmpresas.className = 'row-header';
-        rowHeaderEmpresas.innerHTML = '<td class="col-empresa"># EMPRESA SD (1) %SD</td>';
+        rowHeaderEmpresas.innerHTML = '<td class="col-empresa"># EMPRESA     SD   (1)    %SD</td>';
         metas.meses.forEach(mes => {
             rowHeaderEmpresas.innerHTML += `<td>${mes.nome_mes}</td>`;
         });
         rowHeaderEmpresas.innerHTML += `<td class="col-total">TOTAL</td>`;
 
         // Linhas das empresas
-       metas.empresas.forEach((empresa, index) => {
+        metas.empresas.forEach((empresa, index) => {
             const row = corpoTabela.insertRow();
 
-            // Adicionar indicador se a empresa está descredenciada
-            const nomeEmpresa = empresa.condicao === 'DESCREDENCIADA NO PERÍODO'
-                ? `${empresa.nome_abreviado} (*)`
-                : empresa.nome_abreviado;
-
             // Coluna empresa com SD e percentual
-            row.innerHTML = `<td class="col-empresa">${index + 1}. ${nomeEmpresa} R$ ${formatarNumero(empresa.saldo_devedor)} ${empresa.percentual.toFixed(8)}%</td>`;
+            const empresaInfo = `${index + 1}  ${empresa.nome_abreviado.padEnd(10)} R$ ${formatarNumero(empresa.saldo_devedor).padStart(15)} ${empresa.percentual.toFixed(8).padStart(12)}%`;
+            row.innerHTML = `<td class="col-empresa empresa-info">${empresaInfo}</td>`;
 
             // Colunas dos meses
             metas.meses.forEach(mes => {
@@ -498,7 +497,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Linha de total geral
         const rowTotal = corpoTabela.insertRow();
         rowTotal.className = 'row-header';
-        rowTotal.innerHTML = `<td class="col-empresa">TOTAL R$ ${formatarNumero(metas.total_saldo_devedor)} 100,00000000%</td>`;
+        const totalInfo = `TOTAL                   R$ ${formatarNumero(metas.total_saldo_devedor).padStart(15)} 100,00000000%`;
+        rowTotal.innerHTML = `<td class="col-empresa empresa-info">${totalInfo}</td>`;
 
         metas.meses.forEach(mes => {
             let totalMes = 0;
@@ -556,6 +556,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }).format(valor);
     }
 
+    // Formatar data
+    function formatarData(data) {
+        if (typeof data === 'string') {
+            const partes = data.split('-');
+            return `${partes[2]}/${partes[1]}/${partes[0]}`;
+        }
+        return data;
+    }
+
     // Salvar metas
     document.getElementById('btnSalvarMetasCalculadas').addEventListener('click', function() {
         if (confirm('Confirma a gravação das metas calculadas?\n\nOs valores serão gravados nas tabelas DCA_TB009_META_AVALIACAO e DCA_TB010_META_SEMESTRAL.')) {
@@ -604,8 +613,17 @@ document.addEventListener('DOMContentLoaded', function() {
             metasCalculadas = null;
             document.getElementById('calc_edital_id').value = '';
             document.getElementById('calc_periodo_id').value = '';
-            document.getElementById('fator_incremento').value = '1.00';
+            document.getElementById('calc_fator_incremento').value = '1.00';
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    });
+
+    // Formatação do input de incremento ao digitar
+    document.getElementById('calc_fator_incremento').addEventListener('input', function(e) {
+        let value = e.target.value;
+        // Limitar a 2 casas decimais
+        if (value.includes('.') && value.split('.')[1].length > 2) {
+            e.target.value = parseFloat(value).toFixed(2);
         }
     });
 });

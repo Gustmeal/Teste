@@ -163,6 +163,7 @@ def nova_meta():
                            periodos=periodos)
 
 
+# Localizar a função calcular_metas e garantir que ela pegue o fator_incremento do formulário
 @meta_bp.route('/metas/calcular', methods=['POST'])
 @login_required
 def calcular_metas():
@@ -172,7 +173,7 @@ def calcular_metas():
         periodo_id = int(request.form['periodo_id'])
         fator_incremento = float(request.form.get('fator_incremento', 1.00))
 
-        # Usar MetaCalculator
+        # Usar MetaCalculator com fator_incremento
         calculator = MetaCalculator(edital_id, periodo_id, fator_incremento)
         metas_calculadas = calculator.calcular_metas_completas()
 

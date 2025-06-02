@@ -9,7 +9,7 @@ import calendar
 
 
 class MetaCalculator:
-    def __init__(self, edital_id, periodo_id, fator_incremento=1.10):
+    def __init__(self, edital_id, periodo_id, fator_incremento=1.00):
         self.edital_id = edital_id
         self.periodo_id = periodo_id
         self.periodo_info = None
@@ -21,7 +21,7 @@ class MetaCalculator:
         self.metas_estendidas = {}
         self.distribuicoes = []
         self.total_saldo_devedor = Decimal('0')
-        self.incremento_meta = Decimal(str(fator_incremento))
+        self.incremento_meta = Decimal(str(fator_incremento))  # Incremento definido pelo usuário
 
     def calcular_metas_completas(self):
         """Executa todo o processo de cálculo de metas"""
@@ -55,7 +55,7 @@ class MetaCalculator:
         return self._calcular_metas_empresas()
 
     def _obter_periodo(self):
-        """Obtém dados do período"""
+        """Obtém dados do período - tabelas em DEV"""
         sql = text("""
             SELECT p.ID, p.ID_PERIODO, p.DT_INICIO, p.DT_FIM,
                    e.NU_EDITAL, e.ANO
@@ -85,36 +85,9 @@ class MetaCalculator:
 
     def _obter_meses_periodo(self):
         """Retorna lista de meses no período"""
-        # Verificar se houve redistribuição para ajustar o período
-        sql_redistribuicao = text("""
-            SELECT 
-                MAX(DT_REFERENCIA) as DT_REDISTRIBUICAO
-            FROM BDDASHBOARDBI.BDG.DCA_TB005_DISTRIBUICAO
-            WHERE ID_EDITAL = :edital_id
-            AND ID_PERIODO = :periodo_id
-            AND COD_CRITERIO_SELECAO IN (
-                SELECT DISTINCT COD_CRITERIO_SELECAO
-                FROM BDDASHBOARDBI.BDG.DCA_TB005_DISTRIBUICAO
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                GROUP BY COD_CRITERIO_SELECAO, fkContratoSISCTR
-                HAVING COUNT(DISTINCT COD_EMPRESA_COBRANCA) > 1
-            )
-        """)
-
-        dt_redistribuicao = db.session.execute(sql_redistribuicao, {
-            'edital_id': self.edital_id,
-            'periodo_id': self.periodo_info['id']
-        }).scalar()
-
         meses = []
+        data_inicio = self.periodo_info['dt_inicio']
         data_fim = self.periodo_info['dt_fim']
-
-        # Se houver redistribuição, começar do mês da redistribuição
-        if dt_redistribuicao:
-            data_atual = dt_redistribuicao.replace(day=1)
-        else:
-            data_atual = self.periodo_info['dt_inicio'].replace(day=1)
 
         # Mapeamento de nomes de meses em português
         meses_portugues = {
@@ -123,6 +96,10 @@ class MetaCalculator:
             9: 'SET', 10: 'OUT', 11: 'NOV', 12: 'DEZ'
         }
 
+        # Começar do primeiro dia do mês de início
+        data_atual = data_inicio.replace(day=1)
+
+        # Continuar até o mês do fim
         while data_atual <= data_fim:
             meses.append({
                 'ano': data_atual.year,
@@ -135,7 +112,7 @@ class MetaCalculator:
         return meses
 
     def _calcular_dias_uteis_todos_meses(self):
-        """Calcula dias úteis de todos os meses do período"""
+        """Calcula dias úteis de todos os meses do período - tabela em BDG"""
         for mes in self.meses_periodo:
             # Query para dias úteis totais do mês
             sql_total = text("""
@@ -163,14 +140,17 @@ class MetaCalculator:
                 AND DT_REFERENCIA BETWEEN :dt_inicio AND :dt_fim
             """)
 
-            # Ajustar datas para o mês específico
+            # Determinar as datas de início e fim para o mês específico
             primeiro_dia_mes = date(mes['ano'], mes['mes'], 1)
             ultimo_dia_mes = date(mes['ano'], mes['mes'], calendar.monthrange(mes['ano'], mes['mes'])[1])
 
             # Usar a maior data entre início do período e primeiro dia do mês
-            dt_inicio_calc = max(self.periodo_info['dt_inicio'], primeiro_dia_mes)
+            dt_inicio_calc = max(
+                self.periodo_info['dt_inicio'].date() if hasattr(self.periodo_info['dt_inicio'], 'date') else
+                self.periodo_info['dt_inicio'], primeiro_dia_mes)
             # Usar a menor data entre fim do período e último dia do mês
-            dt_fim_calc = min(self.periodo_info['dt_fim'], ultimo_dia_mes)
+            dt_fim_calc = min(self.periodo_info['dt_fim'].date() if hasattr(self.periodo_info['dt_fim'], 'date') else
+                              self.periodo_info['dt_fim'], ultimo_dia_mes)
 
             result_periodo = db.session.execute(sql_periodo, {
                 'ano': mes['ano'],
@@ -187,7 +167,7 @@ class MetaCalculator:
             }
 
     def _obter_metas_siscor_todos_meses(self):
-        """Obtém metas SISCOR de todos os meses"""
+        """Obtém metas SISCOR de todos os meses do banco de dados - tabela em BDG"""
         for mes in self.meses_periodo:
             sql = text("""
                 WITH FaseAtual AS (
@@ -228,15 +208,22 @@ class MetaCalculator:
             self.metas_diarias[ano_mes] = meta_diaria
 
     def _calcular_metas_periodo(self):
-        """Calcula metas do período avaliativo (meta diária × dias úteis do período)"""
+        """Calcula metas do período avaliativo - CORRIGIDO com a fórmula correta"""
         for mes in self.meses_periodo:
             ano_mes = mes['ano_mes']
+            dias_uteis_total = self.dias_uteis_periodo[ano_mes]['total']
             dias_periodo = self.dias_uteis_periodo[ano_mes]['periodo']
-            meta_diaria = self.metas_diarias[ano_mes]
+            meta_siscor = self.metas_siscor[ano_mes]
 
-            # Meta do período = meta diária × dias úteis do período
-            meta_periodo = meta_diaria * dias_periodo
-            meta_periodo = meta_periodo.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            # CORREÇÃO: Meta período = (Meta SISCOR / Dias úteis totais do mês) × Dias úteis do período
+            if dias_uteis_total > 0:
+                # Primeiro calcula a razão (meta SISCOR / dias úteis totais)
+                razao = meta_siscor / dias_uteis_total
+                # Depois multiplica pelos dias úteis do período
+                meta_periodo = razao * dias_periodo
+                meta_periodo = meta_periodo.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+            else:
+                meta_periodo = Decimal('0')
 
             self.metas_periodo[ano_mes] = meta_periodo
 
@@ -246,77 +233,53 @@ class MetaCalculator:
             ano_mes = mes['ano_mes']
             meta_periodo = self.metas_periodo[ano_mes]
 
-            # Meta estendida = meta período × incremento (1,10)
+            # Meta estendida = meta período × incremento definido pelo usuário
             meta_estendida = meta_periodo * self.incremento_meta
             meta_estendida = meta_estendida.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
             self.metas_estendidas[ano_mes] = meta_estendida
 
     def _obter_distribuicoes(self):
-        """Obtém distribuições e calcula percentuais baseado no saldo devedor dos contratos distribuídos"""
-
-        # Query principal - considera todos os contratos, incluindo redistribuições
+        """Obtém distribuições e calcula percentuais - DCA_TB005_DISTRIBUICAO em BDG, DCA_TB002_EMPRESAS_PARTICIPANTES em DEV"""
         sql = text("""
-            WITH UltimaDistribuicao AS (
-                -- Pegar apenas a última distribuição de cada contrato (em caso de redistribuição)
-                SELECT 
-                    fkContratoSISCTR,
-                    COD_EMPRESA_COBRANCA,
-                    VR_SD_DEVEDOR,
-                    DT_REFERENCIA,
-                    ROW_NUMBER() OVER (PARTITION BY fkContratoSISCTR ORDER BY DT_REFERENCIA DESC) as RN
-                FROM BDDASHBOARDBI.BDG.DCA_TB005_DISTRIBUICAO
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND DELETED_AT IS NULL
-            )
             SELECT 
-                e.ID_EMPRESA,
-                e.NO_EMPRESA_ABREVIADA,
-                e.NO_EMPRESA,
-                COALESCE(dist.SALDO_TOTAL, 0) as SALDO_EMPRESA,
-                e.DS_CONDICAO,
-                COALESCE(dist.QTDE_CONTRATOS, 0) as QTDE_CONTRATOS
-            FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES e
-            LEFT JOIN (
-                SELECT 
-                    COD_EMPRESA_COBRANCA,
-                    SUM(VR_SD_DEVEDOR) as SALDO_TOTAL,
-                    COUNT(DISTINCT fkContratoSISCTR) as QTDE_CONTRATOS
-                FROM UltimaDistribuicao
-                WHERE RN = 1  -- Apenas a distribuição mais recente de cada contrato
-                GROUP BY COD_EMPRESA_COBRANCA
-            ) dist ON dist.COD_EMPRESA_COBRANCA = e.ID_EMPRESA
-            WHERE e.ID_EDITAL = :edital_id
-            AND e.ID_PERIODO = :periodo_id
-            AND e.DELETED_AT IS NULL
-            AND COALESCE(e.DS_CONDICAO, '') != 'DESCREDENCIADA'
-            ORDER BY e.NO_EMPRESA_ABREVIADA
+                DIS.COD_EMPRESA_COBRANCA as ID_EMPRESA,
+                EMP.NO_EMPRESA_ABREVIADA,
+                EMP.NO_EMPRESA,
+                EMP.DS_CONDICAO,
+                SUM(DIS.VR_SD_DEVEDOR) as SALDO_EMPRESA
+            FROM BDG.DCA_TB005_DISTRIBUICAO AS DIS
+            INNER JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EMP
+                ON DIS.ID_EDITAL = EMP.ID_EDITAL
+                AND DIS.ID_PERIODO = EMP.ID_PERIODO
+                AND DIS.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+            WHERE DIS.ID_EDITAL = :edital_id
+            AND DIS.ID_PERIODO = :periodo_id
+            AND EMP.DS_CONDICAO != 'DESCREDENCIADA'
+            GROUP BY DIS.COD_EMPRESA_COBRANCA, EMP.NO_EMPRESA_ABREVIADA, EMP.NO_EMPRESA, EMP.DS_CONDICAO
+            ORDER BY EMP.NO_EMPRESA_ABREVIADA
         """)
 
         result = db.session.execute(sql, {
             'edital_id': self.edital_id,
-            'periodo_id': self.periodo_info['id']
+            'periodo_id': self.periodo_info['id_periodo']
         })
 
         self.distribuicoes = []
         self.total_saldo_devedor = Decimal('0')
 
         for row in result:
-            saldo = Decimal(str(row[3]))
-
             empresa_data = {
                 'id_empresa': row[0],
                 'nome_abreviado': row[1] or row[2][:30],
                 'nome': row[2],
-                'saldo': saldo,
-                'condicao': row[4] if row[4] else 'PERMANECE',
-                'qtde_contratos': row[5]
+                'condicao': row[3],
+                'saldo': Decimal(str(row[4]))
             }
             self.distribuicoes.append(empresa_data)
-            self.total_saldo_devedor += saldo
+            self.total_saldo_devedor += empresa_data['saldo']
 
-        # Calcular percentuais
+        # Calcular percentuais com 8 casas decimais
         for dist in self.distribuicoes:
             if self.total_saldo_devedor > 0:
                 percentual = (dist['saldo'] / self.total_saldo_devedor * 100)
@@ -348,6 +311,7 @@ class MetaCalculator:
                 'nome': dist['nome'],
                 'saldo_devedor': float(dist['saldo']),
                 'percentual': float(dist['percentual']),
+                'condicao': dist['condicao'],
                 'metas_mensais': {}
             }
 
@@ -408,7 +372,7 @@ class MetaCalculator:
         return resultado
 
     def salvar_metas(self, metas_calculadas):
-        """Salva as metas calculadas no banco de dados"""
+        """Salva as metas calculadas no banco de dados - tabelas em DEV"""
         try:
             # Deletar metas anteriores (soft delete)
             MetaAvaliacao.query.filter_by(
