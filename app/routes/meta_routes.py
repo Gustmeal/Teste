@@ -1,5 +1,6 @@
 # app/routes/meta_routes.py
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from app.models.metas_redistribuicao import MetasPercentuaisDistribuicao, Metas, MetasPeriodoAvaliativo
 from app.models.meta_avaliacao import MetaAvaliacao, MetaSemestral
 from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
@@ -252,3 +253,87 @@ def excluir_meta(id):
         flash(f'Erro ao excluir meta: {str(e)}', 'danger')
 
     return redirect(url_for('meta.lista_metas'))
+
+
+
+@meta_bp.route('/metas/buscar-empresas-redistribuicao')
+@login_required
+def buscar_empresas_redistribuicao():
+    """Busca empresas disponíveis para redistribuição agrupadas por data"""
+    try:
+        edital_id = request.args.get('edital_id', type=int)
+        periodo_id = request.args.get('periodo_id', type=int)
+
+        # Buscar todas as distribuições do período
+        sql = text("""
+            SELECT DISTINCT
+                mpd.DT_REFERENCIA,
+                mpd.ID_EMPRESA,
+                emp.NO_EMPRESA_ABREVIADA,
+                mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
+                mpd.PERCENTUAL_SALDO_DEVEDOR
+            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
+                ON mpd.ID_EMPRESA = emp.ID_EMPRESA
+                AND mpd.ID_EDITAL = emp.ID_EDITAL
+                AND mpd.ID_PERIODO = emp.ID_PERIODO
+            WHERE mpd.ID_EDITAL = :edital_id
+            AND mpd.ID_PERIODO = :periodo_id
+            AND mpd.DELETED_AT IS NULL
+            ORDER BY mpd.DT_REFERENCIA, emp.NO_EMPRESA_ABREVIADA
+        """)
+
+        result = db.session.execute(sql, {
+            'edital_id': edital_id,
+            'periodo_id': periodo_id
+        })
+
+        # Agrupar por data de referência
+        empresas_por_data = {}
+
+        for row in result:
+            dt_ref = row[0].strftime('%Y-%m-%d')
+
+            if dt_ref not in empresas_por_data:
+                empresas_por_data[dt_ref] = []
+
+            empresas_por_data[dt_ref].append({
+                'id_empresa': row[1],
+                'nome_empresa': row[2],
+                'saldo_devedor': float(row[3]) if row[3] else 0,
+                'percentual': float(row[4]) if row[4] else 0
+            })
+
+        return jsonify({
+            'sucesso': True,
+            'empresas_por_data': empresas_por_data
+        })
+
+    except Exception as e:
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
+
+@meta_bp.route('/metas/calcular-redistribuicao', methods=['POST'])
+@login_required
+def calcular_redistribuicao():
+    """Calcula a redistribuição de metas"""
+    try:
+        data = request.json
+        edital_id = data['edital_id']
+        periodo_id = data['periodo_id']
+        empresas_redistribuicao = data['empresas_redistribuicao']  # {data: [lista_empresas]}
+
+        from app.utils.redistribuicao_calculator import RedistribuicaoCalculator
+
+        calculator = RedistribuicaoCalculator(edital_id, periodo_id)
+        resultado = calculator.calcular_redistribuicao(empresas_redistribuicao)
+
+        return jsonify({
+            'sucesso': True,
+            'resultado': resultado
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})

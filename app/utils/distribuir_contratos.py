@@ -582,7 +582,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 UPDATE #Empresas
                 SET percentual = percentual * 100.0 / @total_percentual;
             END;
-
+  
             -- ETAPA 3: Identificar CPFs com múltiplos contratos e marcar para distribuição
             IF OBJECT_ID('tempdb..#CPFsMultiplos') IS NOT NULL
                 DROP TABLE #CPFsMultiplos;
