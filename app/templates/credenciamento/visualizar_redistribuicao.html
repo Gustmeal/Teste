@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .container-visualizacao {
+        max-width: 100%;
+        padding: 20px;
+    }
+
+    .tabela-redistribuicao {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 20px;
+    }
+
+    .tabela-redistribuicao th,
+    .tabela-redistribuicao td {
+        border: 1px solid #000;
+        padding: 5px;
+        text-align: center;
+    }
+
+    .tabela-redistribuicao th {
+        background-color: #d9d9d9;
+        font-weight: bold;
+    }
+
+    .titulo-principal {
+        text-align: center;
+        font-weight: bold;
+        font-size: 16px;
+        margin: 20px 0;
+    }
+
+    .col-empresa {
+        text-align: left !important;
+        width: 200px;
+    }
+
+    .valor-monetario {
+        text-align: right !important;
+        white-space: nowrap;
+    }
+
+    .linha-total {
+        font-weight: bold;
+        background-color: #f0f0f0;
+    }
+
+    .linha-meta-estendida {
+        background-color: #e6f2ff;
+        font-weight: bold;
+    }
+
+    .secao-filtros {
+        background-color: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+
+    .info-redistribuicao {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 5px;
+    }
+
+    .tabela-empresas td.nome-empresa {
+        font-size: 11px;
+        text-align: left;
+    }
+
+    .col-percentual {
+        width: 80px;
+    }
+</style>
+
+<div class="container-visualizacao">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>
+            <i class="fas fa-chart-line me-2"></i>Visualização de Redistribuição de Metas
+        </h1>
+        <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Voltar
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="secao-filtros">
+        <form id="formVisualizacao" class="row g-3">
+            <div class="col-md-5">
+                <label for="edital_id" class="form-label">Edital</label>
+                <select class="form-select" id="edital_id" name="edital_id" required>
+                    <option value="">Selecione um edital...</option>
+                    {% for edital in editais %}
+                    <option value="{{ edital.ID }}">
+                        {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-5">
+                <label for="periodo_id" class="form-label">Período</label>
+                <select class="form-select" id="periodo_id" name="periodo_id" required>
+                    <option value="">Selecione um período...</option>
+                    {% for periodo in periodos %}
+                    <option value="{{ periodo.ID }}">
+                        Período {{ periodo.ID_PERIODO }} -
+                        {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a
+                        {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="button" class="btn btn-primary w-100" id="btnVisualizar">
+                    <i class="fas fa-eye me-2"></i>Visualizar
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Informações sobre redistribuições -->
+    <div class="info-redistribuicao" id="infoRedistribuicao" style="display: none;">
+        <h6><i class="fas fa-info-circle me-2"></i>Informações sobre Redistribuições:</h6>
+        <ul class="mb-0">
+            <li><strong>Data inicial:</strong> 15/01/2025 - Todas empresas ativas</li>
+            <li><strong>1ª Redistribuição:</strong> 26/03/2025 - Real sai do período</li>
+            <li><strong>2ª Redistribuição:</strong> 16/05/2025 - H.Costa sai do período</li>
+        </ul>
+    </div>
+
+    <!-- Container para as tabelas -->
+    <div id="containerTabelas" style="display: none;">
+        <!-- As tabelas serão inseridas aqui via JavaScript -->
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnVisualizar = document.getElementById('btnVisualizar');
+    const containerTabelas = document.getElementById('containerTabelas');
+    const infoRedistribuicao = document.getElementById('infoRedistribuicao');
+
+    btnVisualizar.addEventListener('click', function() {
+        const editalId = document.getElementById('edital_id').value;
+        const periodoId = document.getElementById('periodo_id').value;
+
+        if (!editalId || !periodoId) {
+            showToast('Por favor, selecione um edital e período.', 'warning');
+            return;
+        }
+
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Carregando...';
+
+        fetch(`/credenciamento/metas/visualizar-calculo?edital_id=${editalId}&periodo_id=${periodoId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.sucesso) {
+                    exibirTabelas(data.dados);
+                    infoRedistribuicao.style.display = 'block';
+                    containerTabelas.style.display = 'block';
+                } else {
+                    showToast('Erro ao carregar dados: ' + data.erro, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Erro ao carregar dados: ' + error, 'danger');
+            })
+            .finally(() => {
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-eye me-2"></i>Visualizar';
+            });
+    });
+
+    function exibirTabelas(dados) {
+        let html = '';
+
+        // Tabela 1 - Cálculo inicial (15/01/2025)
+        html += criarTabelaCalculo(
+            'CÁLCULO DAS METAS DAS ASSESSORIAS EDITAL 1 PERÍODO 5 (15/01/2025)',
+            dados.tabela1
+        );
+
+        // Tabela 2 - Após redistribuição da Real (26/03/2025)
+        html += '<div style="margin-top: 50px;">';
+        html += criarTabelaCalculo(
+            'METAS DO PERÍODO AVALIATIVO DE 15/01/2025 até 16/07/2025 APÓS REDISTRIBUIÇÃO DA REAL em 26/03/2025',
+            dados.tabela2
+        );
+        html += '</div>';
+
+        // Adicionar informações sobre o cálculo da Real
+        html += `
+            <div class="info-redistribuicao mt-3">
+                <p><strong>Cálculo da redistribuição da Real em março/2025:</strong></p>
+                <p>Meta da Real em 03/2025: ${formatarMoeda(dados.calculo_real.meta_total)}</p>
+                <p>Dias úteis de 03/2025: ${dados.calculo_real.dias_uteis_total}</p>
+                <p>Dias úteis de 03/2025 até 26/03/2025: ${dados.calculo_real.dias_uteis_trabalhados}</p>
+                <p>Valor a ser mantido na Real em 03/2025: ${formatarMoeda(dados.calculo_real.valor_mantido)}</p>
+                <p>Valor a ser redistribuído para as demais: ${formatarMoeda(dados.calculo_real.valor_redistribuido)}</p>
+            </div>
+        `;
+
+        containerTabelas.innerHTML = html;
+    }
+
+    function criarTabelaCalculo(titulo, dados) {
+        let html = `<h3 class="titulo-principal">${titulo}</h3>`;
+        html += '<table class="tabela-redistribuicao">';
+
+        // Cabeçalho superior
+        html += '<thead>';
+        html += '<tr>';
+        html += '<th rowspan="2" class="col-empresa">DISTRIBUIÇÃO MÊS A MÊS</th>';
+        html += '<th colspan="7">MESES DO PERÍODO</th>';
+        html += '<th rowspan="2">TOTAL</th>';
+        html += '</tr>';
+        html += '<tr>';
+        dados.meses.forEach(mes => {
+            html += `<th>${mes.nome}</th>`;
+        });
+        html += '</tr>';
+        html += '</thead>';
+
+        html += '<tbody>';
+
+        // Linha dias úteis
+        html += '<tr>';
+        html += '<td class="col-empresa">DIAS ÚTEIS DO MÊS</td>';
+        let totalDiasUteis = 0;
+        dados.meses.forEach(mes => {
+            html += `<td>${mes.dias_uteis}</td>`;
+            totalDiasUteis += mes.dias_uteis;
+        });
+        html += `<td>${totalDiasUteis}</td>`;
+        html += '</tr>';
+
+        // Linha meta mensal SISCOR
+        html += '<tr>';
+        html += '<td class="col-empresa">META MENSAL SISCOR</td>';
+        let totalSiscor = 0;
+        dados.meses.forEach(mes => {
+            html += `<td class="valor-monetario">${formatarMoeda(mes.meta_siscor)}</td>`;
+            totalSiscor += mes.meta_siscor;
+        });
+        html += `<td class="valor-monetario">${formatarMoeda(totalSiscor)}</td>`;
+        html += '</tr>';
+
+        // Linha meta mensal SISCOR por dia útil
+        html += '<tr>';
+        html += '<td class="col-empresa">META MENSAL SISCOR POR DIA ÚTIL DO MÊS</td>';
+        dados.meses.forEach(mes => {
+            const valorPorDia = mes.meta_siscor / mes.dias_uteis;
+            html += `<td class="valor-monetario">${formatarMoeda(valorPorDia)}</td>`;
+        });
+        html += `<td class="valor-monetario">${formatarMoeda(dados.meta_por_dia_util)}</td>`;
+        html += '</tr>';
+
+        // Linha dias úteis do período avaliativo
+        html += '<tr>';
+        html += '<td class="col-empresa">DIAS ÚTEIS POR MÊS DO PERÍODO AVALIATIVO</td>';
+        dados.meses.forEach(mes => {
+            html += `<td>${mes.dias_uteis_periodo}</td>`;
+        });
+        html += `<td>${dados.total_dias_uteis_periodo}</td>`;
+        html += '</tr>';
+
+        // Linha meta mensal período avaliativo
+        html += '<tr>';
+        html += '<td class="col-empresa">META MENSAL PERÍODO AVALIATIVO</td>';
+        dados.meses.forEach(mes => {
+            html += `<td class="valor-monetario">${formatarMoeda(mes.meta_periodo)}</td>`;
+        });
+        html += `<td class="valor-monetario">${formatarMoeda(totalSiscor)}</td>`;
+        html += '</tr>';
+
+        // Linha incremento
+        html += '<tr>';
+        html += '<td class="col-empresa">INCREMENTO NA META</td>';
+        dados.meses.forEach(mes => {
+            html += `<td>${dados.incremento.toFixed(2)}</td>`;
+        });
+        html += `<td>${dados.incremento.toFixed(2)}</td>`;
+        html += '</tr>';
+
+        // Linha meta estendida
+        html += '<tr class="linha-meta-estendida">';
+        html += '<td class="col-empresa">META ESTENDIDA</td>';
+        dados.meses.forEach(mes => {
+            html += `<td class="valor-monetario">${formatarMoeda(mes.meta_estendida)}</td>`;
+        });
+        html += `<td class="valor-monetario">${formatarMoeda(totalSiscor * dados.incremento)}</td>`;
+        html += '</tr>';
+
+        // Separador
+        html += '<tr><td colspan="9" style="height: 10px; background-color: #fff;"></td></tr>';
+
+        // Cabeçalho empresas
+        html += '<tr>';
+        html += '<td class="col-empresa"># EMPRESA SD (1) %SD</td>';
+        dados.meses.forEach(mes => {
+            html += `<td>${mes.nome}</td>`;
+        });
+        html += `<td>TOTAL</td>`;
+        html += '</tr>';
+
+        // Linhas das empresas
+        dados.empresas.forEach((empresa, index) => {
+            html += '<tr>';
+            html += `<td class="nome-empresa">${index + 1} ${empresa.nome} ${formatarMoeda(empresa.saldo_devedor)} ${empresa.percentual.toFixed(8)}%</td>`;
+
+            let totalEmpresa = 0;
+            dados.meses.forEach(mes => {
+                const valor = empresa.metas[mes.competencia] || 0;
+                html += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+                totalEmpresa += valor;
+            });
+
+            html += `<td class="valor-monetario">${formatarMoeda(totalEmpresa)}</td>`;
+            html += '</tr>';
+        });
+
+        // Linha total
+        html += '<tr class="linha-total">';
+        html += `<td class="col-empresa">TOTAL ${formatarMoeda(dados.total_saldo_devedor)} 100,00000000%</td>`;
+
+        dados.meses.forEach(mes => {
+            let totalMes = 0;
+            dados.empresas.forEach(emp => {
+                totalMes += emp.metas[mes.competencia] || 0;
+            });
+            html += `<td class="valor-monetario">${formatarMoeda(totalMes)}</td>`;
+        });
+
+        html += `<td class="valor-monetario">${formatarMoeda(totalSiscor * dados.incremento)}</td>`;
+        html += '</tr>';
+
+        // Linha observação
+        html += '<tr>';
+        html += '<td colspan="9" style="text-align: left; font-size: 10px; padding: 10px;">';
+        html += '(1) Saldo devedor calculado na distribuição dos contratos';
+        html += '</td>';
+        html += '</tr>';
+
+        html += '</tbody>';
+        html += '</table>';
+
+        return html;
+    }
+
+    function formatarMoeda(valor) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(valor);
+    }
+});
+</script>
+{% endblock %}

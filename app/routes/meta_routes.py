@@ -148,6 +148,47 @@ def lista_metas():
                            filtro_competencia=competencia)
 
 
+@meta_bp.route('/metas/visualizar-redistribuicao')
+@login_required
+def visualizar_redistribuicao():
+    """Página para visualizar cálculo de redistribuição de metas"""
+    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).order_by(
+        PeriodoAvaliacao.ID_EDITAL.desc(),
+        PeriodoAvaliacao.ID_PERIODO.desc()
+    ).all()
+
+    return render_template('credenciamento/visualizar_redistribuicao.html',
+                           editais=editais,
+                           periodos=periodos)
+
+
+@meta_bp.route('/metas/visualizar-calculo')
+@login_required
+def visualizar_calculo():
+    """API para retornar dados do cálculo de redistribuição"""
+    try:
+        edital_id = request.args.get('edital_id', type=int)
+        periodo_id = request.args.get('periodo_id', type=int)
+
+        if not edital_id or not periodo_id:
+            return jsonify({'sucesso': False, 'erro': 'Parâmetros inválidos'})
+
+        from app.utils.visualizador_redistribuicao import VisualizadorRedistribuicao
+
+        visualizador = VisualizadorRedistribuicao(edital_id, periodo_id)
+        dados = visualizador.calcular_redistribuicao_completa()
+
+        return jsonify({
+            'sucesso': True,
+            'dados': dados
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
 @meta_bp.route('/metas/nova', methods=['GET', 'POST'])
 @login_required
 def nova_meta():
