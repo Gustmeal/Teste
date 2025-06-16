@@ -12,6 +12,7 @@
         border-collapse: collapse;
         font-size: 12px;
         margin-top: 20px;
+        background-color: #ffffff !important; /* Fundo branco forçado */
     }
 
     .tabela-redistribuicao th,
@@ -19,11 +20,18 @@
         border: 1px solid #000;
         padding: 5px;
         text-align: center;
+        background-color: #ffffff; /* Fundo branco nas células */
     }
 
     .tabela-redistribuicao th {
-        background-color: #d9d9d9;
+        background-color: #d9d9d9 !important; /* Cabeçalho cinza claro */
         font-weight: bold;
+        color: #000000; /* Texto preto */
+    }
+
+    .tabela-redistribuicao td {
+        background-color: #ffffff !important; /* Fundo branco nas células */
+        color: #000000; /* Texto preto */
     }
 
     .titulo-principal {
@@ -31,25 +39,28 @@
         font-weight: bold;
         font-size: 16px;
         margin: 20px 0;
+        color: #000000;
     }
 
     .col-empresa {
         text-align: left !important;
         width: 200px;
+        background-color: #ffffff !important;
     }
 
     .valor-monetario {
         text-align: right !important;
         white-space: nowrap;
+        background-color: #ffffff !important;
     }
 
     .linha-total {
         font-weight: bold;
-        background-color: #f0f0f0;
+        background-color: #f0f0f0 !important;
     }
 
     .linha-meta-estendida {
-        background-color: #e6f2ff;
+        background-color: #e6f2ff !important;
         font-weight: bold;
     }
 
@@ -71,10 +82,33 @@
     .tabela-empresas td.nome-empresa {
         font-size: 11px;
         text-align: left;
+        background-color: #ffffff !important;
     }
 
     .col-percentual {
         width: 80px;
+        background-color: #ffffff !important;
+    }
+
+    /* Container para cada tabela com fundo branco */
+    .tabela-container {
+        background-color: #ffffff;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* Garantir que todas as linhas tenham fundo */
+    .tabela-redistribuicao tr {
+        background-color: #ffffff;
+    }
+
+    /* Linha de separação */
+    .linha-separador {
+        background-color: #f8f9fa !important;
+        height: 10px;
     }
 </style>
 
@@ -183,13 +217,15 @@ document.addEventListener('DOMContentLoaded', function() {
         let html = '';
 
         // Tabela 1 - Cálculo inicial (15/01/2025)
+        html += '<div class="tabela-container">';
         html += criarTabelaCalculo(
             'CÁLCULO DAS METAS DAS ASSESSORIAS EDITAL 1 PERÍODO 5 (15/01/2025)',
             dados.tabela1
         );
+        html += '</div>';
 
         // Tabela 2 - Após redistribuição da Real (26/03/2025)
-        html += '<div style="margin-top: 50px;">';
+        html += '<div class="tabela-container">';
         html += criarTabelaCalculo(
             'METAS DO PERÍODO AVALIATIVO DE 15/01/2025 até 16/07/2025 APÓS REDISTRIBUIÇÃO DA REAL em 26/03/2025',
             dados.tabela2
@@ -205,6 +241,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 <p>Dias úteis de 03/2025 até 26/03/2025: ${dados.calculo_real.dias_uteis_trabalhados}</p>
                 <p>Valor a ser mantido na Real em 03/2025: ${formatarMoeda(dados.calculo_real.valor_mantido)}</p>
                 <p>Valor a ser redistribuído para as demais: ${formatarMoeda(dados.calculo_real.valor_redistribuido)}</p>
+            </div>
+        `;
+
+        // Tabela 3 - Após redistribuição da H.Costa (16/05/2025)
+        html += '<div class="tabela-container">';
+        html += criarTabelaCalculo(
+            'METAS DO PERÍODO AVALIATIVO DE 15/01/2025 até 16/07/2025 APÓS REDISTRIBUIÇÃO DA H. COSTA em 16/05/2025',
+            dados.tabela3
+        );
+        html += '</div>';
+
+        // Adicionar informações sobre o cálculo da H.Costa
+        html += `
+            <div class="info-redistribuicao mt-3">
+                <p><strong>Cálculo da redistribuição da H.Costa em maio/2025:</strong></p>
+                <p>Meta da H.Costa em 05/2025: ${formatarMoeda(dados.calculo_hcosta.meta_total)}</p>
+                <p>Dias úteis de 05/2025: ${dados.calculo_hcosta.dias_uteis_total}</p>
+                <p>Dias úteis de 05/2025 até 16/05/2025: ${dados.calculo_hcosta.dias_uteis_trabalhados}</p>
+                <p>Valor a ser mantido na H.Costa em 05/2025: ${formatarMoeda(dados.calculo_hcosta.valor_mantido)}</p>
+                <p>Valor a ser redistribuído para as demais: ${formatarMoeda(dados.calculo_hcosta.valor_redistribuido)}</p>
             </div>
         `;
 
@@ -257,7 +313,7 @@ document.addEventListener('DOMContentLoaded', function() {
         html += '<tr>';
         html += '<td class="col-empresa">META MENSAL SISCOR POR DIA ÚTIL DO MÊS</td>';
         dados.meses.forEach(mes => {
-            const valorPorDia = mes.meta_siscor / mes.dias_uteis;
+            const valorPorDia = mes.dias_uteis > 0 ? mes.meta_siscor / mes.dias_uteis : 0;
             html += `<td class="valor-monetario">${formatarMoeda(valorPorDia)}</td>`;
         });
         html += `<td class="valor-monetario">${formatarMoeda(dados.meta_por_dia_util)}</td>`;
@@ -300,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
         html += '</tr>';
 
         // Separador
-        html += '<tr><td colspan="9" style="height: 10px; background-color: #fff;"></td></tr>';
+        html += '<tr class="linha-separador"><td colspan="9"></td></tr>';
 
         // Cabeçalho empresas
         html += '<tr>';
@@ -344,7 +400,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Linha observação
         html += '<tr>';
-        html += '<td colspan="9" style="text-align: left; font-size: 10px; padding: 10px;">';
+        html += '<td colspan="9" style="text-align: left; font-size: 10px; padding: 10px; background-color: #ffffff;">';
         html += '(1) Saldo devedor calculado na distribuição dos contratos';
         html += '</td>';
         html += '</tr>';
