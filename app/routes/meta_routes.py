@@ -189,6 +189,175 @@ def visualizar_calculo():
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)})
 
+
+@meta_bp.route('/metas/redistribuicao')
+@login_required
+def redistribuicao_metas():
+    """Página para redistribuição de metas"""
+    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).order_by(
+        PeriodoAvaliacao.ID_EDITAL.desc(),
+        PeriodoAvaliacao.ID_PERIODO.desc()
+    ).all()
+
+    return render_template('credenciamento/form_redistribuicao.html',
+                           editais=editais,
+                           periodos=periodos)
+
+
+@meta_bp.route('/metas/buscar-empresas-ativas')
+@login_required
+def buscar_empresas_ativas():
+    """Busca empresas descredenciadas que ainda não tiveram metas redistribuídas"""
+    try:
+        edital_id = request.args.get('edital_id', type=int)
+        periodo_id = request.args.get('periodo_id', type=int)
+
+        # Buscar última distribuição disponível
+        sql = text("""
+            SELECT TOP 1 DT_REFERENCIA
+            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO
+            WHERE ID_EDITAL = :edital_id
+            AND ID_PERIODO = :periodo_id
+            AND DELETED_AT IS NULL
+            ORDER BY DT_REFERENCIA DESC
+        """)
+
+        result = db.session.execute(sql, {
+            'edital_id': edital_id,
+            'periodo_id': periodo_id
+        }).fetchone()
+
+        if not result:
+            return jsonify({'sucesso': False, 'erro': 'Nenhuma distribuição encontrada'})
+
+        ultima_data = result[0]
+
+        # Buscar empresas DESCREDENCIADAS NO PERÍODO mas que ainda têm percentual > 0
+        # (ou seja, foram descredenciadas mas ainda não tiveram metas redistribuídas)
+        sql_empresas = text("""
+            SELECT 
+                mpd.ID_EMPRESA,
+                emp.NO_EMPRESA_ABREVIADA,
+                emp.DS_CONDICAO,
+                mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
+                mpd.PERCENTUAL_SALDO_DEVEDOR
+            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
+                ON mpd.ID_EMPRESA = emp.ID_EMPRESA
+                AND mpd.ID_EDITAL = emp.ID_EDITAL
+                AND mpd.ID_PERIODO = emp.ID_PERIODO
+            WHERE mpd.ID_EDITAL = :edital_id
+            AND mpd.ID_PERIODO = :periodo_id
+            AND mpd.DT_REFERENCIA = :data_ref
+            AND mpd.DELETED_AT IS NULL
+            AND emp.DS_CONDICAO = 'DESCREDENCIADA NO PERÍODO'  -- Apenas descredenciadas
+            AND mpd.PERCENTUAL_SALDO_DEVEDOR > 0  -- Que ainda não foram redistribuídas
+            ORDER BY emp.NO_EMPRESA_ABREVIADA
+        """)
+
+        result_empresas = db.session.execute(sql_empresas, {
+            'edital_id': edital_id,
+            'periodo_id': periodo_id,
+            'data_ref': ultima_data
+        })
+
+        empresas = []
+        for row in result_empresas:
+            empresas.append({
+                'id_empresa': row[0],
+                'nome_empresa': row[1],
+                'condicao': row[2],
+                'saldo_devedor': float(row[3]) if row[3] else 0,
+                'percentual': float(row[4]) if row[4] else 0
+            })
+
+        return jsonify({
+            'sucesso': True,
+            'empresas': empresas,
+            'data_referencia': ultima_data.strftime('%Y-%m-%d')
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
+@meta_bp.route('/metas/calcular-nova-redistribuicao', methods=['POST'])
+@login_required
+def calcular_nova_redistribuicao():
+    """Calcula uma nova redistribuição de metas"""
+    try:
+        data = request.json
+
+        from app.utils.redistribuicao_dinamica import RedistribuicaoDinamica
+
+        redistribuidor = RedistribuicaoDinamica(
+            edital_id=data['edital_id'],
+            periodo_id=data['periodo_id'],
+            empresa_saindo_id=data['empresa_id'],
+            data_descredenciamento=data['data_descredenciamento'],
+            incremento_meta=data['incremento_meta']
+        )
+
+        resultado = redistribuidor.calcular_redistribuicao()
+
+        return jsonify({
+            'sucesso': True,
+            'resultado': resultado
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
+
+@meta_bp.route('/metas/salvar-redistribuicao', methods=['POST'])
+@login_required
+def salvar_redistribuicao():
+    """Salva a redistribuição calculada"""
+    try:
+        data = request.json
+
+        from app.utils.redistribuicao_dinamica import RedistribuicaoDinamica
+
+        redistribuidor = RedistribuicaoDinamica(
+            edital_id=data['edital_id'],
+            periodo_id=data['periodo_id'],
+            empresa_saindo_id=data['empresa_id'],
+            data_descredenciamento=data['data_descredenciamento'],
+            incremento_meta=data['incremento_meta']
+        )
+
+        sucesso = redistribuidor.salvar_redistribuicao(data['resultado'])
+
+        if sucesso:
+            # Registrar log
+            registrar_log(
+                acao='redistribuicao_metas',
+                entidade='meta',
+                entidade_id=f"{data['edital_id']}-{data['periodo_id']}",
+                descricao=f'Redistribuição de metas - Empresa {data["empresa_id"]} descredenciada em {data["data_descredenciamento"]}',
+                dados_novos=data
+            )
+
+            return jsonify({
+                'sucesso': True,
+                'mensagem': 'Redistribuição salva com sucesso!'
+            })
+        else:
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Erro ao salvar redistribuição'
+            })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
 @meta_bp.route('/metas/nova', methods=['GET', 'POST'])
 @login_required
 def nova_meta():
