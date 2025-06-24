@@ -526,24 +526,25 @@ def buscar_empresas_redistribuicao():
 @meta_bp.route('/metas/calcular-redistribuicao', methods=['POST'])
 @login_required
 def calcular_redistribuicao():
-    """Calcula a redistribuição de metas"""
+    """Calcula preview da redistribuição de metas"""
     try:
         data = request.json
-        edital_id = data['edital_id']
-        periodo_id = data['periodo_id']
-        empresas_redistribuicao = data['empresas_redistribuicao']  # {data: [lista_empresas]}
 
-        from app.utils.redistribuicao_calculator import RedistribuicaoCalculator
+        from app.utils.redistribuicao_dinamica import RedistribuicaoDinamica
 
-        calculator = RedistribuicaoCalculator(edital_id, periodo_id)
-        resultado = calculator.calcular_redistribuicao(empresas_redistribuicao)
+        redistribuidor = RedistribuicaoDinamica(
+            edital_id=int(data['edital_id']),
+            periodo_id=int(data['periodo_id']),
+            empresa_saindo_id=int(data['empresa_id']),
+            data_descredenciamento=data['data_descredenciamento'],
+            incremento_meta=float(data['incremento_meta'])
+        )
 
-        return jsonify({
-            'sucesso': True,
-            'resultado': resultado
-        })
+        resultado = redistribuidor.calcular_redistribuicao()
+
+        return jsonify(resultado)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'sucesso': False, 'erro': str(e)})
+        return jsonify({'erro': str(e)}), 500
