@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .form-container {
+        max-width: 100%;
+        width: 98%;
+        margin: 0 auto;
+        padding: 10px;
+    }
+
+    .meta-card {
+        min-height: 90vh;
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .table-wrapper {
+        overflow: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        max-height: 600px;
+    }
+
+    #tabelaDistribuicaoMetas {
+        width: 100%;
+        min-width: 1200px;
+        font-size: 0.85rem;
+    }
+
+    #tabelaDistribuicaoMetas thead th {
+        position: sticky;
+        top: 0;
+        background-color: #6c63ff;
+        color: white;
+        z-index: 10;
+        text-align: center;
+        vertical-align: middle;
+        font-weight: 600;
+        padding: 10px 5px;
+        border: 1px solid #5b52e5;
+    }
+
+    #tabelaDistribuicaoMetas tbody td {
+        text-align: center;
+        vertical-align: middle;
+        padding: 8px 5px;
+        border: 1px solid #dee2e6;
+    }
+
+    .col-empresa {
+        width: 300px;
+        text-align: left !important;
+        font-weight: 600;
+    }
+
+    .col-mes {
+        width: 120px;
+    }
+
+    .col-total {
+        width: 140px;
+        font-weight: 700;
+        background-color: #f8f9fa;
+    }
+
+    .valor-monetario {
+        text-align: right !important;
+        font-family: 'Courier New', monospace;
+        white-space: nowrap;
+    }
+
+    .row-total {
+        background-color: #e9ecef;
+        font-weight: 700;
+    }
+
+    .loading-spinner {
+        display: none;
+        text-align: center;
+        padding: 50px;
+    }
+</style>
+
+<a href="{{ url_for('meta.lista_metas') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<div class="form-container">
+    <div class="card meta-card">
+        <div class="card-header bg-primary text-white py-4">
+            <h1 class="mb-0 text-center">
+                <i class="fas fa-plus-circle me-3"></i>Nova Distribuição de Metas
+            </h1>
+        </div>
+        <div class="card-body p-4">
+            <!-- Informação sobre o processo -->
+            <div class="alert alert-info mb-4">
+                <h6><i class="fas fa-info-circle me-2"></i>Como funciona a distribuição inicial de metas:</h6>
+                <ol class="mb-0">
+                    <li>Selecione o edital para carregar os períodos correspondentes.</li>
+                    <li>Selecione o período para o qual deseja calcular as metas.</li>
+                    <li>O sistema buscará o saldo devedor de cada empresa e o valor SISCOR mais recente.</li>
+                    <li>As metas serão calculadas e exibidas para sua confirmação.</li>
+                </ol>
+            </div>
+
+            <!-- Seleção de Edital e Período -->
+            <div class="row g-4 mb-4">
+                <div class="col-lg-5">
+                    <label for="edital_id" class="form-label fs-5 fw-semibold">
+                        Edital <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-lg" id="edital_id" required>
+                        <option value="">Selecione um edital...</option>
+                        {% for edital in editais %}
+                            <option value="{{ edital.ID }}">
+                                {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-lg-5">
+                    <label for="periodo_id" class="form-label fs-5 fw-semibold">
+                        Período <span class="text-danger">*</span>
+                    </label>
+                    <select class="form-select form-select-lg" id="periodo_id" required disabled>
+                        <option value="">Selecione um edital primeiro...</option>
+                        {# Os períodos serão carregados aqui dinamicamente via JavaScript #}
+                    </select>
+                </div>
+
+                <div class="col-lg-2 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary btn-lg w-100" id="btnCalcularDistribuicao">
+                        <i class="fas fa-calculator me-2"></i> Calcular
+                    </button>
+                </div>
+            </div>
+
+            <!-- Spinner de carregamento -->
+            <div class="loading-spinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+                <p class="mt-3">Calculando distribuição de metas...</p>
+            </div>
+
+            <!-- Container para a tabela de resultados -->
+            <div id="resultadoDistribuicao" style="display: none;">
+                <!-- Será preenchido dinamicamente -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editalSelect = document.getElementById('edital_id');
+    const periodoSelect = document.getElementById('periodo_id');
+    const btnCalcular = document.getElementById('btnCalcularDistribuicao');
+    const loadingSpinner = document.querySelector('.loading-spinner');
+    const resultadoDiv = document.getElementById('resultadoDistribuicao');
+
+    // --- LÓGICA PARA CARREGAR PERÍODOS DINAMICAMENTE ---
+    editalSelect.addEventListener('change', function() {
+        const editalId = this.value;
+        // Limpa e desabilita o select de período
+        periodoSelect.innerHTML = '<option value="">Carregando...</option>';
+        periodoSelect.disabled = true;
+        resultadoDiv.style.display = 'none'; // Esconde resultados antigos
+
+        if (!editalId) {
+            periodoSelect.innerHTML = '<option value="">Selecione um edital primeiro...</option>';
+            return;
+        }
+
+        // Busca os períodos correspondentes ao edital
+        fetch(`/credenciamento/metas/buscar-periodos-por-edital?edital_id=${editalId}`)
+            .then(response => response.json())
+            .then(data => {
+                periodoSelect.innerHTML = '<option value="">Selecione um período...</option>';
+                if (data.length > 0) {
+                    data.forEach(periodo => {
+                        const option = new Option(periodo.texto, periodo.id);
+                        periodoSelect.add(option);
+                    });
+                    periodoSelect.disabled = false;
+                } else {
+                    periodoSelect.innerHTML = '<option value="">Nenhum período encontrado para este edital</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao buscar períodos:', error);
+                periodoSelect.innerHTML = '<option value="">Erro ao carregar períodos</option>';
+                showToast('Erro ao carregar os períodos. Tente novamente.', 'danger');
+            });
+    });
+
+
+    // --- LÓGICA PARA CALCULAR A DISTRIBUIÇÃO ---
+    btnCalcular.addEventListener('click', function() {
+        const editalId = editalSelect.value;
+        const periodoId = periodoSelect.value;
+
+        if (!editalId || !periodoId) {
+            showToast('Por favor, selecione um edital e um período válidos.', 'warning');
+            return;
+        }
+
+        loadingSpinner.style.display = 'block';
+        resultadoDiv.style.display = 'none';
+        btnCalcular.disabled = true;
+
+        fetch('/credenciamento/metas/calcular-distribuicao-inicial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                edital_id: editalId,
+                periodo_id: periodoId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.sucesso) {
+                exibirResultadoDistribuicao(data.resultado);
+                resultadoDiv.style.display = 'block';
+            } else {
+                showToast('Erro ao calcular: ' + data.erro, 'danger');
+            }
+        })
+        .catch(error => {
+            showToast('Ocorreu um erro de comunicação. Verifique o console para mais detalhes.', 'danger');
+            console.error('Erro na requisição:', error);
+        })
+        .finally(() => {
+            loadingSpinner.style.display = 'none';
+            btnCalcular.disabled = false;
+        });
+    });
+
+    function exibirResultadoDistribuicao(resultado) {
+        let html = `
+            <div class="card border-primary border-2 mt-4">
+                <div class="card-header bg-primary text-white py-3">
+                    <h4 class="mb-0 text-center">
+                        <i class="fas fa-chart-line me-2"></i>Distribuição de Metas - ${resultado.periodo_info}
+                    </h4>
+                </div>
+                <div class="card-body p-4">
+                    <div class="table-wrapper mb-4">
+                        <table class="table table-bordered table-hover mb-0" id="tabelaDistribuicaoMetas">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" class="col-empresa">EMPRESA</th>
+                                    <th colspan="${resultado.meses.length}">MESES DO PERÍODO</th>
+                                    <th rowspan="2" class="col-total">TOTAL</th>
+                                </tr>
+                                <tr>
+                                    ${resultado.meses.map(mes => `<th class="col-mes">${mes.nome}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+
+        resultado.empresas.forEach((empresa, index) => {
+            html += `<tr>
+                        <td class="col-empresa">
+                            ${index + 1}. ${empresa.nome}<br>
+                            <small>SD: R$ ${formatarMoeda(empresa.saldo_devedor)} (${empresa.percentual.toFixed(8)}%)</small>
+                        </td>`;
+            resultado.meses.forEach(mes => {
+                const valor = empresa.metas[mes.competencia] || 0;
+                html += `<td class="valor-monetario">${formatarMoeda(valor)}</td>`;
+            });
+            html += `<td class="col-total valor-monetario">${formatarMoeda(empresa.total)}</td></tr>`;
+        });
+
+        html += `<tr class="row-total">
+                    <td class="col-empresa">
+                        TOTAL<br>
+                        <small>SD: R$ ${formatarMoeda(resultado.total_saldo_devedor)} (100.00000000%)</small>
+                    </td>`;
+        resultado.meses.forEach(mes => {
+            html += `<td class="valor-monetario">${formatarMoeda(mes.total_mes)}</td>`;
+        });
+        html += `<td class="col-total valor-monetario">${formatarMoeda(resultado.total_geral)}</td></tr>`;
+
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-center gap-3 mt-4">
+                        <button type="button" class="btn btn-success btn-lg" onclick="salvarDistribuicao()">
+                            <i class="fas fa-save me-2"></i> Salvar Distribuição
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="location.reload()">
+                            <i class="fas fa-redo me-2"></i> Nova Distribuição
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        resultadoDiv.innerHTML = html;
+    }
+
+    function formatarMoeda(valor) {
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+    }
+
+    window.salvarDistribuicao = function() {
+        if (confirm('Confirma o salvamento da distribuição de metas? Esta ação não pode ser desfeita.')) {
+            const editalId = editalSelect.value;
+            const periodoId = periodoSelect.value;
+
+            fetch('/credenciamento/metas/salvar-distribuicao-inicial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    edital_id: editalId,
+                    periodo_id: periodoId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.sucesso) {
+                    showToast('Distribuição salva com sucesso!', 'success');
+                    setTimeout(() => {
+                        window.location.href = '{{ url_for("meta.lista_metas") }}';
+                    }, 2000);
+                } else {
+                    showToast('Erro ao salvar: ' + data.erro, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Ocorreu um erro de comunicação ao salvar. Verifique o console.', 'danger');
+                console.error('Erro ao salvar:', error);
+            });
+        }
+    };
+});
+</script>
+{% endblock %}

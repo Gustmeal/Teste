@@ -238,29 +238,19 @@ document.getElementById('btnCalcular').addEventListener('click', function() {
     this.disabled = true;
     this.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Calculando...';
 
-    // URL com "metas" no plural
-    fetch('/credenciamento/metas/calcular-redistribuicao', {
+    // Rota para calcular a redistribuição
+    fetch('/credenciamento/metas/calcular-nova-redistribuicao', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Erro na resposta do servidor');
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
-        console.log('Dados recebidos:', data); // Debug
-
         if (data.erro) {
             alert('Erro: ' + data.erro);
             return;
         }
-
-        window.redistribuicaoData = data;
+        window.redistribuicaoData = data; // Salva os dados globalmente para o botão de salvar
         exibirTabela(data);
     })
     .catch(error => {
@@ -274,11 +264,7 @@ document.getElementById('btnCalcular').addEventListener('click', function() {
 });
 
 function exibirTabela(data) {
-    console.log('Exibindo tabela com dados:', data); // Debug
-
     let html = '<div class="tabela-container">';
-
-    // Título e informações
     html += '<h4 class="text-center mb-4">Preview da Redistribuição de Metas</h4>';
     html += '<div class="alert alert-info mb-4">';
     html += '<strong>Empresa Descredenciada:</strong> ' + data.empresa_saindo.nome + '<br>';
@@ -286,119 +272,51 @@ function exibirTabela(data) {
     html += '<strong>Percentual Redistribuído:</strong> ' + data.empresa_saindo.percentual_anterior.toFixed(7) + '%';
     html += '</div>';
 
-    // Tabela
     html += '<h5>DISTRIBUIÇÃO MÊS A MÊS</h5>';
     html += '<div class="table-wrapper">';
     html += '<table class="table table-bordered table-sm table-distribuicao">';
-
-    // Cabeçalho
-    html += '<thead>';
-    html += '<tr>';
+    html += '<thead><tr>';
     html += '<th rowspan="2" style="min-width: 250px;">DISTRIBUIÇÃO MÊS A MÊS</th>';
     html += '<th colspan="' + data.meses.length + '" class="text-center">MESES DO PERÍODO</th>';
-    html += '<th rowspan="2">TOTAL</th>';
-    html += '</tr>';
-    html += '<tr>';
+    html += '<th rowspan="2">TOTAL</th></tr><tr>';
 
-    // CORREÇÃO: Usar 'nome' ao invés de 'nome_mes'
     data.meses.forEach(mes => {
-        // Extrair nome do mês da competência se 'nome' não existir
-        let nomeMes = mes.nome || mes.competencia;
-        if (mes.competencia && !mes.nome) {
-            const [ano, mesNum] = mes.competencia.split('-');
-            const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
-            nomeMes = meses[parseInt(mesNum) - 1] || mes.competencia;
-        }
-        html += '<th>' + nomeMes + '</th>';
+        html += '<th>' + (mes.nome || mes.competencia) + '</th>';
     });
-    html += '</tr>';
-    html += '</thead>';
-    html += '<tbody>';
+    html += '</tr></thead><tbody>';
 
-    // Dados das empresas
     let index = 1;
     data.empresas.forEach(empresa => {
         const classe = empresa.destacar ? 'empresa-saindo' : '';
-        html += '<tr class="' + classe + '">';
-        html += '<td class="empresa-info">';
-        html += '<strong>' + index + ' ' + empresa.nome + '</strong><br>';
-        html += 'R$ ' + formatarValor(empresa.saldo_devedor) + '<br>';
-        html += '<span class="percentage-value">' + empresa.percentual_novo.toFixed(7) + '%</span>';
-        html += '</td>';
-
-        // Valores mensais
+        html += `<tr class="${classe}"><td class="empresa-info"><strong>${index} ${empresa.nome}</strong><br>R$ ${formatarValor(empresa.saldo_devedor)}<br><span class="percentage-value">${empresa.percentual_novo.toFixed(7)}%</span></td>`;
         data.meses.forEach(mes => {
-            const valor = empresa.meses[mes.competencia] || 0;
-            html += '<td class="text-end">R$ ' + formatarValor(valor) + '</td>';
+            html += `<td class="text-end">R$ ${formatarValor(empresa.meses[mes.competencia] || 0)}</td>`;
         });
-
-        // Total
-        html += '<td class="text-end"><strong>R$ ' + formatarValor(empresa.total) + '</strong></td>';
-        html += '</tr>';
+        html += `<td class="text-end"><strong>R$ ${formatarValor(empresa.total)}</strong></td></tr>`;
         index++;
     });
 
-    // Linha de totais
-    html += '<tr class="total-row">';
-    html += '<td>';
-    html += '<strong>TOTAL R$ ' + formatarValor(data.total_saldo_devedor || calcularTotalSD(data.empresas)) + '</strong><br>';
-    html += '<strong>100.00000000%</strong>';
-    html += '</td>';
-
-    // Totais mensais
+    html += '<tr class="total-row"><td><strong>TOTAL</strong></td>';
     data.meses.forEach(mes => {
-        let totalMes = 0;
-        data.empresas.forEach(empresa => {
-            totalMes += parseFloat(empresa.meses[mes.competencia] || 0);
-        });
-        html += '<td class="text-end"><strong>R$ ' + formatarValor(totalMes) + '</strong></td>';
+        let totalMes = data.empresas.reduce((sum, emp) => sum + parseFloat(emp.meses[mes.competencia] || 0), 0);
+        html += `<td class="text-end"><strong>R$ ${formatarValor(totalMes)}</strong></td>`;
     });
+    let totalGeral = data.empresas.reduce((sum, emp) => sum + parseFloat(emp.total || 0), 0);
+    html += `<td class="text-end"><strong>R$ ${formatarValor(totalGeral)}</strong></td></tr>`;
+    html += '</tbody></table></div>';
 
-    // Total geral
-    let totalGeral = 0;
-    data.empresas.forEach(empresa => {
-        totalGeral += parseFloat(empresa.total || 0);
-    });
-    html += '<td class="text-end"><strong>R$ ' + formatarValor(totalGeral) + '</strong></td>';
-    html += '</tr>';
-    html += '</tbody>';
-    html += '</table>';
-    html += '</div>';
-
-    // Botões
     html += '<div class="mt-4">';
-    html += '<button type="button" class="btn btn-success" onclick="confirmarRedistribuicao()">';
-    html += '<i class="fas fa-save me-2"></i> Confirmar e Salvar';
-    html += '</button> ';
-    html += '<button type="button" class="btn btn-warning" onclick="cancelarPreview()">';
-    html += '<i class="fas fa-times me-2"></i> Cancelar';
-    html += '</button>';
-    html += '</div>';
-
-    html += '</div>';
+    html += '<button type="button" class="btn btn-success" onclick="confirmarRedistribuicao()"><i class="fas fa-save me-2"></i> Confirmar e Salvar</button> ';
+    html += '<button type="button" class="btn btn-warning" onclick="cancelarPreview()"><i class="fas fa-times me-2"></i> Cancelar</button>';
+    html += '</div></div>';
 
     document.getElementById('containerTabela').innerHTML = html;
     document.getElementById('containerTabela').style.display = 'block';
-
-    // Scroll para a tabela
     document.getElementById('containerTabela').scrollIntoView({ behavior: 'smooth' });
 }
 
-function calcularTotalSD(empresas) {
-    let total = 0;
-    empresas.forEach(empresa => {
-        total += parseFloat(empresa.saldo_devedor || 0);
-    });
-    return total;
-}
-
 function formatarValor(valor) {
-    // Garantir que o valor é um número
-    const num = parseFloat(valor) || 0;
-    return num.toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
+    return (parseFloat(valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatarData(data) {
@@ -408,35 +326,24 @@ function formatarData(data) {
 }
 
 function confirmarRedistribuicao() {
-    if (!window.redistribuicaoData) {
-        alert('Erro: Dados de redistribuição não encontrados.');
-        return;
-    }
+    if (!window.redistribuicaoData || !confirm('Confirma a redistribuição de metas? Esta ação não pode ser desfeita.')) return;
 
-    if (!confirm('Confirma a redistribuição de metas? Esta ação não pode ser desfeita.')) {
-        return;
-    }
+    const payload = {
+        edital_id: document.getElementById('edital_id').value,
+        periodo_id: document.getElementById('periodo_id').value,
+        empresa_id: document.getElementById('empresa_id').value,
+        data_descredenciamento: document.getElementById('data_descredenciamento').value,
+        incremento_meta: document.getElementById('incremento_meta').value,
+        resultado: window.redistribuicaoData // Enviar os dados calculados para o backend
+    };
 
-    window.redistribuicaoData.edital_id = document.getElementById('edital_id').value;
-    window.redistribuicaoData.periodo_id = document.getElementById('periodo_id').value;
-    window.redistribuicaoData.empresa_id = document.getElementById('empresa_id').value;
-    window.redistribuicaoData.data_descredenciamento = document.getElementById('data_descredenciamento').value;
-    window.redistribuicaoData.incremento_meta = document.getElementById('incremento_meta').value;
-
-    // URL com "metas" no plural
+    // Rota para salvar
     fetch('/credenciamento/metas/salvar-redistribuicao', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(window.redistribuicaoData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Erro na resposta do servidor');
-        }
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
         if (data.sucesso) {
             alert('Redistribuição salva com sucesso!');

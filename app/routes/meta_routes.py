@@ -1,5 +1,5 @@
 # app/routes/meta_routes.py
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
 from app.models.metas_redistribuicao import MetasPercentuaisDistribuicao, Metas, MetasPeriodoAvaliativo
 from app.models.meta_avaliacao import MetaAvaliacao, MetaSemestral
 from app.models.edital import Edital
@@ -208,80 +208,67 @@ def redistribuicao_metas():
 @meta_bp.route('/metas/buscar-empresas-ativas')
 @login_required
 def buscar_empresas_ativas():
-    """Busca empresas descredenciadas que ainda não tiveram metas redistribuídas"""
+    """
+    Busca empresas que podem ser descredenciadas.
+    A fonte de dados agora é a TB018, para garantir consistência.
+    """
     try:
         edital_id = request.args.get('edital_id', type=int)
-        periodo_id = request.args.get('periodo_id', type=int)
+        periodo_pk_id = request.args.get('periodo_id', type=int)
 
-        # Buscar última distribuição disponível
+        if not edital_id or not periodo_pk_id:
+            return jsonify({'sucesso': False, 'erro': 'Edital e Período são obrigatórios.'})
+
+        # Buscar a chave de negócio do período
+        periodo = PeriodoAvaliacao.query.get(periodo_pk_id)
+        if not periodo:
+            return jsonify({'sucesso': False, 'erro': f'Período com ID {periodo_pk_id} não encontrado.'})
+        periodo_business_id = periodo.ID_PERIODO
+
+        # CORREÇÃO: A query agora busca da TB018, a mesma fonte do cálculo principal.
         sql = text("""
-            SELECT TOP 1 DT_REFERENCIA
-            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO
-            WHERE ID_EDITAL = :edital_id
-            AND ID_PERIODO = :periodo_id
-            AND DELETED_AT IS NULL
-            ORDER BY DT_REFERENCIA DESC
+            SELECT DISTINCT
+                m.ID_EMPRESA,
+                m.NO_EMPRESA_ABREVIADA,
+                m.PERCENTUAL_SALDO_DEVEDOR
+            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL m
+            WHERE m.ID_EDITAL = :edital_id
+            AND m.ID_PERIODO = :periodo_id
+            AND m.DELETED_AT IS NULL
+            AND m.PERCENTUAL_SALDO_DEVEDOR > 0  -- Apenas empresas com percentual a ser redistribuído
+            AND m.DT_REFERENCIA = (
+                SELECT MAX(DT_REFERENCIA)
+                FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND DELETED_AT IS NULL
+            )
+            ORDER BY m.NO_EMPRESA_ABREVIADA
         """)
 
         result = db.session.execute(sql, {
             'edital_id': edital_id,
-            'periodo_id': periodo_id
-        }).fetchone()
+            'periodo_id': periodo_business_id
+        }).fetchall()
 
         if not result:
-            return jsonify({'sucesso': False, 'erro': 'Nenhuma distribuição encontrada'})
-
-        ultima_data = result[0]
-
-        # Buscar empresas DESCREDENCIADAS NO PERÍODO mas que ainda têm percentual > 0
-        # (ou seja, foram descredenciadas mas ainda não tiveram metas redistribuídas)
-        sql_empresas = text("""
-            SELECT 
-                mpd.ID_EMPRESA,
-                emp.NO_EMPRESA_ABREVIADA,
-                emp.DS_CONDICAO,
-                mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
-                mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
-            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
-                ON mpd.ID_EMPRESA = emp.ID_EMPRESA
-                AND mpd.ID_EDITAL = emp.ID_EDITAL
-                AND mpd.ID_PERIODO = emp.ID_PERIODO
-            WHERE mpd.ID_EDITAL = :edital_id
-            AND mpd.ID_PERIODO = :periodo_id
-            AND mpd.DT_REFERENCIA = :data_ref
-            AND mpd.DELETED_AT IS NULL
-            AND emp.DS_CONDICAO = 'DESCREDENCIADA NO PERÍODO'  -- Apenas descredenciadas
-            AND mpd.PERCENTUAL_SALDO_DEVEDOR > 0  -- Que ainda não foram redistribuídas
-            ORDER BY emp.NO_EMPRESA_ABREVIADA
-        """)
-
-        result_empresas = db.session.execute(sql_empresas, {
-            'edital_id': edital_id,
-            'periodo_id': periodo_id,
-            'data_ref': ultima_data
-        })
+            return jsonify({'sucesso': False, 'erro': 'Nenhuma empresa ativa encontrada na última distribuição salva.'})
 
         empresas = []
-        for row in result_empresas:
+        for row in result:
             empresas.append({
-                'id_empresa': row[0],
-                'nome_empresa': row[1],
-                'condicao': row[2],
-                'saldo_devedor': float(row[3]) if row[3] else 0,
-                'percentual': float(row[4]) if row[4] else 0
+                'id_empresa': row.ID_EMPRESA,
+                'nome_empresa': row.NO_EMPRESA_ABREVIADA,
+                'percentual': float(row.PERCENTUAL_SALDO_DEVEDOR)
             })
 
-        return jsonify({
-            'sucesso': True,
-            'empresas': empresas,
-            'data_referencia': ultima_data.strftime('%Y-%m-%d')
-        })
+        return jsonify({'sucesso': True, 'empresas': empresas})
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)})
+
 
 @meta_bp.route('/metas/calcular-nova-redistribuicao', methods=['POST'])
 @login_required
@@ -289,7 +276,6 @@ def calcular_nova_redistribuicao():
     """Calcula uma nova redistribuição de metas"""
     try:
         data = request.json
-
         from app.utils.redistribuicao_dinamica import RedistribuicaoDinamica
 
         redistribuidor = RedistribuicaoDinamica(
@@ -297,20 +283,15 @@ def calcular_nova_redistribuicao():
             periodo_id=data['periodo_id'],
             empresa_saindo_id=data['empresa_id'],
             data_descredenciamento=data['data_descredenciamento'],
-            incremento_meta=data['incremento_meta']
+            incremento_meta=data.get('incremento_meta', 1.0)
         )
-
         resultado = redistribuidor.calcular_redistribuicao()
-
-        return jsonify({
-            'sucesso': True,
-            'resultado': resultado
-        })
+        return jsonify(resultado)
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'sucesso': False, 'erro': str(e)})
+        return jsonify({'erro': str(e)})
 
 
 @meta_bp.route('/metas/salvar-redistribuicao', methods=['POST'])
@@ -319,7 +300,6 @@ def salvar_redistribuicao():
     """Salva a redistribuição calculada"""
     try:
         data = request.json
-
         from app.utils.redistribuicao_dinamica import RedistribuicaoDinamica
 
         redistribuidor = RedistribuicaoDinamica(
@@ -327,36 +307,28 @@ def salvar_redistribuicao():
             periodo_id=data['periodo_id'],
             empresa_saindo_id=data['empresa_id'],
             data_descredenciamento=data['data_descredenciamento'],
-            incremento_meta=data['incremento_meta']
+            incremento_meta=data.get('incremento_meta', 1.0)
         )
-
-        sucesso = redistribuidor.salvar_redistribuicao(data['resultado'])
+        # O cálculo é feito novamente dentro do método salvar para garantir consistência
+        sucesso = redistribuidor.salvar_redistribuicao()
 
         if sucesso:
-            # Registrar log
             registrar_log(
-                acao='redistribuicao_metas',
-                entidade='meta',
+                acao='redistribuicao_metas', entidade='meta',
                 entidade_id=f"{data['edital_id']}-{data['periodo_id']}",
-                descricao=f'Redistribuição de metas - Empresa {data["empresa_id"]} descredenciada em {data["data_descredenciamento"]}',
+                descricao=f"Redistribuição de metas - Empresa {data['empresa_id']} descredenciada em {data['data_descredenciamento']}",
                 dados_novos=data
             )
-
-            return jsonify({
-                'sucesso': True,
-                'mensagem': 'Redistribuição salva com sucesso!'
-            })
+            return jsonify({'sucesso': True, 'mensagem': 'Redistribuição salva com sucesso!'})
         else:
-            return jsonify({
-                'sucesso': False,
-                'erro': 'Erro ao salvar redistribuição'
-            })
+            return jsonify({'sucesso': False, 'erro': 'Erro desconhecido ao salvar redistribuição'})
 
     except Exception as e:
         db.session.rollback()
         import traceback
         traceback.print_exc()
         return jsonify({'sucesso': False, 'erro': str(e)})
+
 
 @meta_bp.route('/metas/nova', methods=['GET', 'POST'])
 @login_required
@@ -389,7 +361,7 @@ def calcular_metas():
         metas_calculadas = calculator.calcular_metas_completas()
 
         # Obter período para retornar as datas
-        periodo = PeriodoAvaliacao.query.filter_by(ID=periodo_id).first()
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
 
         return jsonify({
             'sucesso': True,
@@ -406,6 +378,7 @@ def calcular_metas():
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
+
 
 @meta_bp.route('/metas/salvar-calculadas', methods=['POST'])
 @login_required
@@ -465,7 +438,6 @@ def excluir_meta(id):
     return redirect(url_for('meta.lista_metas'))
 
 
-
 @meta_bp.route('/metas/buscar-empresas-redistribuicao')
 @login_required
 def buscar_empresas_redistribuicao():
@@ -479,39 +451,37 @@ def buscar_empresas_redistribuicao():
             SELECT DISTINCT
                 mpd.DT_REFERENCIA,
                 mpd.ID_EMPRESA,
-                emp.NO_EMPRESA_ABREVIADA,
+                mpd.NO_EMPRESA_ABREVIADA,
                 mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
-            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
-                ON mpd.ID_EMPRESA = emp.ID_EMPRESA
-                AND mpd.ID_EDITAL = emp.ID_EDITAL
-                AND mpd.ID_PERIODO = emp.ID_PERIODO
+            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL mpd
             WHERE mpd.ID_EDITAL = :edital_id
             AND mpd.ID_PERIODO = :periodo_id
             AND mpd.DELETED_AT IS NULL
-            ORDER BY mpd.DT_REFERENCIA, emp.NO_EMPRESA_ABREVIADA
+            ORDER BY mpd.DT_REFERENCIA, mpd.NO_EMPRESA_ABREVIADA
         """)
+
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
 
         result = db.session.execute(sql, {
             'edital_id': edital_id,
-            'periodo_id': periodo_id
+            'periodo_id': periodo.ID_PERIODO
         })
 
         # Agrupar por data de referência
         empresas_por_data = {}
 
         for row in result:
-            dt_ref = row[0].strftime('%Y-%m-%d')
+            dt_ref = row.DT_REFERENCIA.strftime('%Y-%m-%d')
 
             if dt_ref not in empresas_por_data:
                 empresas_por_data[dt_ref] = []
 
             empresas_por_data[dt_ref].append({
-                'id_empresa': row[1],
-                'nome_empresa': row[2],
-                'saldo_devedor': float(row[3]) if row[3] else 0,
-                'percentual': float(row[4]) if row[4] else 0
+                'id_empresa': row.ID_EMPRESA,
+                'nome_empresa': row.NO_EMPRESA_ABREVIADA,
+                'saldo_devedor': float(row.VR_SALDO_DEVEDOR_DISTRIBUIDO) if row.VR_SALDO_DEVEDOR_DISTRIBUIDO else 0,
+                'percentual': float(row.PERCENTUAL_SALDO_DEVEDOR) if row.PERCENTUAL_SALDO_DEVEDOR else 0
             })
 
         return jsonify({
@@ -547,4 +517,149 @@ def calcular_redistribuicao():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'erro': str(e)}), 500
+
+
+@meta_bp.route('/metas/nova-distribuicao')
+@login_required
+def nova_meta_distribuicao():
+    """Página para criar nova distribuição inicial de metas"""
+    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+    # Não vamos mais passar os períodos aqui, eles serão carregados dinamicamente
+    return render_template('credenciamento/form_nova_meta.html',
+                           editais=editais)
+
+
+@meta_bp.route('/metas/calcular-distribuicao-inicial', methods=['POST'])
+@login_required
+def calcular_distribuicao_inicial():
+    """Calcula a distribuição inicial de metas"""
+    try:
+        data = request.json
+        edital_id = int(data['edital_id'])
+        periodo_id = int(data['periodo_id'])
+
+        from app.utils.distribuicao_inicial import DistribuicaoInicial
+
+        distribuidor = DistribuicaoInicial(edital_id, periodo_id)
+        resultado = distribuidor.calcular_distribuicao()
+
+        # Guardar na sessão para posterior salvamento
+        session['distribuicao_calculada'] = resultado
+        session['distribuicao_edital'] = edital_id
+        session['distribuicao_periodo'] = periodo_id
+
+        return jsonify({
+            'sucesso': True,
+            'resultado': resultado
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
+
+@meta_bp.route('/metas/salvar-distribuicao-inicial', methods=['POST'])
+@login_required
+def salvar_distribuicao_inicial():
+    """Salva a distribuição inicial calculada"""
+    try:
+        data = request.json
+        edital_id = int(data['edital_id'])
+        periodo_id = int(data['periodo_id'])
+
+        # Verificar se os dados de sessão existem e correspondem à requisição
+        if (session.get('distribuicao_edital') != edital_id or
+                session.get('distribuicao_periodo') != periodo_id or
+                'distribuicao_calculada' not in session):
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Dados de cálculo não encontrados na sessão. Por favor, calcule a distribuição novamente.'
+            })
+
+        # Verificar se já existe distribuição para este período
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
+        sql_check = text("""
+            SELECT COUNT(*) as total
+            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+            WHERE ID_EDITAL = :edital_id
+            AND ID_PERIODO = :periodo_id
+            AND DELETED_AT IS NULL
+        """)
+
+        result = db.session.execute(sql_check, {
+            'edital_id': edital_id,
+            'periodo_id': periodo.ID_PERIODO
+        }).fetchone()
+
+        if result and result.total > 0:
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Já existe uma distribuição de metas para este período!'
+            })
+
+        # Buscar dados calculados da sessão
+        dados_calculados = session.get('distribuicao_calculada')
+
+        from app.utils.distribuicao_inicial import DistribuicaoInicial
+        distribuidor = DistribuicaoInicial(edital_id, periodo_id)
+
+        # Salvar distribuição
+        if distribuidor.salvar_distribuicao(dados_calculados):
+            # Limpar dados da sessão após o salvamento
+            session.pop('distribuicao_calculada', None)
+            session.pop('distribuicao_edital', None)
+            session.pop('distribuicao_periodo', None)
+
+            # Registrar log
+            registrar_log(
+                acao='criar_distribuicao_inicial',
+                entidade='meta',
+                entidade_id=f"{edital_id}-{periodo.ID_PERIODO}",
+                descricao=f'Criação de distribuição inicial de metas para edital {edital_id} período {periodo.ID_PERIODO}',
+                dados_novos={'edital_id': edital_id, 'periodo_id': periodo_id}
+            )
+
+            return jsonify({
+                'sucesso': True,
+                'mensagem': 'Distribuição salva com sucesso!'
+            })
+        else:
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Erro ao salvar distribuição'
+            })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'sucesso': False, 'erro': str(e)})
+
+
+# NOVA ROTA PARA BUSCAR PERÍODOS FILTRADOS
+@meta_bp.route('/metas/buscar-periodos-por-edital')
+@login_required
+def buscar_periodos_por_edital():
+    """Busca períodos de avaliação filtrados por edital."""
+    try:
+        edital_id = request.args.get('edital_id', type=int)
+        if not edital_id:
+            return jsonify([])
+
+        # Query para buscar apenas os períodos do edital selecionado
+        periodos = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == edital_id,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).all()
+
+        # Formata os dados para o frontend
+        periodos_json = [
+            {
+                'id': p.ID,
+                'texto': f"Período {p.ID_PERIODO} - {p.DT_INICIO.strftime('%d/%m/%Y')} a {p.DT_FIM.strftime('%d/%m/%Y')}"
+            } for p in periodos
+        ]
+        return jsonify(periodos_json)
+    except Exception as e:
         return jsonify({'erro': str(e)}), 500
