@@ -214,29 +214,82 @@ class DistribuicaoInicial:
 
     def salvar_distribuicao(self, dados_calculados=None):
         """
-        Salva a distribuição calculada usando a chave de negócio do período.
+        Salva a distribuição calculada nas três tabelas:
+        1. TB018_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
+        2. TB018_DISTRIBUICAO_SUMARIO (nova - resumo)
+        3. TB019_DISTRIBUICAO_MENSAL (nova - detalhes)
         """
         try:
             if not dados_calculados:
                 dados_calculados = self.calcular_distribuicao()
+
+            # Para cada empresa, salvar nas três tabelas
             for empresa in dados_calculados['empresas']:
+                # 1. Primeiro, inserir na tabela SUMARIO e pegar o ID gerado
+                sql_sumario = text("""
+                    INSERT INTO DEV.DCA_TB018_DISTRIBUICAO_SUMARIO
+                    (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
+                     VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, CREATED_AT)
+                    OUTPUT INSERTED.ID
+                    VALUES (:edital_id, :periodo_id, :dt_ref, :empresa_id, :nome_empresa, 
+                            :saldo_devedor, :percentual, :created_at)
+                """)
+
+                result_sumario = db.session.execute(sql_sumario, {
+                    'edital_id': self.edital_id,
+                    'periodo_id': self.periodo_business_id,
+                    'dt_ref': self.data_referencia,
+                    'empresa_id': empresa['id_empresa'],
+                    'nome_empresa': empresa['nome'],
+                    'saldo_devedor': empresa['saldo_devedor'],
+                    'percentual': empresa['percentual'],
+                    'created_at': datetime.now()
+                })
+
+                # Pegar o ID gerado
+                id_sumario = result_sumario.fetchone()[0]
+
+                # 2. Inserir os detalhes mensais na TB019
                 for competencia, valor_meta in empresa['metas'].items():
-                    sql_insert = text("""
-                        INSERT INTO DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
-                        (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
-                        VALUES (:edital_id, :periodo_id, :dt_ref, :empresa_id, :nome_empresa, :saldo_devedor, :percentual, :mes_competencia, :valor_meta, :created_at)
+                    sql_detalhe = text("""
+                        INSERT INTO DEV.DCA_TB019_DISTRIBUICAO_MENSAL
+                        (ID_DISTRIBUICAO_SUMARIO, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
+                        VALUES (:id_sumario, :mes_competencia, :valor_meta, :created_at)
                     """)
-                    db.session.execute(sql_insert, {
-                        'edital_id': self.edital_id,
-                        'periodo_id': self.periodo_business_id,  # CORRIGIDO
-                        'dt_ref': self.data_referencia,
-                        'empresa_id': empresa['id_empresa'], 'nome_empresa': empresa['nome'],
-                        'saldo_devedor': empresa['saldo_devedor'], 'percentual': empresa['percentual'],
-                        'mes_competencia': competencia, 'valor_meta': valor_meta,
+
+                    db.session.execute(sql_detalhe, {
+                        'id_sumario': id_sumario,
+                        'mes_competencia': competencia,
+                        'valor_meta': valor_meta,
                         'created_at': datetime.now()
                     })
+
+                    # 3. Manter a inserção na tabela original TB018 para compatibilidade
+                    sql_original = text("""
+                        INSERT INTO DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                        (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
+                         VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, 
+                         VR_META_MES, CREATED_AT)
+                        VALUES (:edital_id, :periodo_id, :dt_ref, :empresa_id, :nome_empresa, 
+                                :saldo_devedor, :percentual, :mes_competencia, :valor_meta, :created_at)
+                    """)
+
+                    db.session.execute(sql_original, {
+                        'edital_id': self.edital_id,
+                        'periodo_id': self.periodo_business_id,
+                        'dt_ref': self.data_referencia,
+                        'empresa_id': empresa['id_empresa'],
+                        'nome_empresa': empresa['nome'],
+                        'saldo_devedor': empresa['saldo_devedor'],
+                        'percentual': empresa['percentual'],
+                        'mes_competencia': competencia,
+                        'valor_meta': valor_meta,
+                        'created_at': datetime.now()
+                    })
+
             db.session.commit()
             return True
+
         except Exception as e:
             db.session.rollback()
             raise Exception(f"Erro ao salvar distribuição: {str(e)}")
