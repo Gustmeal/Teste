@@ -96,6 +96,9 @@ def create_app():
     from app.routes.vinculacao_routes import vinculacao_bp
     app.register_blueprint(vinculacao_bp)
 
+    from app.routes.demonstrativo_routes import demonstrativo_bp
+    app.register_blueprint(demonstrativo_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

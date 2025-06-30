@@ -47,55 +47,73 @@
         </div>
     </div>
 
-    <!-- Ações principais -->
+    <!-- Ações principais - Layout 2x2 -->
     <div class="row g-4">
-        <div class="col-md-4">
+        <!-- Primeira linha -->
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
-                    <div class="system-icon manage-color mx-auto">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon manage-color mx-auto mb-4">
                         <i class="fas fa-list"></i>
                     </div>
-                    <h3 class="system-title">Gerenciar Códigos</h3>
+                    <h3 class="system-title mb-3">Gerenciar Códigos</h3>
                     <p class="text-muted mb-4">
                         Visualize, edite e gerencie todos os códigos contábeis cadastrados no sistema.
                     </p>
-                    <a href="{{ url_for('codigo_contabil.lista_codigos') }}" class="btn btn-access">
+                    <a href="{{ url_for('codigo_contabil.lista_codigos') }}" class="btn btn-access btn-lg">
                         <i class="fas fa-eye me-2"></i> Ver Códigos
                     </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-4">
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
-                    <div class="system-icon add-color mx-auto">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon add-color mx-auto mb-4">
                         <i class="fas fa-plus"></i>
                     </div>
-                    <h3 class="system-title">Novo Código</h3>
+                    <h3 class="system-title mb-3">Novo Código</h3>
                     <p class="text-muted mb-4">
                         Cadastre novos códigos contábeis no sistema seguindo a estrutura do PDG.
                     </p>
-                    <a href="{{ url_for('codigo_contabil.novo_codigo') }}" class="btn btn-access">
+                    <a href="{{ url_for('codigo_contabil.novo_codigo') }}" class="btn btn-access btn-lg">
                         <i class="fas fa-plus me-2"></i> Cadastrar Código
                     </a>
                 </div>
             </div>
         </div>
 
-        <!-- NOVO Card de Vinculação -->
-        <div class="col-md-4">
+        <!-- Segunda linha -->
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
-                    <div class="system-icon vinculacao-color mx-auto">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon vinculacao-color mx-auto mb-4">
                         <i class="fas fa-link"></i>
                     </div>
-                    <h3 class="system-title">Vinculação</h3>
+                    <h3 class="system-title mb-3">XML(SEST)</h3>
                     <p class="text-muted mb-4">
                         Gerencie vinculações entre itens SISCOR e códigos contábeis do sistema.
                     </p>
-                    <a href="{{ url_for('vinculacao.index') }}" class="btn btn-access">
+                    <a href="{{ url_for('vinculacao.index') }}" class="btn btn-access btn-lg">
                         <i class="fas fa-link me-2"></i> Acessar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon demonstrativo-color mx-auto mb-4">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3 class="system-title mb-3">Demonstrativos</h3>
+                    <p class="text-muted mb-4">
+                        Gerencie vinculações entre contas e estruturas de demonstrativos contábeis.
+                    </p>
+                    <a href="{{ url_for('demonstrativo.index') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-chart-line me-2"></i> Acessar Demonstrativos
                     </a>
                 </div>
             </div>
@@ -105,12 +123,12 @@
 
 <style>
     .system-icon {
-        font-size: 2.5rem;
+        font-size: 3rem;
         margin-bottom: 1.5rem;
         display: inline-block;
-        width: 80px;
-        height: 80px;
-        line-height: 80px;
+        width: 90px;
+        height: 90px;
+        line-height: 90px;
         border-radius: 50%;
         text-align: center;
         color: white;
@@ -140,9 +158,37 @@
         background-color: #e83e8c;
     }
 
+    .demonstrativo-color {
+        background-color: #20c997;
+    }
+
     .counter {
         font-size: 2.5rem;
         font-weight: 700;
+    }
+
+    /* Ajustes para cards maiores */
+    .home-card {
+        transition: transform 0.3s ease;
+    }
+
+    .home-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .system-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .btn-access {
+        padding: 12px 30px;
+        font-weight: 500;
+    }
+
+    .btn-access.btn-lg {
+        padding: 14px 35px;
+        font-size: 1.1rem;
     }
 </style>
 {% endblock %}

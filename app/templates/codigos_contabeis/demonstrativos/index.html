@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('codigo_contabil.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>Sistema de Demonstrativos</h1>
+    <p class="text-secondary">Vinculação de Contas com Estruturas de Demonstrativos Contábeis</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon demonstrativo-color mx-auto">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title">Total Vinculações</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_vinculacoes }}">0</h2>
+                    <p class="text-muted">Contas vinculadas</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon estrutura-color mx-auto">
+                        <i class="fas fa-sitemap"></i>
+                    </div>
+                    <h3 class="system-title">Estruturas</h3>
+                    <h2 class="text-info counter" data-target="{{ total_estruturas }}">0</h2>
+                    <p class="text-muted">Estruturas disponíveis</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon manage-color mx-auto">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="system-title">Gerenciar Demonstrativos</h3>
+                    <p class="text-muted mb-4">
+                        Visualize, edite e gerencie todas as vinculações de contas com demonstrativos.
+                    </p>
+                    <a href="{{ url_for('demonstrativo.lista_demonstrativos') }}" class="btn btn-access">
+                        <i class="fas fa-eye me-2"></i> Ver Demonstrativos
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon add-color mx-auto">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h3 class="system-title">Nova Vinculação</h3>
+                    <p class="text-muted mb-4">
+                        Crie novas vinculações entre contas e estruturas de demonstrativos contábeis.
+                    </p>
+                    <a href="{{ url_for('demonstrativo.novo_demonstrativo') }}" class="btn btn-access">
+                        <i class="fas fa-plus me-2"></i> Criar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas vinculações -->
+    {% if ultimas_vinculacoes %}
+    <div class="card shadow mt-5">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Últimas Vinculações Criadas</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Conta</th>
+                            <th>BP Gerencial</th>
+                            <th>BP Resumida</th>
+                            <th>DRE Gerencial</th>
+                            <th>DRE Resumida</th>
+                            <th>DVA Gerencial</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vinculacao in ultimas_vinculacoes %}
+                        <tr>
+                            <td class="fw-bold">{{ vinculacao.CO_CONTA }}</td>
+                            <td>{{ vinculacao.CO_BP_Gerencial or '-' }}</td>
+                            <td>{{ vinculacao.CO_BP_Resumida or '-' }}</td>
+                            <td>{{ vinculacao.CO_DRE_Gerencial or '-' }}</td>
+                            <td>{{ vinculacao.CO_DRE_Resumida or '-' }}</td>
+                            <td>{{ vinculacao.CO_DVA_Gerencial or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .demonstrativo-color {
+        background-color: #20c997;
+    }
+
+    .estrutura-color {
+        background-color: #6f42c1;
+    }
+
+    .manage-color {
+        background-color: #007bff;
+    }
+
+    .add-color {
+        background-color: #fd7e14;
+    }
+</style>
+{% endblock %}
