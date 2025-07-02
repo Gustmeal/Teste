@@ -298,6 +298,7 @@ def excluir_empresa(id):
     try:
         empresa = EmpresaParticipante.query.get_or_404(id)
         periodo_id = empresa.ID_PERIODO
+        edital_id = empresa.ID_EDITAL  # Adicionar para pegar o edital também
 
         # Capturar dados para auditoria
         dados_antigos = {
@@ -326,9 +327,17 @@ def excluir_empresa(id):
         )
 
         flash('Empresa removida com sucesso!', 'warning')
+
+        # Buscar o período completo para redirecionar corretamente
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
+        return redirect(url_for('empresa.lista_empresas', id=periodo.ID))
+
     except Exception as e:
         db.session.rollback()
         flash(f'Erro: {str(e)}', 'danger')
+
+        # Se houver erro, tenta redirecionar para a lista de períodos
+        return redirect(url_for('periodo.lista_periodos'))
 
     return redirect(url_for('empresa.lista_empresas', periodo_id=periodo_id))
 
