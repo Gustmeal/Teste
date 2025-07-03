@@ -7,22 +7,26 @@
     </a>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Detalhes do Log</h1>
+        <h1 class="fw-bold header-with-back">Detalhes do Log de Auditoria</h1>
     </div>
 
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Informações Gerais</h5>
+            <h5 class="mb-0">Informações da Ação</h5>
         </div>
         <div class="card-body">
-            <div class="row g-3">
+            <div class="row">
                 <div class="col-md-6">
-                    <label class="form-label fw-bold">Data e Hora:</label>
+                    <label class="form-label fw-bold">ID do Log:</label>
+                    <p>{{ log.ID }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Data/Hora:</label>
                     <p>{{ log.DATA.strftime('%d/%m/%Y %H:%M:%S') }}</p>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Usuário:</label>
-                    <p>{{ log.USUARIO_NOME }}</p>
+                    <p>{{ log.USUARIO_NOME }} (ID: {{ log.USUARIO_ID }})</p>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Ação:</label>
@@ -33,6 +37,8 @@
                         <span class="badge bg-warning text-dark">Edição</span>
                         {% elif log.ACAO == 'excluir' %}
                         <span class="badge bg-danger">Exclusão</span>
+                        {% elif log.ACAO == 'reverter' %}
+                        <span class="badge bg-info">Reversão</span>
                         {% else %}
                         <span class="badge bg-secondary">{{ log.ACAO }}</span>
                         {% endif %}
@@ -40,27 +46,29 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Entidade:</label>
-                    <p>
-                        {% if log.ENTIDADE == 'edital' %}
-                        <span class="badge bg-info text-dark">Edital</span>
-                        {% elif log.ENTIDADE == 'periodo' %}
-                        <span class="badge bg-primary">Período</span>
-                        {% elif log.ENTIDADE == 'usuario' %}
-                        <span class="badge bg-dark">Usuário</span>
-                        {% else %}
-                        <span class="badge bg-secondary">{{ log.ENTIDADE }}</span>
-                        {% endif %}
-                        ID: {{ log.ENTIDADE_ID }}
-                    </p>
-                </div>
-                <div class="col-md-12">
-                    <label class="form-label fw-bold">Descrição:</label>
-                    <p>{{ log.DESCRICAO }}</p>
+                    <p>{{ log.ENTIDADE }} (ID: {{ log.ENTIDADE_ID }})</p>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Endereço IP:</label>
                     <p>{{ log.IP }}</p>
                 </div>
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">Descrição:</label>
+                    <p>{{ log.DESCRICAO }}</p>
+                </div>
+
+                {% if log.REVERTIDO %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        Esta ação foi revertida por {{ log.revertido_por_usuario.NOME if log.revertido_por_usuario else 'Sistema' }}
+                        em {{ log.REVERTIDO_EM.strftime('%d/%m/%Y %H:%M') if log.REVERTIDO_EM else '' }}
+                        {% if log.LOG_REVERSAO_ID %}
+                        - <a href="{{ url_for('audit.detalhes', id=log.LOG_REVERSAO_ID) }}">Ver log de reversão</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -74,7 +82,7 @@
                     <h5 class="mb-0">Dados Anteriores</h5>
                 </div>
                 <div class="card-body">
-                    <pre class="bg-light p-3 rounded">{{ log.DADOS_ANTIGOS }}</pre>
+                    <pre class="bg-light p-3 rounded"><code>{{ log.DADOS_ANTIGOS }}</code></pre>
                 </div>
             </div>
         </div>
@@ -87,12 +95,41 @@
                     <h5 class="mb-0">Dados Novos</h5>
                 </div>
                 <div class="card-body">
-                    <pre class="bg-light p-3 rounded">{{ log.DADOS_NOVOS }}</pre>
+                    <pre class="bg-light p-3 rounded"><code>{{ log.DADOS_NOVOS }}</code></pre>
                 </div>
             </div>
         </div>
         {% endif %}
     </div>
     {% endif %}
+
+    <div class="d-flex justify-content-end gap-2">
+        {% if not log.REVERTIDO and log.ACAO in ['criar', 'editar', 'excluir'] %}
+        <form method="POST" action="{{ url_for('audit.reverter', id=log.ID) }}"
+              onsubmit="return confirm('Tem certeza que deseja desfazer esta ação?');">
+            {{ csrf_token() }}
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-undo"></i> Desfazer esta Ação
+            </button>
+        </form>
+        {% endif %}
+
+        <a href="{{ url_for('audit.index') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar para Lista
+        </a>
+    </div>
 </div>
+
+<style>
+pre {
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+code {
+    color: #333;
+}
+</style>
 {% endblock %}

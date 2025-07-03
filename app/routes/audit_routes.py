@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, redirect, url_for, flash
 from app.models.audit_log import AuditLog
 from flask_login import login_required
 from app.auth.utils import admin_required
 from datetime import datetime, timedelta
+from app.utils.audit_reverter import AuditReverter
 
 audit_bp = Blueprint('audit', __name__)
 
@@ -16,7 +17,7 @@ def inject_current_year():
 @login_required
 @admin_required
 def index():
-    # Obter parâmetros de filtro
+    # Obter parâmetros de filtro com valores padrão
     entidade = request.args.get('entidade', '')
     acao = request.args.get('acao', '')
     usuario_id = request.args.get('usuario_id', '')
@@ -35,16 +36,16 @@ def index():
         query = query.filter(AuditLog.USUARIO_ID == usuario_id)
     if data_inicio:
         try:
-            data_inicio = datetime.strptime(data_inicio, '%Y-%m-%d')
-            query = query.filter(AuditLog.DATA >= data_inicio)
+            data_inicio_dt = datetime.strptime(data_inicio, '%Y-%m-%d')
+            query = query.filter(AuditLog.DATA >= data_inicio_dt)
         except:
             pass
     if data_fim:
         try:
-            data_fim = datetime.strptime(data_fim, '%Y-%m-%d')
+            data_fim_dt = datetime.strptime(data_fim, '%Y-%m-%d')
             # Adiciona um dia para incluir no último dia
-            data_fim = data_fim + timedelta(days=1)
-            query = query.filter(AuditLog.DATA <= data_fim)
+            data_fim_dt = data_fim_dt + timedelta(days=1)
+            query = query.filter(AuditLog.DATA <= data_fim_dt)
         except:
             pass
 
@@ -55,15 +56,15 @@ def index():
     from app.models.usuario import Usuario
     usuarios = Usuario.query.filter(Usuario.DELETED_AT == None).all()
 
+    # Garantir que todas as variáveis sejam passadas
     return render_template('auditoria/index.html',
                            logs=logs,
                            usuarios=usuarios,
-                           entidade=entidade,
-                           acao=acao,
-                           usuario_id=usuario_id,
-                           data_inicio=data_inicio,
-                           data_fim=data_fim)
-
+                           entidade=entidade or '',
+                           acao=acao or '',
+                           usuario_id=usuario_id or '',
+                           data_inicio=data_inicio or '',
+                           data_fim=data_fim or '')
 
 @audit_bp.route('/auditoria/<int:id>')
 @login_required
@@ -71,3 +72,17 @@ def index():
 def detalhes(id):
     log = AuditLog.query.get_or_404(id)
     return render_template('auditoria/detalhes.html', log=log)
+
+
+@audit_bp.route('/auditoria/<int:id>/reverter', methods=['POST'])
+@login_required
+@admin_required
+def reverter(id):
+    sucesso, mensagem = AuditReverter.reverter_acao(id)
+
+    if sucesso:
+        flash(mensagem, 'success')
+    else:
+        flash(mensagem, 'error')
+
+    return redirect(url_for('audit.index'))

@@ -22,9 +22,11 @@
                     <select name="usuario_id" class="form-select">
                         <option value="">Todos</option>
                         {% for usuario in usuarios %}
-                        <option value="{{ usuario.ID }}" {% if usuario_id == usuario.ID|string %}selected{% endif %}>
-                            {{ usuario.NOME }}
-                        </option>
+                        {% if usuario_id|default('') == usuario.ID|string %}
+                        <option value="{{ usuario.ID }}" selected>{{ usuario.NOME }}</option>
+                        {% else %}
+                        <option value="{{ usuario.ID }}">{{ usuario.NOME }}</option>
+                        {% endif %}
                         {% endfor %}
                     </select>
                 </div>
@@ -32,30 +34,75 @@
                     <label class="form-label">Entidade</label>
                     <select name="entidade" class="form-select">
                         <option value="">Todas</option>
-                        <option value="edital" {% if entidade == 'edital' %}selected{% endif %}>Edital</option>
-                        <option value="periodo" {% if entidade == 'periodo' %}selected{% endif %}>Período</option>
-                        <option value="usuario" {% if entidade == 'usuario' %}selected{% endif %}>Usuário</option>
+                        {% if entidade|default('') == 'edital' %}
+                        <option value="edital" selected>Edital</option>
+                        {% else %}
+                        <option value="edital">Edital</option>
+                        {% endif %}
+
+                        {% if entidade|default('') == 'periodo' %}
+                        <option value="periodo" selected>Período</option>
+                        {% else %}
+                        <option value="periodo">Período</option>
+                        {% endif %}
+
+                        {% if entidade|default('') == 'empresa' %}
+                        <option value="empresa" selected>Empresa</option>
+                        {% else %}
+                        <option value="empresa">Empresa</option>
+                        {% endif %}
+
+                        {% if entidade|default('') == 'meta' %}
+                        <option value="meta" selected>Meta</option>
+                        {% else %}
+                        <option value="meta">Meta</option>
+                        {% endif %}
+
+                        {% if entidade|default('') == 'usuario' %}
+                        <option value="usuario" selected>Usuário</option>
+                        {% else %}
+                        <option value="usuario">Usuário</option>
+                        {% endif %}
                     </select>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Ação</label>
                     <select name="acao" class="form-select">
                         <option value="">Todas</option>
-                        <option value="criar" {% if acao == 'criar' %}selected{% endif %}>Criação</option>
-                        <option value="editar" {% if acao == 'editar' %}selected{% endif %}>Edição</option>
-                        <option value="excluir" {% if acao == 'excluir' %}selected{% endif %}>Exclusão</option>
+                        {% if acao|default('') == 'criar' %}
+                        <option value="criar" selected>Criação</option>
+                        {% else %}
+                        <option value="criar">Criação</option>
+                        {% endif %}
+
+                        {% if acao|default('') == 'editar' %}
+                        <option value="editar" selected>Edição</option>
+                        {% else %}
+                        <option value="editar">Edição</option>
+                        {% endif %}
+
+                        {% if acao|default('') == 'excluir' %}
+                        <option value="excluir" selected>Exclusão</option>
+                        {% else %}
+                        <option value="excluir">Exclusão</option>
+                        {% endif %}
+
+                        {% if acao|default('') == 'reverter' %}
+                        <option value="reverter" selected>Reversão</option>
+                        {% else %}
+                        <option value="reverter">Reversão</option>
+                        {% endif %}
                     </select>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">Data inicial</label>
-                    <input type="date" name="data_inicio" class="form-control" value="{{ data_inicio }}">
+                <div class="col-md-4">
+                    <label class="form-label">Data Início</label>
+                    <input type="date" name="data_inicio" class="form-control" value="{{ data_inicio|default('') }}">
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">Data final</label>
-                    <input type="date" name="data_fim" class="form-control" value="{{ data_fim }}">
+                <div class="col-md-4">
+                    <label class="form-label">Data Fim</label>
+                    <input type="date" name="data_fim" class="form-control" value="{{ data_fim|default('') }}">
                 </div>
-                <div class="col-12 text-end">
-                    <a href="{{ url_for('audit.index') }}" class="btn btn-secondary me-2">Limpar</a>
+                <div class="col-md-4 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary">Filtrar</button>
                 </div>
             </form>
@@ -73,12 +120,17 @@
                         <th>Ação</th>
                         <th>Entidade</th>
                         <th>Descrição</th>
-                        <th class="text-center">Detalhes</th>
+                        <th>Status</th>
+                        <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for log in logs %}
+                    {% if log.REVERTIDO %}
+                    <tr class="table-secondary">
+                    {% else %}
                     <tr>
+                    {% endif %}
                         <td>{{ log.DATA.strftime('%d/%m/%Y %H:%M:%S') }}</td>
                         <td>{{ log.USUARIO_NOME }}</td>
                         <td>
@@ -88,6 +140,8 @@
                             <span class="badge bg-warning text-dark">Edição</span>
                             {% elif log.ACAO == 'excluir' %}
                             <span class="badge bg-danger">Exclusão</span>
+                            {% elif log.ACAO == 'reverter' %}
+                            <span class="badge bg-info">Reversão</span>
                             {% else %}
                             <span class="badge bg-secondary">{{ log.ACAO }}</span>
                             {% endif %}
@@ -99,20 +153,55 @@
                             <span class="badge bg-primary">Período</span>
                             {% elif log.ENTIDADE == 'usuario' %}
                             <span class="badge bg-dark">Usuário</span>
+                            {% elif log.ENTIDADE == 'empresa' %}
+                            <span class="badge bg-secondary">Empresa</span>
+                            {% elif log.ENTIDADE == 'meta' %}
+                            <span class="badge bg-purple">Meta</span>
                             {% else %}
                             <span class="badge bg-secondary">{{ log.ENTIDADE }}</span>
                             {% endif %}
                         </td>
-                        <td>{{ log.DESCRICAO }}</td>
+                        <td>
+                            {{ log.DESCRICAO }}
+                            {% if log.REVERTIDO %}
+                            <br>
+                            <small class="text-muted">
+                                Revertido por {{ log.revertido_por_usuario.NOME if log.revertido_por_usuario else 'Sistema' }}
+                                em {{ log.REVERTIDO_EM.strftime('%d/%m/%Y %H:%M') if log.REVERTIDO_EM else '' }}
+                            </small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.REVERTIDO %}
+                            <span class="badge bg-secondary">Revertido</span>
+                            {% else %}
+                            <span class="badge bg-success">Ativo</span>
+                            {% endif %}
+                        </td>
                         <td class="text-center">
-                            <a href="{{ url_for('audit.detalhes', id=log.ID) }}" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-search"></i>
-                            </a>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('audit.detalhes', id=log.ID) }}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Ver detalhes">
+                                    <i class="fas fa-search"></i>
+                                </a>
+                                {% if not log.REVERTIDO and log.ACAO in ['criar', 'editar', 'excluir'] %}
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger reverter-btn"
+                                        data-id="{{ log.ID }}"
+                                        data-acao="{{ log.ACAO }}"
+                                        data-entidade="{{ log.ENTIDADE }}"
+                                        data-descricao="{{ log.DESCRICAO }}"
+                                        title="Desfazer esta ação">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                                {% endif %}
+                            </div>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">
+                        <td colspan="7" class="text-center py-4 text-muted">
                             <i class="fas fa-history fa-2x mb-3"></i>
                             <p class="mb-0">Nenhum log de auditoria encontrado</p>
                         </td>
@@ -123,4 +212,103 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de confirmação para reverter -->
+<div class="modal fade" id="reverterModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar Reversão</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja desfazer esta ação?</p>
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Atenção:</strong> Esta ação irá:
+                    <ul class="mb-0 mt-2">
+                        <li id="reverter-acao-criar" style="display:none;">Excluir o registro criado</li>
+                        <li id="reverter-acao-editar" style="display:none;">Restaurar os dados anteriores</li>
+                        <li id="reverter-acao-excluir" style="display:none;">Restaurar o registro excluído</li>
+                    </ul>
+                </div>
+                <p class="mb-0"><strong>Descrição:</strong> <span id="reverter-descricao"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="reverterForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-undo"></i> Desfazer Ação
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Estilos específicos para a página de auditoria */
+.bg-purple {
+    background-color: #6f42c1 !important;
+    color: white !important;
+}
+
+.table-secondary {
+    opacity: 0.7;
+}
+
+.btn-group .btn {
+    margin: 0 2px;
+}
+
+.reverter-btn:hover {
+    transform: scale(1.1);
+    transition: transform 0.2s;
+}
+
+/* Ajuste para o modal */
+#reverterModal .alert ul {
+    margin-bottom: 0;
+}
+
+#reverterModal .alert li {
+    margin-left: 20px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Configurar botões de reverter
+    document.querySelectorAll('.reverter-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const acao = this.dataset.acao;
+            const descricao = this.dataset.descricao;
+
+            // Configurar modal
+            document.getElementById('reverter-descricao').textContent = descricao;
+
+            // Mostrar explicação apropriada
+            document.getElementById('reverter-acao-criar').style.display = 'none';
+            document.getElementById('reverter-acao-editar').style.display = 'none';
+            document.getElementById('reverter-acao-excluir').style.display = 'none';
+
+            if (acao === 'criar') {
+                document.getElementById('reverter-acao-criar').style.display = 'list-item';
+            } else if (acao === 'editar') {
+                document.getElementById('reverter-acao-editar').style.display = 'list-item';
+            } else if (acao === 'excluir') {
+                document.getElementById('reverter-acao-excluir').style.display = 'list-item';
+            }
+
+            // Configurar formulário
+            document.getElementById('reverterForm').action = '/auditoria/' + id + '/reverter';
+
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('reverterModal'));
+            modal.show();
+        });
+    });
+});
+</script>
 {% endblock %}
