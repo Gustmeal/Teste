@@ -4,6 +4,7 @@ from app import db
 from flask_login import login_required
 from app.utils.audit import registrar_log
 from datetime import datetime
+from sqlalchemy import text
 
 demonstrativo_bp = Blueprint('demonstrativo', __name__, url_prefix='/codigos-contabeis/demonstrativos')
 
@@ -41,6 +42,341 @@ def lista_demonstrativos():
     return render_template('codigos_contabeis/demonstrativos/lista_demonstrativos.html',
                            demonstrativos=demonstrativos,
                            estruturas=estruturas)
+
+
+@demonstrativo_bp.route('/executar-rotina', methods=['GET', 'POST'])
+@login_required
+def executar_rotina():
+    """Página para executar rotina de demonstrativos"""
+    if request.method == 'GET':
+        # Buscar data mais recente - com fallback
+        try:
+            data_mais_recente = ContaDemonstrativo.obter_data_referencia_mais_recente()
+        except:
+            # Se der erro, usar data atual como fallback
+            data_mais_recente = datetime.now().date()
+
+        # Lista de demonstrativos disponíveis
+        demonstrativos_disponiveis = [
+            {'valor': 'BP_Gerencial', 'nome': 'BP Gerencial'},
+            {'valor': 'BP_Resumida', 'nome': 'BP Resumida'},
+            {'valor': 'DRE_Gerencial', 'nome': 'DRE Gerencial'},
+            {'valor': 'DRE_Resumida', 'nome': 'DRE Resumida'},
+            {'valor': 'DVA_Gerencial', 'nome': 'DVA Gerencial'}
+        ]
+
+        return render_template('codigos_contabeis/demonstrativos/executar_rotina.html',
+                               data_mais_recente=data_mais_recente,
+                               demonstrativos_disponiveis=demonstrativos_disponiveis)
+
+    # POST - Executar a rotina
+    try:
+        dt_referencia = request.form.get('dt_referencia')
+        demonstrativos_selecionados = request.form.getlist('demonstrativos')
+
+        if not dt_referencia:
+            flash('Data de referência é obrigatória!', 'danger')
+            return redirect(url_for('demonstrativo.executar_rotina'))
+
+        if not demonstrativos_selecionados:
+            flash('Selecione pelo menos um demonstrativo!', 'danger')
+            return redirect(url_for('demonstrativo.executar_rotina'))
+
+        # Log simples no console
+        print(f"[{datetime.now()}] Iniciando rotina de demonstrativos")
+        print(f"Data: {dt_referencia}")
+        print(f"Demonstrativos: {', '.join(demonstrativos_selecionados)}")
+
+        # Executar o script SQL principal
+        resultados = executar_script_demonstrativos(dt_referencia, demonstrativos_selecionados)
+
+        print(f"[{datetime.now()}] Rotina finalizada - {resultados['total_processados']} registros processados")
+
+        flash(f'Rotina executada com sucesso! {resultados["total_processados"]} registros processados.', 'success')
+        return redirect(url_for('demonstrativo.lista_demonstrativos'))
+
+    except Exception as e:
+        print(f"[{datetime.now()}] Erro na rotina: {str(e)}")
+        db.session.rollback()
+        flash(f'Erro ao executar rotina: {str(e)}', 'danger')
+        return redirect(url_for('demonstrativo.executar_rotina'))
+
+
+def executar_script_demonstrativos(dt_referencia, demonstrativos):
+    """Executa o script SQL dos demonstrativos"""
+    try:
+        registros_processados = 0
+
+        # Primeiro, deletar registros existentes para a data
+        sql_delete = text("""
+            DELETE FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+            WHERE DT_REFERENCIA = :dt_referencia
+        """)
+        db.session.execute(sql_delete, {'dt_referencia': dt_referencia})
+
+        # Mapear demonstrativos para CO_DEMONSTRATIVO
+        mapa_demonstrativos = {
+            'BP_Resumida': 2,
+            'BP_Gerencial': 1,
+            'DRE_Resumida': 4,
+            'DRE_Gerencial': 3,
+            'DVA_Gerencial': 5
+        }
+
+        # Executar script para cada demonstrativo selecionado
+        for demonstrativo in demonstrativos:
+            co_demonstrativo = mapa_demonstrativos.get(demonstrativo)
+
+            if co_demonstrativo == 2:  # BP Resumida
+                registros_processados += executar_bp_resumida(dt_referencia)
+            elif co_demonstrativo == 1:  # BP Gerencial
+                registros_processados += executar_bp_gerencial(dt_referencia)
+            elif co_demonstrativo == 4:  # DRE Resumida
+                registros_processados += executar_dre_resumida(dt_referencia)
+            elif co_demonstrativo == 3:  # DRE Gerencial
+                registros_processados += executar_dre_gerencial(dt_referencia)
+            elif co_demonstrativo == 5:  # DVA Gerencial
+                registros_processados += executar_dva_gerencial(dt_referencia)
+
+        db.session.commit()
+
+        return {
+            'success': True,
+            'total_processados': registros_processados
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        raise e
+
+
+def executar_bp_resumida(dt_referencia):
+    """Executa a rotina do BP Resumida"""
+    # Script do BP Resumida
+    sql = text("""
+        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SELECT
+            :dt_referencia as DT_REFERENCIA,
+            A.CO_DEMONSTRATIVO,
+            A.NO_DEMONSTRATIVO,
+            B.ORDEM,
+            B.GRUPO,
+            B.SOMA,
+            VR_SALDO = SUM(
+                CASE
+                    WHEN C.CO_CONTA LIKE '4%' THEN -D.VR_SALDO_ATUAL
+                    ELSE D.VR_SALDO_ATUAL
+                END
+            )
+        FROM BDG.COR_DEM_TB001_CODIGOS AS A
+        INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
+        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Resumida = B.ORDEM
+        LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
+        WHERE B.CO_DEMONSTRATIVO = 2
+        GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
+        ORDER BY B.ORDEM
+    """)
+
+    result = db.session.execute(sql, {'dt_referencia': dt_referencia})
+    count = result.rowcount
+
+    # Executar cálculos específicos
+    calculos = [
+        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+                     WHERE CO_DEMONSTRATIVO = 2 AND ORDEM < 11 AND DT_REFERENCIA = :dt_referencia)
+           WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 11 AND DT_REFERENCIA = :dt_referencia""",
+
+        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+                     WHERE CO_DEMONSTRATIVO = 2 AND ORDEM BETWEEN 12 AND 20 AND DT_REFERENCIA = :dt_referencia)
+           WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 21 AND DT_REFERENCIA = :dt_referencia""",
+
+        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+                     WHERE CO_DEMONSTRATIVO = 2 AND ORDEM IN (21, 22) AND DT_REFERENCIA = :dt_referencia)
+           WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 23 AND DT_REFERENCIA = :dt_referencia"""
+    ]
+
+    for calc in calculos:
+        db.session.execute(text(calc), {'dt_referencia': dt_referencia})
+
+    return count
+
+
+def executar_bp_gerencial(dt_referencia):
+    """Executa a rotina do BP Gerencial"""
+    # Script do BP Gerencial
+    sql = text("""
+        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SELECT
+            :dt_referencia as DT_REFERENCIA,
+            A.CO_DEMONSTRATIVO,
+            A.NO_DEMONSTRATIVO,
+            B.ORDEM,
+            B.GRUPO,
+            B.SOMA,
+            VR_SALDO = SUM(
+                CASE
+                    WHEN C.CO_CONTA LIKE '4%' THEN ISNULL(-D.VR_SALDO_ATUAL,0)
+                    ELSE ISNULL(D.VR_SALDO_ATUAL,0)
+                END
+            )
+        FROM BDG.COR_DEM_TB001_CODIGOS AS A
+        INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
+        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
+        WHERE B.CO_DEMONSTRATIVO = 1
+        GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
+        ORDER BY B.ORDEM
+    """)
+
+    result = db.session.execute(sql, {'dt_referencia': dt_referencia})
+    count = result.rowcount
+
+    # Executar todos os cálculos do BP Gerencial (são muitos)
+    # Aqui estão alguns exemplos, você deve adicionar todos do arquivo Word
+    calculos_bp_gerencial = [
+        # Tributos a Recuperar
+        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+                     WHERE CO_DEMONSTRATIVO = 1 AND ORDEM IN (13,14) AND DT_REFERENCIA = :dt_referencia)
+           WHERE CO_DEMONSTRATIVO = 1 AND ORDEM = 12 AND DT_REFERENCIA = :dt_referencia""",
+
+        # Caixa
+        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+                     WHERE CO_DEMONSTRATIVO = 1 AND ORDEM IN (4) AND DT_REFERENCIA = :dt_referencia)
+           WHERE CO_DEMONSTRATIVO = 1 AND ORDEM = 3 AND DT_REFERENCIA = :dt_referencia""",
+
+        # Adicionar todos os outros cálculos do arquivo Word...
+    ]
+
+    for calc in calculos_bp_gerencial:
+        db.session.execute(text(calc), {'dt_referencia': dt_referencia})
+
+    return count
+
+
+def executar_dre_resumida(dt_referencia):
+    """Executa a rotina do DRE Resumida"""
+    sql = text("""
+        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SELECT
+            :dt_referencia as DT_REFERENCIA,
+            A.CO_DEMONSTRATIVO,
+            A.NO_DEMONSTRATIVO,
+            B.ORDEM,
+            B.GRUPO,
+            B.SOMA,
+            VR = SUM(
+                CASE
+                    WHEN B.ORDEM IN (2, 4, 8, 9, 10, 13, 16, 23) THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '419.08%' THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '418.02%' THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '419.03%' THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '431.0%' THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '419.10%' THEN -D.VR_MOVIMENTACAO
+                    WHEN D.CO_CONTA LIKE '454.%' THEN -D.VR_MOVIMENTACAO
+                    ELSE D.VR_MOVIMENTACAO
+                END
+            )
+        FROM BDG.COR_DEM_TB001_CODIGOS AS A
+        INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
+        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Resumida = B.ORDEM
+        LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
+        WHERE B.CO_DEMONSTRATIVO = 4
+        GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
+        ORDER BY B.ORDEM
+    """)
+
+    result = db.session.execute(sql, {'dt_referencia': dt_referencia})
+    count = result.rowcount
+
+    # Executar cálculos do DRE Resumida
+    # Adicionar todos os cálculos do arquivo Word...
+
+    return count
+
+
+def executar_dre_gerencial(dt_referencia):
+    """Executa a rotina do DRE Gerencial"""
+    sql = text("""
+        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SELECT
+            :dt_referencia as DT_REFERENCIA,
+            A.CO_DEMONSTRATIVO,
+            A.NO_DEMONSTRATIVO,
+            B.ORDEM,
+            B.GRUPO,
+            B.SOMA,
+            VR_SALDO = SUM(
+                CASE
+                    WHEN C.CO_CONTA LIKE '4%' THEN -D.VR_MOVIMENTACAO
+                    ELSE D.VR_MOVIMENTACAO
+                END
+            )
+        FROM BDG.COR_DEM_TB001_CODIGOS AS A
+        INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
+        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_TB012_BALANCETE AS D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
+        WHERE B.CO_DEMONSTRATIVO = 3
+        GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
+        ORDER BY B.ORDEM
+    """)
+
+    result = db.session.execute(sql, {'dt_referencia': dt_referencia})
+    count = result.rowcount
+
+    # Executar cálculos do DRE Gerencial
+    # Adicionar todos os cálculos do arquivo Word...
+
+    return count
+
+
+def executar_dva_gerencial(dt_referencia):
+    """Executa a rotina do DVA Gerencial"""
+    sql = text("""
+        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SELECT
+            :dt_referencia as DT_REFERENCIA,
+            A.CO_DEMONSTRATIVO,
+            A.NO_DEMONSTRATIVO,
+            B.ORDEM,
+            B.GRUPO,
+            B.SOMA,
+            VR_SALDO = SUM(
+                CASE
+                    WHEN C.CO_CONTA LIKE '4%' THEN -D.VR_MOVIMENTACAO
+                    ELSE D.VR_MOVIMENTACAO
+                END
+            )
+        FROM BDG.COR_DEM_TB001_CODIGOS AS A
+        INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
+        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DVA_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
+        WHERE B.CO_DEMONSTRATIVO = 5
+        GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
+        ORDER BY B.ORDEM
+    """)
+
+    result = db.session.execute(sql, {'dt_referencia': dt_referencia})
+    count = result.rowcount
+
+    # Inversão de sinal das Linhas 17, 18, 19, 21, 22, 24, 25, 27
+    sql_inversao = text("""
+        UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        SET VR = VR * (-1)
+        WHERE CO_DEMONSTRATIVO = 5 
+        AND ORDEM IN (17, 18, 19, 21, 22, 24, 25, 27) 
+        AND DT_REFERENCIA = :dt_referencia
+    """)
+    db.session.execute(sql_inversao, {'dt_referencia': dt_referencia})
+
+    # Executar cálculos do DVA
+    # Adicionar todos os cálculos do arquivo Word...
+
+    return count
 
 
 @demonstrativo_bp.route('/novo', methods=['GET', 'POST'])
@@ -248,6 +584,7 @@ def excluir_demonstrativo(co_conta):
         flash(f'Erro ao remover vinculações: {str(e)}', 'danger')
         return redirect(url_for('demonstrativo.lista_demonstrativos'))
 
+
 @demonstrativo_bp.route('/api/buscar-contas', methods=['GET'])
 @login_required
 def buscar_contas():
@@ -305,3 +642,20 @@ def verificar_conta(co_conta):
 
     except Exception as e:
         return jsonify({'erro': str(e)})
+
+
+@demonstrativo_bp.route('/api/data-mais-recente', methods=['GET'])
+@login_required
+def obter_data_mais_recente():
+    """API para obter a data mais recente"""
+    try:
+        data = ContaDemonstrativo.obter_data_referencia_mais_recente()
+        return jsonify({
+            'success': True,
+            'data': data.strftime('%Y-%m-%d') if data else None
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })

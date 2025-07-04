@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container fade-in">
+    <a href="{{ url_for('demonstrativo.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h1 class="mb-0">Executar Rotina de Demonstrativos</h1>
+        </div>
+        <div class="card-body p-4">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>Atenção:</strong> Esta rotina irá processar e atualizar os demonstrativos selecionados.
+                Os dados existentes para a data selecionada serão substituídos.
+            </div>
+
+            <form method="POST" id="rotinaForm">
+                <!-- Data de Referência -->
+                <div class="mb-4">
+                    <label class="form-label">Data de Referência <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" name="dt_referencia" id="dt_referencia"
+                           value="{{ data_mais_recente.strftime('%Y-%m-%d') if data_mais_recente else '' }}"
+                           required>
+                    <div class="form-text">
+                        Data base para processamento dos demonstrativos
+                        {% if data_mais_recente %}
+                            (Última data disponível: {{ data_mais_recente.strftime('%d/%m/%Y') }})
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Seleção de Demonstrativos -->
+                <div class="mb-4">
+                    <label class="form-label">Demonstrativos para Processar <span class="text-danger">*</span></label>
+
+                    <!-- Checkbox Selecionar Todos -->
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="selecionarTodos">
+                        <label class="form-check-label fw-bold" for="selecionarTodos">
+                            Selecionar Todos
+                        </label>
+                    </div>
+
+                    <hr class="my-2">
+
+                    <!-- Lista de Demonstrativos -->
+                    <div class="row">
+                        {% for demo in demonstrativos_disponiveis %}
+                        <div class="col-md-6 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input demonstrativo-check"
+                                       type="checkbox"
+                                       name="demonstrativos"
+                                       value="{{ demo.valor }}"
+                                       id="{{ demo.valor }}">
+                                <label class="form-check-label" for="{{ demo.valor }}">
+                                    {{ demo.nome }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Resumo da Seleção -->
+                <div id="resumoSelecao" class="alert alert-info d-none">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="textoResumo"></span>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                    <a href="{{ url_for('demonstrativo.index') }}" class="btn btn-secondary">
+                        Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-lg submit-btn">
+                        <span class="btn-text">
+                            <i class="fas fa-play"></i> Executar Rotina
+                        </span>
+                        <span class="spinner d-none">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            Processando...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('rotinaForm');
+        const checkboxTodos = document.getElementById('selecionarTodos');
+        const checkboxesDemonstrativos = document.querySelectorAll('.demonstrativo-check');
+        const resumoSelecao = document.getElementById('resumoSelecao');
+        const textoResumo = document.getElementById('textoResumo');
+
+        // Função para atualizar resumo
+        function atualizarResumo() {
+            const selecionados = document.querySelectorAll('.demonstrativo-check:checked');
+            const quantidade = selecionados.length;
+
+            if (quantidade > 0) {
+                resumoSelecao.classList.remove('d-none');
+                const nomes = Array.from(selecionados).map(cb => {
+                    return cb.nextElementSibling.textContent.trim();
+                });
+
+                if (quantidade === checkboxesDemonstrativos.length) {
+                    textoResumo.textContent = 'Todos os demonstrativos serão processados.';
+                } else {
+                    textoResumo.textContent = `${quantidade} demonstrativo(s) selecionado(s): ${nomes.join(', ')}`;
+                }
+            } else {
+                resumoSelecao.classList.add('d-none');
+            }
+        }
+
+        // Selecionar/Deselecionar todos
+        checkboxTodos.addEventListener('change', function() {
+            checkboxesDemonstrativos.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            atualizarResumo();
+        });
+
+        // Verificar se todos estão selecionados
+        checkboxesDemonstrativos.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const todosSelecionados = Array.from(checkboxesDemonstrativos).every(cb => cb.checked);
+                checkboxTodos.checked = todosSelecionados;
+                atualizarResumo();
+            });
+        });
+
+        // Validação do formulário
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const selecionados = document.querySelectorAll('.demonstrativo-check:checked');
+            if (selecionados.length === 0) {
+                alert('Por favor, selecione pelo menos um demonstrativo para processar.');
+                return;
+            }
+
+            // Confirmação
+            const confirmacao = confirm(
+                `Tem certeza que deseja executar a rotina?\n\n` +
+                `Data: ${document.getElementById('dt_referencia').value}\n` +
+                `Demonstrativos: ${selecionados.length} selecionado(s)\n\n` +
+                `Esta ação irá substituir os dados existentes.`
+            );
+
+            if (confirmacao) {
+                const submitBtn = form.querySelector('.submit-btn');
+                const btnText = submitBtn.querySelector('.btn-text');
+                const spinner = submitBtn.querySelector('.spinner');
+
+                btnText.classList.add('d-none');
+                spinner.classList.remove('d-none');
+                submitBtn.disabled = true;
+
+                // Submeter o formulário
+                form.submit();
+            }
+        });
+
+        // Atualizar resumo inicial
+        atualizarResumo();
+    });
+</script>
+
+<style>
+    .form-check-input:checked {
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
+    }
+
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+
+    #resumoSelecao {
+        border-left: 4px solid #0dcaf0;
+    }
+</style>
+{% endblock %}

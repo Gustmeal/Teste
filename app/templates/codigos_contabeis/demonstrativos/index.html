@@ -60,15 +60,15 @@
         <div class="col-md-6">
             <div class="card home-card shadow h-100">
                 <div class="card-body text-center p-4">
-                    <div class="system-icon add-color mx-auto">
-                        <i class="fas fa-plus"></i>
+                    <div class="system-icon process-color mx-auto">
+                        <i class="fas fa-cogs"></i>
                     </div>
-                    <h3 class="system-title">Nova Vinculação</h3>
+                    <h3 class="system-title">Executar Rotina</h3>
                     <p class="text-muted mb-4">
-                        Crie novas vinculações entre contas e estruturas de demonstrativos contábeis.
+                        Execute a rotina de processamento automático dos demonstrativos contábeis.
                     </p>
-                    <a href="{{ url_for('demonstrativo.novo_demonstrativo') }}" class="btn btn-access">
-                        <i class="fas fa-plus me-2"></i> Criar Vinculação
+                    <a href="{{ url_for('demonstrativo.executar_rotina') }}" class="btn btn-access">
+                        <i class="fas fa-play me-2"></i> Executar Rotina
                     </a>
                 </div>
             </div>
@@ -126,8 +126,8 @@
         background-color: #007bff;
     }
 
-    .add-color {
-        background-color: #fd7e14;
+    .process-color {
+        background-color: #6610f2;
     }
 </style>
 {% endblock %}

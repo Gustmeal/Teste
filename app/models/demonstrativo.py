@@ -1,4 +1,5 @@
 from app import db
+from sqlalchemy import text
 
 
 class EstruturaDemonstrativo(db.Model):
@@ -57,3 +58,15 @@ class ContaDemonstrativo(db.Model):
             nova_conta = ContaDemonstrativo(CO_CONTA=co_conta, **dados)
             db.session.add(nova_conta)
             return nova_conta, True  # True = é nova
+
+    @staticmethod
+    def obter_data_referencia_mais_recente():
+        """Busca a DT_REFERENCIA mais recente da tabela COR_TB012_BALANCETE"""
+        try:
+            result = db.session.execute(
+                text("SELECT MAX(DT_REFERENCIA) FROM BDG.COR_TB012_BALANCETE")
+            ).scalar()
+            return result
+        except Exception as e:
+            print(f"Erro ao buscar data mais recente: {str(e)}")
+            return None
