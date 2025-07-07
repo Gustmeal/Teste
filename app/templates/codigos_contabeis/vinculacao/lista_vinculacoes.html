@@ -1,31 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container fade-in">
+<div class="container-fluid mt-4">
     <a href="{{ url_for('vinculacao.index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Vinculações</h1>
-        <div>
-            <a href="{{ url_for('vinculacao.nova_vinculacao') }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Nova Vinculação
-            </a>
-        </div>
-    </div>
+    <h1 class="mb-4">Vinculações SISCOR</h1>
 
     <!-- Filtros -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Filtros</h5>
-        </div>
+    <div class="card mb-4">
         <div class="card-body">
-            <form method="GET" action="{{ url_for('vinculacao.lista_vinculacoes') }}">
+            <form method="get" action="{{ url_for('vinculacao.lista_vinculacoes') }}">
                 <div class="row g-3">
                     <div class="col-md-3">
-                        <label class="form-label">Ano</label>
-                        <select name="ano" class="form-select">
+                        <label for="ano" class="form-label">Ano</label>
+                        <select name="ano" id="ano" class="form-select">
                             <option value="">Todos os anos</option>
                             {% for ano in anos_disponiveis %}
                                 <option value="{{ ano }}" {% if ano == ano_filtro %}selected{% endif %}>
@@ -35,8 +25,8 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Código</label>
-                        <select name="codigo" class="form-select">
+                        <label for="codigo" class="form-label">Código</label>
+                        <select name="codigo" id="codigo" class="form-select">
                             <option value="">Todos os códigos</option>
                             {% for codigo in codigos_disponiveis %}
                                 <option value="{{ codigo }}" {% if codigo == codigo_filtro %}selected{% endif %}>
@@ -46,8 +36,8 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Arquivo</label>
-                        <select name="arquivo" class="form-select">
+                        <label for="arquivo" class="form-label">Arquivo</label>
+                        <select name="arquivo" id="arquivo" class="form-select">
                             <option value="">Todos os arquivos</option>
                             {% for arquivo in arquivos_disponiveis %}
                                 <option value="{{ arquivo }}" {% if arquivo == arquivo_filtro %}selected{% endif %}>
@@ -103,8 +93,8 @@
                             </a>
                             <a href="javascript:void(0);"
                                onclick="confirmarExclusao({{ vinculacao.id_item }}, '{{ vinculacao.codigo }}');"
-                               class="btn btn-sm btn-outline-danger" title="Excluir">
-                                <i class="fas fa-trash"></i>
+                               class="btn btn-sm btn-outline-warning" title="Remover Vinculação">
+                                <i class="fas fa-unlink"></i>
                             </a>
                         </td>
                     </tr>
@@ -126,84 +116,62 @@
 <div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">Confirmar Exclusão</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Confirmar Remoção de Vinculação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Tem certeza que deseja excluir a vinculação <span id="vinculacaoInfo" class="fw-bold"></span>?</p>
-                <p class="text-muted mb-0">Esta ação não pode ser desfeita.</p>
+                <p>Tem certeza que deseja remover a vinculação <span id="vinculacaoInfo" class="fw-bold"></span>?</p>
+                <p class="text-muted mb-0">Esta ação removerá a vinculação entre o item SISCOR e o código contábil.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" id="btnConfirmarExclusao" class="btn btn-danger">
-                    <span class="btn-text">Sim, Excluir</span>
+                <button type="button" id="btnConfirmarExclusao" class="btn btn-warning">
+                    <span class="btn-text">Sim, Remover</span>
                     <span class="spinner d-none">
                         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                        Processando...
                     </span>
                 </button>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
 
-<!-- Container para toasts -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
-    <div id="toastContainer"></div>
-</div>
-
+{% block scripts %}
+{{ super() }}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        setupTableFilter('vinculacoesSearch', 'vinculacoesTable');
+    let vinculacaoIdParaExcluir = null;
+
+    // Função para pesquisar na tabela
+    document.getElementById('vinculacoesSearch').addEventListener('keyup', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        const rows = document.querySelectorAll('#vinculacoesTable tbody tr');
+
+        rows.forEach(row => {
+            if (row.querySelector('.text-muted')) return;
+
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(searchTerm) ? '' : 'none';
+        });
+    });
+
+    // Função para abrir modal de confirmação
+    function confirmarExclusao(id, codigo) {
+        vinculacaoIdParaExcluir = id;
+        document.getElementById('vinculacaoInfo').textContent = codigo;
 
         const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
-        const btnConfirmar = document.getElementById('btnConfirmarExclusao');
-        let vinculacaoId = null;
+        modal.show();
+    }
 
-        // Função para mostrar toast de notificação
-        function showToast(message, type = 'success') {
-            const toastContainer = document.getElementById('toastContainer');
+    // Confirmar exclusão
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('btnConfirmarExclusao').addEventListener('click', function() {
+            if (!vinculacaoIdParaExcluir) return;
 
-            const toast = document.createElement('div');
-            toast.className = `toast align-items-center text-white bg-${type} border-0`;
-            toast.setAttribute('role', 'alert');
-            toast.setAttribute('aria-live', 'assertive');
-            toast.setAttribute('aria-atomic', 'true');
-
-            toast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">
-                        ${message}
-                    </div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                </div>
-            `;
-
-            toastContainer.appendChild(toast);
-
-            const bsToast = new bootstrap.Toast(toast, {
-                animation: true,
-                autohide: true,
-                delay: 3000
-            });
-
-            bsToast.show();
-
-            toast.addEventListener('hidden.bs.toast', function() {
-                toast.remove();
-            });
-        }
-
-        // Configurar a exclusão da vinculação
-        window.confirmarExclusao = function(id, codigo) {
-            document.getElementById('vinculacaoInfo').textContent = codigo;
-            vinculacaoId = id;
-            modal.show();
-        };
-
-        // Manipular o clique de confirmação
-        btnConfirmar.addEventListener('click', function() {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('confirmarExclusaoModal'));
+            const btnConfirmar = this;
             const btnText = btnConfirmar.querySelector('.btn-text');
             const spinner = btnConfirmar.querySelector('.spinner');
 
@@ -211,8 +179,8 @@
             spinner.classList.remove('d-none');
             btnConfirmar.disabled = true;
 
-            // Fazer a requisição AJAX para excluir a vinculação
-            fetch(`/codigos-contabeis/vinculacao/excluir/${vinculacaoId}`, {
+            // Fazer a requisição AJAX para remover a vinculação
+            fetch(`/codigos-contabeis/vinculacao/excluir/${vinculacaoIdParaExcluir}`, {
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -225,7 +193,7 @@
 
                 if (data.success) {
                     // Remover a linha da tabela com animação
-                    const row = document.querySelector(`tr[data-id="${vinculacaoId}"]`);
+                    const row = document.querySelector(`tr[data-id="${vinculacaoIdParaExcluir}"]`);
                     if (row) {
                         row.style.transition = 'all 0.5s';
                         row.style.opacity = '0';
@@ -249,9 +217,9 @@
                         }, 500);
                     }
 
-                    showToast(data.message, 'success');
+                    showToast(data.message || 'Vinculação removida com sucesso!', 'success');
                 } else {
-                    showToast(data.message, 'danger');
+                    showToast(data.message || 'Erro ao remover vinculação', 'danger');
                 }
             })
             .catch(error => {

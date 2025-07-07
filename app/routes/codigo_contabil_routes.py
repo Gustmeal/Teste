@@ -18,26 +18,7 @@ def inject_current_year():
 @login_required
 def index():
     """Dashboard principal dos códigos contábeis"""
-    # Contar códigos ativos
-    total_codigos = CodigoContabil.query.count()
-
-    # Contar por ano atual
-    ano_atual = datetime.now().year
-    codigos_ano_atual = CodigoContabil.query.filter(
-        CodigoContabil.ANO == ano_atual
-    ).count()
-
-    # Últimos códigos cadastrados (ordenar por ano e código)
-    ultimos_codigos = CodigoContabil.query.order_by(
-        CodigoContabil.ANO.desc(),
-        CodigoContabil.CODIGO.desc()
-    ).limit(5).all()
-
-    return render_template('codigos_contabeis/index.html',
-                           total_codigos=total_codigos,
-                           codigos_ano_atual=codigos_ano_atual,
-                           ano_atual=ano_atual,
-                           ultimos_codigos=ultimos_codigos)
+    return render_template('codigos_contabeis/index.html')
 
 
 @codigo_contabil_bp.route('/codigos')

@@ -258,7 +258,7 @@ def editar_vinculacao(id):
 @vinculacao_bp.route('/vinculacao/excluir/<int:id>', methods=['POST'])
 @login_required
 def excluir_vinculacao(id):
-    """Excluir vinculação (delete físico)"""
+    """Remover vinculação (delete físico)"""
     try:
         vinculacao = ItemContaSucor.query.get_or_404(id)
 
@@ -275,10 +275,10 @@ def excluir_vinculacao(id):
 
         # Registrar log de auditoria
         registrar_log(
-            acao='excluir',
+            acao='remover_vinculacao',
             entidade='vinculacao',
             entidade_id=id,
-            descricao=f'Exclusão de vinculação {vinculacao.CODIGO}',
+            descricao=f'Remoção de vinculação {vinculacao.CODIGO}',
             dados_antigos=dados_antigos
         )
 
@@ -286,10 +286,10 @@ def excluir_vinculacao(id):
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 'success': True,
-                'message': f'Vinculação {dados_antigos["codigo"]} excluída com sucesso!'
+                'message': f'Vinculação removida com sucesso!'
             })
 
-        flash('Vinculação excluída com sucesso!', 'success')
+        flash('Vinculação removida com sucesso!', 'success')
         return redirect(url_for('vinculacao.lista_vinculacoes'))
 
     except Exception as e:
@@ -299,8 +299,8 @@ def excluir_vinculacao(id):
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({
                 'success': False,
-                'message': f'Erro ao excluir: {str(e)}'
+                'message': f'Erro ao remover vinculação: {str(e)}'
             })
 
-        flash(f'Erro ao excluir vinculação: {str(e)}', 'danger')
+        flash(f'Erro ao remover vinculação: {str(e)}', 'danger')
         return redirect(url_for('vinculacao.lista_vinculacoes'))
