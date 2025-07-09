@@ -1,9 +1,10 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models.usuario import Usuario
+from app.models.usuario import Usuario, Empregado
 from app import db
 from datetime import datetime
 from app.auth.utils import UserLogin, admin_required, admin_or_moderador_required
+from app.utils.audit import registrar_log
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,8 +26,28 @@ def login():
         usuario = Usuario.query.filter_by(EMAIL=email, DELETED_AT=None).first()
 
         if usuario and usuario.verificar_senha(senha) and usuario.is_active():
+            # Carregar dados do empregado se existir
+            empregado_data = None
+            if usuario.FK_PESSOA:
+                empregado = Empregado.query.filter_by(pkPessoa=usuario.FK_PESSOA).first()
+                if empregado:
+                    empregado_data = {
+                        'area': empregado.sgSuperintendencia,
+                        'cargo': empregado.dsCargo
+                    }
+
             user_login = UserLogin(usuario.ID, usuario.EMAIL, usuario.NOME, usuario.PERFIL)
+            # Adicionar referência ao empregado no objeto de login
+            user_login.empregado = empregado_data
             login_user(user_login)
+
+            # Registrar log de login
+            registrar_log(
+                acao='login',
+                entidade='sistema',
+                entidade_id=usuario.ID,
+                descricao=f'Login realizado: {usuario.EMAIL}'
+            )
 
             next_page = request.args.get('next')
             return redirect(next_page or url_for('main.geinc_index'))
@@ -36,56 +57,101 @@ def login():
     return render_template('auth/login.html')
 
 
-@auth_bp.route('/registrar', methods=['GET', 'POST'])
-def registrar():
+# Substituir a rota de registro por primeiro acesso
+@auth_bp.route('/primeiro-acesso', methods=['GET', 'POST'])
+def primeiro_acesso():
     if current_user.is_authenticated:
         return redirect(url_for('main.geinc_index'))
 
     if request.method == 'POST':
-        try:
-            email = request.form['email']
+        email = request.form.get('email', '').strip().lower()
 
-            # Verificar se é um email institucional
-            if not email.endswith('@emgea.gov.br'):
-                flash('Por favor, utilize seu email institucional (@emgea.gov.br).', 'danger')
-                return render_template('auth/registrar.html')
+        # Validar email contra base de empregados
+        valido, resultado = Usuario.validar_email_empregado(email)
 
-            # Verificar se o e-mail já existe
-            usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
-            if usuario_existente:
-                flash('Este e-mail já está cadastrado.', 'danger')
-                return render_template('auth/registrar.html')
+        if valido:
+            empregado = resultado
+            # Armazenar temporariamente para a próxima etapa
+            session['primeiro_acesso_email'] = email
+            session['primeiro_acesso_pk'] = empregado.pkPessoa
+            session['primeiro_acesso_nome'] = empregado.nmPessoa
 
-            novo_usuario = Usuario(
-                NOME=request.form['nome'],
-                EMAIL=email,
-                PERFIL='usuario'  # Por padrão, novos registros são usuários comuns
-            )
-            novo_usuario.set_senha(request.form['senha'])
+            return redirect(url_for('auth.definir_senha'))
+        else:
+            flash(resultado, 'danger')
 
-            db.session.add(novo_usuario)
-            db.session.commit()
+    return render_template('auth/primeiro_acesso.html')
 
-            # Fazer login automático após o registro
-            user_login = UserLogin(novo_usuario.ID, novo_usuario.EMAIL, novo_usuario.NOME, novo_usuario.PERFIL)
-            login_user(user_login)
 
-            flash('Conta criada com sucesso!', 'success')
-            return redirect(url_for('main.geinc_index'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Erro ao criar conta: {str(e)}', 'danger')
+@auth_bp.route('/definir-senha', methods=['GET', 'POST'])
+def definir_senha():
+    # Verificar se veio da primeira etapa
+    if 'primeiro_acesso_email' not in session:
+        return redirect(url_for('auth.primeiro_acesso'))
 
-    return render_template('auth/registrar.html')
+    email = session.get('primeiro_acesso_email')
+    pk_pessoa = session.get('primeiro_acesso_pk')
+    nome = session.get('primeiro_acesso_nome')
+
+    if request.method == 'POST':
+        senha = request.form.get('senha', '')
+        confirmar_senha = request.form.get('confirmar_senha', '')
+
+        if len(senha) < 8:
+            flash('A senha deve ter pelo menos 8 caracteres.', 'danger')
+        elif senha != confirmar_senha:
+            flash('As senhas não coincidem.', 'danger')
+        else:
+            try:
+                # Criar usuário
+                novo_usuario = Usuario(
+                    NOME=nome,
+                    EMAIL=email,
+                    FK_PESSOA=pk_pessoa,
+                    PERFIL='usuario'
+                )
+                novo_usuario.set_senha(senha)
+
+                db.session.add(novo_usuario)
+                db.session.commit()
+
+                # Registrar log
+                registrar_log(
+                    acao='criar',
+                    entidade='usuario',
+                    entidade_id=novo_usuario.ID,
+                    descricao=f'Primeiro acesso criado para: {email}'
+                )
+
+                # Limpar sessão
+                session.pop('primeiro_acesso_email', None)
+                session.pop('primeiro_acesso_pk', None)
+                session.pop('primeiro_acesso_nome', None)
+
+                flash('Conta criada com sucesso! Faça login para continuar.', 'success')
+                return redirect(url_for('auth.login'))
+
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Erro ao criar conta: {str(e)}', 'danger')
+
+    return render_template('auth/definir_senha.html', email=email, nome=nome)
 
 
 @auth_bp.route('/logout')
 @login_required
 def logout():
+    # Registrar log de logout
+    registrar_log(
+        acao='logout',
+        entidade='sistema',
+        entidade_id=current_user.id,
+        descricao=f'Logout realizado: {current_user.email}'
+    )
+
     logout_user()
     flash('Você saiu do sistema.', 'info')
     return redirect(url_for('auth.login'))
-
 
 @auth_bp.route('/usuarios')
 @login_required
@@ -95,46 +161,7 @@ def lista_usuarios():
     return render_template('auth/lista_usuarios.html', usuarios=usuarios)
 
 
-@auth_bp.route('/usuarios/novo', methods=['GET', 'POST'])
-@login_required
-@admin_or_moderador_required
-def novo_usuario():
-    if request.method == 'POST':
-        try:
-            email = request.form['email']
 
-            # Verificar se é um email institucional
-            if not email.endswith('@emgea.gov.br'):
-                flash('Por favor, utilize um email institucional (@emgea.gov.br).', 'danger')
-                return render_template('auth/form_usuario.html')
-
-            # Verificar se o e-mail já existe
-            usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
-            if usuario_existente:
-                flash('Este e-mail já está cadastrado.', 'danger')
-                return render_template('auth/form_usuario.html')
-
-            # Restrição: Apenas administradores podem criar outros administradores
-            if request.form['perfil'] == 'admin' and current_user.perfil != 'admin':
-                flash('Apenas administradores podem criar contas de administrador.', 'danger')
-                return render_template('auth/form_usuario.html')
-
-            novo_usuario = Usuario(
-                NOME=request.form['nome'],
-                EMAIL=email,
-                PERFIL=request.form['perfil']
-            )
-            novo_usuario.set_senha(request.form['senha'])
-
-            db.session.add(novo_usuario)
-            db.session.commit()
-            flash('Usuário cadastrado com sucesso!', 'success')
-            return redirect(url_for('auth.lista_usuarios'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Erro: {str(e)}', 'danger')
-
-    return render_template('auth/form_usuario.html')
 
 
 @auth_bp.route('/usuarios/editar/<int:id>', methods=['GET', 'POST'])

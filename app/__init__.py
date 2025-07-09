@@ -99,6 +99,9 @@ def create_app():
     from app.routes.demonstrativo_routes import demonstrativo_bp
     app.register_blueprint(demonstrativo_bp)
 
+    from app.routes.seguro_caixa_routes import seguro_caixa_bp
+    app.register_blueprint(seguro_caixa_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

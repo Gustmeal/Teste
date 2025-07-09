@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Sistema de Credenciamento</title>
+    <title>Primeiro Acesso - Sistema de Credenciamento</title>
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +13,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         .login-container {
-            max-width: 400px;
-            margin: 80px auto;
+            max-width: 450px;
+            margin: 60px auto;
             background-color: rgba(255, 255, 255, 0.85);
             border-radius: 12px;
             padding: 30px;
@@ -24,7 +24,7 @@
 
         .login-logo {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .login-title {
@@ -37,7 +37,7 @@
         .login-input {
             border-radius: 50px;
             padding: 12px 20px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             border: 1px solid var(--border-color);
             background-color: rgba(255, 255, 255, 0.7);
         }
@@ -50,7 +50,7 @@
         .login-btn {
             border-radius: 50px;
             padding: 12px;
-            background-color: var(--primary-color);
+            background-color: #28a745;
             border: none;
             color: white;
             font-weight: 600;
@@ -61,29 +61,15 @@
         .login-btn:hover {
             transform: translateY(-3px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            background-color: #5b52e5;
+            background-color: #218838;
         }
 
-        .password-wrapper {
-            position: relative;
-        }
-
-        .password-toggle {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #6c757d;
-            cursor: pointer;
-        }
-
-        .register-link {
-            text-align: center;
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(0, 0, 0, 0.1);
+        .info-box {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
         }
 
         [data-theme="dark"] .login-container {
@@ -95,6 +81,11 @@
             border-color: rgba(255, 255, 255, 0.1);
             color: #e2e8f0;
         }
+
+        [data-theme="dark"] .info-box {
+            background-color: rgba(33, 150, 243, 0.1);
+            color: #90caf9;
+        }
     </style>
 </head>
 <body>
@@ -102,7 +93,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show mx-auto mt-4" style="max-width: 400px;">
+                    <div class="alert alert-{{ category }} alert-dismissible fade show mx-auto mt-4" style="max-width: 450px;">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -114,31 +105,32 @@
             <div class="login-logo">
                 <h1 class="display-4 text-primary mb-0">emgea</h1>
             </div>
-            <h2 class="login-title">Entrar no Sistema</h2>
-            <form method="POST" action="{{ url_for('auth.login') }}">
+            <h2 class="login-title">Primeiro Acesso</h2>
+
+            <div class="info-box">
+                <i class="fas fa-info-circle"></i>
+                <strong>Importante:</strong> Digite o email institucional cadastrado no RH.
+            </div>
+
+            <form method="POST" action="{{ url_for('auth.primeiro_acesso') }}">
                 <div class="mb-3">
-                    <input type="email" class="form-control login-input" name="email"
-                           placeholder="E-mail institucional" required autofocus>
-                </div>
-                <div class="mb-3 password-wrapper">
-                    <input type="password" class="form-control login-input" id="senha" name="senha"
-                           placeholder="Senha" required>
-                    <button type="button" class="password-toggle" onclick="togglePassword()">
-                        <i class="fa fa-eye-slash" id="toggleIcon"></i>
-                    </button>
+                    <label for="email" class="form-label">Email Institucional</label>
+                    <input type="email" class="form-control login-input" name="email" id="email"
+                           pattern="[a-zA-Z0-9._%+-]+@emgea\.gov\.br$"
+                           title="Por favor, utilize seu email institucional (@emgea.gov.br)"
+                           placeholder="seu.nome@emgea.gov.br" required autofocus>
+                    <small class="text-muted">Use o mesmo email cadastrado no RH</small>
                 </div>
                 <div class="d-grid">
-                    <button type="submit" class="btn btn-primary login-btn">
-                        Entrar <i class="fas fa-arrow-right ms-2"></i>
+                    <button type="submit" class="btn login-btn">
+                        <i class="fas fa-search"></i> Verificar Email
                     </button>
                 </div>
             </form>
 
-            <div class="register-link">
-                <p class="mb-1 text-muted">Primeira vez no sistema?</p>
-                <a href="{{ url_for('auth.primeiro_acesso') }}" class="btn btn-outline-success">
-                    <i class="fas fa-user-plus me-1"></i> Primeiro Acesso
-                </a>
+            <div class="text-center mt-4">
+                <p class="mb-0 text-muted">Já tem uma conta?</p>
+                <a href="{{ url_for('auth.login') }}" class="text-primary fw-bold">Fazer Login</a>
             </div>
         </div>
     </div>
@@ -155,21 +147,6 @@
     <div class="theme-toggle" id="themeToggle">
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
-
-    <script>
-        function togglePassword() {
-            const passwordInput = document.getElementById('senha');
-            const toggleIcon = document.getElementById('toggleIcon');
-
-            if (passwordInput.type === 'password') {
-                passwordInput.type = 'text';
-                toggleIcon.className = 'fa fa-eye';
-            } else {
-                passwordInput.type = 'password';
-                toggleIcon.className = 'fa fa-eye-slash';
-            }
-        }
-    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>

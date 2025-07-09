@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="header-with-back">
+            <i class="fas fa-file-excel me-2"></i>Processador de Seguro Caixa
+        </h1>
+    </div>
+
+    <!-- Card de Upload -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-upload me-2"></i>Processar Arquivo de Prêmios
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('seguro_caixa.processar_arquivo') }}"
+                  enctype="multipart/form-data" id="formProcessamento">
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="arquivo" class="form-label">
+                                Arquivo TXT <span class="text-danger">*</span>
+                            </label>
+                            <input type="file" class="form-control" id="arquivo" name="arquivo"
+                                   accept=".txt" required>
+                            <div class="form-text">
+                                Selecione o arquivo TXT de prêmios (formato: CNT.GEA.MZ.BFC2.PREMIOS.EMGEA.DXXXXXX.TXT)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="competencia" class="form-label">
+                                Competência <span class="text-danger">*</span>
+                            </label>
+                            <input type="date" class="form-control" id="competencia"
+                                   name="competencia" required>
+                            <div class="form-text">
+                                Esta data será inserida na coluna REF do arquivo Excel
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-success btn-lg" id="btnProcessar">
+                        <i class="fas fa-cog me-2"></i>Processar e Gerar Excel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Card de Instruções -->
+    <div class="card shadow">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-info-circle me-2"></i>Como Funciona
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6><i class="fas fa-file-alt text-primary me-2"></i>Arquivo de Entrada</h6>
+                    <ul class="text-muted">
+                        <li>Arquivo TXT com dados separados por ponto e vírgula (;)</li>
+                        <li>Contém informações de contratos, prêmios e datas</li>
+                        <li>Formato padrão do sistema de seguros</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6><i class="fas fa-file-excel text-success me-2"></i>Arquivo de Saída</h6>
+                    <ul class="text-muted">
+                        <li>Excel formatado com todas as colunas organizadas</li>
+                        <li>Data de competência na coluna REF</li>
+                        <li>Valores e datas formatados para melhor visualização</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="alert alert-warning mt-3 mb-0">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Importante:</strong> O processamento mantém a estrutura original dos dados,
+                apenas formatando para melhor visualização no Excel.
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('formProcessamento');
+    const btnProcessar = document.getElementById('btnProcessar');
+
+    form.addEventListener('submit', function(e) {
+        // Mostrar indicador de processamento
+        btnProcessar.disabled = true;
+        btnProcessar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processando...';
+
+        // Reativar botão após 5 segundos
+        setTimeout(function() {
+            btnProcessar.disabled = false;
+            btnProcessar.innerHTML = '<i class="fas fa-cog me-2"></i>Processar e Gerar Excel';
+        }, 5000);
+    });
+
+    // Definir data atual como padrão para competência
+    const hoje = new Date().toISOString().split('T')[0];
+    document.getElementById('competencia').value = hoje;
+});
+</script>
+{% endblock %}

@@ -8,7 +8,6 @@
     let isLoadingVisible = false;
     let loadingTimeout = null;
     let loadingElement = null;
-    let isNavigatingAway = false;
 
     // Criar overlay de carregamento
     function createLoadingOverlay() {
@@ -65,13 +64,6 @@
         }
     }
 
-    // Resetar estado completamente
-    function resetLoadingState() {
-        operationCounter = 0;
-        isNavigatingAway = false;
-        hideLoading();
-    }
-
     // Registrar início de operação
     function operationStarted() {
         operationCounter++;
@@ -81,9 +73,9 @@
             clearTimeout(loadingTimeout);
         }
 
-        // Definir novo timeout para mostrar loading após 1 segundo
+        // Definir novo timeout para mostrar loading após 2.1 segundos
         loadingTimeout = setTimeout(() => {
-            if (operationCounter > 0 && !isNavigatingAway) {
+            if (operationCounter > 0) {
                 showLoading();
             }
         }, 1000);
@@ -137,25 +129,7 @@
 
     // Interceptar mudanças de página
     window.addEventListener('beforeunload', () => {
-        isNavigatingAway = true;
-    });
-
-    // Detectar quando a página é mostrada (incluindo do cache)
-    window.addEventListener('pageshow', (event) => {
-        // Se a página foi carregada do cache do navegador
-        if (event.persisted) {
-            resetLoadingState();
-        }
-    });
-
-    // Detectar mudanças de visibilidade da página
-    document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
-            // Quando a página volta a ficar visível, resetar se necessário
-            if (isNavigatingAway) {
-                resetLoadingState();
-            }
-        }
+        operationStarted();
     });
 
     // Interceptar Fetch API
@@ -191,7 +165,7 @@
 
     // Esconder loading quando a página terminar de carregar
     window.addEventListener('load', () => {
-        resetLoadingState();
+        operationEnded();
     });
 
     // Expor funções globalmente se necessário
@@ -199,7 +173,6 @@
         operationStarted,
         operationEnded,
         showLoading,
-        hideLoading,
-        resetLoadingState
+        hideLoading
     };
 })();
