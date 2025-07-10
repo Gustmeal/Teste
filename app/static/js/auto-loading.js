@@ -1,6 +1,6 @@
 /**
  * Sistema automático de detecção de operações longas para exibição de tela de carregamento
- * Mostra a tela de carregamento apenas se uma operação demorar mais de 2.1 segundos
+ * Mostra a tela de carregamento apenas se uma operação demorar mais de 1 segundo
  */
 (function() {
     // Estado do sistema
@@ -51,7 +51,7 @@
 
     // Esconder overlay de carregamento
     function hideLoading() {
-        if (!isLoadingVisible) return;
+        if (!isLoadingVisible && operationCounter === 0) return;
 
         isLoadingVisible = false;
         if (loadingElement) {
@@ -73,7 +73,7 @@
             clearTimeout(loadingTimeout);
         }
 
-        // Definir novo timeout para mostrar loading após 2.1 segundos
+        // Definir novo timeout para mostrar loading após 1 segundo
         loadingTimeout = setTimeout(() => {
             if (operationCounter > 0) {
                 showLoading();
@@ -92,11 +92,9 @@
 
     // Interceptar todos os cliques
     document.addEventListener('click', (event) => {
-        // Verificar se o clique foi em um botão, link ou elemento clicável
         const element = event.target.closest('button, a, [role="button"], [type="submit"]');
 
         if (element) {
-            // Ignorar elementos que claramente não iniciam operações longas
             if (element.classList.contains('btn-close') ||
                 element.getAttribute('data-bs-dismiss') ||
                 element.classList.contains('btn-secondary') ||
@@ -109,13 +107,11 @@
                 return;
             }
 
-            // Verificar se há um href que não é # ou javascript:void(0)
             const href = element.getAttribute('href');
             if (href && href !== '#' && !href.startsWith('javascript:')) {
                 operationStarted();
             }
 
-            // Se for botão de formulário
             if (element.getAttribute('type') === 'submit') {
                 operationStarted();
             }
@@ -163,7 +159,17 @@
         originalOpen.apply(xhr, arguments);
     };
 
-    // Esconder loading quando a página terminar de carregar
+    // Lida com o ciclo de vida da página para corrigir o bug do botão "voltar"
+    window.addEventListener('pageshow', (event) => {
+        // Se a página foi restaurada do cache (bfcache), o estado pode estar inconsistente.
+        // Forçamos o reset do loading para garantir que não fique preso.
+        if (event.persisted) {
+            operationCounter = 0;
+            hideLoading();
+        }
+    });
+
+    // Esconder loading quando a página terminar de carregar pela primeira vez
     window.addEventListener('load', () => {
         operationEnded();
     });
