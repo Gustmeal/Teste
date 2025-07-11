@@ -68,7 +68,7 @@ class VisualizadorRedistribuicao:
         """Busca informações do período"""
         sql = text("""
             SELECT p.ID, p.ID_PERIODO, p.DT_INICIO, p.DT_FIM
-            FROM DEV.DCA_TB001_PERIODO_AVALIACAO p
+            FROM BDG.DCA_TB001_PERIODO_AVALIACAO p
             WHERE p.ID = :periodo_id
             AND p.ID_EDITAL = :edital_id
             AND p.DELETED_AT IS NULL
@@ -256,8 +256,8 @@ class VisualizadorRedistribuicao:
                 emp.NO_EMPRESA_ABREVIADA,
                 mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
-            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
+            FROM BDG.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
                 ON mpd.ID_EMPRESA = emp.ID_EMPRESA
                 AND mpd.ID_EDITAL = emp.ID_EDITAL
                 AND mpd.ID_PERIODO = emp.ID_PERIODO

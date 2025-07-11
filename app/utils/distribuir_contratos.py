@@ -141,7 +141,7 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                         ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
                     INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
                         ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-                    INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                    INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
                         ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
                 WHERE EMP.ID_EDITAL = :edital_id
                     AND EMP.ID_PERIODO = :periodo_id
@@ -211,7 +211,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
         empresas_participantes = db.session.execute(
             text("""
                 SELECT ID_EMPRESA
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DS_CONDICAO <> 'DESCREDENCIADA'
@@ -238,7 +238,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
                 ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
             INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
                 ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
                 ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
             WHERE ALV.fkEstadoAcordo = 1
                 AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
@@ -508,8 +508,8 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         empresas = db.session.execute(
             text("""
                 SELECT COUNT(*) 
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-                JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP ON LD.ID_EMPRESA = EP.ID_EMPRESA
+                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP ON LD.ID_EMPRESA = EP.ID_EMPRESA
                     AND LD.ID_EDITAL = EP.ID_EDITAL
                     AND LD.ID_PERIODO = EP.ID_PERIODO
                 WHERE LD.ID_EDITAL = :edital_id
@@ -558,8 +558,8 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 LD.PERCENTUAL_FINAL AS percentual,
                 ROW_NUMBER() OVER (ORDER BY LD.PERCENTUAL_FINAL DESC) AS ranking
             INTO #Empresas
-            FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-            JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP 
+            FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+            JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP 
                 ON LD.ID_EMPRESA = EP.ID_EMPRESA
                 AND LD.ID_EDITAL = EP.ID_EDITAL
                 AND LD.ID_PERIODO = EP.ID_PERIODO
@@ -786,8 +786,8 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         empresas_count = db.session.execute(
             text("""
                 SELECT COUNT(*) 
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
-                LEFT JOIN [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD 
+                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+                LEFT JOIN [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD 
                     ON EP.ID_EMPRESA = LD.ID_EMPRESA 
                     AND EP.ID_EDITAL = LD.ID_EDITAL 
                     AND EP.ID_PERIODO = LD.ID_PERIODO
@@ -841,8 +841,8 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 0 AS total_a_receber,
                 ROW_NUMBER() OVER (ORDER BY COALESCE(LD.PERCENTUAL_FINAL, 0) DESC) AS ranking
             INTO #EmpresasInfo
-            FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
-            LEFT JOIN [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+            FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            LEFT JOIN [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
                 ON EP.ID_EMPRESA = LD.ID_EMPRESA
                 AND EP.ID_EDITAL = LD.ID_EDITAL
                 AND EP.ID_PERIODO = LD.ID_PERIODO
@@ -1112,7 +1112,7 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
             limite_existente = db.session.execute(
                 text("""
                     SELECT ID, PERCENTUAL_FINAL 
-                    FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                    FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                     WHERE ID_EDITAL = :edital_id
                     AND ID_PERIODO = :periodo_id
                     AND ID_EMPRESA = :empresa_id
@@ -1125,7 +1125,7 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                 # Se não existe, inserir novo registro com percentual padrão
                 db.session.execute(
                     text("""
-                        INSERT INTO [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                        INSERT INTO [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                         (
                             ID_EDITAL,
                             ID_PERIODO,
@@ -1163,7 +1163,7 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                 # Se existe, atualizar apenas quantidade e valor, mantendo percentual
                 db.session.execute(
                     text("""
-                        UPDATE [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                        UPDATE [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                         SET 
                             VR_ARRECADACAO = :valor_total,
                             QTDE_MAXIMA = :qtde,
@@ -1196,7 +1196,7 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                     QTDE_MAXIMA,
                     VALOR_MAXIMO,
                     PERCENTUAL_FINAL
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DELETED_AT IS NULL
@@ -1256,8 +1256,8 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
                 EMP.NO_EMPRESA_ABREVIADA, 
                 COUNT(*) AS QTDE, 
                 SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
-            FROM [DEV].[DCA_TB005_DISTRIBUICAO] AS DIS 
-            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP 
+            FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS 
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP 
                 ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA 
                 AND EMP.ID_EDITAL = :edital_id
                 AND EMP.ID_PERIODO = :periodo_id

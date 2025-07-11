@@ -102,7 +102,7 @@ class DistribuicaoInicial:
         """
         sql = text("""
             SELECT TOP 1 NO_EMPRESA_ABREVIADA
-            FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES
+            FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES
             WHERE ID_EMPRESA = :id_empresa
             AND ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
@@ -168,7 +168,7 @@ class DistribuicaoInicial:
         """
         sql = text("""
             SELECT ID_PERIODO, DT_INICIO, DT_FIM
-            FROM DEV.DCA_TB001_PERIODO_AVALIACAO
+            FROM BDG.DCA_TB001_PERIODO_AVALIACAO
             WHERE ID = :periodo_id -- Usa a chave primária
             AND ID_EDITAL = :edital_id
             AND DELETED_AT IS NULL

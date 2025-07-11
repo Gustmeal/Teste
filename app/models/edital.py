@@ -4,7 +4,7 @@ from app import db
 
 class Edital(db.Model):
     __tablename__ = 'DCA_TB008_EDITAIS'
-    __table_args__ = {'schema': 'DEV'}  # Especifica o esquema
+    __table_args__ = {'schema': 'BDG'}  # Especifica o esquema
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     NU_EDITAL = db.Column(db.Integer, unique=True, nullable=False)

@@ -42,8 +42,8 @@ class Distribuicao(db.Model):
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
     DT_REFERENCIA = db.Column(Date, nullable=False)
-    ID_EDITAL = db.Column(Integer, ForeignKey('DEV.DCA_TB008_EDITAIS.ID'), nullable=False)
-    ID_PERIODO = db.Column(Integer, ForeignKey('DEV.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
+    ID_EDITAL = db.Column(Integer, ForeignKey('BDG.DCA_TB008_EDITAIS.ID'), nullable=False)
+    ID_PERIODO = db.Column(Integer, ForeignKey('BDG.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
     fkContratoSISCTR = db.Column(BigInteger, nullable=False, index=True)
     COD_EMPRESA_COBRANCA = db.Column(Integer, nullable=False)
     COD_CRITERIO_SELECAO = db.Column(Integer, ForeignKey('DEV.DCA_TB004_CRITERIO_SELECAO.COD'), nullable=False)
@@ -118,8 +118,8 @@ class PercentualEmpresa(db.Model):
     __table_args__ = {'schema': 'DEV'}
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
-    ID_EDITAL = db.Column(Integer, ForeignKey('DEV.DCA_TB008_EDITAIS.ID'), nullable=False)
-    ID_PERIODO = db.Column(Integer, ForeignKey('DEV.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
+    ID_EDITAL = db.Column(Integer, ForeignKey('BDG.DCA_TB008_EDITAIS.ID'), nullable=False)
+    ID_PERIODO = db.Column(Integer, ForeignKey('BDG.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
     COD_EMPRESA_COBRANCA = db.Column(Integer, nullable=False, index=True)
     PERCENTUAL = db.Column(Numeric(5, 2), nullable=False)
     CREATED_AT = db.Column(DateTime, default=datetime.utcnow)

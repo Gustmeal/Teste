@@ -48,8 +48,8 @@ class RedistribuicaoCalculator:
         sql = text("""
             SELECT p.ID, p.ID_PERIODO, p.DT_INICIO, p.DT_FIM,
                    e.NU_EDITAL, e.ANO
-            FROM DEV.DCA_TB001_PERIODO_AVALIACAO p
-            JOIN DEV.DCA_TB008_EDITAIS e ON p.ID_EDITAL = e.ID
+            FROM BDG.DCA_TB001_PERIODO_AVALIACAO p
+            JOIN BDG.DCA_TB008_EDITAIS e ON p.ID_EDITAL = e.ID
             WHERE p.ID = :periodo_id
             AND p.ID_EDITAL = :edital_id
             AND p.DELETED_AT IS NULL
@@ -194,8 +194,8 @@ class RedistribuicaoCalculator:
                  AND dist.ID_PERIODO = mpd.ID_PERIODO 
                  AND dist.COD_EMPRESA_COBRANCA = mpd.ID_EMPRESA
                  AND dist.DT_REFERENCIA = mpd.DT_REFERENCIA) as QTDE_CONTRATOS
-            FROM DEV.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
-            JOIN DEV.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
+            FROM BDG.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
                 ON mpd.ID_EMPRESA = emp.ID_EMPRESA
                 AND mpd.ID_EDITAL = emp.ID_EDITAL
                 AND mpd.ID_PERIODO = emp.ID_PERIODO

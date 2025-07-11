@@ -575,7 +575,7 @@ def calcular_limites_empresas_permanece(ultimo_edital, ultimo_periodo, periodo_a
                 -- Obter dados de arrecadação da tabela real
                 COALESCE(REE.VR_ARRECADACAO, 0) AS VR_ARRECADACAO
             FROM 
-                DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
+                BDG.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
             LEFT JOIN (
                 SELECT 
                     REE.CO_EMPRESA_COBRANCA,
@@ -864,7 +864,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
                 SELECT 
                     EP.ID_EMPRESA,
                     COALESCE(REE.VR_ARRECADACAO, 0) AS VR_ARRECADACAO
-                FROM DEV.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
+                FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES AS EP
                 LEFT JOIN (
                     SELECT 
                         CO_EMPRESA_COBRANCA, 
@@ -2032,13 +2032,13 @@ def obter_resultados_finais_redistribuicao(edital_id, periodo_id, criterio_id):
             COUNT(D.fkContratoSISCTR) AS qtde,
             COALESCE(SUM(D.VR_SD_DEVEDOR), 0) AS saldo,
             LD.VR_ARRECADACAO
-        FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+        FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
         LEFT JOIN [DEV].[DCA_TB005_DISTRIBUICAO] D
             ON LD.ID_EMPRESA = D.COD_EMPRESA_COBRANCA
             AND D.ID_EDITAL = :edital_id
             AND D.ID_PERIODO = :periodo_id
             AND D.COD_CRITERIO_SELECAO = :criterio_id
-        LEFT JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+        LEFT JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
             ON LD.ID_EMPRESA = EP.ID_EMPRESA
             AND EP.ID_EDITAL = :edital_id
             AND EP.ID_PERIODO = :periodo_id

@@ -273,7 +273,7 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
             # 1. Buscar o período para obter datas
             periodo_sql = text("""
                 SELECT DT_INICIO, DT_FIM 
-                FROM [DEV].[DCA_TB001_PERIODO_AVALIACAO]
+                FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO]
                 WHERE ID_EDITAL = :edital_id 
                   AND ID_PERIODO = :periodo_id
                   AND DELETED_AT IS NULL
@@ -298,7 +298,7 @@ def calcular_percentuais_redistribuicao(edital_id, periodo_id, empresa_id):
                 EP.NO_EMPRESA,
                 EP.NO_EMPRESA_ABREVIADA,
                 EP.DS_CONDICAO
-            FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+            FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
             WHERE EP.ID_EDITAL = :edital_id
               AND EP.ID_PERIODO = :periodo_id
               AND (EP.DS_CONDICAO IN ('NOVA', 'PERMANECE') OR EP.ID_EMPRESA = :empresa_id)
@@ -531,7 +531,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 
                 # 4. Remover apenas registros do critério específico
                 delete_sql = text("""
-                DELETE FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                DELETE FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
                   AND [COD_CRITERIO_SELECAO] = :criterio_id
@@ -626,7 +626,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                     percentual_final = empresa["percentual_final"]
 
                     insert_sql = text("""
-                    INSERT INTO [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                    INSERT INTO [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                     ([ID_EDITAL], [ID_PERIODO], [ID_EMPRESA], [COD_CRITERIO_SELECAO], 
                      [DT_APURACAO], [VR_ARRECADACAO], [QTDE_MAXIMA], [VALOR_MAXIMO], 
                      [PERCENTUAL_FINAL], [CREATED_AT], [UPDATED_AT], [DELETED_AT])
@@ -663,7 +663,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
 
                 # 10. Atualizar quantidades e valores máximos
                 update_sql = text("""
-                UPDATE [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                UPDATE [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 SET 
                     [QTDE_MAXIMA] = CONVERT(INT, :qtde_registros * [PERCENTUAL_FINAL] / 100),
                     [VALOR_MAXIMO] = CONVERT(DECIMAL(18,2), :valor_total * [PERCENTUAL_FINAL] / 100)
@@ -688,7 +688,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                     SELECT 
                         SUM(LD.[QTDE_MAXIMA]) 
                     FROM 
-                        [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LD
+                        [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LD
                     WHERE
                         LD.[ID_EDITAL] = :edital_id
                         AND LD.[ID_PERIODO] = :periodo_id
@@ -703,7 +703,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                             LD.[QTDE_MAXIMA],
                             ROW_NUMBER() OVER (ORDER BY LD.[QTDE_MAXIMA] DESC) AS RN
                         FROM 
-                            [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LD
+                            [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LD
                         WHERE
                             LD.[ID_EDITAL] = :edital_id
                             AND LD.[ID_PERIODO] = :periodo_id
@@ -711,7 +711,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                     )
                     UPDATE LIM
                     SET LIM.[QTDE_MAXIMA] = LIM.[QTDE_MAXIMA] + 1
-                    FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LIM
+                    FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] AS LIM
                     INNER JOIN RankedEmpresas AS R
                         ON LIM.[ID] = R.[ID]
                     WHERE R.RN <= @SOBRA;
@@ -731,7 +731,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                     ID_EMPRESA,
                     PERCENTUAL_FINAL,
                     QTDE_MAXIMA
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                 WHERE
                     [ID_EDITAL] = :edital_id
                     AND [ID_PERIODO] = :periodo_id
@@ -895,7 +895,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                           AND D.COD_CRITERIO_SELECAO = :criterio_id
                     ), 0) AS QTDE_ATUAL,
                     LD.VR_ARRECADACAO
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
                 WHERE LD.ID_EDITAL = :edital_id
                   AND LD.ID_PERIODO = :periodo_id
                   AND LD.COD_CRITERIO_SELECAO = :criterio_id
@@ -1152,7 +1152,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                           AND D.COD_CRITERIO_SELECAO = :criterio_id
                     ), 0) AS QTDE_ATUAL,
                     LD.VR_ARRECADACAO
-                FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
                 WHERE LD.ID_EDITAL = :edital_id
                   AND LD.ID_PERIODO = :periodo_id
                   AND LD.COD_CRITERIO_SELECAO = :criterio_id
@@ -1416,7 +1416,7 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
             # Primeiro, contar as empresas
             count_sql = text("""
                 SELECT COUNT(DISTINCT ID_EMPRESA) as qtde_empresas
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DS_CONDICAO IN ('NOVA', 'PERMANECE')
@@ -1435,7 +1435,7 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
             # Depois, buscar os IDs das empresas (se necessário para debug)
             ids_sql = text("""
                 SELECT DISTINCT ID_EMPRESA
-                FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DS_CONDICAO IN ('NOVA', 'PERMANECE')
@@ -1574,7 +1574,7 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
                    (SELECT SUM(REE.VR_ARRECADACAO_TOTAL) 
                     FROM [BDG].[COM_TB062_REMUNERACAO_ESTIMADA] REE
                     WHERE REE.CO_EMPRESA_COBRANCA = EP.ID_EMPRESA) AS arrecadacao
-               FROM [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+               FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
                WHERE EP.ID_EDITAL = :edital_id
                  AND EP.ID_PERIODO = :periodo_id
                  AND EP.ID_EMPRESA = :empresa_id
@@ -1607,13 +1607,13 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
                    END AS pct_saldo,
                    LD.VR_ARRECADACAO,
                    LD.PERCENTUAL_FINAL  -- IMPORTANTE: usar o percentual final ajustado
-               FROM [DEV].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+               FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
                LEFT JOIN [DEV].[DCA_TB005_DISTRIBUICAO] D
                    ON LD.ID_EMPRESA = D.COD_EMPRESA_COBRANCA
                    AND D.ID_EDITAL = :edital_id
                    AND D.ID_PERIODO = :periodo_id
                    AND D.COD_CRITERIO_SELECAO = :criterio_id
-               LEFT JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+               LEFT JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
                    ON LD.ID_EMPRESA = EP.ID_EMPRESA
                    AND EP.ID_EDITAL = :edital_id
                    AND EP.ID_PERIODO = :periodo_id

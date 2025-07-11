@@ -4,11 +4,11 @@ from app import db
 
 class LimiteDistribuicao(db.Model):
     __tablename__ = 'DCA_TB003_LIMITES_DISTRIBUICAO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    ID_EDITAL = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB008_EDITAIS.ID'), nullable=False)
-    ID_PERIODO = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
+    ID_EDITAL = db.Column(db.Integer, db.ForeignKey('BDG.DCA_TB008_EDITAIS.ID'), nullable=False)
+    ID_PERIODO = db.Column(db.Integer, db.ForeignKey('BDG.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
     ID_EMPRESA = db.Column(db.Integer, nullable=False)
     COD_CRITERIO_SELECAO = db.Column(db.Integer, nullable=False)
     QTDE_MAXIMA = db.Column(db.Integer, nullable=True)

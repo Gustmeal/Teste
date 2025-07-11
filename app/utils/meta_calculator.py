@@ -66,8 +66,8 @@ class MetaCalculator:
         sql = text("""
             SELECT p.ID, p.ID_PERIODO, p.DT_INICIO, p.DT_FIM,
                    e.NU_EDITAL, e.ANO
-            FROM DEV.DCA_TB001_PERIODO_AVALIACAO p
-            JOIN DEV.DCA_TB008_EDITAIS e ON p.ID_EDITAL = e.ID
+            FROM BDG.DCA_TB001_PERIODO_AVALIACAO p
+            JOIN BDG.DCA_TB008_EDITAIS e ON p.ID_EDITAL = e.ID
             WHERE p.ID = :periodo_id
             AND p.ID_EDITAL = :edital_id
             AND p.DELETED_AT IS NULL
@@ -275,7 +275,7 @@ class MetaCalculator:
                 COUNT(*) as QTD_CONTRATOS,
                 SUM(DIS.[VR_SD_DEVEDOR]) as TOTAL_SD
             FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS
-            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
                 ON DIS.ID_EDITAL = EMP.ID_EDITAL
                 AND DIS.ID_PERIODO = EMP.ID_PERIODO
                 AND DIS.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
@@ -332,7 +332,7 @@ class MetaCalculator:
                 COUNT(*) as QTD_CONTRATOS,
                 SUM(DIS.[VR_SD_DEVEDOR]) as TOTAL_SD
             FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS
-            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
                 ON DIS.ID_EDITAL = EMP.ID_EDITAL
                 AND DIS.ID_PERIODO = EMP.ID_PERIODO
                 AND DIS.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
@@ -386,7 +386,7 @@ class MetaCalculator:
                 COUNT(*) as QTD_CONTRATOS,
                 SUM(DIS.[VR_SD_DEVEDOR]) as TOTAL_SD
             FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS
-            INNER JOIN [DEV].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
                 ON DIS.ID_EDITAL = EMP.ID_EDITAL
                 AND DIS.ID_PERIODO = EMP.ID_PERIODO
                 AND DIS.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
