@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('sumov.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>Registros de Pagamentos de Despesas</h1>
+    <p class="text-secondary">Sistema de gestão de pagamentos de despesas contratuais</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon payment-primary-color mx-auto">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <h3 class="system-title">Total de Registros</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_registros }}">0</h2>
+                    <p class="text-muted">Pagamentos registrados</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon payment-success-color mx-auto">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h3 class="system-title">Registros do Mês</h3>
+                    <h2 class="text-success counter" data-target="{{ registros_mes }}">0</h2>
+                    <p class="text-muted">Pagamentos este mês</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon payment-info-color mx-auto">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <h3 class="system-title">Valor Total</h3>
+                    <h2 class="text-info">R$ {{ "{:,.2f}".format(valor_total).replace(",", "X").replace(".", ",").replace("X", ".") }}</h2>
+                    <p class="text-muted">Total em pagamentos</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon add-color mx-auto">
+                        <i class="fas fa-plus-circle"></i>
+                    </div>
+                    <h3 class="system-title">Novo Pagamento</h3>
+                    <p class="text-muted mb-4">
+                        Registre um novo pagamento de despesa contratual.
+                    </p>
+                    <a href="{{ url_for('sumov.nova_despesa') }}" class="btn btn-success">
+                        <i class="fas fa-plus me-2"></i> Novo Registro
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon list-color mx-auto">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="system-title">Lista de Pagamentos</h3>
+                    <p class="text-muted mb-4">
+                        Visualize todos os pagamentos registrados no sistema.
+                    </p>
+                    <a href="{{ url_for('sumov.lista_despesas') }}" class="btn btn-primary">
+                        <i class="fas fa-eye me-2"></i> Ver Lista
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .system-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        line-height: 80px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+
+    .payment-primary-color {
+        background-color: #20c997;
+    }
+
+    .payment-success-color {
+        background-color: #28a745;
+    }
+
+    .payment-info-color {
+        background-color: #17a2b8;
+    }
+
+    .add-color {
+        background-color: #28a745;
+    }
+
+    .list-color {
+        background-color: #6610f2;
+    }
+</style>
+
+<script>
+    // Animação de contadores
+    document.addEventListener('DOMContentLoaded', function() {
+        const counters = document.querySelectorAll('.counter');
+
+        counters.forEach(counter => {
+            const target = parseInt(counter.getAttribute('data-target'));
+            const increment = target / 50;
+            let count = 0;
+
+            const updateCounter = () => {
+                count += increment;
+                if (count < target) {
+                    counter.textContent = Math.ceil(count);
+                    setTimeout(updateCounter, 20);
+                } else {
+                    counter.textContent = target;
+                }
+            };
+
+            updateCounter();
+        });
+    });
+</script>
+{% endblock %}

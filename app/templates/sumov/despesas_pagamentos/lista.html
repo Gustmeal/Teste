@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('sumov.despesas_pagamentos') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Lista de Pagamentos de Despesas</h1>
+        <a href="{{ url_for('sumov.nova_despesa') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i> Novo Pagamento
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="search-container mb-4">
+                <input type="text" id="searchInput" class="form-control search-input"
+                       placeholder="Pesquisar por contrato, ocorrência ou item...">
+                <i class="fas fa-search search-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    {% if despesas %}
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="table table-hover mb-0" style="min-width: 1200px;">
+                    <thead class="table-header">
+                        <tr>
+                            <th style="min-width: 120px;">Data Referência</th>
+                            <th style="min-width: 140px;">Nº Contrato</th>
+                            <th style="min-width: 160px;">Nº Ocorrência</th>
+                            <th style="min-width: 250px;">Item de Serviço</th>
+                            <th style="min-width: 120px;">Data Pagamento</th>
+                            <th style="min-width: 120px;">Valor</th>
+                            <th style="min-width: 130px;">Forma Pgto</th>
+                            <th style="min-width: 140px;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="despesasTable">
+                        <!-- Registros serão carregados aqui -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mt-4" id="loadMoreContainer">
+        <button class="btn btn-outline-primary" id="loadMoreBtn" onclick="carregarMais()">
+            <i class="fas fa-plus-circle me-2"></i> Carregar Mais
+        </button>
+    </div>
+    {% else %}
+    <div class="card shadow">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-file-invoice-dollar fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Nenhum pagamento encontrado</h5>
+            <p class="text-muted">Clique no botão abaixo para registrar o primeiro pagamento.</p>
+            <a href="{{ url_for('sumov.nova_despesa') }}" class="btn btn-primary mt-3">
+                <i class="fas fa-plus me-2"></i> Novo Pagamento
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* Estilo para scroll horizontal suave */
+    .table-responsive {
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        scrollbar-color: #6c63ff #f1f1f1;
+    }
+
+    .table-responsive::-webkit-scrollbar {
+        height: 8px;
+    }
+
+    .table-responsive::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb {
+        background: #6c63ff;
+        border-radius: 4px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb:hover {
+        background: #5b52e5;
+    }
+</style>
+
+<script>
+    let currentPage = 0;
+    const itemsPerPage = 20;
+    let allDespesas = [];
+    let filteredDespesas = [];
+
+    // Dados das despesas em JSON
+    {% if despesas %}
+    const despesasData = [
+        {% for despesa in despesas %}
+        {
+            dt_referencia: "{{ despesa.DT_REFERENCIA.strftime('%d/%m/%Y') }}",
+            nr_contrato: "{{ despesa.NR_CONTRATO }}",
+            nr_ocorrencia: "{{ despesa.NR_OCORRENCIA }}",
+            dsc_item_servico: "{{ despesa.DSC_ITEM_SERVICO }}",
+            dt_lancamento: "{{ despesa.DT_LANCAMENTO_PAGAMENTO.strftime('%d/%m/%Y') }}",
+            vr_despesa: "{{ "{:,.2f}".format(despesa.VR_DESPESA).replace(",", "X").replace(".", ",").replace("X", ".") }}",
+            forma_pgto: "{{ despesa.DSC_TIPO_FORMA_PGTO }}",
+            estado: "{{ despesa.estadoLancamento }}"
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    {% else %}
+    const despesasData = [];
+    {% endif %}
+
+    // Inicializa os dados
+    allDespesas = despesasData;
+    filteredDespesas = despesasData;
+
+    // Função para renderizar despesas
+    function renderDespesas(despesas) {
+        const tbody = document.getElementById('despesasTable');
+
+        despesas.forEach(despesa => {
+            const tr = document.createElement('tr');
+            tr.className = 'table-row';
+            tr.innerHTML = `
+                <td>${despesa.dt_referencia}</td>
+                <td><span class="badge bg-primary">${despesa.nr_contrato}</span></td>
+                <td><span class="badge bg-info">${despesa.nr_ocorrencia}</span></td>
+                <td>${despesa.dsc_item_servico}</td>
+                <td>${despesa.dt_lancamento}</td>
+                <td class="text-end">
+                    <span class="text-success fw-bold">R$ ${despesa.vr_despesa}</span>
+                </td>
+                <td><span class="badge bg-secondary">${despesa.forma_pgto}</span></td>
+                <td><span class="badge bg-success">${despesa.estado}</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // Função para carregar mais registros
+    function carregarMais() {
+        const start = currentPage * itemsPerPage;
+        const end = start + itemsPerPage;
+        const despesasParaCarregar = filteredDespesas.slice(start, end);
+
+        if (despesasParaCarregar.length > 0) {
+            renderDespesas(despesasParaCarregar);
+            currentPage++;
+
+            // Verifica se ainda há mais registros
+            if (end >= filteredDespesas.length) {
+                document.getElementById('loadMoreContainer').style.display = 'none';
+            }
+        }
+    }
+
+    // Função de pesquisa
+    document.getElementById('searchInput').addEventListener('keyup', function() {
+        const searchValue = this.value.toLowerCase();
+
+        // Limpa a tabela
+        document.getElementById('despesasTable').innerHTML = '';
+        currentPage = 0;
+
+        if (searchValue === '') {
+            filteredDespesas = allDespesas;
+        } else {
+            filteredDespesas = allDespesas.filter(despesa => {
+                return despesa.nr_contrato.toLowerCase().includes(searchValue) ||
+                       despesa.nr_ocorrencia.toLowerCase().includes(searchValue) ||
+                       despesa.dsc_item_servico.toLowerCase().includes(searchValue) ||
+                       despesa.forma_pgto.toLowerCase().includes(searchValue);
+            });
+        }
+
+        // Recarrega os primeiros registros
+        carregarMais();
+
+        // Mostra/esconde o botão carregar mais
+        if (filteredDespesas.length > itemsPerPage) {
+            document.getElementById('loadMoreContainer').style.display = 'block';
+        } else {
+            document.getElementById('loadMoreContainer').style.display = 'none';
+        }
+    });
+
+    // Carrega os primeiros registros ao iniciar
+    window.addEventListener('DOMContentLoaded', function() {
+        carregarMais();
+
+        // Esconde o botão se não houver mais registros
+        if (allDespesas.length <= itemsPerPage) {
+            document.getElementById('loadMoreContainer').style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container fade-in">
+    <a href="{{ url_for('sumov.despesas_pagamentos') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0 header-with-back">
+                <i class="fas fa-plus-circle me-2"></i> Novo Registro de Pagamento
+            </h4>
+        </div>
+        <div class="card-body p-4">
+            <form action="{{ url_for('sumov.nova_despesa') }}" method="POST" id="formDespesa">
+                <div class="row">
+                    <!-- Número do Contrato -->
+                    <div class="col-md-6 mb-3">
+                        <label for="nr_contrato" class="form-label">
+                            <i class="fas fa-file-contract me-1"></i> Número do Contrato <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="nr_contrato" name="nr_contrato"
+                               required placeholder="Ex: 179910000041"
+                               title="Digite o número do contrato">
+                        <div class="form-text">Digite o número do contrato</div>
+                    </div>
+
+                    <!-- Item de Serviço -->
+                    <div class="col-md-6 mb-3">
+                        <label for="id_item_servico" class="form-label">
+                            <i class="fas fa-clipboard-list me-1"></i> Item de Serviço <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="id_item_servico" name="id_item_servico" required>
+                            <option value="">Selecione um item...</option>
+                            {% for item in itens_servico %}
+                            <option value="{{ item.ID_ITEM_SERVICO }}">
+                                {{ item.DSC_ITEM_SERVICO }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Data de Lançamento do Pagamento -->
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_lancamento_pagamento" class="form-label">
+                            <i class="fas fa-calendar-alt me-1"></i> Data do Pagamento <span class="text-danger">*</span>
+                        </label>
+                        <input type="date" class="form-control" id="dt_lancamento_pagamento"
+                               name="dt_lancamento_pagamento" required>
+                    </div>
+
+                    <!-- Valor da Despesa -->
+                    <div class="col-md-4 mb-3">
+                        <label for="vr_despesa" class="form-label">
+                            <i class="fas fa-dollar-sign me-1"></i> Valor da Despesa <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="vr_despesa" name="vr_despesa"
+                               required placeholder="0,00"
+                               pattern="[0-9]+,[0-9]{2}"
+                               title="Digite o valor no formato: 1234,56">
+                        <div class="form-text">Use apenas números - a vírgula será adicionada automaticamente</div>
+                    </div>
+
+                    <!-- Forma de Pagamento -->
+                    <div class="col-md-4 mb-3">
+                        <label for="dsc_tipo_forma_pgto" class="form-label">
+                            <i class="fas fa-money-check me-1"></i> Forma de Pagamento <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="dsc_tipo_forma_pgto" name="dsc_tipo_forma_pgto" required>
+                            <option value="">Selecione...</option>
+                            <option value="Conta Corrente">Conta Corrente</option>
+                            <option value="Boleto">Boleto</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Informações Importantes:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li>O número de ocorrência será gerado automaticamente pelo sistema</li>
+                        <li>O pagamento será registrado com status "Pagamento Efetuado"</li>
+                        <li>A data de referência será a data atual</li>
+                        <li>Todos os campos são obrigatórios</li>
+                    </ul>
+                </div>
+
+                <hr class="my-4">
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('sumov.despesas_pagamentos') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i> Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i> Registrar Pagamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Máscara monetária inteligente - entrada da direita para esquerda
+    let valorAtual = 0;
+
+    document.getElementById('vr_despesa').addEventListener('focus', function(e) {
+        if (e.target.value === '') {
+            e.target.value = '0,00';
+        }
+    });
+
+    document.getElementById('vr_despesa').addEventListener('input', function(e) {
+        let value = e.target.value;
+
+        // Remove tudo que não é número
+        value = value.replace(/[^0-9]/g, '');
+
+        // Converte para número
+        let numero = parseInt(value) || 0;
+
+        // Formata como valor monetário (divide por 100 para ter os centavos)
+        let valorFormatado = (numero / 100).toFixed(2);
+
+        // Substitui ponto por vírgula
+        valorFormatado = valorFormatado.replace('.', ',');
+
+        e.target.value = valorFormatado;
+
+        // Mantém o cursor no final
+        e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+    });
+
+    // Previne a entrada de caracteres não numéricos
+    document.getElementById('vr_despesa').addEventListener('keypress', function(e) {
+        // Permite apenas números
+        const char = String.fromCharCode(e.which);
+        if (!/[0-9]/.test(char)) {
+            e.preventDefault();
+        }
+    });
+
+    // Previne colar texto não numérico
+    document.getElementById('vr_despesa').addEventListener('paste', function(e) {
+        e.preventDefault();
+        let paste = (e.clipboardData || window.clipboardData).getData('text');
+        paste = paste.replace(/[^0-9]/g, '');
+
+        if (paste) {
+            // Simula digitação
+            let currentValue = this.value.replace(/[^0-9]/g, '');
+            let newValue = currentValue + paste;
+
+            let numero = parseInt(newValue) || 0;
+            let valorFormatado = (numero / 100).toFixed(2);
+            valorFormatado = valorFormatado.replace('.', ',');
+
+            this.value = valorFormatado;
+        }
+    });
+
+    // Validação do formulário
+    document.getElementById('formDespesa').addEventListener('submit', function(e) {
+        const valor = document.getElementById('vr_despesa').value;
+
+        if (!valor || valor === '0,00' || valor === '') {
+            e.preventDefault();
+            alert('Por favor, informe um valor válido para a despesa!');
+            return false;
+        }
+
+        return true;
+    });
+
+    // Define a data máxima como hoje
+    document.getElementById('dt_lancamento_pagamento').max = new Date().toISOString().split('T')[0];
+</script>
+{% endblock %}
