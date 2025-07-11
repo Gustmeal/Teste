@@ -116,7 +116,7 @@ class VisualizadorRedistribuicao:
         """Busca metas mensais da TB013"""
         sql = text("""
             SELECT COMPETENCIA, VR_MENSAL_SISCOR
-            FROM DEV.DCA_TB013_METAS
+            FROM BDG.DCA_TB012_METAS
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL
@@ -139,7 +139,7 @@ class VisualizadorRedistribuicao:
             SELECT TOP 1 
                 VR_GLOBAL_SISCOR, QTDE_DIAS_UTEIS_PERIODO, 
                 INDICE_INCREMENTO_META, VR_META_A_DISTRIBUIR, VR_POR_DIA_UTIL
-            FROM DEV.DCA_TB014_METAS_PERIODO_AVALIATIVO
+            FROM BDG.DCA_TB013_METAS_PERIODO_AVALIATIVO
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL
@@ -256,7 +256,7 @@ class VisualizadorRedistribuicao:
                 emp.NO_EMPRESA_ABREVIADA,
                 mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM BDG.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            FROM BDG.DCA_TB014_METAS_PERCENTUAIS_DISTRIBUICAO mpd
             JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
                 ON mpd.ID_EMPRESA = emp.ID_EMPRESA
                 AND mpd.ID_EDITAL = emp.ID_EDITAL

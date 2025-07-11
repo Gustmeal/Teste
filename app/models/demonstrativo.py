@@ -20,7 +20,7 @@ class EstruturaDemonstrativo(db.Model):
 class ContaDemonstrativo(db.Model):
     """Tabela de vinculação entre contas e demonstrativos"""
     __tablename__ = 'COR_DEM_TB003_CONTA_DEMONSTRATIVO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     CO_CONTA = db.Column(db.String(50), primary_key=True)
     CO_BP_Gerencial = db.Column(db.Integer, nullable=True)

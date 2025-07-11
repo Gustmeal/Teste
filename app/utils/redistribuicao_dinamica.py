@@ -83,10 +83,10 @@ class RedistribuicaoDinamica:
                    m.VR_SALDO_DEVEDOR_DISTRIBUIDO as saldo_devedor,
                    m.PERCENTUAL_SALDO_DEVEDOR as percentual,
                    m.MES_COMPETENCIA as mes_competencia, m.VR_META_MES as valor_meta
-            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL m
+            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL m
             WHERE m.ID_EDITAL = :edital_id AND m.ID_PERIODO = :periodo_id
             AND m.DT_REFERENCIA = (
-                SELECT MAX(DT_REFERENCIA) FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                SELECT MAX(DT_REFERENCIA) FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
                 WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
             ) AND m.DELETED_AT IS NULL
             ORDER BY m.MES_COMPETENCIA, m.NO_EMPRESA_ABREVIADA
@@ -112,9 +112,9 @@ class RedistribuicaoDinamica:
 
     def _buscar_valores_siscor_lookup(self):
         sql = text("""
-            SELECT COMPETENCIA, VR_MENSAL_SISCOR, QTDE_DIAS_UTEIS_MES FROM DEV.DCA_TB013_METAS
+            SELECT COMPETENCIA, VR_MENSAL_SISCOR, QTDE_DIAS_UTEIS_MES FROM BDG.DCA_TB012_METAS
             WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
-            AND DT_REFERENCIA = (SELECT MAX(DT_REFERENCIA) FROM DEV.DCA_TB013_METAS WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL)
+            AND DT_REFERENCIA = (SELECT MAX(DT_REFERENCIA) FROM BDG.DCA_TB012_METAS WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL)
         """)
         result = db.session.execute(sql, {'edital_id': self.edital_id, 'periodo_id': self.periodo_business_id})
         lookup = {}
@@ -196,8 +196,8 @@ class RedistribuicaoDinamica:
     def salvar_redistribuicao(self, resultado_calculado=None):
         """
         Salva a redistribuição nas três tabelas:
-        1. TB018_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
-        2. TB018_DISTRIBUICAO_SUMARIO (nova - resumo)
+        1. TB016_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
+        2. TB017_DISTRIBUICAO_SUMARIO (nova - resumo)
         3. TB019_DISTRIBUICAO_MENSAL (nova - detalhes)
         """
         try:
@@ -208,7 +208,7 @@ class RedistribuicaoDinamica:
             for empresa in resultado_calculado['empresas']:
                 # 1. Primeiro, inserir na tabela SUMARIO e pegar o ID gerado
                 sql_sumario = text("""
-                    INSERT INTO DEV.DCA_TB018_DISTRIBUICAO_SUMARIO
+                    INSERT INTO BDG.DCA_TB017_DISTRIBUICAO_SUMARIO
                     (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                      VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, CREATED_AT)
                     OUTPUT INSERTED.ID
@@ -233,7 +233,7 @@ class RedistribuicaoDinamica:
                 # 2. Inserir os detalhes mensais na TB019
                 for competencia, valor in empresa['meses'].items():
                     sql_detalhe = text("""
-                        INSERT INTO DEV.DCA_TB019_DISTRIBUICAO_MENSAL
+                        INSERT INTO BDG.DCA_TB019_DISTRIBUICAO_MENSAL
                         (ID_DISTRIBUICAO_SUMARIO, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
                         VALUES (:id_sumario, :mes_competencia, :valor_meta, :created_at)
                     """)
@@ -247,7 +247,7 @@ class RedistribuicaoDinamica:
 
                     # 3. Manter a inserção na tabela original TB018 para compatibilidade
                     sql_original = text("""
-                        INSERT INTO DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                        INSERT INTO BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
                         (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                          VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, 
                          VR_META_MES, CREATED_AT)

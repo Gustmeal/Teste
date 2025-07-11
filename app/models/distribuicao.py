@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 
 class Distribuiveis(db.Model):
     __tablename__ = 'DCA_TB006_DISTRIBUIVEIS'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
     FkContratoSISCTR = db.Column(BigInteger, nullable=False, index=True)
@@ -22,7 +22,7 @@ class Distribuiveis(db.Model):
 
 class Arrastaveis(db.Model):
     __tablename__ = 'DCA_TB007_ARRASTAVEIS'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
     FkContratoSISCTR = db.Column(BigInteger, nullable=False, index=True)
@@ -38,7 +38,7 @@ class Arrastaveis(db.Model):
 
 class Distribuicao(db.Model):
     __tablename__ = 'DCA_TB005_DISTRIBUICAO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
     DT_REFERENCIA = db.Column(Date, nullable=False)
@@ -46,7 +46,7 @@ class Distribuicao(db.Model):
     ID_PERIODO = db.Column(Integer, ForeignKey('BDG.DCA_TB001_PERIODO_AVALIACAO.ID'), nullable=False)
     fkContratoSISCTR = db.Column(BigInteger, nullable=False, index=True)
     COD_EMPRESA_COBRANCA = db.Column(Integer, nullable=False)
-    COD_CRITERIO_SELECAO = db.Column(Integer, ForeignKey('DEV.DCA_TB004_CRITERIO_SELECAO.COD'), nullable=False)
+    COD_CRITERIO_SELECAO = db.Column(Integer, ForeignKey('BDG.DCA_TB004_CRITERIO_SELECAO.COD'), nullable=False)
     NR_CPF_CNPJ = db.Column(BigInteger, nullable=True, index=True)
     VR_SD_DEVEDOR = db.Column(Numeric(18, 2), nullable=True)
     CREATED_AT = db.Column(DateTime, default=datetime.utcnow)
@@ -115,7 +115,7 @@ class AcordoLiquidadoVigente(db.Model):
 class PercentualEmpresa(db.Model):
     """Modelo para a tabela DCA_TB001_PERCENTUAL_EMPRESA"""
     __tablename__ = 'DCA_TB001_PERCENTUAL_EMPRESA'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(Integer, primary_key=True, autoincrement=True)
     ID_EDITAL = db.Column(Integer, ForeignKey('BDG.DCA_TB008_EDITAIS.ID'), nullable=False)

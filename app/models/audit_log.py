@@ -3,11 +3,11 @@ from app import db
 
 
 class AuditLog(db.Model):
-    __tablename__ = 'DCA_TB_AUDIT_LOG'
-    __table_args__ = {'schema': 'DEV'}
+    __tablename__ = 'APK_TB001_AUDIT_LOG'
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    USUARIO_ID = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB000_USUARIOS.ID'), nullable=False)
+    USUARIO_ID = db.Column(db.Integer, db.ForeignKey('BDG.APK_TB002_USUARIOS.ID'), nullable=False)
     USUARIO_NOME = db.Column(db.String(100), nullable=False)
     ACAO = db.Column(db.String(50), nullable=False)
     ENTIDADE = db.Column(db.String(50), nullable=False)
@@ -20,9 +20,9 @@ class AuditLog(db.Model):
 
     # Novos campos para controle de reversão
     REVERTIDO = db.Column(db.Boolean, default=False)
-    REVERTIDO_POR = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB000_USUARIOS.ID'))
+    REVERTIDO_POR = db.Column(db.Integer, db.ForeignKey('BDG.APK_TB002_USUARIOS.ID'))
     REVERTIDO_EM = db.Column(db.DateTime)
-    LOG_REVERSAO_ID = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB_AUDIT_LOG.ID'))
+    LOG_REVERSAO_ID = db.Column(db.Integer, db.ForeignKey('BDG.APK_TB001_AUDIT_LOG.ID'))
 
     # Relacionamentos
     usuario = db.relationship('Usuario', foreign_keys=[USUARIO_ID], backref='logs')

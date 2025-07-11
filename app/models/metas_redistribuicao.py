@@ -3,8 +3,8 @@ from app import db
 
 
 class MetasPercentuaisDistribuicao(db.Model):
-    __tablename__ = 'DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO'
-    __table_args__ = {'schema': 'DEV'}
+    __tablename__ = 'DCA_TB014_METAS_PERCENTUAIS_DISTRIBUICAO'
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     DT_REFERENCIA = db.Column(db.Date, nullable=False)
@@ -19,7 +19,7 @@ class MetasPercentuaisDistribuicao(db.Model):
 
 
 class Metas(db.Model):
-    __tablename__ = 'DCA_TB013_METAS'
+    __tablename__ = 'DCA_TB012_METAS'
     __table_args__ = {'schema': 'DEV'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -35,8 +35,8 @@ class Metas(db.Model):
 
 
 class MetasPeriodoAvaliativo(db.Model):
-    __tablename__ = 'DCA_TB014_METAS_PERIODO_AVALIATIVO'
-    __table_args__ = {'schema': 'DEV'}
+    __tablename__ = 'DCA_TB013_METAS_PERIODO_AVALIATIVO'
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     DT_REFERENCIA = db.Column(db.Date, nullable=False)

@@ -5,7 +5,7 @@ from app import db
 
 class DistribuicaoSumario(db.Model):
     """Tabela resumo da distribuição - uma linha por empresa"""
-    __tablename__ = 'DCA_TB018_DISTRIBUICAO_SUMARIO'
+    __tablename__ = 'DCA_TB017_DISTRIBUICAO_SUMARIO'
     __table_args__ = {'schema': 'DEV'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -33,7 +33,7 @@ class DistribuicaoMensal(db.Model):
     __table_args__ = {'schema': 'DEV'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    ID_DISTRIBUICAO_SUMARIO = db.Column(db.Integer, db.ForeignKey('DEV.DCA_TB018_DISTRIBUICAO_SUMARIO.ID'), nullable=False)
+    ID_DISTRIBUICAO_SUMARIO = db.Column(db.Integer, db.ForeignKey('BDG.DCA_TB017_DISTRIBUICAO_SUMARIO.ID'), nullable=False)
     MES_COMPETENCIA = db.Column(db.String(7), nullable=False)  # Formato YYYY-MM
     VR_META_MES = db.Column(db.Numeric(18, 2))
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)

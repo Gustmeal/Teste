@@ -4,7 +4,7 @@ from app import db
 
 class CriterioSelecao(db.Model):
     __tablename__ = 'DCA_TB004_CRITERIO_SELECAO'
-    __table_args__ = {'schema': 'DEV'}  # Mantido como DEV
+    __table_args__ = {'schema': 'BDG'}  # Mantido como DEV
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     COD = db.Column(db.Integer, nullable=False)

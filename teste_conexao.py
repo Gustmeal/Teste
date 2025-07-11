@@ -15,14 +15,14 @@ try:
 
     # Verificar se a tabela existe
     cursor.execute(
-        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'DEV' AND TABLE_NAME = 'DCA_TB000_USUARIOS'")
+        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'DEV' AND TABLE_NAME = 'APK_TB002_USUARIOS'")
     table_exists = cursor.fetchone()[0]
 
     if table_exists:
         print("Tabela de usuários existe.")
 
         # Listar usuários
-        cursor.execute("SELECT ID, NOME, EMAIL, PERFIL, ATIVO FROM DEV.DCA_TB000_USUARIOS")
+        cursor.execute("SELECT ID, NOME, EMAIL, PERFIL, ATIVO FROM BDG.APK_TB002_USUARIOS")
         users = cursor.fetchall()
 
         if users:

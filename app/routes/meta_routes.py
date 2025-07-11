@@ -50,7 +50,7 @@ def lista_metas():
             p.ID_PERIODO as NUM_PERIODO,
             p.DT_INICIO,
             p.DT_FIM
-        FROM DEV.DCA_TB009_META_AVALIACAO m
+        FROM BDG.DCA_TB009_META_AVALIACAO m
         LEFT JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES e 
             ON m.ID_EMPRESA = e.ID_EMPRESA 
             AND m.ID_EDITAL = e.ID_EDITAL 
@@ -130,7 +130,7 @@ def lista_metas():
     # Buscar competências distintas
     sql_comp = text("""
         SELECT DISTINCT COMPETENCIA 
-        FROM DEV.DCA_TB009_META_AVALIACAO 
+        FROM BDG.DCA_TB009_META_AVALIACAO 
         WHERE DELETED_AT IS NULL 
         ORDER BY COMPETENCIA DESC
     """)
@@ -231,14 +231,14 @@ def buscar_empresas_ativas():
                 m.ID_EMPRESA,
                 m.NO_EMPRESA_ABREVIADA,
                 m.PERCENTUAL_SALDO_DEVEDOR
-            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL m
+            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL m
             WHERE m.ID_EDITAL = :edital_id
             AND m.ID_PERIODO = :periodo_id
             AND m.DELETED_AT IS NULL
             AND m.PERCENTUAL_SALDO_DEVEDOR > 0  -- Apenas empresas com percentual a ser redistribuído
             AND m.DT_REFERENCIA = (
                 SELECT MAX(DT_REFERENCIA)
-                FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DELETED_AT IS NULL
@@ -454,7 +454,7 @@ def buscar_empresas_redistribuicao():
                 mpd.NO_EMPRESA_ABREVIADA,
                 mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL mpd
+            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL mpd
             WHERE mpd.ID_EDITAL = :edital_id
             AND mpd.ID_PERIODO = :periodo_id
             AND mpd.DELETED_AT IS NULL
@@ -582,7 +582,7 @@ def salvar_distribuicao_inicial():
         periodo = PeriodoAvaliacao.query.get(periodo_id)
         sql_check = text("""
             SELECT COUNT(*) as total
-            FROM DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL

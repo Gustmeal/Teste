@@ -33,11 +33,11 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
             logging.info("Limpando tabelas temporárias...")
 
             # Limpar apenas a tabela temporária (isso é seguro, pois não afeta dados históricos)
-            truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+            truncate_sql = text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]")
             connection.execute(truncate_sql)
             print("Tabela DCA_TB006_DISTRIBUIVEIS limpa para nova operação")
 
-            truncate_arrastaveis_sql = text("TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]")
+            truncate_arrastaveis_sql = text("TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]")
             connection.execute(truncate_arrastaveis_sql)
             print("Tabela DCA_TB007_ARRASTAVEIS limpa para nova operação")
 
@@ -109,7 +109,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
             # 6. Adicionar critério alternativo - buscar na tabela de distribuição
             check_distribuicao_sql = text("""
                 SELECT COUNT(*) 
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                 WHERE [COD_EMPRESA_COBRANCA] = :empresa_id
                 AND DELETED_AT IS NULL
             """)
@@ -126,7 +126,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
 
                 # Inserir da tabela de distribuição para distribuíveis
                 insert_alt_sql = text("""
-                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 SELECT 
                     D.fkContratoSISCTR,
                     D.NR_CPF_CNPJ,
@@ -134,7 +134,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
                     GETDATE() AS CREATED_AT,
                     NULL AS UPDATED_AT,
                     NULL AS DELETED_AT
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO] D
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
                 WHERE D.[COD_EMPRESA_COBRANCA] = :empresa_id
                 AND D.DELETED_AT IS NULL
                 """)
@@ -146,7 +146,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
             else:
                 # CORREÇÃO: Consulta ajustada para selecionar contratos ativos com as condições corretas
                 insert_sql = text("""
-                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 SELECT
                     ECA.fkContratoSISCTR,
                     CON.NR_CPF_CNPJ,
@@ -179,7 +179,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
                 if contratos_inseridos == 0:
                     print("TENTATIVA ADICIONAL: Consulta flexibilizada para encontrar contratos")
                     insert_flexible_sql = text("""
-                    INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
                     SELECT
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
@@ -207,7 +207,7 @@ def selecionar_contratos_para_redistribuicao(empresa_id):
                     logging.info(f"Inseridos {contratos_inseridos} contratos da consulta flexibilizada")
 
             # Contar contratos selecionados no final
-            count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
+            count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
             result = connection.execute(count_sql)
             num_contratos = result.scalar() or 0
 
@@ -654,7 +654,7 @@ def redistribuir_percentuais(edital_id, periodo_id, criterio_id, empresa_id, per
                 SELECT 
                     COUNT(*) AS QTDE_CONTRATOS,
                     COALESCE(SUM(VR_SD_DEVEDOR), 0) AS VALOR_TOTAL
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 """)
 
                 count_result = connection.execute(count_sql).fetchone()
@@ -806,7 +806,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
             try:
                 # 1. Limpar tabela arrastáveis
-                truncate_sql = text("""TRUNCATE TABLE [DEV].[DCA_TB007_ARRASTAVEIS]""")
+                truncate_sql = text("""TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]""")
                 connection.execute(truncate_sql)
                 print("Tabela DCA_TB007_ARRASTAVEIS truncada com sucesso")
 
@@ -822,7 +822,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                             ROW_NUMBER() OVER (PARTITION BY [NR_CPF_CNPJ] 
                             ORDER BY [NR_CPF_CNPJ] DESC)
                     FROM
-                        [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                        [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 ),
                 cpfArrastaveis as (
                     SELECT DISTINCT
@@ -831,7 +831,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                         arrastaveis
                     WHERE NU_LINHA > 1
                 )
-                INSERT INTO [DEV].[DCA_TB007_ARRASTAVEIS]
+                INSERT INTO [BDG].[DCA_TB007_ARRASTAVEIS]
                 (
                     [FkContratoSISCTR],
                     [NR_CPF_CNPJ],
@@ -847,7 +847,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                     NULL AS [DELETED_AT]
                 FROM 
                     cpfArrastaveis AS CAR
-                    INNER JOIN [DEV].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                    INNER JOIN [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
                         ON CAR.[NR_CPF_CNPJ] = DIS.[NR_CPF_CNPJ]
                 """)
 
@@ -855,7 +855,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
                 # 3. Verificar número de contratos arrastáveis inseridos
                 count_sql = text("""
-                SELECT COUNT(*) FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                SELECT COUNT(*) FROM [BDG].[DCA_TB007_ARRASTAVEIS]
                 """)
 
                 count_result = connection.execute(count_sql).fetchone()
@@ -870,10 +870,10 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
                 # 4. Remover contratos arrastáveis da tabela de distribuíveis
                 delete_sql = text("""
-                DELETE FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                DELETE FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 WHERE [FkContratoSISCTR] IN (
                     SELECT [FkContratoSISCTR]
-                    FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                    FROM [BDG].[DCA_TB007_ARRASTAVEIS]
                 )
                 """)
 
@@ -888,7 +888,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                     LD.QTDE_MAXIMA,
                     COALESCE((
                         SELECT COUNT(*) 
-                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] D 
+                        FROM [BDG].[DCA_TB005_DISTRIBUICAO] D 
                         WHERE D.COD_EMPRESA_COBRANCA = LD.ID_EMPRESA
                           AND D.ID_EDITAL = :edital_id
                           AND D.ID_PERIODO = :periodo_id
@@ -945,7 +945,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 SELECT 
                     ARR.NR_CPF_CNPJ,
                     COUNT(*) AS NUM_CONTRATOS
-                FROM [DEV].[DCA_TB007_ARRASTAVEIS] ARR
+                FROM [BDG].[DCA_TB007_ARRASTAVEIS] ARR
                 GROUP BY ARR.NR_CPF_CNPJ
                 ORDER BY COUNT(*) DESC
                 """)
@@ -1003,12 +1003,12 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
 
                 # 9. Excluir registros antigos antes de inserir
                 delete_existing_sql = text("""
-                DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                DELETE FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
                   AND [fkContratoSISCTR] IN (
                       SELECT [FkContratoSISCTR]
-                      FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                      FROM [BDG].[DCA_TB007_ARRASTAVEIS]
                   )
                 """)
 
@@ -1021,7 +1021,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                 contratos_inseridos = 0
                 for cpf, empresa_id in cpfs_distribuidos.items():
                     insert_sql = text("""
-                    INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
+                    INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO] (
                         [DT_REFERENCIA],
                         [ID_EDITAL],
                         [ID_PERIODO],
@@ -1043,7 +1043,7 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                         SIT.[VR_SD_DEVEDOR],
                         GETDATE() AS [CREATED_AT]
                     FROM 
-                        [DEV].[DCA_TB007_ARRASTAVEIS] ARR
+                        [BDG].[DCA_TB007_ARRASTAVEIS] ARR
                         INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
                             ON ARR.[FkContratoSISCTR] = SIT.[fkContratoSISCTR]
                     WHERE
@@ -1068,13 +1068,13 @@ def processar_contratos_arrastaveis(edital_id, periodo_id, criterio_id):
                     COD_EMPRESA_COBRANCA,
                     COUNT(*) AS QTDE,
                     COUNT(DISTINCT NR_CPF_CNPJ) AS QTDE_CPFS
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
                   AND [COD_CRITERIO_SELECAO] = :criterio_id
                   AND [fkContratoSISCTR] IN (
                       SELECT [FkContratoSISCTR]
-                      FROM [DEV].[DCA_TB007_ARRASTAVEIS]
+                      FROM [BDG].[DCA_TB007_ARRASTAVEIS]
                   )
                 GROUP BY COD_EMPRESA_COBRANCA
                 ORDER BY COD_EMPRESA_COBRANCA
@@ -1124,7 +1124,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
             try:
                 # 1. Verificar contratos restantes na tabela
                 count_sql = text("""
-                SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 """)
 
                 count_result = connection.execute(count_sql).fetchone()
@@ -1145,7 +1145,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     LD.QTDE_MAXIMA,
                     COALESCE((
                         SELECT COUNT(*) 
-                        FROM [DEV].[DCA_TB005_DISTRIBUICAO] D 
+                        FROM [BDG].[DCA_TB005_DISTRIBUICAO] D 
                         WHERE D.COD_EMPRESA_COBRANCA = LD.ID_EMPRESA
                           AND D.ID_EDITAL = :edital_id
                           AND D.ID_PERIODO = :periodo_id
@@ -1207,12 +1207,12 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 
                 # 4. Excluir registros antigos antes de inserir
                 delete_existing_sql = text("""
-                DELETE FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                DELETE FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
                   AND [fkContratoSISCTR] IN (
                       SELECT [FkContratoSISCTR]
-                      FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                      FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                   )
                 """)
 
@@ -1227,7 +1227,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     [FkContratoSISCTR],
                     [NR_CPF_CNPJ],
                     [VR_SD_DEVEDOR]
-                FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 ORDER BY NEWID()  -- Ordenar aleatoriamente
                 """)
 
@@ -1283,7 +1283,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                     # Inserir em bloco para melhor performance
                     for contrato in contratos:
                         insert_sql = text("""
-                        INSERT INTO [DEV].[DCA_TB005_DISTRIBUICAO] (
+                        INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO] (
                             [DT_REFERENCIA],
                             [ID_EDITAL],
                             [ID_PERIODO],
@@ -1325,7 +1325,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
                 SELECT 
                     COD_EMPRESA_COBRANCA,
                     COUNT(*) AS QTDE
-                FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                 WHERE [ID_EDITAL] = :edital_id
                   AND [ID_PERIODO] = :periodo_id
                   AND [COD_CRITERIO_SELECAO] = :criterio_id
@@ -1348,7 +1348,7 @@ def processar_demais_contratos(edital_id, periodo_id, criterio_id, empresa_redis
 
                 # 9. Limpar tabela de distribuíveis após processamento
                 if contratos_inseridos > 0:
-                    connection.execute(text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]"))
+                    connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]"))
                     print("Tabela de distribuíveis limpa após processamento")
 
                 transaction.commit()
@@ -1608,7 +1608,7 @@ def processar_redistribuicao_contratos(edital_id, periodo_id, empresa_id, cod_cr
                    LD.VR_ARRECADACAO,
                    LD.PERCENTUAL_FINAL  -- IMPORTANTE: usar o percentual final ajustado
                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-               LEFT JOIN [DEV].[DCA_TB005_DISTRIBUICAO] D
+               LEFT JOIN [BDG].[DCA_TB005_DISTRIBUICAO] D
                    ON LD.ID_EMPRESA = D.COD_EMPRESA_COBRANCA
                    AND D.ID_EDITAL = :edital_id
                    AND D.ID_PERIODO = :periodo_id

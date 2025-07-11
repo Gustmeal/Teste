@@ -101,7 +101,7 @@ class RedistribuicaoCalculator:
         # Tentar carregar da TB013
         sql = text("""
             SELECT COMPETENCIA, VR_MENSAL_SISCOR, QTDE_DIAS_UTEIS_MES
-            FROM DEV.DCA_TB013_METAS
+            FROM BDG.DCA_TB012_METAS
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL
@@ -194,7 +194,7 @@ class RedistribuicaoCalculator:
                  AND dist.ID_PERIODO = mpd.ID_PERIODO 
                  AND dist.COD_EMPRESA_COBRANCA = mpd.ID_EMPRESA
                  AND dist.DT_REFERENCIA = mpd.DT_REFERENCIA) as QTDE_CONTRATOS
-            FROM BDG.DCA_TB015_METAS_PERCENTUAIS_DISTRIBUICAO mpd
+            FROM BDG.DCA_TB014_METAS_PERCENTUAIS_DISTRIBUICAO mpd
             JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES emp 
                 ON mpd.ID_EMPRESA = emp.ID_EMPRESA
                 AND mpd.ID_EDITAL = emp.ID_EDITAL

@@ -123,12 +123,12 @@ def selecionar_contratos():
         with db.engine.connect() as connection:
             try:
                 # Primeiro, limpar a tabela de distribuíveis
-                truncate_sql = text("TRUNCATE TABLE [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+                truncate_sql = text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]")
                 connection.execute(truncate_sql)
 
                 # Em seguida, inserir os contratos selecionados
                 insert_sql = text("""
-                INSERT INTO [DEV].[DCA_TB006_DISTRIBUIVEIS]
+                INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
                 SELECT
                     ECA.fkContratoSISCTR
                     , CON.NR_CPF_CNPJ
@@ -154,7 +154,7 @@ def selecionar_contratos():
                 connection.execute(insert_sql)
 
                 # Contar quantos contratos foram selecionados
-                count_sql = text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
+                count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
                 result = connection.execute(count_sql)
                 num_contratos = result.scalar()
 
@@ -1793,7 +1793,7 @@ def gerar_arquivo_homologacao(edital_id, periodo_id):
             SELECT 
                 [fkContratoSISCTR],
                 [COD_EMPRESA_COBRANCA] AS NOVA_EMPRESA
-            FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+            FROM [BDG].[DCA_TB005_DISTRIBUICAO]
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL
@@ -2033,7 +2033,7 @@ def obter_resultados_finais_redistribuicao(edital_id, periodo_id, criterio_id):
             COALESCE(SUM(D.VR_SD_DEVEDOR), 0) AS saldo,
             LD.VR_ARRECADACAO
         FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-        LEFT JOIN [DEV].[DCA_TB005_DISTRIBUICAO] D
+        LEFT JOIN [BDG].[DCA_TB005_DISTRIBUICAO] D
             ON LD.ID_EMPRESA = D.COD_EMPRESA_COBRANCA
             AND D.ID_EDITAL = :edital_id
             AND D.ID_PERIODO = :periodo_id
@@ -2166,7 +2166,7 @@ def gerar_arquivo_redistribuicao(edital_id, periodo_id, criterio_id, empresa_id)
             SELECT 
                 [fkContratoSISCTR],
                 [COD_EMPRESA_COBRANCA] AS ID_EMPRESA
-            FROM [DEV].[DCA_TB005_DISTRIBUICAO]
+            FROM [BDG].[DCA_TB005_DISTRIBUICAO]
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND COD_CRITERIO_SELECAO = :criterio_id

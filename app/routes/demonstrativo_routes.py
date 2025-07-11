@@ -109,7 +109,7 @@ def executar_script_demonstrativos(dt_referencia, demonstrativos):
 
         # Primeiro, deletar registros existentes para a data
         sql_delete = text("""
-            DELETE FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+            DELETE FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
             WHERE DT_REFERENCIA = :dt_referencia
         """)
         db.session.execute(sql_delete, {'dt_referencia': dt_referencia})
@@ -154,7 +154,7 @@ def executar_bp_resumida(dt_referencia):
     """Executa a rotina do BP Resumida"""
     # Script do BP Resumida
     sql = text("""
-        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        INSERT INTO BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SELECT
             :dt_referencia as DT_REFERENCIA,
             A.CO_DEMONSTRATIVO,
@@ -170,7 +170,7 @@ def executar_bp_resumida(dt_referencia):
             )
         FROM BDG.COR_DEM_TB001_CODIGOS AS A
         INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
-        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Resumida = B.ORDEM
+        LEFT JOIN BDG.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Resumida = B.ORDEM
         LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
         WHERE B.CO_DEMONSTRATIVO = 2
         GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
@@ -182,18 +182,18 @@ def executar_bp_resumida(dt_referencia):
 
     # Executar cálculos específicos
     calculos = [
-        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
-           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+        """UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
                      WHERE CO_DEMONSTRATIVO = 2 AND ORDEM < 11 AND DT_REFERENCIA = :dt_referencia)
            WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 11 AND DT_REFERENCIA = :dt_referencia""",
 
-        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
-           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+        """UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
                      WHERE CO_DEMONSTRATIVO = 2 AND ORDEM BETWEEN 12 AND 20 AND DT_REFERENCIA = :dt_referencia)
            WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 21 AND DT_REFERENCIA = :dt_referencia""",
 
-        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
-           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+        """UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
                      WHERE CO_DEMONSTRATIVO = 2 AND ORDEM IN (21, 22) AND DT_REFERENCIA = :dt_referencia)
            WHERE CO_DEMONSTRATIVO = 2 AND ORDEM = 23 AND DT_REFERENCIA = :dt_referencia"""
     ]
@@ -208,7 +208,7 @@ def executar_bp_gerencial(dt_referencia):
     """Executa a rotina do BP Gerencial"""
     # Script do BP Gerencial
     sql = text("""
-        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        INSERT INTO BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SELECT
             :dt_referencia as DT_REFERENCIA,
             A.CO_DEMONSTRATIVO,
@@ -224,7 +224,7 @@ def executar_bp_gerencial(dt_referencia):
             )
         FROM BDG.COR_DEM_TB001_CODIGOS AS A
         INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
-        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_BP_Gerencial = B.ORDEM
         LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
         WHERE B.CO_DEMONSTRATIVO = 1
         GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
@@ -238,14 +238,14 @@ def executar_bp_gerencial(dt_referencia):
     # Aqui estão alguns exemplos, você deve adicionar todos do arquivo Word
     calculos_bp_gerencial = [
         # Tributos a Recuperar
-        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
-           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+        """UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
                      WHERE CO_DEMONSTRATIVO = 1 AND ORDEM IN (13,14) AND DT_REFERENCIA = :dt_referencia)
            WHERE CO_DEMONSTRATIVO = 1 AND ORDEM = 12 AND DT_REFERENCIA = :dt_referencia""",
 
         # Caixa
-        """UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
-           SET VR = (SELECT SUM(VR) FROM DEV.COR_DEM_TB004_DEMONSTRATIVOS 
+        """UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
+           SET VR = (SELECT SUM(VR) FROM BDG.COR_DEM_TB004_DEMONSTRATIVOS 
                      WHERE CO_DEMONSTRATIVO = 1 AND ORDEM IN (4) AND DT_REFERENCIA = :dt_referencia)
            WHERE CO_DEMONSTRATIVO = 1 AND ORDEM = 3 AND DT_REFERENCIA = :dt_referencia""",
 
@@ -261,7 +261,7 @@ def executar_bp_gerencial(dt_referencia):
 def executar_dre_resumida(dt_referencia):
     """Executa a rotina do DRE Resumida"""
     sql = text("""
-        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        INSERT INTO BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SELECT
             :dt_referencia as DT_REFERENCIA,
             A.CO_DEMONSTRATIVO,
@@ -283,7 +283,7 @@ def executar_dre_resumida(dt_referencia):
             )
         FROM BDG.COR_DEM_TB001_CODIGOS AS A
         INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
-        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Resumida = B.ORDEM
+        LEFT JOIN BDG.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Resumida = B.ORDEM
         LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
         WHERE B.CO_DEMONSTRATIVO = 4
         GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
@@ -302,7 +302,7 @@ def executar_dre_resumida(dt_referencia):
 def executar_dre_gerencial(dt_referencia):
     """Executa a rotina do DRE Gerencial"""
     sql = text("""
-        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        INSERT INTO BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SELECT
             :dt_referencia as DT_REFERENCIA,
             A.CO_DEMONSTRATIVO,
@@ -318,7 +318,7 @@ def executar_dre_gerencial(dt_referencia):
             )
         FROM BDG.COR_DEM_TB001_CODIGOS AS A
         INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
-        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DRE_Gerencial = B.ORDEM
         LEFT JOIN BDG.COR_TB012_BALANCETE AS D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
         WHERE B.CO_DEMONSTRATIVO = 3
         GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
@@ -337,7 +337,7 @@ def executar_dre_gerencial(dt_referencia):
 def executar_dva_gerencial(dt_referencia):
     """Executa a rotina do DVA Gerencial"""
     sql = text("""
-        INSERT INTO DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        INSERT INTO BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SELECT
             :dt_referencia as DT_REFERENCIA,
             A.CO_DEMONSTRATIVO,
@@ -353,7 +353,7 @@ def executar_dva_gerencial(dt_referencia):
             )
         FROM BDG.COR_DEM_TB001_CODIGOS AS A
         INNER JOIN BDG.COR_DEM_TB002_ESTRUTURA AS B ON A.CO_DEMONSTRATIVO = B.CO_DEMONSTRATIVO
-        LEFT JOIN DEV.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DVA_Gerencial = B.ORDEM
+        LEFT JOIN BDG.COR_DEM_TB003_CONTA_DEMONSTRATIVO AS C ON C.CO_DVA_Gerencial = B.ORDEM
         LEFT JOIN BDG.COR_TB012_BALANCETE D ON C.CO_CONTA = D.CO_CONTA AND D.DT_REFERENCIA = :dt_referencia
         WHERE B.CO_DEMONSTRATIVO = 5
         GROUP BY A.CO_DEMONSTRATIVO, A.NO_DEMONSTRATIVO, B.ORDEM, B.GRUPO, B.SOMA
@@ -365,7 +365,7 @@ def executar_dva_gerencial(dt_referencia):
 
     # Inversão de sinal das Linhas 17, 18, 19, 21, 22, 24, 25, 27
     sql_inversao = text("""
-        UPDATE DEV.COR_DEM_TB004_DEMONSTRATIVOS
+        UPDATE BDG.COR_DEM_TB004_DEMONSTRATIVOS
         SET VR = VR * (-1)
         WHERE CO_DEMONSTRATIVO = 5 
         AND ORDEM IN (17, 18, 19, 21, 22, 24, 25, 27) 

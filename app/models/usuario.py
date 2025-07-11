@@ -40,8 +40,8 @@ class Empregado(db.Model):
 
 
 class Usuario(db.Model):
-    __tablename__ = 'DCA_TB000_USUARIOS'
-    __table_args__ = {'schema': 'DEV'}
+    __tablename__ = 'APK_TB002_USUARIOS'
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     NOME = db.Column(db.String(100), nullable=False)

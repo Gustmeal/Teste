@@ -5,7 +5,7 @@ from app import db
 
 class MetaAvaliacao(db.Model):
     __tablename__ = 'DCA_TB009_META_AVALIACAO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ID_EDITAL = db.Column(db.Integer, nullable=False)
@@ -26,7 +26,7 @@ class MetaAvaliacao(db.Model):
 
 class MetaSemestral(db.Model):
     __tablename__ = 'DCA_TB010_META_SEMESTRAL'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ID_EDITAL = db.Column(db.Integer, nullable=False)

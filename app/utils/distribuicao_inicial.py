@@ -41,7 +41,7 @@ class DistribuicaoInicial:
             if not valores_siscor:
                 raise ValueError(
                     "Não foram encontrados valores de meta (SISCOR) para o edital e período selecionados. "
-                    "Verifique se as metas foram cadastradas na tabela DEV.DCA_TB013_METAS."
+                    "Verifique se as metas foram cadastradas na tabela BDG.DCA_TB012_METAS."
                 )
 
             periodo_info = self._buscar_info_periodo()
@@ -124,13 +124,13 @@ class DistribuicaoInicial:
                 CAST(COMPETENCIA AS VARCHAR(10)) as competencia,
                 VR_MENSAL_SISCOR,
                 QTDE_DIAS_UTEIS_MES
-            FROM DEV.DCA_TB013_METAS
+            FROM BDG.DCA_TB012_METAS
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
             AND DELETED_AT IS NULL
             AND DT_REFERENCIA = (
                 SELECT MAX(DT_REFERENCIA)
-                FROM DEV.DCA_TB013_METAS
+                FROM BDG.DCA_TB012_METAS
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
                 AND DELETED_AT IS NULL
@@ -215,8 +215,8 @@ class DistribuicaoInicial:
     def salvar_distribuicao(self, dados_calculados=None):
         """
         Salva a distribuição calculada nas três tabelas:
-        1. TB018_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
-        2. TB018_DISTRIBUICAO_SUMARIO (nova - resumo)
+        1. TB016_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
+        2. TB017_DISTRIBUICAO_SUMARIO (nova - resumo)
         3. TB019_DISTRIBUICAO_MENSAL (nova - detalhes)
         """
         try:
@@ -227,7 +227,7 @@ class DistribuicaoInicial:
             for empresa in dados_calculados['empresas']:
                 # 1. Primeiro, inserir na tabela SUMARIO e pegar o ID gerado
                 sql_sumario = text("""
-                    INSERT INTO DEV.DCA_TB018_DISTRIBUICAO_SUMARIO
+                    INSERT INTO BDG.DCA_TB017_DISTRIBUICAO_SUMARIO
                     (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                      VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, CREATED_AT)
                     OUTPUT INSERTED.ID
@@ -252,7 +252,7 @@ class DistribuicaoInicial:
                 # 2. Inserir os detalhes mensais na TB019
                 for competencia, valor_meta in empresa['metas'].items():
                     sql_detalhe = text("""
-                        INSERT INTO DEV.DCA_TB019_DISTRIBUICAO_MENSAL
+                        INSERT INTO BDG.DCA_TB019_DISTRIBUICAO_MENSAL
                         (ID_DISTRIBUICAO_SUMARIO, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
                         VALUES (:id_sumario, :mes_competencia, :valor_meta, :created_at)
                     """)
@@ -266,7 +266,7 @@ class DistribuicaoInicial:
 
                     # 3. Manter a inserção na tabela original TB018 para compatibilidade
                     sql_original = text("""
-                        INSERT INTO DEV.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                        INSERT INTO BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
                         (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                          VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, 
                          VR_META_MES, CREATED_AT)

@@ -4,7 +4,7 @@ from app import db
 
 class CodigoContabil(db.Model):
     __tablename__ = 'COR_TB010_PDG_CODIGOS_CONTABEIS'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     # Usar chave primária composta CODIGO + ANO
     CODIGO = db.Column(db.String(20), primary_key=True)  # Ex: 1.100.000.000

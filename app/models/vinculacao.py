@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 class ItemContaSucor(db.Model):
     __tablename__ = 'COR_TB008_PDG_ITEM_CONTA_SUCOR'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID_ITEM = db.Column(db.Integer, primary_key=True, autoincrement=True)
     CODIGO = db.Column(db.String(20), nullable=False)
@@ -23,14 +23,14 @@ class ItemContaSucor(db.Model):
         try:
             # Gerar próximo ID manualmente
             ultimo_id = db.session.execute(
-                text("SELECT ISNULL(MAX(ID_ITEM), 0) FROM DEV.COR_TB008_PDG_ITEM_CONTA_SUCOR")
+                text("SELECT ISNULL(MAX(ID_ITEM), 0) FROM BDG.COR_TB008_PDG_ITEM_CONTA_SUCOR")
             ).scalar()
 
             novo_id = ultimo_id + 1
 
             # Inserir com ID manual
             sql = text("""
-                INSERT INTO DEV.COR_TB008_PDG_ITEM_CONTA_SUCOR 
+                INSERT INTO BDG.COR_TB008_PDG_ITEM_CONTA_SUCOR 
                 (ID_ITEM, CODIGO, DSC_ARQUIVO, ANO) 
                 VALUES (:id_item, :codigo, :dsc_arquivo, :ano)
             """)

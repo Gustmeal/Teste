@@ -22,7 +22,7 @@ def testar_arrasto_sem_acordo():
 
     # Verificar se existem dados disponíveis para teste
     contagem_distribuiveis = db.session.execute(
-        text("SELECT COUNT(*) FROM [DEV].[DCA_TB006_DISTRIBUIVEIS]")
+        text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
     ).scalar() or 0
 
     print(f"Contratos disponíveis para teste: {contagem_distribuiveis}")
