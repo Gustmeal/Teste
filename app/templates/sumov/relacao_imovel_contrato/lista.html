@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('sumov.relacao_imovel_contrato') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Lista de Vinculações</h1>
+        <a href="{{ url_for('sumov.nova_vinculacao') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i> Nova Vinculação
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="search-container mb-4">
+                <input type="text" id="searchInput" class="form-control search-input"
+                       placeholder="Pesquisar por contrato ou imóvel...">
+                <i class="fas fa-search search-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    {% if vinculacoes %}
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-header">
+                        <tr>
+                            <th>Nº Contrato</th>
+                            <th>Nº Imóvel</th>
+                            <th>Data Vinculação</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vinculacoesTable">
+                        {% for vinculacao in vinculacoes %}
+                        <tr class="table-row">
+                            <td>
+                                <span class="badge bg-primary">{{ vinculacao.NR_CONTRATO }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ vinculacao.NR_IMOVEL }}</span>
+                            </td>
+                            <td>{{ vinculacao.CREATED_AT.strftime('%d/%m/%Y %H:%M') if vinculacao.CREATED_AT else '-' }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao('{{ vinculacao.NR_CONTRATO }}', '{{ vinculacao.NR_IMOVEL }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card shadow">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-link fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Nenhuma vinculação encontrada</h5>
+            <p class="text-muted">Clique no botão abaixo para criar a primeira vinculação.</p>
+            <a href="{{ url_for('sumov.nova_vinculacao') }}" class="btn btn-primary mt-3">
+                <i class="fas fa-plus me-2"></i> Nova Vinculação
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal de confirmação de exclusão -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir esta vinculação?</p>
+                <p class="mb-0">
+                    <strong>Contrato:</strong> <span id="deleteContrato"></span><br>
+                    <strong>Imóvel:</strong> <span id="deleteImovel"></span>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="deleteForm" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Excluir</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Função de pesquisa
+    document.getElementById('searchInput').addEventListener('keyup', function() {
+        const searchValue = this.value.toLowerCase();
+        const tableRows = document.querySelectorAll('#vinculacoesTable tr');
+
+        tableRows.forEach(row => {
+            const contrato = row.cells[0].textContent.toLowerCase();
+            const imovel = row.cells[1].textContent.toLowerCase();
+
+            if (contrato.includes(searchValue) || imovel.includes(searchValue)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+
+    // Função para confirmar exclusão
+    function confirmarExclusao(contrato, imovel) {
+        document.getElementById('deleteContrato').textContent = contrato;
+        document.getElementById('deleteImovel').textContent = imovel;
+        document.getElementById('deleteForm').action = `/sumov/relacao-imovel-contrato/excluir/${contrato}/${imovel}`;
+
+        const modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+        modal.show();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>SUMOV - Superintendência de Movimentação</h1>
+    <p class="text-secondary">Sistema de Gestão de Contratos e Imóveis</p>
+
+    <!-- Cards de estatísticas gerais -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon sumov-primary-color mx-auto">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title">Total Vinculações</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_vinculacoes }}">0</h2>
+                    <p class="text-muted">Vinculações ativas</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon sumov-success-color mx-auto">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h3 class="system-title">Vinculações do Mês</h3>
+                    <h2 class="text-success counter" data-target="{{ vinculacoes_mes }}">0</h2>
+                    <p class="text-muted">Criadas este mês</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon sumov-info-color mx-auto">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <h3 class="system-title">Últimas Atividades</h3>
+                    <h2 class="text-info">{{ ultimas_vinculacoes|length }}</h2>
+                    <p class="text-muted">Vinculações recentes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sistema de Relação Imóvel/Contrato -->
+    <div class="row g-4">
+        <div class="col-md-12">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon sumov-main-color mx-auto mb-4">
+                        <i class="fas fa-home"></i>
+                    </div>
+                    <h3 class="system-title mb-3">Relação Imóvel e Contrato de Parcelamento</h3>
+                    <p class="text-muted mb-4">
+                        Gerencie vinculações entre contratos de parcelamento e imóveis.
+                    </p>
+                    <a href="{{ url_for('sumov.relacao_imovel_contrato') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .system-icon {
+        font-size: 3rem;
+        margin-bottom: 1.5rem;
+        display: inline-block;
+        width: 90px;
+        height: 90px;
+        line-height: 90px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+
+    .sumov-primary-color {
+        background-color: #6f42c1;
+    }
+
+    .sumov-success-color {
+        background-color: #28a745;
+    }
+
+    .sumov-info-color {
+        background-color: #17a2b8;
+    }
+
+    .sumov-main-color {
+        background-color: #fd7e14;
+    }
+
+    .home-card {
+        transition: transform 0.3s ease;
+    }
+
+    .home-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .system-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+
+    .btn-access {
+        padding: 12px 30px;
+        font-weight: 500;
+    }
+
+    .btn-access.btn-lg {
+        padding: 14px 35px;
+        font-size: 1.1rem;
+    }
+</style>
+
+<script>
+    // Animação de contadores
+    document.addEventListener('DOMContentLoaded', function() {
+        const counters = document.querySelectorAll('.counter');
+
+        counters.forEach(counter => {
+            const target = parseInt(counter.getAttribute('data-target'));
+            const increment = target / 50;
+            let count = 0;
+
+            const updateCounter = () => {
+                count += increment;
+                if (count < target) {
+                    counter.textContent = Math.ceil(count);
+                    setTimeout(updateCounter, 20);
+                } else {
+                    counter.textContent = target;
+                }
+            };
+
+            updateCounter();
+        });
+    });
+</script>
+{% endblock %}

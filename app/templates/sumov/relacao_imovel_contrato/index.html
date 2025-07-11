@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('sumov.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>Relação Imóvel e Contrato de Parcelamento</h1>
+    <p class="text-secondary">Sistema de vinculação entre contratos e imóveis</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon contract-color mx-auto">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <h3 class="system-title">Contratos</h3>
+                    <h2 class="text-primary counter" data-target="{{ total_contratos }}">0</h2>
+                    <p class="text-muted">Contratos vinculados</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon building-color mx-auto">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <h3 class="system-title">Imóveis</h3>
+                    <h2 class="text-success counter" data-target="{{ total_imoveis }}">0</h2>
+                    <p class="text-muted">Imóveis vinculados</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon link-color mx-auto">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title">Vinculações</h3>
+                    <h2 class="text-info counter" data-target="{{ total_vinculacoes }}">0</h2>
+                    <p class="text-muted">Total de vinculações</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon add-color mx-auto">
+                        <i class="fas fa-plus-circle"></i>
+                    </div>
+                    <h3 class="system-title">Nova Vinculação</h3>
+                    <p class="text-muted mb-4">
+                        Vincule um contrato de parcelamento a um imóvel.
+                    </p>
+                    <a href="{{ url_for('sumov.nova_vinculacao') }}" class="btn btn-success">
+                        <i class="fas fa-plus me-2"></i> Nova Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon list-color mx-auto">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="system-title">Lista de Vinculações</h3>
+                    <p class="text-muted mb-4">
+                        Visualize e gerencie todas as vinculações cadastradas.
+                    </p>
+                    <a href="{{ url_for('sumov.lista_vinculacoes') }}" class="btn btn-primary">
+                        <i class="fas fa-eye me-2"></i> Ver Lista
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .system-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        display: inline-block;
+        width: 80px;
+        height: 80px;
+        line-height: 80px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+
+    .contract-color {
+        background-color: #4e73df;
+    }
+
+    .building-color {
+        background-color: #1cc88a;
+    }
+
+    .link-color {
+        background-color: #36b9cc;
+    }
+
+    .add-color {
+        background-color: #28a745;
+    }
+
+    .list-color {
+        background-color: #6610f2;
+    }
+</style>
+
+<script>
+    // Animação de contadores
+    document.addEventListener('DOMContentLoaded', function() {
+        const counters = document.querySelectorAll('.counter');
+
+        counters.forEach(counter => {
+            const target = parseInt(counter.getAttribute('data-target'));
+            const increment = target / 50;
+            let count = 0;
+
+            const updateCounter = () => {
+                count += increment;
+                if (count < target) {
+                    counter.textContent = Math.ceil(count);
+                    setTimeout(updateCounter, 20);
+                } else {
+                    counter.textContent = target;
+                }
+            };
+
+            updateCounter();
+        });
+    });
+</script>
+{% endblock %}

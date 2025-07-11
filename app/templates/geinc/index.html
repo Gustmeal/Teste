@@ -24,19 +24,19 @@
             </div>
         </div>
 
-        <!-- Card para Exportação de Dados -->
+        <!-- NOVO Card para SUMOV -->
         <div class="col-md-4">
             <div class="card home-card shadow h-100 d-flex flex-column">
                 <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon export-color mx-auto">
-                        <i class="fas fa-file-export"></i>
+                    <div class="system-icon sumov-color mx-auto">
+                        <i class="fas fa-home"></i>
                     </div>
-                    <h3 class="system-title">Exportação de Dados</h3>
+                    <h3 class="system-title">SUMOV</h3>
                     <p class="text-muted mb-4">
-                        Exporte dados do sistema para Excel ou PDF para relatórios, análises e compartilhamento.
+                        Sistema de gerenciamento de contratos e imóveis da Superintendência de Movimentação.
                     </p>
-                    <a href="{{ url_for('export.index') }}" class="btn btn-access">
-                        <i class="fas fa-download me-2"></i> Acessar Sistema
+                    <a href="{{ url_for('sumov.index') }}" class="btn btn-access">
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
                     </a>
                 </div>
             </div>
@@ -60,66 +60,138 @@
             </div>
         </div>
     </div>
+
+    <!-- Segunda linha de cards -->
+    <div class="row g-4 mt-4">
+        <!-- Card para Conversor de Documentos -->
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon converter-color mx-auto">
+                        <i class="fas fa-exchange-alt"></i>
+                    </div>
+                    <h3 class="system-title">Conversor de Documentos</h3>
+                    <p class="text-muted mb-4">
+                        Converta documentos entre diferentes formatos (Word, PDF, Excel) de forma rápida e fácil.
+                    </p>
+                    <a href="{{ url_for('converter.index') }}" class="btn btn-access">
+                        <i class="fas fa-sync-alt me-2"></i> Acessar Conversor
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card para Exportação de Dados -->
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon export-color mx-auto">
+                        <i class="fas fa-file-export"></i>
+                    </div>
+                    <h3 class="system-title">Exportação de Dados</h3>
+                    <p class="text-muted mb-4">
+                        Exporte dados do sistema para Excel ou PDF para relatórios, análises e compartilhamento.
+                    </p>
+                    <a href="{{ url_for('export.index') }}" class="btn btn-access">
+                        <i class="fas fa-download me-2"></i> Acessar Sistema
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
-    .central-panel {
-        background-color: rgba(255, 255, 255, 0.85);
-        border-radius: 12px;
-        padding: 30px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        max-width: 1200px;
-        margin: 0 auto;
-        text-align: center;
-        backdrop-filter: blur(10px);
-    }
-
     .system-icon {
-        font-size: 2.5rem;
-        margin-bottom: 1.5rem;
-        display: inline-block;
         width: 80px;
         height: 80px;
-        line-height: 80px;
         border-radius: 50%;
-        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2.5rem;
         color: white;
+        margin-bottom: 1.5rem;
     }
 
     .credenciamento-color {
-        background-color: #4e73df;
+        background-color: #6c63ff;
     }
 
     .export-color {
-        background-color: #1cc88a;
+        background-color: #ff6584;
     }
 
     .codes-color {
-        background-color: #6f42c1;
+        background-color: #4ecdc4;
+    }
+
+    .converter-color {
+        background-color: #9b59b6;
+    }
+
+    .sumov-color {
+        background-color: #fd7e14;
+    }
+
+    .home-card {
+        transition: all 0.3s ease;
+        border: none;
+        background-color: rgba(255, 255, 255, 0.9);
+    }
+
+    .home-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
     }
 
     .system-title {
-        font-size: 1.5rem;
+        color: var(--primary-color);
         font-weight: 600;
         margin-bottom: 1rem;
-        color: var(--primary-color);
     }
 
     .btn-access {
-        background-color: var(--primary-color);
+        background-color: var(--button-color);
         color: white;
-        padding: 0.75rem 2rem;
-        border-radius: 50px;
-        font-weight: 500;
         border: none;
-        transition: all 0.3s;
+        padding: 0.75rem 1.5rem;
+        border-radius: 25px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        margin-top: auto;
     }
 
     .btn-access:hover {
         background-color: #5b52e5;
         transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
-        color: white;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Ajuste para o modo escuro */
+    [data-theme="dark"] .home-card {
+        background-color: rgba(40, 40, 50, 0.9);
+    }
+
+    [data-theme="dark"] .system-title {
+        color: #8a82ff;
     }
 </style>
+
+<script>
+    // Animação de entrada para os cards
+    document.addEventListener('DOMContentLoaded', function() {
+        const cards = document.querySelectorAll('.home-card');
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+
+            setTimeout(() => {
+                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
+    });
+</script>
 {% endblock %}
