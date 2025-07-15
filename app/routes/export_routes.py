@@ -10,6 +10,8 @@ from app.models.limite_distribuicao import LimiteDistribuicao
 from app.models.codigo_contabil import CodigoContabil
 from app.models.vinculacao import ItemContaSucor, DescricaoItensSiscor
 from app.models.criterio_selecao import CriterioSelecao
+from app.models.relacao_imovel_contrato import RelacaoImovelContratoParcelamento
+from app.models.despesas_analitico import DespesasAnalitico, OcorrenciasMovItemServico
 from app.utils.excel_export import export_to_excel
 from app.utils.pdf_export import export_to_pdf
 from datetime import datetime
@@ -33,6 +35,7 @@ def index():
         {
             'id': 'credenciamento',
             'nome': 'Assessoria de Cobranças',
+            'icone': 'fas fa-file-contract',
             'modulos': [
                 {'id': 'editais', 'nome': 'Editais'},
                 {'id': 'periodos', 'nome': 'Períodos'},
@@ -45,6 +48,7 @@ def index():
         {
             'id': 'codigos_contabeis',
             'nome': 'Códigos Contábeis',
+            'icone': 'fas fa-calculator',
             'modulos': [
                 {'id': 'codigos', 'nome': 'Códigos Contábeis'},
                 {'id': 'vinculacoes', 'nome': 'Vinculações SISCOR'},
@@ -52,8 +56,19 @@ def index():
             ]
         },
         {
+            'id': 'sumov',
+            'nome': 'SUMOV - Superintendência de Movimentação',
+            'icone': 'fas fa-home',
+            'modulos': [
+                {'id': 'relacao_imovel', 'nome': 'Relação Imóvel/Contrato'},
+                {'id': 'despesas_pagamentos', 'nome': 'Despesas e Pagamentos'},
+                {'id': 'itens_servico', 'nome': 'Itens de Serviço'}
+            ]
+        },
+        {
             'id': 'auditoria',
             'nome': 'Auditoria e Logs',
+            'icone': 'fas fa-history',
             'modulos': [
                 {'id': 'logs_auditoria', 'nome': 'Logs de Auditoria'},
                 {'id': 'usuarios', 'nome': 'Usuários do Sistema'}
@@ -209,17 +224,17 @@ def get_data_for_export(sistema, modulo):
                 EmpresaParticipante.DELETED_AT == None
             ).all()
 
-            colunas = ['Empresa', 'Edital', 'Período', 'Condição', 'Data Descredenciamento']
+            colunas = ['Empresa', 'Nome Abreviado', 'Edital', 'Período', 'Status', 'Condição']
             titulo = 'Empresas Participantes'
 
-            for emp_part, emp_resp, edital, periodo in empresas:
+            for empresa_part, empresa_resp, edital, periodo in empresas:
                 dados.append({
-                    'Empresa': emp_resp.NO_ABREVIADO_EMPRESA,
+                    'Empresa': empresa_resp.nmEmpresaResponsavelCobranca,
+                    'Nome Abreviado': empresa_resp.NO_ABREVIADO_EMPRESA or '',
                     'Edital': f"{edital.NU_EDITAL}/{edital.ANO}",
                     'Período': periodo.ID_PERIODO,
-                    'Condição': emp_part.DS_CONDICAO,
-                    'Data Descredenciamento': emp_part.DT_DESCREDENCIAMENTO.strftime(
-                        '%d/%m/%Y') if emp_part.DT_DESCREDENCIAMENTO else ''
+                    'Status': 'Ativo' if empresa_part.ATIVO else 'Inativo',
+                    'Condição': empresa_part.DS_CONDICAO or ''
                 })
 
         elif modulo == 'metas':
@@ -242,8 +257,8 @@ def get_data_for_export(sistema, modulo):
                 MetaAvaliacao.DELETED_AT == None
             ).all()
 
-            colunas = ['Empresa', 'Edital', 'Período', 'Competência', 'Meta Arrecadação',
-                       'Meta Acionamento', 'Meta Liquidação', 'Meta Bonificação']
+            colunas = ['Empresa', 'Edital', 'Período', 'Competência', 'Meta Acionamento',
+                       'Meta Liquidação', 'Meta Bonificação']
             titulo = 'Metas de Avaliação'
 
             for meta, empresa, edital, periodo in metas:
@@ -252,7 +267,6 @@ def get_data_for_export(sistema, modulo):
                     'Edital': f"{edital.NU_EDITAL}/{edital.ANO}",
                     'Período': periodo.ID_PERIODO,
                     'Competência': meta.COMPETENCIA,
-                    'Meta Arrecadação': f"R$ {meta.META_ARRECADACAO:,.2f}" if meta.META_ARRECADACAO else 'R$ 0,00',
                     'Meta Acionamento': f"{meta.META_ACIONAMENTO:.2f}%" if meta.META_ACIONAMENTO else '-',
                     'Meta Liquidação': f"{meta.META_LIQUIDACAO:.2f}%" if meta.META_LIQUIDACAO else '-',
                     'Meta Bonificação': f"R$ {meta.META_BONIFICACAO:,.2f}" if meta.META_BONIFICACAO else 'R$ 0,00'
@@ -361,8 +375,8 @@ def get_data_for_export(sistema, modulo):
                     'Código Contábil': vinc.CODIGO,
                     'Ano': vinc.ANO,
                     'Item SISCOR': vinc.ID_ITEM,
-                    'Descrição Item': item.DESCRICAO,
-                    'Arquivo': vinc.NM_ARQUIVO or ''
+                    'Descrição Item': item.DSC_ITEM_ORCAMENTO,  # Corrigido
+                    'Arquivo': vinc.DSC_ARQUIVO or ''
                 })
 
         elif modulo == 'itens_siscor':
@@ -377,59 +391,120 @@ def get_data_for_export(sistema, modulo):
             for item in itens:
                 dados.append({
                     'ID Item': item.ID_ITEM,
-                    'Descrição': item.DESCRICAO
+                    'Descrição': item.DSC_ITEM_ORCAMENTO  # Corrigido
+                })
+
+    # Sistema SUMOV
+    elif sistema == 'sumov':
+        if modulo == 'relacao_imovel':
+            # Buscar relações imóvel/contrato
+            relacoes = RelacaoImovelContratoParcelamento.query.filter(
+                RelacaoImovelContratoParcelamento.DELETED_AT.is_(None)
+            ).order_by(
+                RelacaoImovelContratoParcelamento.CREATED_AT.desc()
+            ).all()
+
+            colunas = ['Número Contrato', 'Número Imóvel']
+            titulo = 'Relação Imóvel e Contrato de Parcelamento'
+
+            for relacao in relacoes:
+                dados.append({
+                    'Número Contrato': relacao.NR_CONTRATO,
+                    'Número Imóvel': relacao.NR_IMOVEL,
+                })
+
+
+        elif modulo == 'despesas_pagamentos':
+            despesas = DespesasAnalitico.query.filter(
+                DespesasAnalitico.NO_ORIGEM_REGISTRO == 'SUMOV'
+            ).order_by(
+                DespesasAnalitico.DT_REFERENCIA.desc(),
+                DespesasAnalitico.NR_OCORRENCIA.desc()
+            ).all()
+
+            colunas = ['Número Ocorrência', 'Número Contrato', 'Data Referência',
+                       'Valor Despesa', 'Item Serviço', 'Forma Pagamento', 'Estado']
+
+            titulo = 'Registros de Pagamentos de Despesas SUMOV'
+
+            for despesa in despesas:
+                dados.append({
+
+                    'Número Ocorrência': despesa.NR_OCORRENCIA,
+                    'Número Contrato': despesa.NR_CONTRATO,
+                    'Data Referência': despesa.DT_REFERENCIA,  # Passa o objeto date diretamente
+                    'Valor Despesa': despesa.VR_DESPESA if despesa.VR_DESPESA is not None else 0,
+                    'Item Serviço': despesa.DSC_ITEM_SERVICO or '-',
+                    'Forma Pagamento': despesa.DSC_TIPO_FORMA_PGTO or '-',
+                    'Estado': despesa.estadoLancamento or '-'
+
+                })
+
+        elif modulo == 'itens_servico':
+            # Buscar itens de serviço
+            itens = OcorrenciasMovItemServico.listar_itens_permitidos()
+
+            colunas = ['ID Item', 'Descrição', 'ID SISCOR', 'Descrição Resumida']
+            titulo = 'Itens de Serviço SUMOV'
+
+            for item in itens:
+                dados.append({
+                    'ID Item': item.ID_ITEM_SERVICO,
+                    'Descrição': item.DSC_ITEM_SERVICO,
+                    'ID SISCOR': item.ID_ITEM_SISCOR or '-',
+                    'Descrição Resumida': item.DSC_RESUMIDA_DESPESA or '-'
                 })
 
     # Sistema de Auditoria
-    elif sistema == 'auditoria':
-        if modulo == 'logs_auditoria':
-            # Buscar logs de auditoria
-            from app.models.audit_log import AuditLog
-            from app.models.usuario import Usuario
+    elif modulo == 'logs_auditoria':
+        # Buscar logs de auditoria
+        from app.models.audit_log import AuditLog
+        from app.models.usuario import Usuario
 
-            logs = db.session.query(
-                AuditLog,
-                Usuario
-            ).join(
-                Usuario,
-                AuditLog.USUARIO_ID == Usuario.ID
-            ).order_by(
-                AuditLog.DATA_HORA.desc()
-            ).limit(1000).all()
+        logs = db.session.query(
+            AuditLog,
+            Usuario
+        ).join(
+            Usuario,
+            AuditLog.USUARIO_ID == Usuario.ID
+        ).order_by(
+            AuditLog.DATA.desc()
+        ).limit(1000).all()
 
-            colunas = ['Data/Hora', 'Usuário', 'Ação', 'Tabela', 'Registro ID', 'Detalhes']
-            titulo = 'Logs de Auditoria'
+        colunas = ['Data/Hora', 'Usuário', 'Ação', 'Entidade', 'ID Entidade', 'Descrição', 'IP']
+        titulo = 'Logs de Auditoria'
 
-            for log, usuario in logs:
-                dados.append({
-                    'Data/Hora': log.DATA_HORA.strftime('%d/%m/%Y %H:%M:%S'),
-                    'Usuário': usuario.NOME,
-                    'Ação': log.ACAO,
-                    'Tabela': log.TABELA,
-                    'Registro ID': log.REGISTRO_ID or '',
-                    'Detalhes': log.DETALHES or ''
-                })
+        for log, usuario in logs:
+            dados.append({
+                'Data/Hora': log.DATA,  # Passa o objeto datetime diretamente
+                'Usuário': usuario.NOME,
+                'Ação': log.ACAO,
+                'Entidade': log.ENTIDADE,
+                'ID Entidade': log.ENTIDADE_ID or '',
+                'Descrição': log.DESCRICAO or '',
+                'IP': log.IP or ''
+            })
 
-        elif modulo == 'usuarios':
-            # Buscar usuários do sistema
-            from app.models.usuario import Usuario
 
-            usuarios = Usuario.query.filter(
-                Usuario.DELETED_AT == None
-            ).order_by(Usuario.NOME.asc()).all()
+    elif modulo == 'usuarios':
 
-            colunas = ['Nome', 'Login', 'Email', 'Perfil', 'Ativo', 'Último Acesso']
-            titulo = 'Usuários do Sistema'
+        from app.models.usuario import Usuario
+        usuarios = Usuario.query.filter(
+            Usuario.DELETED_AT.is_(None)
+        ).order_by(Usuario.NOME.asc()).all()
 
-            for usuario in usuarios:
-                dados.append({
-                    'Nome': usuario.NOME,
-                    'Login': usuario.LOGIN,
-                    'Email': usuario.EMAIL or '',
-                    'Perfil': usuario.PERFIL.capitalize(),
-                    'Ativo': 'Sim' if usuario.ATIVO else 'Não',
-                    'Último Acesso': usuario.ULTIMO_ACESSO.strftime(
-                        '%d/%m/%Y %H:%M') if usuario.ULTIMO_ACESSO else 'Nunca'
-                })
+        colunas = ['Nome', 'Login', 'Email', 'Perfil', 'Ativo', 'Último Acesso']
+        titulo = 'Usuários do Sistema'
+
+        for usuario in usuarios:
+            dados.append({
+                'Nome': usuario.NOME,
+                'Login': usuario.LOGIN,
+                'Email': usuario.EMAIL or '',
+                'Perfil': usuario.PERFIL.capitalize(),
+                'Ativo': 'Sim' if usuario.ATIVO else 'Não',
+                'Último Acesso': usuario.ULTIMO_ACESSO  # Passa o objeto datetime diretamente
+
+            })
 
     return dados, colunas, titulo
