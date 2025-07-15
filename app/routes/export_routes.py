@@ -163,15 +163,13 @@ def get_data_for_export(sistema, modulo):
         if modulo == 'editais':
             # Buscar dados de editais
             editais = Edital.query.filter(Edital.DELETED_AT == None).all()
-            colunas = ['Número', 'Ano', 'Data Início', 'Data Fim', 'Descrição']
+            colunas = ['Número', 'Ano', 'Descrição']
             titulo = 'Editais de Credenciamento'
 
             for edital in editais:
                 dados.append({
                     'Número': edital.NU_EDITAL,
                     'Ano': edital.ANO,
-                    'Data Início': edital.DT_INICIO.strftime('%d/%m/%Y') if edital.DT_INICIO else '',
-                    'Data Fim': edital.DT_FIM.strftime('%d/%m/%Y') if edital.DT_FIM else '',
                     'Descrição': edital.DESCRICAO or ''
                 })
 
@@ -182,16 +180,13 @@ def get_data_for_export(sistema, modulo):
                 joinedload(PeriodoAvaliacao.edital)
             ).filter(PeriodoAvaliacao.DELETED_AT == None).all()
 
-            colunas = ['Edital', 'Período', 'Data Início', 'Data Fim', 'Dias Úteis']
+            colunas = ['Edital', 'Período']
             titulo = 'Períodos de Avaliação'
 
             for periodo in periodos:
                 dados.append({
                     'Edital': f"{periodo.edital.NU_EDITAL}/{periodo.edital.ANO}" if periodo.edital else '',
-                    'Período': periodo.ID_PERIODO,
-                    'Data Início': periodo.DT_INICIO.strftime('%d/%m/%Y') if periodo.DT_INICIO else '',
-                    'Data Fim': periodo.DT_FIM.strftime('%d/%m/%Y') if periodo.DT_FIM else '',
-                    'Dias Úteis': periodo.DIAS_UTEIS or 0
+                    'Período': periodo.ID_PERIODO
                 })
 
         elif modulo == 'empresas':
