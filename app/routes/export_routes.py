@@ -15,6 +15,7 @@ from app.utils.pdf_export import export_to_pdf
 from datetime import datetime
 import os
 import tempfile
+import io
 
 export_bp = Blueprint('export', __name__, url_prefix='/exportacao')
 
@@ -84,13 +85,54 @@ def gerar_relatorio():
 
         # Gerar arquivo baseado no formato
         if formato == 'excel':
-            arquivo = export_to_excel(dados, colunas, titulo)
+            # Criar arquivo temporário
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+            filepath = temp_file.name
+            temp_file.close()
+
+            # Exportar para Excel
+            export_to_excel(dados, colunas, titulo, filepath)
+
+            # Ler arquivo para enviar
+            with open(filepath, 'rb') as f:
+                arquivo = io.BytesIO(f.read())
+
+            # Remover arquivo temporário
+            os.unlink(filepath)
+
+            arquivo.seek(0)
             mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
             download_name = f'{titulo}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+
         elif formato == 'pdf':
-            arquivo = export_to_pdf(dados, colunas, titulo)
+            # Criar arquivo temporário
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            filepath = temp_file.name
+            temp_file.close()
+
+            # Exportar para PDF
+            export_to_pdf(dados, colunas, titulo, filepath)
+
+            # Ler arquivo para enviar
+            with open(filepath, 'rb') as f:
+                arquivo = io.BytesIO(f.read())
+
+            # Remover arquivo temporário
+            os.unlink(filepath)
+
+            arquivo.seek(0)
             mimetype = 'application/pdf'
             download_name = f'{titulo}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+
+        elif formato == 'word':
+            # Importar função de exportação Word
+            from app.utils.word_export import export_to_word
+
+            # Exportar para Word
+            arquivo = export_to_word(dados, colunas, titulo)
+            mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            download_name = f'{titulo}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.docx'
+
         else:
             flash('Formato de exportação inválido.', 'danger')
             return redirect(url_for('export.index'))
@@ -323,13 +365,13 @@ def get_data_for_export(sistema, modulo):
                 dados.append({
                     'Código Contábil': vinc.CODIGO,
                     'Ano': vinc.ANO,
-                    'Item SISCOR': item.ID_ITEM,
-                    'Descrição Item': item.DSC_ITEM_ORCAMENTO,
-                    'Arquivo': vinc.DSC_ARQUIVO or ''
+                    'Item SISCOR': vinc.ID_ITEM,
+                    'Descrição Item': item.DESCRICAO,
+                    'Arquivo': vinc.NM_ARQUIVO or ''
                 })
 
         elif modulo == 'itens_siscor':
-            # Buscar itens SISCOR
+            # Buscar descrições de itens SISCOR
             itens = DescricaoItensSiscor.query.order_by(
                 DescricaoItensSiscor.ID_ITEM.asc()
             ).all()
@@ -340,46 +382,59 @@ def get_data_for_export(sistema, modulo):
             for item in itens:
                 dados.append({
                     'ID Item': item.ID_ITEM,
-                    'Descrição': item.DSC_ITEM_ORCAMENTO
+                    'Descrição': item.DESCRICAO
                 })
 
     # Sistema de Auditoria
     elif sistema == 'auditoria':
         if modulo == 'logs_auditoria':
-            # Buscar logs de auditoria (limitado aos últimos 1000 registros)
+            # Buscar logs de auditoria
             from app.models.audit_log import AuditLog
-            logs = AuditLog.query.order_by(
+            from app.models.usuario import Usuario
+
+            logs = db.session.query(
+                AuditLog,
+                Usuario
+            ).join(
+                Usuario,
+                AuditLog.USUARIO_ID == Usuario.ID
+            ).order_by(
                 AuditLog.DATA_HORA.desc()
             ).limit(1000).all()
 
-            colunas = ['Data/Hora', 'Usuário', 'Ação', 'Entidade', 'Descrição']
+            colunas = ['Data/Hora', 'Usuário', 'Ação', 'Tabela', 'Registro ID', 'Detalhes']
             titulo = 'Logs de Auditoria'
 
-            for log in logs:
+            for log, usuario in logs:
                 dados.append({
                     'Data/Hora': log.DATA_HORA.strftime('%d/%m/%Y %H:%M:%S'),
-                    'Usuário': log.USUARIO_NOME,
+                    'Usuário': usuario.NOME,
                     'Ação': log.ACAO,
-                    'Entidade': log.ENTIDADE,
-                    'Descrição': log.DESCRICAO
+                    'Tabela': log.TABELA,
+                    'Registro ID': log.REGISTRO_ID or '',
+                    'Detalhes': log.DETALHES or ''
                 })
 
         elif modulo == 'usuarios':
             # Buscar usuários do sistema
             from app.models.usuario import Usuario
+
             usuarios = Usuario.query.filter(
                 Usuario.DELETED_AT == None
             ).order_by(Usuario.NOME.asc()).all()
 
-            colunas = ['Nome', 'Email', 'Perfil', 'Data Cadastro']
+            colunas = ['Nome', 'Login', 'Email', 'Perfil', 'Ativo', 'Último Acesso']
             titulo = 'Usuários do Sistema'
 
             for usuario in usuarios:
                 dados.append({
                     'Nome': usuario.NOME,
-                    'Email': usuario.EMAIL,
+                    'Login': usuario.LOGIN,
+                    'Email': usuario.EMAIL or '',
                     'Perfil': usuario.PERFIL.capitalize(),
-                    'Data Cadastro': usuario.CREATED_AT.strftime('%d/%m/%Y') if usuario.CREATED_AT else ''
+                    'Ativo': 'Sim' if usuario.ATIVO else 'Não',
+                    'Último Acesso': usuario.ULTIMO_ACESSO.strftime(
+                        '%d/%m/%Y %H:%M') if usuario.ULTIMO_ACESSO else 'Nunca'
                 })
 
     return dados, colunas, titulo

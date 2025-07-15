@@ -1,5 +1,6 @@
 import xlsxwriter
-from datetime import datetime
+from datetime import datetime, date
+import io
 
 
 def export_to_excel(dados, colunas, titulo, filepath):
@@ -70,15 +71,19 @@ def export_to_excel(dados, colunas, titulo, filepath):
             # Aplicar formato apropriado com base no tipo de dado
             if isinstance(value, datetime):
                 if value.hour == 0 and value.minute == 0 and value.second == 0:
-                    worksheet.write(row_num + 4, col_num, value, date_format)
+                    worksheet.write_datetime(row_num + 4, col_num, value, date_format)
                 else:
-                    worksheet.write(row_num + 4, col_num, value, datetime_format)
-            elif isinstance(value, (int, float)) and 'ID' in col_name:
-                worksheet.write(row_num + 4, col_num, value, integer_format)
+                    worksheet.write_datetime(row_num + 4, col_num, value, datetime_format)
+            elif isinstance(value, date):
+                worksheet.write_datetime(row_num + 4, col_num, value, date_format)
+            elif isinstance(value, (int, float)) and 'ID' in col_name.upper():
+                worksheet.write_number(row_num + 4, col_num, value, integer_format)
             elif isinstance(value, float):
-                worksheet.write(row_num + 4, col_num, value, number_format)
+                worksheet.write_number(row_num + 4, col_num, value, number_format)
+            elif isinstance(value, int):
+                worksheet.write_number(row_num + 4, col_num, value, integer_format)
             else:
-                worksheet.write(row_num + 4, col_num, value, text_format)
+                worksheet.write_string(row_num + 4, col_num, str(value), text_format)
 
     # Ajustar largura das colunas automaticamente
     for col_num, _ in enumerate(colunas):
@@ -91,4 +96,3 @@ def export_to_excel(dados, colunas, titulo, filepath):
     worksheet.freeze_panes(4, 0)
 
     workbook.close()
-    return filepath

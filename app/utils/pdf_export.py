@@ -1,12 +1,13 @@
 from fpdf import FPDF
-import tempfile
 from datetime import datetime
 
-class PDF(FPDF):
-    def header(self):
-        # Logo (opcional)
-        # self.image('logo.png', 10, 8, 33)
 
+class PDF(FPDF):
+    def __init__(self, orientation='P', unit='mm', format='A4'):
+        super().__init__(orientation, unit, format)
+        self.titulo = ''
+
+    def header(self):
         # Fonte
         self.set_font('Arial', 'B', 15)
 
@@ -30,6 +31,7 @@ class PDF(FPDF):
 
         # Número da página
         self.cell(0, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'C')
+
 
 def export_to_pdf(dados, colunas, titulo, filepath):
     """
@@ -79,56 +81,23 @@ def export_to_pdf(dados, colunas, titulo, filepath):
             pdf.set_fill_color(240, 240, 250)  # Cinza bem claro roxeado
         else:
             pdf.set_fill_color(255, 255, 255)  # Branco
-        alternate = not alternate
 
-        # Altura da linha
-        line_height = 7
-
-        # Verificar se precisa de uma nova página antes de cada linha
-        if pdf.y + line_height > pdf.page_break_trigger:
-            pdf.add_page(orientation)
-            pdf.set_font('Arial', 'B', 10)
-            pdf.set_fill_color(91, 82, 229)
-            pdf.set_text_color(255, 255, 255)
-
-            for col in colunas:
-                pdf.cell(col_width, 10, col, 1, 0, 'C', 1)
-            pdf.ln()
-
-            pdf.set_font('Arial', '', 9)
-            pdf.set_text_color(0, 0, 0)
-
-        # Imprimir dados
         for col in colunas:
             value = row.get(col, '')
-
-            # Formatar datas
-            if isinstance(value, datetime):
-                if value.hour == 0 and value.minute == 0 and value.second == 0:
-                    value = value.strftime('%d/%m/%Y')
-                else:
-                    value = value.strftime('%d/%m/%Y %H:%M')
-
-            # Formatar números
-            elif isinstance(value, float) and not('ID' in col):
-                value = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
             # Converter para string
             if value is None:
                 value = ''
-            elif not isinstance(value, str):
+            else:
                 value = str(value)
 
-            # Alinhar diferente com base no tipo de coluna
-            align = 'L'
-            if 'ID' in col or 'Número' in col:
-                align = 'C'
-            elif any(term in col for term in ['Valor', 'Meta', 'Percentual', 'Quantidade']):
-                align = 'R'
+            # Truncar texto se muito longo
+            if len(value) > 30:
+                value = value[:27] + '...'
 
-            pdf.cell(col_width, line_height, value, 1, 0, align, 1)
+            pdf.cell(col_width, 8, value, 1, 0, 'L', 1)
 
         pdf.ln()
+        alternate = not alternate
 
+    # Salvar arquivo
     pdf.output(filepath)
-    return filepath

@@ -78,10 +78,6 @@ def create_app():
     from app.routes.chat_routes import chat_bp
     app.register_blueprint(chat_bp)
 
-    # Registrar o novo blueprint de exportação
-    from app.routes.export_routes import export_bp
-    app.register_blueprint(export_bp)
-
     # Registrar o blueprint do conversor de documentos
     from app.routes.converter_routes import converter_bp
     app.register_blueprint(converter_bp)
@@ -106,7 +102,10 @@ def create_app():
    
     from app.routes.sumov_routes import sumov_bp
     app.register_blueprint(sumov_bp)
-    
+
+    from app.routes.export_routes import export_bp
+    app.register_blueprint(export_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
