@@ -102,6 +102,7 @@ def create_app():
     from app.routes.seguro_caixa_routes import seguro_caixa_bp
     app.register_blueprint(seguro_caixa_bp)
 
+    from app.models.permissao_sistema import PermissaoSistema
    
     from app.routes.sumov_routes import sumov_bp
     app.register_blueprint(sumov_bp)

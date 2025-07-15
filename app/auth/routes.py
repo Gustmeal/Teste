@@ -1,17 +1,13 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models.usuario import Usuario, Empregado
 from app import db
-from datetime import datetime
+from app.models.usuario import Usuario
+from app.models.permissao_sistema import PermissaoSistema
 from app.auth.utils import UserLogin, admin_required, admin_or_moderador_required
 from app.utils.audit import registrar_log
+from datetime import datetime
 
 auth_bp = Blueprint('auth', __name__)
-
-
-@auth_bp.context_processor
-def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
@@ -20,39 +16,40 @@ def login():
         return redirect(url_for('main.geinc_index'))
 
     if request.method == 'POST':
-        email = request.form.get('email')
-        senha = request.form.get('senha')
+        email = request.form.get('email', '').strip().lower()
+        senha = request.form.get('senha', '')
 
-        usuario = Usuario.query.filter_by(EMAIL=email, DELETED_AT=None).first()
+        usuario = Usuario.query.filter_by(EMAIL=email).first()
 
-        if usuario and usuario.verificar_senha(senha) and usuario.is_active():
-            # Carregar dados do empregado se existir
-            empregado_data = None
-            if usuario.FK_PESSOA:
-                empregado = Empregado.query.filter_by(pkPessoa=usuario.FK_PESSOA).first()
-                if empregado:
-                    empregado_data = {
-                        'area': empregado.sgSuperintendencia,
-                        'cargo': empregado.dsCargo
+        if usuario and usuario.verificar_senha(senha):
+            if usuario.is_active():
+                # Criar objeto UserLogin
+                user_login = UserLogin(usuario.ID, usuario.EMAIL, usuario.NOME, usuario.PERFIL)
+
+                # Carregar dados do empregado se existir
+                if usuario.empregado:
+                    user_login.empregado = {
+                        'area': usuario.empregado.sgSuperintendencia,
+                        'cargo': usuario.empregado.dsCargo
                     }
 
-            user_login = UserLogin(usuario.ID, usuario.EMAIL, usuario.NOME, usuario.PERFIL)
-            # Adicionar referência ao empregado no objeto de login
-            user_login.empregado = empregado_data
-            login_user(user_login)
+                login_user(user_login)
 
-            # Registrar log de login
-            registrar_log(
-                acao='login',
-                entidade='sistema',
-                entidade_id=usuario.ID,
-                descricao=f'Login realizado: {usuario.EMAIL}'
-            )
+                # Registrar log de login
+                registrar_log(
+                    acao='login',
+                    entidade='sistema',
+                    entidade_id=usuario.ID,
+                    descricao=f'Login realizado: {email}'
+                )
 
-            next_page = request.args.get('next')
-            return redirect(next_page or url_for('main.geinc_index'))
+                flash(f'Bem-vindo, {usuario.NOME}!', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page) if next_page else redirect(url_for('main.geinc_index'))
+            else:
+                flash('Conta inativa. Entre em contato com o administrador.', 'danger')
         else:
-            flash('Credenciais inválidas. Por favor, tente novamente.', 'danger')
+            flash('E-mail ou senha incorretos. Por favor, tente novamente.', 'danger')
 
     return render_template('auth/login.html')
 
@@ -115,6 +112,9 @@ def definir_senha():
                 db.session.add(novo_usuario)
                 db.session.commit()
 
+                # Criar permissões padrão em DEV
+                PermissaoSistema.criar_permissoes_padrao(novo_usuario.ID)
+
                 # Registrar log
                 registrar_log(
                     acao='criar',
@@ -153,15 +153,13 @@ def logout():
     flash('Você saiu do sistema.', 'info')
     return redirect(url_for('auth.login'))
 
+
 @auth_bp.route('/usuarios')
 @login_required
 @admin_or_moderador_required
 def lista_usuarios():
     usuarios = Usuario.query.filter(Usuario.DELETED_AT == None).all()
     return render_template('auth/lista_usuarios.html', usuarios=usuarios)
-
-
-
 
 
 @auth_bp.route('/usuarios/editar/<int:id>', methods=['GET', 'POST'])
@@ -226,6 +224,86 @@ def excluir_usuario(id):
         db.session.rollback()
         flash(f'Erro: {str(e)}', 'danger')
     return redirect(url_for('auth.lista_usuarios'))
+
+
+@auth_bp.route('/usuarios/<int:id>/permissoes', methods=['GET', 'POST'])
+@login_required
+@admin_or_moderador_required
+def gerenciar_permissoes(id):
+    usuario = Usuario.query.get_or_404(id)
+
+    # Não permitir editar permissões de admins e moderadores
+    if usuario.PERFIL in ['admin', 'moderador']:
+        flash('Administradores e moderadores têm acesso total aos sistemas.', 'info')
+        return redirect(url_for('auth.lista_usuarios'))
+
+    if request.method == 'POST':
+        try:
+            # Processar cada sistema
+            for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+                # Verificar se o checkbox foi marcado
+                tem_acesso = request.form.get(f'sistema_{sistema}') == 'on'
+
+                # Buscar permissão existente em DEV
+                permissao = PermissaoSistema.query.filter_by(
+                    USUARIO_ID=usuario.ID,
+                    SISTEMA=sistema
+                ).first()
+
+                if permissao:
+                    # Atualizar permissão existente
+                    if permissao.DELETED_AT:
+                        # Reativar se estava deletada
+                        permissao.DELETED_AT = None
+                    permissao.TEM_ACESSO = tem_acesso
+                    permissao.UPDATED_AT = datetime.utcnow()
+                else:
+                    # Criar nova permissão
+                    permissao = PermissaoSistema(
+                        USUARIO_ID=usuario.ID,
+                        SISTEMA=sistema,
+                        TEM_ACESSO=tem_acesso
+                    )
+                    db.session.add(permissao)
+
+            db.session.commit()
+
+            # Registrar log
+            registrar_log(
+                acao='atualizar',
+                entidade='permissoes',
+                entidade_id=usuario.ID,
+                descricao=f'Permissões de sistema atualizadas para: {usuario.EMAIL}'
+            )
+
+            flash('Permissões atualizadas com sucesso!', 'success')
+            return redirect(url_for('auth.lista_usuarios'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar permissões: {str(e)}', 'danger')
+
+    # Buscar permissões atuais em DEV
+    permissoes = {}
+    for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+        permissao = PermissaoSistema.query.filter_by(
+            USUARIO_ID=usuario.ID,
+            SISTEMA=sistema,
+            DELETED_AT=None
+        ).first()
+        permissoes[sistema] = permissao.TEM_ACESSO if permissao else True
+
+    return render_template('auth/gerenciar_permissoes.html',
+                           usuario=usuario,
+                           sistemas=PermissaoSistema.SISTEMAS_DISPONIVEIS,
+                           permissoes=permissoes)
+
+
+@auth_bp.route('/api/verificar-acesso/<sistema>')
+@login_required
+def verificar_acesso_api(sistema):
+    tem_acesso = PermissaoSistema.verificar_acesso(current_user.id, sistema)
+    return {'tem_acesso': tem_acesso}
 
 
 @auth_bp.route('/perfil', methods=['GET', 'POST'])

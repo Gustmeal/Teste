@@ -63,7 +63,7 @@
                             {% elif usuario.PERFIL == 'moderador' %}
                             <span class="badge bg-success">Moderador</span>
                             {% else %}
-                            <span class="badge bg-info text-dark">Usuário</span>
+                            <span class="badge bg-secondary">Usuário</span>
                             {% endif %}
                         </td>
                         <td>
@@ -74,15 +74,27 @@
                             {% endif %}
                         </td>
                         <td class="text-center">
-                            <a href="{{ url_for('auth.editar_usuario', id=usuario.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1" title="Editar perfil e status">
-                                <i class="fas fa-edit"></i>
-                            </a>
-                            <a href="javascript:void(0);"
-                               onclick="if(confirm('Deseja remover o usuário {{ usuario.NOME }}?')) { window.location.href='{{ url_for('auth.excluir_usuario', id=usuario.ID) }}'; }"
-                               class="btn btn-sm btn-outline-danger">
-                                <i class="fas fa-trash"></i>
-                            </a>
+                            <div class="btn-group" role="group">
+                                <a href="{{ url_for('auth.editar_usuario', id=usuario.ID) }}"
+                                   class="btn btn-sm btn-primary"
+                                   title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+
+                                {% if usuario.PERFIL == 'usuario' %}
+                                <a href="{{ url_for('auth.gerenciar_permissoes', id=usuario.ID) }}"
+                                   class="btn btn-sm btn-info"
+                                   title="Gerenciar Acessos aos Sistemas">
+                                    <i class="fas fa-key"></i>
+                                </a>
+                                {% endif %}
+
+                                <button class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao({{ usuario.ID }}, '{{ usuario.NOME }}')"
+                                        title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -92,16 +104,52 @@
     </div>
 </div>
 
-<script>
-document.getElementById('usuariosSearch').addEventListener('keyup', function() {
-    const searchValue = this.value.toLowerCase();
-    const table = document.getElementById('usuariosTable');
-    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
-
-    for (let row of rows) {
-        const text = row.textContent.toLowerCase();
-        row.style.display = text.includes(searchValue) ? '' : 'none';
+<style>
+    .search-container {
+        position: relative;
+        max-width: 400px;
     }
-});
+
+    .search-input {
+        padding-left: 40px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+    }
+</style>
+
+<script>
+    // Função de pesquisa na tabela
+    document.getElementById('usuariosSearch').addEventListener('keyup', function() {
+        var input = this.value.toLowerCase();
+        var table = document.getElementById('usuariosTable');
+        var rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+        for (var i = 0; i < rows.length; i++) {
+            var nome = rows[i].getElementsByTagName('td')[0].textContent.toLowerCase();
+            var email = rows[i].getElementsByTagName('td')[1].textContent.toLowerCase();
+            var area = rows[i].getElementsByTagName('td')[2].textContent.toLowerCase();
+            var cargo = rows[i].getElementsByTagName('td')[3].textContent.toLowerCase();
+
+            if (nome.indexOf(input) > -1 || email.indexOf(input) > -1 ||
+                area.indexOf(input) > -1 || cargo.indexOf(input) > -1) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    });
+
+    // Função para confirmar exclusão
+    function confirmarExclusao(id, nome) {
+        if (confirm(`Tem certeza que deseja excluir o usuário ${nome}?`)) {
+            window.location.href = `/usuarios/excluir/${id}`;
+        }
+    }
 </script>
 {% endblock %}

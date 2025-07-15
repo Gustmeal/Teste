@@ -17,7 +17,9 @@
                     <p class="text-muted mb-4">
                         Plataforma para gerenciamento de processos de credenciamento, editais e avaliação de empresas.
                     </p>
-                    <a href="{{ url_for('credenciamento.index') }}" class="btn btn-access">
+                    <a href="#"
+                       class="btn btn-access"
+                       onclick="verificarAcesso('credenciamento', '{{ url_for('credenciamento.index') }}'); return false;">
                         <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
                     </a>
                 </div>
@@ -35,7 +37,9 @@
                     <p class="text-muted mb-4">
                         Sistema de gerenciamento de contratos e imóveis da Superintendência de Movimentação.
                     </p>
-                    <a href="{{ url_for('sumov.index') }}" class="btn btn-access">
+                    <a href="#"
+                       class="btn btn-access"
+                       onclick="verificarAcesso('sumov', '{{ url_for('sumov.index') }}'); return false;">
                         <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
                     </a>
                 </div>
@@ -53,47 +57,10 @@
                     <p class="text-muted mb-4">
                         Sistema para gerenciamento e cadastro de códigos contábeis do PDG (Plano de Dados Gerenciais).
                     </p>
-                    <a href="{{ url_for('codigo_contabil.index') }}" class="btn btn-access">
+                    <a href="#"
+                       class="btn btn-access"
+                       onclick="verificarAcesso('codigos_contabeis', '{{ url_for('codigo_contabil.index') }}'); return false;">
                         <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Segunda linha de cards -->
-    <div class="row g-4 mt-4">
-        <!-- Card para Conversor de Documentos -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon converter-color mx-auto">
-                        <i class="fas fa-exchange-alt"></i>
-                    </div>
-                    <h3 class="system-title">Conversor de Documentos</h3>
-                    <p class="text-muted mb-4">
-                        Converta documentos entre diferentes formatos (Word, PDF, Excel) de forma rápida e fácil.
-                    </p>
-                    <a href="{{ url_for('converter.index') }}" class="btn btn-access">
-                        <i class="fas fa-sync-alt me-2"></i> Acessar Conversor
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Card para Exportação de Dados -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon export-color mx-auto">
-                        <i class="fas fa-file-export"></i>
-                    </div>
-                    <h3 class="system-title">Exportação de Dados</h3>
-                    <p class="text-muted mb-4">
-                        Exporte dados do sistema para Excel ou PDF para relatórios, análises e compartilhamento.
-                    </p>
-                    <a href="{{ url_for('export.index') }}" class="btn btn-access">
-                        <i class="fas fa-download me-2"></i> Acessar Sistema
                     </a>
                 </div>
             </div>
@@ -101,97 +68,126 @@
     </div>
 </div>
 
+<script>
+function verificarAcesso(sistema, url) {
+    // Fazer requisição AJAX para verificar acesso
+    fetch(`/api/verificar-acesso/${sistema}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.tem_acesso) {
+                window.location.href = url;
+            } else {
+                // Mostrar modal de acesso negado
+                const modal = new bootstrap.Modal(document.getElementById('modalAcessoNegado'));
+                modal.show();
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao verificar acesso:', error);
+            window.location.href = url; // Em caso de erro, deixar o backend tratar
+        });
+}
+</script>
+
+<!-- Modal de Acesso Negado -->
+<div class="modal fade" id="modalAcessoNegado" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Acesso Restrito
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center py-4">
+                <i class="fas fa-lock fa-3x text-warning mb-3"></i>
+                <p class="mb-0">
+                    <strong>Você não tem acesso para esse sistema.</strong>
+                </p>
+                <p class="text-muted">
+                    Entre em contato com o Administrador para solicitar o acesso.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
-    .system-icon {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 2.5rem;
-        color: white;
-        margin-bottom: 1.5rem;
-    }
-
-    .credenciamento-color {
-        background-color: #6c63ff;
-    }
-
-    .export-color {
-        background-color: #ff6584;
-    }
-
-    .codes-color {
-        background-color: #4ecdc4;
-    }
-
-    .converter-color {
-        background-color: #9b59b6;
-    }
-
-    .sumov-color {
-        background-color: #fd7e14;
-    }
-
     .home-card {
-        transition: all 0.3s ease;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
         border: none;
-        background-color: rgba(255, 255, 255, 0.9);
+        height: 100%;
     }
 
     .home-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .system-icon {
+        width: 80px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        margin-bottom: 20px;
+        font-size: 35px;
+        color: white;
+    }
+
+    .credenciamento-color {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .sumov-color {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .codes-color {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
     }
 
     .system-title {
-        color: var(--primary-color);
+        font-size: 1.25rem;
         font-weight: 600;
-        margin-bottom: 1rem;
+        margin-bottom: 15px;
     }
 
     .btn-access {
-        background-color: var(--button-color);
+        background-color: #0056b3;
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: 25px;
+        padding: 10px 20px;
+        border-radius: 5px;
         font-weight: 500;
         transition: all 0.3s ease;
         margin-top: auto;
     }
 
     .btn-access:hover {
-        background-color: #5b52e5;
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        background-color: #004494;
+        color: white;
+        transform: translateX(5px);
     }
 
-    /* Ajuste para o modo escuro */
-    [data-theme="dark"] .home-card {
-        background-color: rgba(40, 40, 50, 0.9);
+    .central-panel {
+        text-align: center;
     }
 
-    [data-theme="dark"] .system-title {
-        color: #8a82ff;
+    .fade-in {
+        animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
     }
 </style>
-
-<script>
-    // Animação de entrada para os cards
-    document.addEventListener('DOMContentLoaded', function() {
-        const cards = document.querySelectorAll('.home-card');
-        cards.forEach((card, index) => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(20px)';
-
-            setTimeout(() => {
-                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-                card.style.opacity = '1';
-                card.style.transform = 'translateY(0)';
-            }, index * 100);
-        });
-    });
-</script>
 {% endblock %}

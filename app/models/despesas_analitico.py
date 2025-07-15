@@ -6,7 +6,7 @@ from decimal import Decimal
 class DespesasAnalitico(db.Model):
     """Modelo para a tabela MOV_TB004_DESPESAS_ANALITICO"""
     __tablename__ = 'MOV_TB004_DESPESAS_ANALITICO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     # Chaves primárias
     DT_REFERENCIA = db.Column(db.Date, primary_key=True, nullable=False)

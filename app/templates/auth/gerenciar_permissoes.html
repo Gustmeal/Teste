@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container">
+    <a href="{{ url_for('auth.lista_usuarios') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Gerenciar Permissões de Sistema</h1>
+        <p class="text-muted">Usuário: {{ usuario.NOME }} ({{ usuario.EMAIL }})</p>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body p-4">
+                    <form method="POST">
+                        <div class="alert alert-info mb-4">
+                            <i class="fas fa-info-circle"></i>
+                            Marque os sistemas que este usuário pode acessar. Por padrão, todos os sistemas são permitidos.
+                        </div>
+
+                        <div class="row">
+                            {% for sistema_key, sistema_info in sistemas.items() %}
+                            <div class="col-md-6 mb-4">
+                                <div class="card h-100 {% if permissoes[sistema_key] %}border-success{% else %}border-secondary{% endif %}">
+                                    <div class="card-body">
+                                        <div class="form-check">
+                                            <input class="form-check-input sistema-checkbox"
+                                                   type="checkbox"
+                                                   id="sistema_{{ sistema_key }}"
+                                                   name="sistema_{{ sistema_key }}"
+                                                   {% if permissoes[sistema_key] %}checked{% endif %}>
+                                            <label class="form-check-label" for="sistema_{{ sistema_key }}">
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="fas {{ sistema_info.icone }} me-2 text-primary"></i>
+                                                    <strong>{{ sistema_info.nome }}</strong>
+                                                </div>
+                                                <small class="text-muted">{{ sistema_info.descricao }}</small>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+                            <a href="{{ url_for('auth.lista_usuarios') }}" class="btn btn-secondary">
+                                Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save me-2"></i>Salvar Permissões
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Atualizar visual dos cards quando checkbox muda
+    const checkboxes = document.querySelectorAll('.sistema-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const card = this.closest('.card');
+            if (this.checked) {
+                card.classList.remove('border-secondary');
+                card.classList.add('border-success');
+            } else {
+                card.classList.remove('border-success');
+                card.classList.add('border-secondary');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
