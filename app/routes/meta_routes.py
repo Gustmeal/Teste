@@ -231,14 +231,14 @@ def buscar_empresas_ativas():
                 m.ID_EMPRESA,
                 m.NO_EMPRESA_ABREVIADA,
                 m.PERCENTUAL_SALDO_DEVEDOR
-            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL m
+            FROM BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL m
             WHERE m.ID_EDITAL = :edital_id
             AND m.ID_PERIODO = :periodo_id
             AND m.DELETED_AT IS NULL
             AND m.PERCENTUAL_SALDO_DEVEDOR > 0  -- Apenas empresas com percentual a ser redistribuído
             AND m.DT_REFERENCIA = (
                 SELECT MAX(DT_REFERENCIA)
-                FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
+                FROM BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
                 WHERE ID_EDITAL = :edital_id
                 AND ID_PERIODO = :periodo_id
                 AND DELETED_AT IS NULL
@@ -454,7 +454,7 @@ def buscar_empresas_redistribuicao():
                 mpd.NO_EMPRESA_ABREVIADA,
                 mpd.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 mpd.PERCENTUAL_SALDO_DEVEDOR
-            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL mpd
+            FROM BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL mpd
             WHERE mpd.ID_EDITAL = :edital_id
             AND mpd.ID_PERIODO = :periodo_id
             AND mpd.DELETED_AT IS NULL
@@ -538,16 +538,18 @@ def calcular_distribuicao_inicial():
         data = request.json
         edital_id = int(data['edital_id'])
         periodo_id = int(data['periodo_id'])
+        incremento_meta = float(data.get('incremento_meta', 1.0))
 
         from app.utils.distribuicao_inicial import DistribuicaoInicial
 
-        distribuidor = DistribuicaoInicial(edital_id, periodo_id)
+        distribuidor = DistribuicaoInicial(edital_id, periodo_id, incremento_meta)
         resultado = distribuidor.calcular_distribuicao()
 
         # Guardar na sessão para posterior salvamento
         session['distribuicao_calculada'] = resultado
         session['distribuicao_edital'] = edital_id
         session['distribuicao_periodo'] = periodo_id
+        session['distribuicao_incremento'] = incremento_meta # Salva o incremento na sessão
 
         return jsonify({
             'sucesso': True,
@@ -582,7 +584,7 @@ def salvar_distribuicao_inicial():
         periodo = PeriodoAvaliacao.query.get(periodo_id)
         sql_check = text("""
             SELECT COUNT(*) as total
-            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
+            FROM BDG.DCA_TB017_DISTRIBUICAO_SUMARIO
             WHERE ID_EDITAL = :edital_id
             AND ID_PERIODO = :periodo_id
             AND DELETED_AT IS NULL
@@ -601,9 +603,10 @@ def salvar_distribuicao_inicial():
 
         # Buscar dados calculados da sessão
         dados_calculados = session.get('distribuicao_calculada')
+        incremento_salvar = session.get('distribuicao_incremento', 1.0)
 
         from app.utils.distribuicao_inicial import DistribuicaoInicial
-        distribuidor = DistribuicaoInicial(edital_id, periodo_id)
+        distribuidor = DistribuicaoInicial(edital_id, periodo_id, incremento_salvar)
 
         # Salvar distribuição
         if distribuidor.salvar_distribuicao(dados_calculados):
@@ -611,14 +614,15 @@ def salvar_distribuicao_inicial():
             session.pop('distribuicao_calculada', None)
             session.pop('distribuicao_edital', None)
             session.pop('distribuicao_periodo', None)
+            session.pop('distribuicao_incremento', None)
 
             # Registrar log
             registrar_log(
                 acao='criar_distribuicao_inicial',
                 entidade='meta',
                 entidade_id=f"{edital_id}-{periodo.ID_PERIODO}",
-                descricao=f'Criação de distribuição inicial de metas para edital {edital_id} período {periodo.ID_PERIODO}',
-                dados_novos={'edital_id': edital_id, 'periodo_id': periodo_id}
+                descricao=f'Criação de distribuição inicial de metas para edital {edital_id} período {periodo.ID_PERIODO} com incremento de {incremento_salvar}',
+                dados_novos={'edital_id': edital_id, 'periodo_id': periodo_id, 'incremento_meta': incremento_salvar}
             )
 
             return jsonify({

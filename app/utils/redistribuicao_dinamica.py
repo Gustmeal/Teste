@@ -83,10 +83,10 @@ class RedistribuicaoDinamica:
                    m.VR_SALDO_DEVEDOR_DISTRIBUIDO as saldo_devedor,
                    m.PERCENTUAL_SALDO_DEVEDOR as percentual,
                    m.MES_COMPETENCIA as mes_competencia, m.VR_META_MES as valor_meta
-            FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL m
+            FROM BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL m
             WHERE m.ID_EDITAL = :edital_id AND m.ID_PERIODO = :periodo_id
             AND m.DT_REFERENCIA = (
-                SELECT MAX(DT_REFERENCIA) FROM BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
+                SELECT MAX(DT_REFERENCIA) FROM BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
                 WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
             ) AND m.DELETED_AT IS NULL
             ORDER BY m.MES_COMPETENCIA, m.NO_EMPRESA_ABREVIADA
@@ -247,7 +247,7 @@ class RedistribuicaoDinamica:
 
                     # 3. Manter a inserção na tabela original TB018 para compatibilidade
                     sql_original = text("""
-                        INSERT INTO BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
+                        INSERT INTO BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
                         (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                          VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, 
                          VR_META_MES, CREATED_AT)

@@ -13,10 +13,11 @@ class DistribuicaoInicial:
     Classe responsável pela distribuição inicial de metas.
     """
 
-    def __init__(self, edital_id, periodo_id):
+    def __init__(self, edital_id, periodo_id, incremento_meta=1.0):
         # periodo_id aqui é a CHAVE PRIMÁRIA da tabela de períodos
         self.edital_id = edital_id
         self.periodo_pk_id = periodo_id  # Chave Primária (ex: 1, 2, 3...)
+        self.incremento_meta = Decimal(str(incremento_meta))  # Mantém o incremento para o cálculo
 
         # Busca o objeto do período para encontrar a chave de negócio
         periodo_obj = PeriodoAvaliacao.query.get(self.periodo_pk_id)
@@ -49,38 +50,54 @@ class DistribuicaoInicial:
             resultado[
                 'periodo_info'] = f"{periodo_info['id_periodo']} ({periodo_info['dt_inicio']} a {periodo_info['dt_fim']})"
 
+            # Adiciona o incremento ao resultado para exibição na tela
+            resultado['incremento_meta'] = float(self.incremento_meta)
+
             return resultado
         except Exception as e:
             raise Exception(f"Erro ao calcular distribuição: {str(e)}")
 
     def _buscar_saldos_devedores(self):
         """
-        Busca saldo devedor das empresas no sistema de contratos.
+        Busca saldo devedor das empresas no sistema de contratos,
+        considerando apenas as empresas que não estão descredenciadas.
         """
         sql = text("""
-            DECLARE @SD DECIMAL(18,2)
-            SET @SD = (
-                SELECT SUM(VR_SD_DEVEDOR) 
+            WITH EmpresasAtivas AS (
+                SELECT ID_EMPRESA
+                FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES
+                WHERE ID_EDITAL = :edital_id
+                  AND ID_PERIODO = :periodo_id
+                  AND DS_CONDICAO <> 'DESCREDENCIADA'
+                  AND DELETED_AT IS NULL
+            ),
+            SaldoTotal AS (
+                SELECT SUM(SIT.VR_SD_DEVEDOR) as TotalSD
                 FROM BDG.COM_TB007_SITUACAO_CONTRATOS SIT
                 INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL ASS
                     ON SIT.fkContratoSISCTR = ASS.fkContratoSISCTR
                 WHERE SIT.fkSituacaoCredito = 1 
-                AND ASS.COD_EMPRESA_COBRANCA NOT IN (407,422)
+                  AND ASS.COD_EMPRESA_COBRANCA NOT IN (407, 422)
+                  AND ASS.COD_EMPRESA_COBRANCA IN (SELECT ID_EMPRESA FROM EmpresasAtivas)
             )
-
             SELECT 
                 ASS.COD_EMPRESA_COBRANCA as id_empresa,
                 SUM(SIT.VR_SD_DEVEDOR) as saldo_devedor,
-                (SUM(SIT.VR_SD_DEVEDOR)/@SD * 100) as percentual
+                (SUM(SIT.VR_SD_DEVEDOR) / NULLIF((SELECT TotalSD FROM SaldoTotal), 0) * 100) as percentual
             FROM BDG.COM_TB007_SITUACAO_CONTRATOS SIT
             INNER JOIN BDG.COM_TB011_EMPRESA_COBRANCA_ATUAL ASS
                 ON SIT.fkContratoSISCTR = ASS.fkContratoSISCTR
             WHERE SIT.fkSituacaoCredito = 1
-            AND ASS.COD_EMPRESA_COBRANCA NOT IN (407,422)
+              AND ASS.COD_EMPRESA_COBRANCA NOT IN (407, 422)
+              AND ASS.COD_EMPRESA_COBRANCA IN (SELECT ID_EMPRESA FROM EmpresasAtivas)
             GROUP BY ASS.COD_EMPRESA_COBRANCA
+            HAVING SUM(SIT.VR_SD_DEVEDOR) > 0
             ORDER BY ASS.COD_EMPRESA_COBRANCA
         """)
-        result = db.session.execute(sql).fetchall()
+        result = db.session.execute(sql, {
+            'edital_id': self.edital_id,
+            'periodo_id': self.periodo_business_id
+        }).fetchall()
 
         empresas = []
         total_sd = Decimal('0')
@@ -90,91 +107,63 @@ class DistribuicaoInicial:
                 'id_empresa': row.id_empresa,
                 'nome': nome_empresa,
                 'saldo_devedor': Decimal(str(row.saldo_devedor)),
-                'percentual': Decimal(str(row.percentual))
+                'percentual': Decimal(str(row.percentual or '0'))
             })
             total_sd += Decimal(str(row.saldo_devedor))
 
         return {'empresas': empresas, 'total_saldo_devedor': total_sd}
 
     def _buscar_nome_empresa(self, cod_empresa):
-        """
-        Busca o nome da empresa usando a chave de negócio do período.
-        """
         sql = text("""
             SELECT TOP 1 NO_EMPRESA_ABREVIADA
             FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES
-            WHERE ID_EMPRESA = :id_empresa
-            AND ID_EDITAL = :edital_id
-            AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
-            AND DELETED_AT IS NULL
+            WHERE ID_EMPRESA = :id_empresa AND ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
         """)
         result = db.session.execute(sql, {
             'id_empresa': cod_empresa,
             'edital_id': self.edital_id,
-            'periodo_id': self.periodo_business_id  # CORRIGIDO
+            'periodo_id': self.periodo_business_id
         }).fetchone()
         return result.NO_EMPRESA_ABREVIADA if result else f"Empresa {cod_empresa}"
 
     def _buscar_valores_siscor(self):
-        """
-        Busca valores SISCOR usando a chave de negócio do período.
-        """
         sql = text("""
             SELECT 
-                CAST(COMPETENCIA AS VARCHAR(10)) as competencia,
-                VR_MENSAL_SISCOR,
-                QTDE_DIAS_UTEIS_MES
+                CAST(COMPETENCIA AS VARCHAR(10)) as competencia, VR_MENSAL_SISCOR, QTDE_DIAS_UTEIS_MES
             FROM BDG.DCA_TB012_METAS
-            WHERE ID_EDITAL = :edital_id
-            AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
-            AND DELETED_AT IS NULL
+            WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
             AND DT_REFERENCIA = (
-                SELECT MAX(DT_REFERENCIA)
-                FROM BDG.DCA_TB012_METAS
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id -- Usa a chave de negócio
-                AND DELETED_AT IS NULL
+                SELECT MAX(DT_REFERENCIA) FROM BDG.DCA_TB012_METAS
+                WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id AND DELETED_AT IS NULL
             )
             ORDER BY COMPETENCIA
         """)
         result = db.session.execute(sql, {
             'edital_id': self.edital_id,
-            'periodo_id': self.periodo_business_id  # CORRIGIDO
+            'periodo_id': self.periodo_business_id
         })
-
         valores = []
         meses_nomes = {'01': 'JAN', '02': 'FEV', '03': 'MAR', '04': 'ABR', '05': 'MAI', '06': 'JUN', '07': 'JUL',
                        '08': 'AGO', '09': 'SET', '10': 'OUT', '11': 'NOV', '12': 'DEZ'}
         for row in result:
             competencia_str = str(row.competencia).strip()
-            if len(competencia_str) == 6:
-                ano, mes = competencia_str[:4], competencia_str[4:].zfill(2)
-                competencia_formatada = f"{ano}-{mes}"
-                nome_mes = meses_nomes.get(mes, mes)
-            else:
-                competencia_formatada = competencia_str
-                mes = competencia_str.split('-')[1] if '-' in competencia_str else '01'
-                nome_mes = meses_nomes.get(mes, mes)
+            ano, mes = (competencia_str[:4], competencia_str[4:].zfill(2)) if len(competencia_str) == 6 else (
+            competencia_str.split('-')[0], competencia_str.split('-')[1])
             valores.append({
-                'competencia': competencia_formatada, 'nome': nome_mes,
-                'valor_siscor': Decimal(str(row.VR_MENSAL_SISCOR)) if row.VR_MENSAL_SISCOR else Decimal('0'),
-                'dias_uteis': int(row.QTDE_DIAS_UTEIS_MES) if row.QTDE_DIAS_UTEIS_MES else 20
+                'competencia': f"{ano}-{mes}", 'nome': meses_nomes.get(mes, mes),
+                'valor_siscor': Decimal(str(row.VR_MENSAL_SISCOR or '0')),
+                'dias_uteis': int(row.QTDE_DIAS_UTEIS_MES or 20)
             })
         return valores
 
     def _buscar_info_periodo(self):
-        """
-        Busca informações do período usando a chave primária.
-        """
         sql = text("""
             SELECT ID_PERIODO, DT_INICIO, DT_FIM
             FROM BDG.DCA_TB001_PERIODO_AVALIACAO
-            WHERE ID = :periodo_id -- Usa a chave primária
-            AND ID_EDITAL = :edital_id
-            AND DELETED_AT IS NULL
+            WHERE ID = :periodo_id AND ID_EDITAL = :edital_id AND DELETED_AT IS NULL
         """)
         result = db.session.execute(sql, {
-            'periodo_id': self.periodo_pk_id,  # CORRIGIDO
+            'periodo_id': self.periodo_pk_id,
             'edital_id': self.edital_id
         }).fetchone()
         if result:
@@ -183,9 +172,6 @@ class DistribuicaoInicial:
         return {'id_periodo': self.periodo_business_id, 'dt_inicio': '', 'dt_fim': ''}
 
     def _calcular_metas_empresas(self, dados_saldo, valores_siscor):
-        """
-        Calcula as metas mensais para cada empresa.
-        """
         empresas, meses = dados_saldo['empresas'], valores_siscor
         empresas_resultado = []
         for empresa in empresas:
@@ -194,23 +180,28 @@ class DistribuicaoInicial:
                              'percentual': float(empresa['percentual']), 'metas': {}, 'total': 0}
             total_empresa = Decimal('0')
             for mes in meses:
-                valor_mes = (mes['valor_siscor'] * (empresa['percentual'] / Decimal('100'))).quantize(Decimal('0.01'),
-                                                                                                      rounding=ROUND_HALF_UP)
+                valor_siscor_incrementado = mes['valor_siscor'] * self.incremento_meta
+                valor_mes = (valor_siscor_incrementado * (empresa['percentual'] / Decimal('100'))).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP)
                 empresa_metas['metas'][mes['competencia']] = float(valor_mes)
                 total_empresa += valor_mes
             empresa_metas['total'] = float(total_empresa)
             empresas_resultado.append(empresa_metas)
 
-        meses_resultado, total_geral = [], Decimal('0')
-        for mes in meses:
-            total_mes = sum(Decimal(str(empresa['metas'][mes['competencia']])) for empresa in empresas_resultado)
-            meses_resultado.append(
-                {'competencia': mes['competencia'], 'nome': mes['nome'], 'valor_siscor': float(mes['valor_siscor']),
-                 'total_mes': float(total_mes)})
-            total_geral += total_mes
+        totais_siscor = {mes['competencia']: mes['valor_siscor'] for mes in meses}
+        totais_meta_incrementada = {comp: val * self.incremento_meta for comp, val in totais_siscor.items()}
+        total_geral_siscor = sum(totais_siscor.values())
+        total_geral_incrementado = sum(totais_meta_incrementada.values())
 
-        return {'empresas': empresas_resultado, 'meses': meses_resultado,
-                'total_saldo_devedor': float(dados_saldo['total_saldo_devedor']), 'total_geral': float(total_geral)}
+        return {
+            'empresas': empresas_resultado,
+            'meses': meses,
+            'totais_siscor': {k: float(v) for k, v in totais_siscor.items()},
+            'totais_meta_incrementada': {k: float(v) for k, v in totais_meta_incrementada.items()},
+            'total_saldo_devedor': float(dados_saldo['total_saldo_devedor']),
+            'total_geral_siscor': float(total_geral_siscor),
+            'total_geral_incrementado': float(total_geral_incrementado)
+        }
 
     def salvar_distribuicao(self, dados_calculados=None):
         """
@@ -251,14 +242,19 @@ class DistribuicaoInicial:
 
                 # 2. Inserir os detalhes mensais na TB019
                 for competencia, valor_meta in empresa['metas'].items():
+                    # CORREÇÃO: Adicionadas as colunas ID_EDITAL e ID_PERIODO
                     sql_detalhe = text("""
                         INSERT INTO BDG.DCA_TB019_DISTRIBUICAO_MENSAL
-                        (ID_DISTRIBUICAO_SUMARIO, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
-                        VALUES (:id_sumario, :mes_competencia, :valor_meta, :created_at)
+                        (ID_DISTRIBUICAO_SUMARIO, ID_EDITAL, ID_PERIODO, ID_EMPRESA, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
+                        VALUES (:id_sumario, :id_edital, :id_periodo, :id_empresa, :mes_competencia, :valor_meta, :created_at)
                     """)
 
+                    # CORREÇÃO: Adicionados os parâmetros id_edital e id_periodo
                     db.session.execute(sql_detalhe, {
                         'id_sumario': id_sumario,
+                        'id_edital': self.edital_id,
+                        'id_periodo': self.periodo_business_id,
+                        'id_empresa': empresa['id_empresa'],
                         'mes_competencia': competencia,
                         'valor_meta': valor_meta,
                         'created_at': datetime.now()
@@ -266,7 +262,7 @@ class DistribuicaoInicial:
 
                     # 3. Manter a inserção na tabela original TB018 para compatibilidade
                     sql_original = text("""
-                        INSERT INTO BDG.DCA_TB016_METAS_REDISTRIBUIDAS_MENSAL
+                        INSERT INTO BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
                         (ID_EDITAL, ID_PERIODO, DT_REFERENCIA, ID_EMPRESA, NO_EMPRESA_ABREVIADA, 
                          VR_SALDO_DEVEDOR_DISTRIBUIDO, PERCENTUAL_SALDO_DEVEDOR, MES_COMPETENCIA, 
                          VR_META_MES, CREATED_AT)
