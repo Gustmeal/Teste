@@ -7,45 +7,17 @@ class ItemContaSucor(db.Model):
     __tablename__ = 'COR_TB008_PDG_ITEM_CONTA_SUCOR'
     __table_args__ = {'schema': 'BDG'}
 
-    ID_ITEM = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    CODIGO = db.Column(db.String(20), nullable=False)
+    # Chave primária composta por ID_ITEM, CODIGO e ANO.
+    ID_ITEM = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    CODIGO = db.Column(db.String(20), primary_key=True, nullable=False)
+    ANO = db.Column(db.Integer, primary_key=True, nullable=False)
+
+    # Colunas que não fazem parte da chave
     DSC_ARQUIVO = db.Column(db.String(255), nullable=True)
-    ANO = db.Column(db.Integer, nullable=False)
+    ARQUIVO7 = db.Column(db.Integer, nullable=True)
 
     def __repr__(self):
-        return f'<ItemContaSucor {self.ID_ITEM} - {self.CODIGO}>'
-
-    @staticmethod
-    def criar_vinculacao(codigo, dsc_arquivo, ano):
-        """
-        Método para criar vinculação usando SQL direto para contornar problema de auto-increment
-        """
-        try:
-            # Gerar próximo ID manualmente
-            ultimo_id = db.session.execute(
-                text("SELECT ISNULL(MAX(ID_ITEM), 0) FROM BDG.COR_TB008_PDG_ITEM_CONTA_SUCOR")
-            ).scalar()
-
-            novo_id = ultimo_id + 1
-
-            # Inserir com ID manual
-            sql = text("""
-                INSERT INTO BDG.COR_TB008_PDG_ITEM_CONTA_SUCOR 
-                (ID_ITEM, CODIGO, DSC_ARQUIVO, ANO) 
-                VALUES (:id_item, :codigo, :dsc_arquivo, :ano)
-            """)
-
-            db.session.execute(sql, {
-                'id_item': novo_id,
-                'codigo': codigo,
-                'dsc_arquivo': dsc_arquivo,
-                'ano': ano
-            })
-
-            return novo_id
-
-        except Exception as e:
-            raise e
+        return f'<ItemContaSucor {self.ID_ITEM} - {self.CODIGO} - {self.ANO}>'
 
 
 class DescricaoItensSiscor(db.Model):
@@ -61,12 +33,12 @@ class DescricaoItensSiscor(db.Model):
     @staticmethod
     def obter_itens_ordenados():
         """
-        Retorna lista de itens ordenados crescente por descrição
+        Retorna lista de itens ordenados crescente por ID_ITEM
         """
         try:
             itens = DescricaoItensSiscor.query.filter(
                 DescricaoItensSiscor.DSC_ITEM_ORCAMENTO.isnot(None)
-            ).order_by(DescricaoItensSiscor.DSC_ITEM_ORCAMENTO.asc()).all()
+            ).order_by(DescricaoItensSiscor.ID_ITEM.asc()).all()
             return itens
         except:
             return []

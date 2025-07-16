@@ -52,7 +52,8 @@ def selecionar_contratos_distribuiveis():
                         ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
                 WHERE
                     SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL
+                    AND SDJ.fkContratoSISCTR IS NULL 
+                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422,407)
                     -- Garantir que não haja duplicatas
                     AND NOT EXISTS (
                         SELECT 1 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D 

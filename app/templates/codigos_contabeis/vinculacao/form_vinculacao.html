@@ -9,15 +9,16 @@
         <div class="card shadow">
             <div class="card-header bg-primary text-white">
                 <h1 class="mb-0">
-                    {% if vinculacao %}Editar Vinculação{% else %}Nova Vinculação{% endif %}
+                    {% if edit_mode %}Editar Vinculação{% else %}Nova Vinculação{% endif %}
                 </h1>
             </div>
             <div class="card-body p-4">
-                <form method="POST" id="vinculacaoForm">
+                <form method="POST" id="vinculacaoForm"
+                      action="{{ url_for('vinculacao.editar_vinculacao', id_item=vinculacao.ID_ITEM, codigo=vinculacao.CODIGO, ano=vinculacao.ANO) if edit_mode else url_for('vinculacao.nova_vinculacao') }}">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Item Orçamentário <span class="text-danger">*</span></label>
-                            <select name="id_item_siscor" id="id_item_siscor" class="form-select searchable" required>
+                            <select name="id_item_siscor" id="id_item_siscor" class="form-select searchable" required {% if edit_mode %}disabled{% endif %}>
                                 <option value="">Selecione um item</option>
                                 {% for item in itens_siscor %}
                                     <option value="{{ item.ID_ITEM }}"
@@ -33,12 +34,12 @@
 
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Rubrica Orçamentária <span class="text-danger">*</span></label>
-                            <select name="codigo" id="codigo" class="form-select searchable" required>
+                            <select name="codigo" id="codigo" class="form-select searchable" required {% if edit_mode %}disabled{% endif %}>
                                 <option value="">Selecione uma rubrica orçamentária</option>
-                                {% for codigo in codigos_contabeis %}
-                                    <option value="{{ codigo.CODIGO }}"
-                                            {% if vinculacao and vinculacao.CODIGO == codigo.CODIGO %}selected{% endif %}>
-                                        {{ codigo.CODIGO }} - {{ codigo.DSC_CODIGO }}
+                                {% for codigo_item in codigos_contabeis %}
+                                    <option value="{{ codigo_item.CODIGO }}"
+                                            {% if vinculacao and vinculacao.CODIGO == codigo_item.CODIGO %}selected{% endif %}>
+                                        {{ codigo_item.CODIGO }} - {{ codigo_item.DSC_CODIGO }}
                                     </option>
                                 {% endfor %}
                             </select>
@@ -65,11 +66,24 @@
                             </div>
                         </div>
 
-                        <div class="col-md-6 mb-4">
+                        <div class="col-md-6 mb-3">
                             <label class="form-label">Ano <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" name="ano"
                                    value="{{ vinculacao.ANO if vinculacao else ano_atual }}"
-                                   min="2000" max="{{ current_year + 5 }}" required>
+                                   min="2000" max="{{ current_year + 5 }}" required {% if edit_mode %}disabled{% endif %}>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <label class="form-label">ARQUIVO7</label>
+                            <select name="arquivo7" id="arquivo7" class="form-select">
+                                <option value="">Nenhum</option>
+                                <option value="1" {% if vinculacao and vinculacao.ARQUIVO7 == 1 %}selected{% endif %}>1</option>
+                            </select>
+                            <div class="form-text">
+                                Selecione 1 para marcar ou Nenhum para deixar vazio
+                            </div>
                         </div>
                     </div>
 
@@ -78,7 +92,7 @@
                             Cancelar
                         </a>
                         <button type="submit" class="btn btn-success submit-btn">
-                            <span class="btn-text">{% if vinculacao %}Salvar{% else %}Criar{% endif %}</span>
+                            <span class="btn-text">{% if edit_mode %}Salvar Alterações{% else %}Criar Vinculação{% endif %}</span>
                             <span class="spinner d-none">
                                 <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
                                 Processando...
@@ -96,83 +110,15 @@
 
     <!-- CSS customizado para Select2 -->
     <style>
-        .select2-container {
-            width: 100% !important;
-        }
-
-        .select2-container .select2-selection--single {
-            height: 38px;
-            border: 1px solid #ced4da;
-            border-radius: 0.375rem;
-        }
-
-        .select2-container .select2-selection--single .select2-selection__rendered {
-            line-height: 36px;
-            padding-left: 12px;
-            color: #495057;
-        }
-
-        .select2-container .select2-selection--single .select2-selection__arrow {
-            height: 36px;
-            right: 10px;
-        }
-
-        .select2-dropdown {
-            border: 1px solid #ced4da;
-            border-radius: 0.375rem;
-        }
-
-        .select2-search--dropdown .select2-search__field {
-            border: 1px solid #ced4da;
-            border-radius: 0.375rem;
-            padding: 8px 12px;
-        }
-
-        .select2-results__option--highlighted {
-            background-color: var(--primary-color) !important;
-        }
+        .select2-container{width:100%!important}.select2-container .select2-selection--single{height:38px;border:1px solid #ced4da;border-radius:.375rem}.select2-container .select2-selection--single .select2-selection__rendered{line-height:36px;padding-left:12px;color:#495057}.select2-container .select2-selection--single .select2-selection__arrow{height:36px;right:10px}.select2-container--disabled .select2-selection--single{background-color:#e9ecef;cursor:not-allowed}.select2-dropdown{border:1px solid #ced4da;border-radius:.375rem}.select2-search--dropdown .select2-search__field{border:1px solid #ced4da;border-radius:.375rem;padding:8px 12px}.select2-results__option--highlighted{background-color:var(--primary-color)!important}
     </style>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('vinculacaoForm');
-
-            // Inicializar Select2 nos campos searchable
-            $('#id_item_siscor').select2({
-                placeholder: 'Digite para pesquisar item SISCOR...',
-                allowClear: true,
-                language: {
-                    noResults: function() {
-                        return "Nenhum item encontrado";
-                    },
-                    searching: function() {
-                        return "Pesquisando...";
-                    }
-                }
-            });
-
-            $('#codigo').select2({
-                placeholder: 'Digite para pesquisar código contábil...',
-                allowClear: true,
-                language: {
-                    noResults: function() {
-                        return "Nenhum código encontrado";
-                    },
-                    searching: function() {
-                        return "Pesquisando...";
-                    }
-                }
-            });
-
-            form.addEventListener('submit', function(e) {
-                const submitBtn = this.querySelector('.submit-btn');
-                const btnText = submitBtn.querySelector('.btn-text');
-                const spinner = submitBtn.querySelector('.spinner');
-
-                btnText.classList.add('d-none');
-                spinner.classList.remove('d-none');
-                submitBtn.disabled = true;
-            });
+            $('#id_item_siscor').select2({placeholder:'Digite para pesquisar item SISCOR...',allowClear:true,language:{noResults:function(){return"Nenhum item encontrado"},searching:function(){return"Pesquisando..."}}});
+            $('#codigo').select2({placeholder:'Digite para pesquisar código contábil...',allowClear:true,language:{noResults:function(){return"Nenhum código encontrado"},searching:function(){return"Pesquisando..."}}});
+            form.addEventListener('submit',function(e){const t=this.querySelector('.submit-btn'),n=t.querySelector('.btn-text'),s=t.querySelector('.spinner');n.classList.add('d-none'),s.classList.remove('d-none'),t.disabled=!0});
         });
     </script>
 {% endblock %}

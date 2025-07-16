@@ -149,7 +149,8 @@ def selecionar_contratos():
                         ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
                 WHERE
                     SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL""")
+                    AND SDJ.fkContratoSISCTR IS NULL
+                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422,407)""")
 
                 connection.execute(insert_sql)
 

@@ -1,20 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <a href="{{ url_for('vinculacao.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
-    <h1 class="mb-4">Vinculações SISCOR</h1>
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-link me-2"></i> Vinculações SISCOR
+        </h1>
+        <a href="{{ url_for('vinculacao.nova_vinculacao') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i> Nova Vinculação
+        </a>
+    </div>
 
     <!-- Filtros -->
     <div class="card mb-4">
         <div class="card-body">
-            <form method="get" action="{{ url_for('vinculacao.lista_vinculacoes') }}">
-                <div class="row g-3">
-                    <div class="col-md-3">
-                        <label for="ano" class="form-label">Ano</label>
+            <form method="GET" action="{{ url_for('vinculacao.lista_vinculacoes') }}">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Ano</label>
                         <select name="ano" id="ano" class="form-select">
                             <option value="">Todos os anos</option>
                             {% for ano in anos_disponiveis %}
@@ -24,8 +27,8 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label for="codigo" class="form-label">Código</label>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Código</label>
                         <select name="codigo" id="codigo" class="form-select">
                             <option value="">Todos os códigos</option>
                             {% for codigo in codigos_disponiveis %}
@@ -35,8 +38,8 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label for="arquivo" class="form-label">Arquivo</label>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Arquivo</label>
                         <select name="arquivo" id="arquivo" class="form-select">
                             <option value="">Todos os arquivos</option>
                             {% for arquivo in arquivos_disponiveis %}
@@ -75,24 +78,32 @@
                         <th>Código</th>
                         <th>Arquivo</th>
                         <th class="text-center">Ano</th>
+                        <th class="text-center">ARQUIVO7</th>
                         <th class="text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for vinculacao in vinculacoes %}
-                    <tr data-id="{{ vinculacao.id_item }}">
-                        <td class="fw-bold">{{ vinculacao.id_item }}</td>
+                    <tr data-id="{{ vinculacao.ID_ITEM }}-{{ vinculacao.CODIGO }}-{{ vinculacao.ANO }}">
+                        <td class="fw-bold">{{ vinculacao.ID_ITEM }}</td>
                         <td>{{ vinculacao.dsc_item_orcamento }}</td>
-                        <td>{{ vinculacao.codigo }}</td>
-                        <td>{{ vinculacao.dsc_arquivo or '-' }}</td>
-                        <td class="text-center">{{ vinculacao.ano }}</td>
+                        <td>{{ vinculacao.CODIGO }}</td>
+                        <td>{{ vinculacao.DSC_ARQUIVO or '-' }}</td>
+                        <td class="text-center">{{ vinculacao.ANO }}</td>
                         <td class="text-center">
-                            <a href="{{ url_for('vinculacao.editar_vinculacao', id=vinculacao.id_item) }}"
+                            {% if vinculacao.ARQUIVO7 == 1 %}
+                                <span class="badge bg-success">1</span>
+                            {% else %}
+                                <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('vinculacao.editar_vinculacao', id_item=vinculacao.ID_ITEM, codigo=vinculacao.CODIGO, ano=vinculacao.ANO) }}"
                                class="btn btn-sm btn-outline-primary me-1" title="Editar">
                                 <i class="fas fa-edit"></i>
                             </a>
                             <a href="javascript:void(0);"
-                               onclick="confirmarExclusao({{ vinculacao.id_item }}, '{{ vinculacao.codigo }}');"
+                               onclick="confirmarExclusao({{ vinculacao.ID_ITEM }}, '{{ vinculacao.CODIGO }}', {{ vinculacao.ANO }});"
                                class="btn btn-sm btn-outline-warning" title="Remover Vinculação">
                                 <i class="fas fa-unlink"></i>
                             </a>
@@ -100,7 +111,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center py-4 text-muted">
+                        <td colspan="7" class="text-center py-4 text-muted">
                             <i class="fas fa-inbox fa-2x mb-3"></i>
                             <p class="mb-0">Nenhuma vinculação cadastrada</p>
                         </td>
@@ -141,34 +152,32 @@
 {% block scripts %}
 {{ super() }}
 <script>
-    let vinculacaoIdParaExcluir = null;
+    let idParaExcluir = null;
+    let codigoParaExcluir = null;
+    let anoParaExcluir = null;
 
-    // Função para pesquisar na tabela
     document.getElementById('vinculacoesSearch').addEventListener('keyup', function(e) {
         const searchTerm = e.target.value.toLowerCase();
         const rows = document.querySelectorAll('#vinculacoesTable tbody tr');
-
         rows.forEach(row => {
             if (row.querySelector('.text-muted')) return;
-
             const text = row.textContent.toLowerCase();
             row.style.display = text.includes(searchTerm) ? '' : 'none';
         });
     });
 
-    // Função para abrir modal de confirmação
-    function confirmarExclusao(id, codigo) {
-        vinculacaoIdParaExcluir = id;
-        document.getElementById('vinculacaoInfo').textContent = codigo;
-
+    function confirmarExclusao(id_item, codigo, ano) {
+        idParaExcluir = id_item;
+        codigoParaExcluir = codigo;
+        anoParaExcluir = ano;
+        document.getElementById('vinculacaoInfo').textContent = `${codigo} (Item: ${id_item}, Ano: ${ano})`;
         const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
         modal.show();
     }
 
-    // Confirmar exclusão
     document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('btnConfirmarExclusao').addEventListener('click', function() {
-            if (!vinculacaoIdParaExcluir) return;
+            if (!idParaExcluir || !codigoParaExcluir || !anoParaExcluir) return;
 
             const modal = bootstrap.Modal.getInstance(document.getElementById('confirmarExclusaoModal'));
             const btnConfirmar = this;
@@ -179,8 +188,9 @@
             spinner.classList.remove('d-none');
             btnConfirmar.disabled = true;
 
-            // Fazer a requisição AJAX para remover a vinculação
-            fetch(`/codigos-contabeis/vinculacao/excluir/${vinculacaoIdParaExcluir}`, {
+            const url = `/codigos-contabeis/vinculacao/excluir/${idParaExcluir}/${encodeURIComponent(codigoParaExcluir)}/${anoParaExcluir}`;
+
+            fetch(url, {
                 method: 'POST',
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -190,33 +200,15 @@
             .then(response => response.json())
             .then(data => {
                 modal.hide();
-
                 if (data.success) {
-                    // Remover a linha da tabela com animação
-                    const row = document.querySelector(`tr[data-id="${vinculacaoIdParaExcluir}"]`);
+                    const rowId = `${idParaExcluir}-${codigoParaExcluir}-${anoParaExcluir}`;
+                    const row = document.querySelector(`tr[data-id="${rowId}"]`);
                     if (row) {
                         row.style.transition = 'all 0.5s';
                         row.style.opacity = '0';
                         row.style.transform = 'translateX(20px)';
-
-                        setTimeout(() => {
-                            row.remove();
-
-                            // Verificar se a tabela ficou vazia
-                            const tbody = document.querySelector('#vinculacoesTable tbody');
-                            if (tbody.childElementCount === 0) {
-                                const emptyRow = document.createElement('tr');
-                                emptyRow.innerHTML = `
-                                    <td colspan="6" class="text-center py-4 text-muted">
-                                        <i class="fas fa-inbox fa-2x mb-3"></i>
-                                        <p class="mb-0">Nenhuma vinculação cadastrada</p>
-                                    </td>
-                                `;
-                                tbody.appendChild(emptyRow);
-                            }
-                        }, 500);
+                        setTimeout(() => row.remove(), 500);
                     }
-
                     showToast(data.message || 'Vinculação removida com sucesso!', 'success');
                 } else {
                     showToast(data.message || 'Erro ao remover vinculação', 'danger');
@@ -224,7 +216,7 @@
             })
             .catch(error => {
                 console.error('Erro:', error);
-                showToast('Erro ao processar a solicitação.', 'danger');
+                showToast('Erro ao processar solicitação', 'danger');
             })
             .finally(() => {
                 btnText.classList.remove('d-none');
@@ -233,5 +225,22 @@
             });
         });
     });
+
+    function showToast(message, type = 'success') {
+        const toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+        toastContainer.innerHTML = `
+            <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(toastContainer);
+        const toast = new bootstrap.Toast(toastContainer.querySelector('.toast'));
+        toast.show();
+        toastContainer.addEventListener('hidden.bs.toast', () => toastContainer.remove());
+    }
 </script>
 {% endblock %}
