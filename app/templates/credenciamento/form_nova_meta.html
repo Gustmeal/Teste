@@ -234,6 +234,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function exibirResultadoDistribuicao(resultado) {
+        // Armazenar resultado para exportação
+        window.ultimoResultadoDistribuicao = resultado;
+
         const incrementoPercentual = ((resultado.incremento_meta - 1) * 100).toFixed(2);
         let html = `
             <div class="card border-primary border-2 mt-4">
@@ -298,6 +301,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button type="button" class="btn btn-success btn-lg" onclick="salvarDistribuicao()">
                             <i class="fas fa-save me-2"></i> Salvar Distribuição
                         </button>
+                        <button type="button" class="btn btn-info btn-lg" onclick="exportarExcel()">
+                            <i class="fas fa-file-excel me-2"></i> Exportar Excel
+                        </button>
                         <button type="button" class="btn btn-secondary btn-lg" onclick="location.reload()">
                             <i class="fas fa-redo me-2"></i> Nova Distribuição
                         </button>
@@ -341,6 +347,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Erro ao salvar:', error);
             });
         }
+    };
+
+    window.exportarExcel = function() {
+        // Pegar o resultado armazenado
+        fetch('/credenciamento/metas/exportar-distribuicao-excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                resultado: window.ultimoResultadoDistribuicao
+            })
+        })
+        .then(response => {
+            if (response.ok) {
+                return response.blob();
+            } else {
+                throw new Error('Erro ao exportar');
+            }
+        })
+        .then(blob => {
+            // Criar link temporário para download
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `distribuicao_metas_${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            showToast('Arquivo Excel exportado com sucesso!', 'success');
+        })
+        .catch(error => {
+            showToast('Erro ao exportar Excel', 'danger');
+            console.error('Erro:', error);
+        });
     };
 });
 </script>

@@ -667,3 +667,132 @@ def buscar_periodos_por_edital():
         return jsonify(periodos_json)
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
+
+@meta_bp.route('/metas/exportar-distribuicao-excel', methods=['POST'])
+@login_required
+def exportar_distribuicao_excel():
+    """Exporta a distribuição calculada para Excel"""
+    try:
+        import io
+        import pandas as pd
+        from flask import send_file
+
+        data = request.json
+        resultado = data['resultado']
+
+        # Preparar dados para o DataFrame
+        dados_excel = []
+
+        # Adicionar dados das empresas
+        for empresa in resultado['empresas']:
+            linha = {
+                'Empresa': empresa['nome'],
+                'Saldo Devedor': empresa['saldo_devedor'],
+                'Percentual': empresa['percentual']
+            }
+
+            # Adicionar colunas dos meses
+            for mes in resultado['meses']:
+                linha[f"{mes['nome']}/{mes['competencia'].split('-')[0]}"] = empresa['metas'][mes['competencia']]
+
+            linha['Total Meta'] = empresa['total']
+            dados_excel.append(linha)
+
+        # Adicionar linha de total SISCOR
+        linha_siscor = {
+            'Empresa': 'TOTAL SISCOR (100%)',
+            'Saldo Devedor': resultado['total_saldo_devedor'],
+            'Percentual': 100.0
+        }
+        for mes in resultado['meses']:
+            linha_siscor[f"{mes['nome']}/{mes['competencia'].split('-')[0]}"] = resultado['totais_siscor'][
+                mes['competencia']]
+        linha_siscor['Total Meta'] = resultado['total_geral_siscor']
+        dados_excel.append(linha_siscor)
+
+        # Adicionar linha de total com incremento
+        incremento_perc = resultado['incremento_meta'] * 100
+        linha_incremento = {
+            'Empresa': f'TOTAL META ({incremento_perc:.0f}%)',
+            'Saldo Devedor': resultado['total_saldo_devedor'],
+            'Percentual': 100.0
+        }
+        for mes in resultado['meses']:
+            linha_incremento[f"{mes['nome']}/{mes['competencia'].split('-')[0]}"] = \
+            resultado['totais_meta_incrementada'][mes['competencia']]
+        linha_incremento['Total Meta'] = resultado['total_geral_incrementado']
+        dados_excel.append(linha_incremento)
+
+        # Criar DataFrame
+        df = pd.DataFrame(dados_excel)
+
+        # Criar arquivo Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Distribuição de Metas', index=False)
+
+            # Obter workbook e worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Distribuição de Metas']
+
+            # Formatar cabeçalho
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'center',
+                'fg_color': '#6c63ff',
+                'font_color': 'white',
+                'border': 1
+            })
+
+            # Formatar valores monetários
+            money_format = workbook.add_format({
+                'num_format': 'R$ #,##0.00',
+                'border': 1
+            })
+
+            # Formatar percentual
+            percent_format = workbook.add_format({
+                'num_format': '0.00000000%',
+                'border': 1
+            })
+
+            # Aplicar formatação
+            for idx, col in enumerate(df.columns):
+                worksheet.write(0, idx, col, header_format)
+
+                # Ajustar largura das colunas
+                if col == 'Empresa':
+                    worksheet.set_column(idx, idx, 40)
+                elif col in ['Saldo Devedor', 'Total Meta'] or '/' in col:
+                    worksheet.set_column(idx, idx, 15)
+                    # Aplicar formato monetário
+                    for row in range(1, len(df) + 1):
+                        if col != 'Percentual':
+                            worksheet.write(row, idx, df.iloc[row - 1][col], money_format)
+                elif col == 'Percentual':
+                    worksheet.set_column(idx, idx, 12)
+                    # Aplicar formato percentual
+                    for row in range(1, len(df) - 2 + 1):  # Não aplicar nas linhas de total
+                        worksheet.write(row, idx, df.iloc[row - 1][col] / 100, percent_format)
+
+        output.seek(0)
+
+        # Gerar nome do arquivo
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        periodo_info = resultado.get('periodo_info', 'periodo')
+        filename = f'distribuicao_metas_{periodo_info.replace(" ", "_")}_{timestamp}.xlsx'
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': str(e)}), 500
