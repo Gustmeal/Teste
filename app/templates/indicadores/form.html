@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <a href="{{ url_for('indicador.index') }}" class="btn btn-back mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-plus-circle me-2"></i>
+                        Incluir Indicador
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="formIndicador">
+                        <!-- Seleção de Período -->
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label for="mes" class="form-label">Mês de Referência</label>
+                                <select class="form-select" id="mes" name="mes" required>
+                                    <option value="">Selecione o mês</option>
+                                    {% for valor, nome in meses %}
+                                    <option value="{{ valor }}" {% if valor == mes_atual %}selected{% endif %}>
+                                        {{ nome }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="ano" class="form-label">Ano de Referência</label>
+                                <select class="form-select" id="ano" name="ano" required>
+                                    <option value="">Selecione o ano</option>
+                                    {% for ano in anos %}
+                                    <option value="{{ ano }}" {% if ano == ano_atual %}selected{% endif %}>
+                                        {{ ano }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Seleção de Indicador -->
+                        <div class="mb-4">
+                            <label for="indicador" class="form-label">Indicador</label>
+                            <select class="form-select" id="indicador" name="indicador" required>
+                                <option value="">Selecione o indicador</option>
+                                {% for ind in indicadores %}
+                                <option value="{{ ind.SG_INDICADOR }}">
+                                    {{ ind.SG_INDICADOR }} - {{ ind.DSC_INDICADOR }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Container para as variáveis -->
+                        <div id="variaveisContainer" style="display: none;">
+                            <hr class="my-4">
+                            <h5 class="mb-3">Variáveis do Indicador</h5>
+                            <div id="variaveisContent">
+                                <!-- Conteúdo será preenchido dinamicamente -->
+                            </div>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-success" id="btnSalvar" disabled>
+                                <i class="fas fa-save me-2"></i>Salvar
+                            </button>
+                            <a href="{{ url_for('indicador.index') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectIndicador = document.getElementById('indicador');
+    const variaveisContainer = document.getElementById('variaveisContainer');
+    const variaveisContent = document.getElementById('variaveisContent');
+    const btnSalvar = document.getElementById('btnSalvar');
+
+    selectIndicador.addEventListener('change', async function() {
+        const sgIndicador = this.value;
+
+        if (!sgIndicador) {
+            variaveisContainer.style.display = 'none';
+            btnSalvar.disabled = true;
+            return;
+        }
+
+        try {
+            // Buscar variáveis do indicador selecionado
+            const response = await fetch(`{{ url_for('indicador.get_variaveis', sg_indicador='_sg_') }}`.replace('_sg_', sgIndicador));
+            const data = await response.json();
+
+            if (response.ok) {
+                // Limpar conteúdo anterior
+                variaveisContent.innerHTML = '';
+
+                // Criar campos para cada variável
+                data.variaveis.forEach(variavel => {
+                    const varDiv = document.createElement('div');
+                    varDiv.className = 'card mb-3';
+                    varDiv.innerHTML = `
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-1 text-center">
+                                    <span class="badge bg-primary fs-6">${variavel.variavel}</span>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label mb-1">Nome da Variável</label>
+                                    <input type="text" class="form-control-plaintext"
+                                           value="${variavel.nome}" readonly>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">Fonte</label>
+                                    <input type="text" class="form-control-plaintext"
+                                           value="${variavel.fonte}" readonly>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label mb-1">Valor</label>
+                                    <input type="text" class="form-control"
+                                           name="valor_${variavel.variavel}"
+                                           placeholder="0,00"
+                                           required>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    variaveisContent.appendChild(varDiv);
+                });
+
+                // Mostrar container e habilitar botão
+                variaveisContainer.style.display = 'block';
+                btnSalvar.disabled = false;
+
+                // Aplicar máscara monetária nos campos de valor
+                aplicarMascaraMonetaria();
+
+            } else {
+                alert('Erro ao buscar variáveis do indicador');
+                variaveisContainer.style.display = 'none';
+                btnSalvar.disabled = true;
+            }
+        } catch (error) {
+            console.error('Erro:', error);
+            alert('Erro ao buscar variáveis do indicador');
+            variaveisContainer.style.display = 'none';
+            btnSalvar.disabled = true;
+        }
+    });
+
+    // Função para aplicar máscara monetária
+    function aplicarMascaraMonetaria() {
+        const inputs = variaveisContent.querySelectorAll('input[name^="valor_"]');
+        inputs.forEach(input => {
+            input.addEventListener('input', function(e) {
+                let value = e.target.value.replace(/\D/g, '');
+                value = (value / 100).toFixed(2).replace('.', ',');
+                e.target.value = value;
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

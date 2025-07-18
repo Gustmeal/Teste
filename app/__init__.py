@@ -78,6 +78,9 @@ def create_app():
     from app.routes.chat_routes import chat_bp
     app.register_blueprint(chat_bp)
 
+    from app.routes.indicador_routes import indicador_bp
+    app.register_blueprint(indicador_bp)
+
     # Registrar o blueprint do conversor de documentos
     from app.routes.converter_routes import converter_bp
     app.register_blueprint(converter_bp)

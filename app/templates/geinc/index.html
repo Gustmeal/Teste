@@ -26,7 +26,7 @@
             </div>
         </div>
 
-        <!-- NOVO Card para SUMOV -->
+        <!-- Card para SUMOV -->
         <div class="col-md-4">
             <div class="card home-card shadow h-100 d-flex flex-column">
                 <div class="card-body d-flex flex-column text-center p-4">
@@ -46,7 +46,7 @@
             </div>
         </div>
 
-        <!-- NOVO Card para Códigos Contábeis -->
+        <!-- Card para Códigos Contábeis -->
         <div class="col-md-4">
             <div class="card home-card shadow h-100 d-flex flex-column">
                 <div class="card-body d-flex flex-column text-center p-4">
@@ -60,6 +60,26 @@
                     <a href="#"
                        class="btn btn-access"
                        onclick="verificarAcesso('codigos_contabeis', '{{ url_for('codigo_contabil.index') }}'); return false;">
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card para Indicadores -->
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon indicators-color mx-auto">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3 class="system-title">Indicadores</h3>
+                    <p class="text-muted mb-4">
+                        Sistema de gestão de indicadores e variáveis para acompanhamento de desempenho organizacional.
+                    </p>
+                    <a href="#"
+                       class="btn btn-access"
+                       onclick="verificarAcesso('indicadores', '{{ url_for('indicador.index') }}'); return false;">
                         <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
                     </a>
                 </div>
@@ -170,6 +190,14 @@ function verificarAcesso(sistema, url) {
 
     .codes-color {
         background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+
+    .indicators-color {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+
+    .export-color {
+        background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
     }
 
     .system-title {

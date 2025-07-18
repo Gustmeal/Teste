@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-chart-line text-primary me-2"></i>
+            Indicadores
+        </h1>
+        <a href="{{ url_for('indicador.novo') }}" class="btn btn-success">
+            <i class="fas fa-plus me-2"></i>Incluir Indicador
+        </a>
+    </div>
+
+    {% if registros_agrupados %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Data Referência</th>
+                            <th>Indicador</th>
+                            <th>Qtd. Variáveis</th>
+                            <th>Responsável</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for (dt_ref, indicador), registros in registros_agrupados.items() %}
+                        <tr>
+                            <td>{{ dt_ref.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ indicador }}</td>
+                            <td>{{ registros|length }}</td>
+                            <td>{{ registros[0].RESPONSAVEL_INCLUSAO }}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-info" onclick="verDetalhes('{{ dt_ref }}', '{{ indicador }}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <a href="{{ url_for('indicador.editar', dt_ref=dt_ref, indicador=indicador) }}"
+                                   class="btn btn-sm btn-warning">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao('{{ dt_ref }}', '{{ indicador }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Detalhes -->
+    <div class="modal fade" id="modalDetalhes" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Detalhes do Indicador</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="conteudoDetalhes">
+                    <!-- Conteúdo será carregado via JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Exclusão -->
+    <div class="modal fade" id="modalExcluir" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirmar Exclusão</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Tem certeza que deseja excluir este indicador e todas as suas variáveis?</p>
+                    <p class="text-muted">Esta ação não pode ser desfeita.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhum indicador cadastrado.
+        <a href="{{ url_for('indicador.novo') }}">Clique aqui</a> para incluir o primeiro.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Armazenar dados dos registros para exibição
+const registrosData = {
+    {% for (dt_ref, indicador), registros in registros_agrupados.items() %}
+    '{{ dt_ref }}_{{ indicador }}': [
+        {% for reg in registros %}
+        {
+            variavel: {{ reg.VARIAVEL }},
+            nome: '{{ reg.NO_VARIAVEL }}',
+            fonte: '{{ reg.FONTE }}',
+            valor: {{ reg.VR_VARIAVEL or 0 }}
+        },
+        {% endfor %}
+    ],
+    {% endfor %}
+};
+
+function verDetalhes(dtRef, indicador) {
+    const chave = `${dtRef}_${indicador}`;
+    const registros = registrosData[chave];
+
+    if (!registros) return;
+
+    let html = `
+        <h6 class="mb-3">Data Referência: ${formatarData(dtRef)}</h6>
+        <h6 class="mb-3">Indicador: ${indicador}</h6>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Variável</th>
+                        <th>Nome</th>
+                        <th>Fonte</th>
+                        <th class="text-end">Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    registros.forEach(reg => {
+        html += `
+            <tr>
+                <td class="text-center">${reg.variavel}</td>
+                <td>${reg.nome}</td>
+                <td>${reg.fonte}</td>
+                <td class="text-end">${formatarNumero(reg.valor)}</td>
+            </tr>
+        `;
+    });
+
+    html += '</tbody></table></div>';
+
+    document.getElementById('conteudoDetalhes').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+}
+
+function confirmarExclusao(dtRef, indicador) {
+    const url = `{{ url_for('indicador.excluir', dt_ref='_dt_ref_', indicador='_indicador_') }}`
+        .replace('_dt_ref_', dtRef)
+        .replace('_indicador_', indicador);
+
+    document.getElementById('btnConfirmarExclusao').href = url;
+    new bootstrap.Modal(document.getElementById('modalExcluir')).show();
+}
+
+function formatarData(data) {
+    const [ano, mes, dia] = data.split('-');
+    return `${dia}/${mes}/${ano}`;
+}
+
+function formatarNumero(valor) {
+    return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+</script>
+{% endblock %}
