@@ -56,6 +56,9 @@
                             </select>
                         </div>
 
+                        <!-- Container para mensagem de aviso -->
+                        <div id="mensagemAvisoContainer"></div>
+
                         <!-- Container para as variáveis -->
                         <div id="variaveisContainer" style="display: none;">
                             <hr class="my-4">
@@ -83,31 +86,65 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const selectMes = document.getElementById('mes');
+    const selectAno = document.getElementById('ano');
     const selectIndicador = document.getElementById('indicador');
     const variaveisContainer = document.getElementById('variaveisContainer');
     const variaveisContent = document.getElementById('variaveisContent');
+    const mensagemAvisoContainer = document.getElementById('mensagemAvisoContainer');
     const btnSalvar = document.getElementById('btnSalvar');
 
-    selectIndicador.addEventListener('change', async function() {
-        const sgIndicador = this.value;
+    // Adiciona event listeners para os 3 campos de seleção
+    selectMes.addEventListener('change', buscarVariaveis);
+    selectAno.addEventListener('change', buscarVariaveis);
+    selectIndicador.addEventListener('change', buscarVariaveis);
 
-        if (!sgIndicador) {
+    async function buscarVariaveis() {
+        const mes = selectMes.value;
+        const ano = selectAno.value;
+        const sgIndicador = selectIndicador.value;
+
+        // Limpa tudo se algum campo não estiver preenchido
+        if (!mes || !ano || !sgIndicador) {
             variaveisContainer.style.display = 'none';
+            mensagemAvisoContainer.innerHTML = '';
             btnSalvar.disabled = true;
             return;
         }
 
         try {
-            // Buscar variáveis do indicador selecionado
-            const response = await fetch(`{{ url_for('indicador.get_variaveis', sg_indicador='_sg_') }}`.replace('_sg_', sgIndicador));
+            // Monta a URL da API com os parâmetros de mês e ano
+            const url = `{{ url_for('indicador.get_variaveis', sg_indicador='_sg_') }}`
+                .replace('_sg_', sgIndicador) + `?mes=${mes}&ano=${ano}`;
+
+            const response = await fetch(url);
             const data = await response.json();
 
-            if (response.ok) {
-                // Limpar conteúdo anterior
-                variaveisContent.innerHTML = '';
+            // Limpa conteúdo anterior
+            variaveisContent.innerHTML = '';
+            mensagemAvisoContainer.innerHTML = '';
 
-                // Criar campos para cada variável
+            if (response.ok) {
+                // Se o indicador já existe para a data, mostra aviso e desabilita campos
+                if (data.ja_existe) {
+                    const aviso = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Este indicador já possui valores para o período selecionado. Para alterá-los,
+                            <a href="{{ url_for('indicador.index') }}" class="alert-link">vá para a tela de edição</a>.
+                        </div>
+                    `;
+                    mensagemAvisoContainer.innerHTML = aviso;
+                    btnSalvar.disabled = true;
+                } else {
+                    btnSalvar.disabled = false;
+                }
+
+                // Cria campos para cada variável
                 data.variaveis.forEach(variavel => {
+                    const isReadonly = data.ja_existe;
+                    const valor = variavel.valor || '0,00';
+
                     const varDiv = document.createElement('div');
                     varDiv.className = 'card mb-3';
                     varDiv.innerHTML = `
@@ -128,10 +165,11 @@ document.addEventListener('DOMContentLoaded', function() {
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label mb-1">Valor</label>
-                                    <input type="text" class="form-control"
+                                    <input type="text" class="form-control ${isReadonly ? 'form-control-plaintext' : ''}"
                                            name="valor_${variavel.variavel}"
+                                           value="${valor}"
                                            placeholder="0,00"
-                                           required>
+                                           ${isReadonly ? 'readonly' : 'required'}>
                                 </div>
                             </div>
                         </div>
@@ -139,25 +177,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     variaveisContent.appendChild(varDiv);
                 });
 
-                // Mostrar container e habilitar botão
+                // Mostrar container
                 variaveisContainer.style.display = 'block';
-                btnSalvar.disabled = false;
 
-                // Aplicar máscara monetária nos campos de valor
-                aplicarMascaraMonetaria();
+                // Aplicar máscara monetária apenas se os campos não forem readonly
+                if (!data.ja_existe) {
+                    aplicarMascaraMonetaria();
+                }
 
             } else {
-                alert('Erro ao buscar variáveis do indicador');
+                alert('Erro ao buscar variáveis do indicador: ' + (data.erro || 'Erro desconhecido'));
                 variaveisContainer.style.display = 'none';
                 btnSalvar.disabled = true;
             }
         } catch (error) {
             console.error('Erro:', error);
-            alert('Erro ao buscar variáveis do indicador');
+            alert('Ocorreu um erro na comunicação com o servidor.');
             variaveisContainer.style.display = 'none';
             btnSalvar.disabled = true;
         }
-    });
+    }
 
     // Função para aplicar máscara monetária
     function aplicarMascaraMonetaria() {

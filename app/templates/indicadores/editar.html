@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <a href="{{ url_for('indicador.index') }}" class="btn btn-back mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">
+                        <i class="fas fa-edit me-2"></i>
+                        Editar Indicador
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="mb-4">
+                        <h6>Data Referência: {{ dt_referencia.strftime('%d/%m/%Y') }}</h6>
+                        <h6>Indicador: {{ indicador }}</h6>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('indicador.atualizar') }}">
+                        <input type="hidden" name="dt_referencia" value="{{ dt_referencia }}">
+                        <input type="hidden" name="indicador" value="{{ indicador }}">
+
+                        <div class="row">
+                            {% for reg in registros %}
+                            <div class="col-12 mb-3">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <div class="row align-items-center">
+                                            <div class="col-md-1 text-center">
+                                                <span class="badge bg-primary fs-6">{{ reg.VARIAVEL }}</span>
+                                            </div>
+                                            <div class="col-md-5">
+                                                <label class="form-label mb-1">Nome da Variável</label>
+                                                <input type="text" class="form-control-plaintext"
+                                                       value="{{ reg.NO_VARIAVEL }}" readonly>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label mb-1">Fonte</label>
+                                                <input type="text" class="form-control-plaintext"
+                                                       value="{{ reg.FONTE }}" readonly>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label mb-1">Valor</label>
+                                                <input type="text" class="form-control"
+                                                       name="valor_{{ reg.VARIAVEL }}"
+                                                       value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL or 0).replace('.', ',') }}"
+                                                       required>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-save me-2"></i>Atualizar
+                            </button>
+                            <a href="{{ url_for('indicador.index') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Aplicar máscara monetária nos campos
+document.addEventListener('DOMContentLoaded', function() {
+    const inputs = document.querySelectorAll('input[name^="valor_"]');
+    inputs.forEach(input => {
+        input.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            value = (value / 100).toFixed(2).replace('.', ',');
+            e.target.value = value;
+        });
+    });
+});
+</script>
+{% endblock %}

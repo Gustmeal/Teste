@@ -4,7 +4,7 @@ from app import db
 from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador
 from app.utils.audit import registrar_log
 from datetime import datetime, date
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, not_
 from calendar import monthrange
 from decimal import Decimal
 
@@ -20,8 +20,10 @@ def inject_current_year():
 @login_required
 def index():
     """Página principal do sistema de indicadores"""
-    # Buscar todos os registros ordenados por data e indicador
-    registros = IndicadorFormula.query.order_by(
+    # Buscar todos os registros, exceto os de 'BDG', ordenados por data e indicador
+    registros = IndicadorFormula.query.filter(
+        not_(IndicadorFormula.RESPONSAVEL_INCLUSAO == 'BDG')
+    ).order_by(
         IndicadorFormula.DT_REFERENCIA.desc(),
         IndicadorFormula.INDICADOR,
         IndicadorFormula.VARIAVEL
@@ -147,7 +149,7 @@ def novo():
 @indicador_bp.route('/indicadores/api/variaveis/<string:sg_indicador>')
 @login_required
 def get_variaveis(sg_indicador):
-    """API para buscar variáveis de um indicador"""
+    """API para buscar variáveis de um indicador e verificar dados existentes."""
     # Buscar código do indicador
     codigo_indicador = CodigoIndicador.query.filter_by(
         SG_INDICADOR=sg_indicador
@@ -156,18 +158,44 @@ def get_variaveis(sg_indicador):
     if not codigo_indicador:
         return jsonify({'erro': 'Indicador não encontrado'}), 404
 
+    # Obter mês e ano dos parâmetros da requisição
+    mes = request.args.get('mes', type=int)
+    ano = request.args.get('ano', type=int)
+
     # Buscar variáveis
     variaveis = VariavelIndicador.query.filter_by(
         CO_INDICADOR=codigo_indicador.CO_INDICADOR
     ).order_by(VariavelIndicador.VARIAVEL).all()
 
+    # Verificar se já existem dados para este período
+    dados_existentes = {}
+    ja_existe = False
+    if mes and ano:
+        try:
+            ultimo_dia = monthrange(ano, mes)[1]
+            dt_referencia = date(ano, mes, ultimo_dia)
+
+            registros_existentes = IndicadorFormula.query.filter_by(
+                DT_REFERENCIA=dt_referencia,
+                INDICADOR=sg_indicador
+            ).all()
+
+            if registros_existentes:
+                ja_existe = True
+                dados_existentes = {reg.VARIAVEL: reg.VR_VARIAVEL for reg in registros_existentes}
+        except ValueError:
+            # Ignora caso o mês/ano seja inválido
+            pass
+
     # Formatar resposta
     variaveis_lista = []
     for var in variaveis:
+        valor_existente = dados_existentes.get(var.VARIAVEL)
         variaveis_lista.append({
             'variavel': var.VARIAVEL,
             'nome': var.NO_VARIAVEL,
-            'fonte': var.FONTE
+            'fonte': var.FONTE,
+            'valor': f'{valor_existente:.2f}'.replace('.', ',') if valor_existente is not None else ''
         })
 
     return jsonify({
@@ -177,7 +205,8 @@ def get_variaveis(sg_indicador):
             'descricao': codigo_indicador.DSC_INDICADOR,
             'qtde_variaveis': codigo_indicador.QTDE_VARIAVEIS
         },
-        'variaveis': variaveis_lista
+        'variaveis': variaveis_lista,
+        'ja_existe': ja_existe
     })
 
 
