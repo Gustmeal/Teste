@@ -27,6 +27,10 @@
 
                         <div class="row">
                             {% for reg in registros %}
+                            <!-- Campo oculto com valor original -->
+                            <input type="hidden" name="valor_original_{{ reg.VARIAVEL }}"
+                                   value="{{ reg.VR_VARIAVEL or 0 }}">
+
                             <div class="col-12 mb-3">
                                 <div class="card">
                                     <div class="card-body">
@@ -50,6 +54,13 @@
                                                        name="valor_{{ reg.VARIAVEL }}"
                                                        value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL or 0).replace('.', ',') }}"
                                                        required>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-12 text-end">
+                                                <small class="text-muted">
+                                                    Última atualização: {{ reg.RESPONSAVEL_INCLUSAO or '-' }}
+                                                </small>
                                             </div>
                                         </div>
                                     </div>

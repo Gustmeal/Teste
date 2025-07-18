@@ -256,13 +256,36 @@ def atualizar():
         ).all()
 
         # Definir tamanho máximo
-        MAX_RESPONSAVEL = 100
+        MAX_RESPONSAVEL = 100  # Limite da coluna no banco
 
-        # Atualizar cada registro
+        # Preparar nome do responsável
+        nome_usuario = current_user.nome
+        if len(nome_usuario) > MAX_RESPONSAVEL:
+            primeiro_nome = nome_usuario.split()[0]
+            if len(primeiro_nome) <= MAX_RESPONSAVEL:
+                responsavel = primeiro_nome
+            else:
+                responsavel = nome_usuario[:MAX_RESPONSAVEL]
+        else:
+            responsavel = nome_usuario
+
+        # Atualizar cada registro APENAS se o valor mudou
+        valores_alterados = False
         for reg in registros:
-            valor_str = request.form.get(f'valor_{reg.VARIAVEL}', '0')
-            reg.VR_VARIAVEL = Decimal(valor_str.replace(',', '.'))
-            reg.RESPONSAVEL_INCLUSAO = current_user.nome[:MAX_RESPONSAVEL]
+            # Capturar valor original do formulário
+            valor_original_str = request.form.get(f'valor_original_{reg.VARIAVEL}', '0')
+            valor_original = Decimal(valor_original_str.replace(',', '.'))
+
+            # Capturar novo valor
+            valor_novo_str = request.form.get(f'valor_{reg.VARIAVEL}', '0')
+            valor_novo = Decimal(valor_novo_str.replace(',', '.'))
+
+            # Só atualizar se o valor mudou
+            if valor_original != valor_novo:
+                reg.VR_VARIAVEL = valor_novo
+                reg.RESPONSAVEL_INCLUSAO = responsavel
+                valores_alterados = True
+            # Se o valor não mudou, mantém o RESPONSAVEL_INCLUSAO original
 
         db.session.commit()
 
@@ -274,14 +297,17 @@ def atualizar():
             descricao=f'Atualização de valores do indicador {indicador} para {dt_ref}'
         )
 
-        flash('Valores atualizados com sucesso!', 'success')
+        if valores_alterados:
+            flash('Valores atualizados com sucesso!', 'success')
+        else:
+            flash('Nenhum valor foi alterado.', 'info')
+
         return redirect(url_for('indicador.index'))
 
     except Exception as e:
         db.session.rollback()
         flash(f'Erro ao atualizar valores: {str(e)}', 'danger')
         return redirect(url_for('indicador.index'))
-
 
 @indicador_bp.route('/indicadores/excluir/<string:dt_ref>/<string:indicador>')
 @login_required
