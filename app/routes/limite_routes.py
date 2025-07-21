@@ -2217,3 +2217,321 @@ def gerar_arquivo_redistribuicao(edital_id, periodo_id, criterio_id, empresa_id)
 
         flash(f'Erro ao gerar arquivo de homologação: {str(e)}', 'danger')
         return redirect(url_for('limite.redistribuir_contratos'))
+
+
+@limite_bp.route('/limites/analitico-distribuicao', methods=['GET', 'POST'])
+@login_required
+def analitico_distribuicao():
+    """
+    Página para gerar relatório analítico de distribuição por empresa.
+    """
+    try:
+        # Buscar automaticamente o maior edital
+        ultimo_edital = Edital.query.filter(
+            Edital.DELETED_AT == None
+        ).order_by(Edital.ID.desc()).first()
+
+        if not ultimo_edital:
+            flash('Não foram encontrados editais cadastrados.', 'warning')
+            return redirect(url_for('limite.lista_limites'))
+
+        # Buscar automaticamente o maior período do edital
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        if not ultimo_periodo:
+            flash('Não foram encontrados períodos para o edital.', 'warning')
+            return redirect(url_for('limite.lista_limites'))
+
+        # Buscar empresas que participaram da distribuição
+        with db.engine.connect() as connection:
+            sql = text("""
+                SELECT DISTINCT 
+                    D.COD_EMPRESA_COBRANCA,
+                    E.nmEmpresaResponsavelCobranca,
+                    E.NO_ABREVIADO_EMPRESA
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                INNER JOIN [BDG].[PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA] E
+                    ON D.COD_EMPRESA_COBRANCA = E.pkEmpresaResponsavelCobranca
+                WHERE D.ID_EDITAL = :edital_id
+                    AND D.ID_PERIODO = :periodo_id
+                    AND D.DELETED_AT IS NULL
+                ORDER BY E.NO_ABREVIADO_EMPRESA
+            """)
+
+            result = connection.execute(sql, {
+                'edital_id': ultimo_edital.ID,
+                'periodo_id': ultimo_periodo.ID_PERIODO
+            })
+
+            empresas = []
+            for row in result:
+                empresas.append({
+                    'id': row[0],
+                    'nome': row[1],
+                    'nome_abreviado': row[2] or row[1][:10]  # Se não tiver abreviado, pega os 10 primeiros caracteres
+                })
+
+        if not empresas:
+            flash('Não foram encontradas empresas com distribuição para este período.', 'warning')
+            return redirect(url_for('limite.lista_limites'))
+
+        # Se for POST, gerar o relatório
+        if request.method == 'POST':
+            empresa_id = request.form.get('empresa_id', type=int)
+
+            if not empresa_id:
+                flash('Selecione uma empresa.', 'warning')
+                return render_template(
+                    'credenciamento/analitico_distribuicao.html',
+                    edital=ultimo_edital,
+                    periodo=ultimo_periodo,
+                    empresas=empresas
+                )
+
+            # Redirecionar para gerar o arquivo
+            return redirect(url_for(
+                'limite.gerar_analitico_distribuicao',
+                edital_id=ultimo_edital.ID,
+                periodo_id=ultimo_periodo.ID_PERIODO,
+                empresa_id=empresa_id
+            ))
+
+        return render_template(
+            'credenciamento/analitico_distribuicao.html',
+            edital=ultimo_edital,
+            periodo=ultimo_periodo,
+            empresas=empresas
+        )
+
+    except Exception as e:
+        flash(f'Erro ao acessar página: {str(e)}', 'danger')
+        logging.error(f"Erro em analitico_distribuicao: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return redirect(url_for('limite.lista_limites'))
+
+
+@limite_bp.route('/limites/gerar-analitico/<int:edital_id>/<int:periodo_id>/<int:empresa_id>')
+@login_required
+def gerar_analitico_distribuicao(edital_id, periodo_id, empresa_id):
+    """
+    Gera o arquivo TXT com o relatório analítico de distribuição para a empresa selecionada.
+    Formato de colunas fixas conforme especificado.
+    """
+    try:
+        from flask import Response
+        from datetime import datetime
+        from io import StringIO
+
+        # Buscar dados usando o SQL fornecido
+        with db.engine.connect() as connection:
+            sql = text("""
+                SELECT 
+                    PR.NO_ABREVIADO_PRODUTO,
+                    EM.NO_ABREVIADO_EMPRESA,
+                    DIS.COD_EMPRESA_COBRANCA,
+                    CTR.NR_CONTRATO,
+                    DIS.NR_CPF_CNPJ,
+                    DIS.VR_SD_DEVEDOR,
+                    CR.[DS_CRITERIO_SELECAO],
+                    SIT.QT_DIAS_ATRASO
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS WITH (NOLOCK)
+                INNER JOIN BDG.PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA EM WITH (NOLOCK)
+                    ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                INNER JOIN BDG.COM_TB001_CONTRATO CTR WITH (NOLOCK)
+                    ON CTR.fkContratoSISCTR = DIS.fkContratoSISCTR
+                INNER JOIN BDG.PAR_TB001_PRODUTOS PR WITH (NOLOCK)
+                    ON PR.pkSistemaOriginario = CTR.COD_PRODUTO
+                INNER JOIN [BDG].[DCA_TB004_CRITERIO_SELECAO] CR WITH (NOLOCK)
+                    ON CR.COD = DIS.COD_CRITERIO_SELECAO
+                INNER JOIN BDG.COM_TB007_SITUACAO_CONTRATOS SIT WITH (NOLOCK)
+                    ON SIT.fkContratoSISCTR = DIS.fkContratoSISCTR
+                WHERE DIS.ID_PERIODO = :periodo_id 
+                    AND DIS.ID_EDITAL = :edital_id
+                    AND DIS.COD_EMPRESA_COBRANCA = :empresa_id
+                ORDER BY CTR.NR_CONTRATO
+            """)
+
+            # Usar StringIO para construir o arquivo em memória
+            output = StringIO()
+
+            # Definir larguras das colunas baseado no exemplo fornecido
+            col_widths = {
+                'NO_ABREVIADO_PRODUTO': 20,
+                'NO_ABREVIADO_EMPRESA': 20,
+                'COD_EMPRESA_COBRANCA': 20,
+                'NR_CONTRATO': 39,
+                'NR_CPF_CNPJ': 20,
+                'VR_SD_DEVEDOR': 39,
+                'DS_CRITERIO_SELECAO': 100,
+                'QT_DIAS_ATRASO': 14
+            }
+
+            # Escrever cabeçalho
+            header = []
+            header.append('NO_ABREVIADO_PRODUTO'.ljust(col_widths['NO_ABREVIADO_PRODUTO']))
+            header.append('NO_ABREVIADO_EMPRESA'.ljust(col_widths['NO_ABREVIADO_EMPRESA']))
+            header.append('COD_EMPRESA_COBRANCA'.ljust(col_widths['COD_EMPRESA_COBRANCA']))
+            header.append('NR_CONTRATO'.ljust(col_widths['NR_CONTRATO']))
+            header.append('NR_CPF_CNPJ'.ljust(col_widths['NR_CPF_CNPJ']))
+            header.append('VR_SD_DEVEDOR'.ljust(col_widths['VR_SD_DEVEDOR']))
+            header.append('DS_CRITERIO_SELECAO'.ljust(col_widths['DS_CRITERIO_SELECAO']))
+            header.append('QT_DIAS_ATRASO')
+
+            output.write(' '.join(header) + '\n')
+
+            # Escrever linha de separação
+            separator = []
+            separator.append('-' * col_widths['NO_ABREVIADO_PRODUTO'])
+            separator.append('-' * col_widths['NO_ABREVIADO_EMPRESA'])
+            separator.append('-' * col_widths['COD_EMPRESA_COBRANCA'])
+            separator.append('-' * col_widths['NR_CONTRATO'])
+            separator.append('-' * col_widths['NR_CPF_CNPJ'])
+            separator.append('-' * col_widths['VR_SD_DEVEDOR'])
+            separator.append('-' * col_widths['DS_CRITERIO_SELECAO'])
+            separator.append('-' * col_widths['QT_DIAS_ATRASO'])
+
+            output.write(' '.join(separator) + '\n')
+
+            # Processar dados em chunks para melhor performance
+            chunk_size = 10000
+            offset = 0
+            total_registros = 0
+            total_saldo = 0.0
+            nome_empresa_abreviado = ""
+
+            while True:
+                # SQL com paginação
+                sql_paginated = text("""
+                    SELECT 
+                        PR.NO_ABREVIADO_PRODUTO,
+                        EM.NO_ABREVIADO_EMPRESA,
+                        DIS.COD_EMPRESA_COBRANCA,
+                        CTR.NR_CONTRATO,
+                        DIS.NR_CPF_CNPJ,
+                        DIS.VR_SD_DEVEDOR,
+                        CR.[DS_CRITERIO_SELECAO],
+                        SIT.QT_DIAS_ATRASO
+                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS WITH (NOLOCK)
+                    INNER JOIN BDG.PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA EM WITH (NOLOCK)
+                        ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                    INNER JOIN BDG.COM_TB001_CONTRATO CTR WITH (NOLOCK)
+                        ON CTR.fkContratoSISCTR = DIS.fkContratoSISCTR
+                    INNER JOIN BDG.PAR_TB001_PRODUTOS PR WITH (NOLOCK)
+                        ON PR.pkSistemaOriginario = CTR.COD_PRODUTO
+                    INNER JOIN [BDG].[DCA_TB004_CRITERIO_SELECAO] CR WITH (NOLOCK)
+                        ON CR.COD = DIS.COD_CRITERIO_SELECAO
+                    INNER JOIN BDG.COM_TB007_SITUACAO_CONTRATOS SIT WITH (NOLOCK)
+                        ON SIT.fkContratoSISCTR = DIS.fkContratoSISCTR
+                    WHERE DIS.ID_PERIODO = :periodo_id 
+                        AND DIS.ID_EDITAL = :edital_id
+                        AND DIS.COD_EMPRESA_COBRANCA = :empresa_id
+                    ORDER BY CTR.NR_CONTRATO
+                    OFFSET :offset ROWS
+                    FETCH NEXT :chunk_size ROWS ONLY
+                """)
+
+                result = connection.execute(sql_paginated, {
+                    'edital_id': edital_id,
+                    'periodo_id': periodo_id,
+                    'empresa_id': empresa_id,
+                    'offset': offset,
+                    'chunk_size': chunk_size
+                })
+
+                rows = result.fetchall()
+                if not rows:
+                    break
+
+                # Processar cada linha
+                for row in rows:
+                    # Guardar nome da empresa do primeiro registro
+                    if not nome_empresa_abreviado and row[1]:
+                        nome_empresa_abreviado = row[1]
+
+                    # Formatar cada campo com a largura apropriada
+                    linha = []
+                    linha.append((str(row[0]) if row[0] else '').ljust(col_widths['NO_ABREVIADO_PRODUTO']))
+                    linha.append((str(row[1]) if row[1] else '').ljust(col_widths['NO_ABREVIADO_EMPRESA']))
+                    linha.append(str(row[2]).ljust(col_widths['COD_EMPRESA_COBRANCA']))
+                    linha.append((str(row[3]) if row[3] else '').ljust(col_widths['NR_CONTRATO']))
+                    linha.append((str(row[4]) if row[4] else '').ljust(col_widths['NR_CPF_CNPJ']))
+
+                    # Formatar valor com 2 casas decimais
+                    valor = float(row[5]) if row[5] else 0.0
+                    total_saldo += valor
+                    linha.append(f"{valor:.2f}".ljust(col_widths['VR_SD_DEVEDOR']))
+
+                    linha.append((str(row[6]) if row[6] else '').ljust(col_widths['DS_CRITERIO_SELECAO']))
+                    linha.append(str(row[7]) if row[7] else '')
+
+                    output.write(' '.join(linha) + '\n')
+                    total_registros += 1
+
+                offset += chunk_size
+
+                # Log de progresso para grandes volumes
+                if total_registros % 50000 == 0:
+                    logging.info(f"Processados {total_registros} registros...")
+
+            if total_registros == 0:
+                flash('Não foram encontrados dados para a empresa selecionada.', 'warning')
+                return redirect(url_for('limite.analitico_distribuicao'))
+
+            # Adicionar linha de total no final
+            output.write('\n')
+            output.write(' ' * (col_widths['NO_ABREVIADO_PRODUTO'] + 1 +
+                                col_widths['NO_ABREVIADO_EMPRESA'] + 1 +
+                                col_widths['COD_EMPRESA_COBRANCA'] + 1))
+            output.write(f"TOTAL: {total_registros} contratos".ljust(col_widths['NR_CONTRATO']))
+            output.write(' ' * (col_widths['NR_CPF_CNPJ'] + 1))
+            output.write(f"{total_saldo:.2f}".ljust(col_widths['VR_SD_DEVEDOR']))
+            output.write('\n')
+
+            # Gerar nome do arquivo conforme especificado
+            data_atual = datetime.now().strftime('%d%m%Y')
+            nome_arquivo = f"{nome_empresa_abreviado.upper()}_DISTRIBUICAO_{data_atual}_{edital_id}_{periodo_id}.txt"
+
+            # Preparar conteúdo para download
+            content = output.getvalue()
+            output.close()
+
+            # Registrar log
+            registrar_log(
+                acao='exportar',
+                entidade='analitico_distribuicao',
+                entidade_id=empresa_id,
+                descricao=f'Geração de relatório analítico de distribuição - Empresa {nome_empresa_abreviado}',
+                dados_novos={
+                    'edital_id': edital_id,
+                    'periodo_id': periodo_id,
+                    'empresa_id': empresa_id,
+                    'total_contratos': total_registros,
+                    'valor_total': float(total_saldo)
+                }
+            )
+
+            # Retornar arquivo para download
+            response = Response(
+                content,
+                mimetype='text/plain; charset=utf-8',
+                headers={
+                    'Content-Disposition': f'attachment; filename={nome_arquivo}',
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            )
+
+            return response
+
+    except Exception as e:
+        flash(f'Erro ao gerar relatório: {str(e)}', 'danger')
+        logging.error(f"Erro em gerar_analitico_distribuicao: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return redirect(url_for('limite.analitico_distribuicao'))
