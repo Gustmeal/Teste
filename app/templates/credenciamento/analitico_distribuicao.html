@@ -82,7 +82,7 @@
                 <li>Dias em Atraso</li>
             </ul>
             <p class="mb-0">
-                <strong>Formato do arquivo:</strong> Excel (.xlsx) com formatação e totalização automática
+                <strong>Formato do arquivo:</strong> Texto (.txt) com colunas de largura fixa
             </p>
         </div>
     </div>
@@ -107,12 +107,64 @@ document.addEventListener('DOMContentLoaded', function() {
         btnGerar.disabled = true;
         btnGerar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Gerando relatório...';
 
-        // Permitir que o formulário seja submetido
-        setTimeout(() => {
+        // Como é um download direto, precisamos detectar quando ele começou
+        // Vamos usar um cookie para isso
+        setCookie('downloadStarted', '0', 1);
+
+        // Verificar periodicamente se o download começou
+        const downloadTimer = setInterval(function() {
+            if (getCookie('downloadStarted') === '1') {
+                // Download iniciado, restaurar botão
+                btnGerar.disabled = false;
+                btnGerar.innerHTML = '<i class="fas fa-file-excel me-2"></i> Gerar Relatório';
+
+                // Limpar o cookie
+                setCookie('downloadStarted', '0', -1);
+
+                // Parar de verificar
+                clearInterval(downloadTimer);
+
+                // Esconder o loading automático se estiver ativo
+                if (window.autoLoadingManager) {
+                    window.autoLoadingManager.hideLoading();
+                }
+            }
+        }, 500);
+
+        // Timeout de segurança - se após 30 segundos não baixou, restaura o botão
+        setTimeout(function() {
+            clearInterval(downloadTimer);
             btnGerar.disabled = false;
             btnGerar.innerHTML = '<i class="fas fa-file-excel me-2"></i> Gerar Relatório';
-        }, 3000);
+
+            // Esconder o loading automático
+            if (window.autoLoadingManager) {
+                window.autoLoadingManager.hideLoading();
+            }
+        }, 30000);
     });
 });
+
+// Funções auxiliares para cookies
+function setCookie(name, value, days) {
+    let expires = "";
+    if (days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toUTCString();
+    }
+    document.cookie = name + "=" + (value || "") + expires + "; path=/";
+}
+
+function getCookie(name) {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+    return null;
+}
 </script>
 {% endblock %}

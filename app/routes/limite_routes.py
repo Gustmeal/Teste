@@ -2527,6 +2527,9 @@ def gerar_analitico_distribuicao(edital_id, periodo_id, empresa_id):
                 }
             )
 
+            # Adicionar cookie para indicar que o download começou
+            response.set_cookie('downloadStarted', '1', max_age=60)
+
             return response
 
     except Exception as e:
