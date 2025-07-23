@@ -55,13 +55,13 @@ class IndicadorAno(db.Model):
 
     ANO = db.Column(db.String(4), primary_key=True)
     ORDEM = db.Column(db.Integer, primary_key=True)
-    INDICADOR = db.Column(db.String(18))
-    DSC_INDICADOR = db.Column(db.String(50))
+    INDICADOR = db.Column(db.String(50))
+    DSC_INDICADOR = db.Column(db.String(255))
     DIMENSAO = db.Column(db.String(100))
     UNIDADE_MEDIDA = db.Column(db.String(50))
     UNIDADE = db.Column(db.String(50))
     QT_MAIOR_MELHOR = db.Column(db.Boolean)
-    DESTINACAO = db.Column(db.String(3))
+    DESTINACAO = db.Column(db.String(50))
     META = db.Column(db.Numeric(18, 2))
 
     def __repr__(self):

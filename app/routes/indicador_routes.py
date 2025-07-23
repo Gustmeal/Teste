@@ -1,13 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
-from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador
+from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador, IndicadorAno
 from app.utils.audit import registrar_log
 from datetime import datetime, date
 from sqlalchemy import extract, func, not_
 from calendar import monthrange
 from decimal import Decimal
-from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador, IndicadorAno
 
 indicador_bp = Blueprint('indicador', __name__)
 
@@ -22,7 +21,6 @@ def inject_current_year():
 def index():
     """Página principal com os cards do sistema de indicadores"""
     return render_template('indicadores/index.html')
-
 
 
 @indicador_bp.route('/indicadores/formulas')
@@ -48,6 +46,7 @@ def formulas():
 
     return render_template('indicadores/formulas.html',
                            registros_agrupados=registros_agrupados)
+
 
 @indicador_bp.route('/indicadores/novo', methods=['GET', 'POST'])
 @login_required
@@ -90,8 +89,8 @@ def novo():
 
             # Definir tamanhos máximos baseados no banco
             MAX_INDICADOR = 18
-            MAX_NO_VARIAVEL = 50  # Ajustado para um tamanho menor
-            MAX_FONTE = 100  # Ajustado para um tamanho menor
+            MAX_NO_VARIAVEL = 50
+            MAX_FONTE = 100
             MAX_RESPONSAVEL = 100
 
             # Inserir um registro para cada variável
@@ -264,7 +263,7 @@ def atualizar():
         ).all()
 
         # Definir tamanho máximo
-        MAX_RESPONSAVEL = 100  # Limite da coluna no banco
+        MAX_RESPONSAVEL = 100
 
         # Preparar nome do responsável
         nome_usuario = current_user.nome
@@ -293,7 +292,6 @@ def atualizar():
                 reg.VR_VARIAVEL = valor_novo
                 reg.RESPONSAVEL_INCLUSAO = responsavel
                 valores_alterados = True
-            # Se o valor não mudou, mantém o RESPONSAVEL_INCLUSAO original
 
         db.session.commit()
 
@@ -316,6 +314,7 @@ def atualizar():
         db.session.rollback()
         flash(f'Erro ao atualizar valores: {str(e)}', 'danger')
         return redirect(url_for('indicador.formulas'))
+
 
 @indicador_bp.route('/indicadores/excluir/<string:dt_ref>/<string:indicador>')
 @login_required
@@ -358,6 +357,7 @@ def excluir(dt_ref, indicador):
     return redirect(url_for('indicador.formulas'))
 
 
+# Rotas para Inclusão de Indicadores (antigo Itens)
 @indicador_bp.route('/indicadores/itens')
 @login_required
 def itens():
@@ -462,16 +462,23 @@ def editar_item(ano, ordem):
 
     if request.method == 'POST':
         try:
+            # Função auxiliar para tratar strings vazias
+            def get_form_value(key):
+                value = request.form.get(key)
+                return value if value else None
+
             # Atualizar campos (ano e ordem não podem ser alterados)
-            item.INDICADOR = request.form.get('indicador')
-            item.DSC_INDICADOR = request.form.get('dsc_indicador')
-            item.DIMENSAO = request.form.get('dimensao') or None
-            item.UNIDADE_MEDIDA = request.form.get('unidade_medida') or None
-            item.UNIDADE = request.form.get('unidade') or None
+            item.INDICADOR = get_form_value('indicador')
+            item.DSC_INDICADOR = get_form_value('dsc_indicador')
+            item.DIMENSAO = get_form_value('dimensao')
+            item.UNIDADE_MEDIDA = get_form_value('unidade_medida')
+            item.UNIDADE = get_form_value('unidade')
             item.QT_MAIOR_MELHOR = request.form.get('qt_maior_melhor') == '1' if request.form.get(
                 'qt_maior_melhor') else None
-            item.DESTINACAO = request.form.get('destinacao') or None
-            item.META = Decimal(request.form.get('meta').replace(',', '.')) if request.form.get('meta') else None
+            item.DESTINACAO = get_form_value('destinacao')
+
+            meta_str = request.form.get('meta')
+            item.META = Decimal(meta_str.replace(',', '.')) if meta_str else None
 
             db.session.commit()
 

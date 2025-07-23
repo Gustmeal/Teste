@@ -1,20 +1,21 @@
-                                     {% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold">
             <i class="fas fa-chart-line text-primary me-2"></i>
-            Indicadores
+            Realizado Mensal
         </h1>
         <div class="d-flex gap-2">
+            <a href="{{ url_for('indicador.index') }}" class="btn btn-light border">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
             <a href="https://r.emgea.gov.br/Reports/powerbi/Homologacao/Asses_Homolog/Indicadores"
                target="_blank"
                class="btn btn-info">
                 <i class="fas fa-tachometer-alt me-2"></i>Dashboard
             </a>
-            <!-- FIM DO BOTÃO DASHBOARD -->
-
             <a href="{{ url_for('indicador.novo') }}" class="btn btn-success">
                 <i class="fas fa-plus me-2"></i>Incluir Indicador
             </a>
