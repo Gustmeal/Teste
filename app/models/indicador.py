@@ -46,3 +46,23 @@ class VariavelIndicador(db.Model):
 
     def __repr__(self):
         return f'<VariavelIndicador {self.CO_INDICADOR} - {self.VARIAVEL}>'
+
+
+class IndicadorAno(db.Model):
+    """Modelo para a tabela de indicadores por ano"""
+    __tablename__ = 'IND_TB006_INDICADORES_ANO'
+    __table_args__ = {'schema': 'BDG'}
+
+    ANO = db.Column(db.String(4), primary_key=True)
+    ORDEM = db.Column(db.Integer, primary_key=True)
+    INDICADOR = db.Column(db.String(18))
+    DSC_INDICADOR = db.Column(db.String(50))
+    DIMENSAO = db.Column(db.String(100))
+    UNIDADE_MEDIDA = db.Column(db.String(50))
+    UNIDADE = db.Column(db.String(50))
+    QT_MAIOR_MELHOR = db.Column(db.Boolean)
+    DESTINACAO = db.Column(db.String(3))
+    META = db.Column(db.Numeric(18, 2))
+
+    def __repr__(self):
+        return f'<IndicadorAno {self.ANO} - {self.ORDEM}>'

@@ -7,6 +7,7 @@ from datetime import datetime, date
 from sqlalchemy import extract, func, not_
 from calendar import monthrange
 from decimal import Decimal
+from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador, IndicadorAno
 
 indicador_bp = Blueprint('indicador', __name__)
 
@@ -19,7 +20,15 @@ def inject_current_year():
 @indicador_bp.route('/indicadores')
 @login_required
 def index():
-    """Página principal do sistema de indicadores"""
+    """Página principal com os cards do sistema de indicadores"""
+    return render_template('indicadores/index.html')
+
+
+
+@indicador_bp.route('/indicadores/formulas')
+@login_required
+def formulas():
+    """Página principal do sistema de fórmulas de indicadores"""
     # Buscar todos os registros, exceto os de 'BDG', ordenados por data e indicador
     registros = IndicadorFormula.query.filter(
         not_(IndicadorFormula.RESPONSAVEL_INCLUSAO == 'BDG')
@@ -37,9 +46,8 @@ def index():
             registros_agrupados[chave] = []
         registros_agrupados[chave].append(reg)
 
-    return render_template('indicadores/index.html',
+    return render_template('indicadores/formulas.html',
                            registros_agrupados=registros_agrupados)
-
 
 @indicador_bp.route('/indicadores/novo', methods=['GET', 'POST'])
 @login_required
@@ -78,7 +86,7 @@ def novo():
 
             if registro_existente:
                 flash('Já existe registro para este indicador nesta data.', 'warning')
-                return redirect(url_for('indicador.index'))
+                return redirect(url_for('indicador.formulas'))
 
             # Definir tamanhos máximos baseados no banco
             MAX_INDICADOR = 18
@@ -118,7 +126,7 @@ def novo():
             )
 
             flash('Indicador incluído com sucesso!', 'success')
-            return redirect(url_for('indicador.index'))
+            return redirect(url_for('indicador.formulas'))
 
         except Exception as e:
             db.session.rollback()
@@ -226,7 +234,7 @@ def editar(dt_ref, indicador):
 
         if not registros:
             flash('Registros não encontrados.', 'warning')
-            return redirect(url_for('indicador.index'))
+            return redirect(url_for('indicador.formulas'))
 
         return render_template('indicadores/editar.html',
                                registros=registros,
@@ -235,7 +243,7 @@ def editar(dt_ref, indicador):
 
     except Exception as e:
         flash(f'Erro ao carregar registros: {str(e)}', 'danger')
-        return redirect(url_for('indicador.index'))
+        return redirect(url_for('indicador.formulas'))
 
 
 @indicador_bp.route('/indicadores/atualizar', methods=['POST'])
@@ -302,12 +310,12 @@ def atualizar():
         else:
             flash('Nenhum valor foi alterado.', 'info')
 
-        return redirect(url_for('indicador.index'))
+        return redirect(url_for('indicador.formulas'))
 
     except Exception as e:
         db.session.rollback()
         flash(f'Erro ao atualizar valores: {str(e)}', 'danger')
-        return redirect(url_for('indicador.index'))
+        return redirect(url_for('indicador.formulas'))
 
 @indicador_bp.route('/indicadores/excluir/<string:dt_ref>/<string:indicador>')
 @login_required
@@ -325,7 +333,7 @@ def excluir(dt_ref, indicador):
 
         if not registros:
             flash('Registros não encontrados.', 'warning')
-            return redirect(url_for('indicador.index'))
+            return redirect(url_for('indicador.formulas'))
 
         # Excluir todos os registros
         for reg in registros:
@@ -347,4 +355,203 @@ def excluir(dt_ref, indicador):
         db.session.rollback()
         flash(f'Erro ao excluir indicador: {str(e)}', 'danger')
 
-    return redirect(url_for('indicador.index'))
+    return redirect(url_for('indicador.formulas'))
+
+
+@indicador_bp.route('/indicadores/itens')
+@login_required
+def itens():
+    """Listar todos os itens de indicadores por ano"""
+    itens = IndicadorAno.query.order_by(
+        IndicadorAno.ANO.desc(),
+        IndicadorAno.ORDEM
+    ).all()
+
+    # Buscar anos disponíveis para filtro
+    anos_disponiveis = db.session.query(
+        IndicadorAno.ANO
+    ).distinct().order_by(IndicadorAno.ANO.desc()).all()
+    anos_disponiveis = [ano[0] for ano in anos_disponiveis]
+
+    return render_template('indicadores/itens.html',
+                           itens=itens,
+                           anos_disponiveis=anos_disponiveis)
+
+
+@indicador_bp.route('/indicadores/itens/novo', methods=['GET', 'POST'])
+@login_required
+def novo_item():
+    """Criar novo item de indicador"""
+    if request.method == 'POST':
+        try:
+            # Capturar dados do formulário
+            ano = request.form.get('ano')
+            ordem = int(request.form.get('ordem'))
+
+            # Verificar se já existe
+            existe = IndicadorAno.query.filter_by(
+                ANO=ano,
+                ORDEM=ordem
+            ).first()
+
+            if existe:
+                flash('Já existe um item com esta ordem neste ano.', 'warning')
+                return redirect(url_for('indicador.novo_item'))
+
+            # Criar novo item
+            novo_item = IndicadorAno(
+                ANO=ano,
+                ORDEM=ordem,
+                INDICADOR=request.form.get('indicador'),
+                DSC_INDICADOR=request.form.get('dsc_indicador'),
+                DIMENSAO=request.form.get('dimensao') or None,
+                UNIDADE_MEDIDA=request.form.get('unidade_medida') or None,
+                UNIDADE=request.form.get('unidade') or None,
+                QT_MAIOR_MELHOR=request.form.get('qt_maior_melhor') == '1' if request.form.get(
+                    'qt_maior_melhor') else None,
+                DESTINACAO=request.form.get('destinacao') or None,
+                META=Decimal(request.form.get('meta').replace(',', '.')) if request.form.get('meta') else None
+            )
+
+            db.session.add(novo_item)
+            db.session.commit()
+
+            # Registrar log
+            registrar_log(
+                acao='criar',
+                entidade='indicador_item',
+                entidade_id=None,
+                descricao=f'Criação de item de indicador: {ano} - Ordem {ordem}'
+            )
+
+            flash('Item criado com sucesso!', 'success')
+            return redirect(url_for('indicador.itens'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao criar item: {str(e)}', 'danger')
+            return redirect(url_for('indicador.novo_item'))
+
+    # GET - Preparar dados para o formulário
+    ano_atual = datetime.now().year
+    anos = [str(ano) for ano in range(ano_atual - 2, ano_atual + 3)]
+
+    # Buscar valores únicos para os selects
+    dimensoes = db.session.query(IndicadorAno.DIMENSAO).filter(
+        IndicadorAno.DIMENSAO.isnot(None)
+    ).distinct().order_by(IndicadorAno.DIMENSAO).all()
+    dimensoes = [d[0] for d in dimensoes if d[0]]
+
+    unidades_medida = db.session.query(IndicadorAno.UNIDADE_MEDIDA).filter(
+        IndicadorAno.UNIDADE_MEDIDA.isnot(None)
+    ).distinct().order_by(IndicadorAno.UNIDADE_MEDIDA).all()
+    unidades_medida = [u[0] for u in unidades_medida if u[0]]
+
+    return render_template('indicadores/form_item.html',
+                           anos=anos,
+                           dimensoes=dimensoes,
+                           unidades_medida=unidades_medida,
+                           editando=False)
+
+
+@indicador_bp.route('/indicadores/itens/editar/<string:ano>/<int:ordem>', methods=['GET', 'POST'])
+@login_required
+def editar_item(ano, ordem):
+    """Editar item de indicador existente"""
+    item = IndicadorAno.query.filter_by(ANO=ano, ORDEM=ordem).first_or_404()
+
+    if request.method == 'POST':
+        try:
+            # Atualizar campos (ano e ordem não podem ser alterados)
+            item.INDICADOR = request.form.get('indicador')
+            item.DSC_INDICADOR = request.form.get('dsc_indicador')
+            item.DIMENSAO = request.form.get('dimensao') or None
+            item.UNIDADE_MEDIDA = request.form.get('unidade_medida') or None
+            item.UNIDADE = request.form.get('unidade') or None
+            item.QT_MAIOR_MELHOR = request.form.get('qt_maior_melhor') == '1' if request.form.get(
+                'qt_maior_melhor') else None
+            item.DESTINACAO = request.form.get('destinacao') or None
+            item.META = Decimal(request.form.get('meta').replace(',', '.')) if request.form.get('meta') else None
+
+            db.session.commit()
+
+            # Registrar log
+            registrar_log(
+                acao='editar',
+                entidade='indicador_item',
+                entidade_id=None,
+                descricao=f'Edição de item de indicador: {ano} - Ordem {ordem}'
+            )
+
+            flash('Item atualizado com sucesso!', 'success')
+            return redirect(url_for('indicador.itens'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar item: {str(e)}', 'danger')
+
+    # GET ou erro no POST
+    ano_atual = datetime.now().year
+    anos = [str(ano) for ano in range(ano_atual - 2, ano_atual + 3)]
+
+    # Buscar valores únicos para os selects
+    dimensoes = db.session.query(IndicadorAno.DIMENSAO).filter(
+        IndicadorAno.DIMENSAO.isnot(None)
+    ).distinct().order_by(IndicadorAno.DIMENSAO).all()
+    dimensoes = [d[0] for d in dimensoes if d[0]]
+
+    unidades_medida = db.session.query(IndicadorAno.UNIDADE_MEDIDA).filter(
+        IndicadorAno.UNIDADE_MEDIDA.isnot(None)
+    ).distinct().order_by(IndicadorAno.UNIDADE_MEDIDA).all()
+    unidades_medida = [u[0] for u in unidades_medida if u[0]]
+
+    return render_template('indicadores/form_item.html',
+                           item=item,
+                           anos=anos,
+                           dimensoes=dimensoes,
+                           unidades_medida=unidades_medida,
+                           editando=True)
+
+
+@indicador_bp.route('/indicadores/itens/excluir/<string:ano>/<int:ordem>')
+@login_required
+def excluir_item(ano, ordem):
+    """Excluir item de indicador"""
+    try:
+        item = IndicadorAno.query.filter_by(ANO=ano, ORDEM=ordem).first_or_404()
+
+        db.session.delete(item)
+        db.session.commit()
+
+        # Registrar log
+        registrar_log(
+            acao='excluir',
+            entidade='indicador_item',
+            entidade_id=None,
+            descricao=f'Exclusão de item de indicador: {ano} - Ordem {ordem}'
+        )
+
+        flash('Item excluído com sucesso!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao excluir item: {str(e)}', 'danger')
+
+    return redirect(url_for('indicador.itens'))
+
+
+@indicador_bp.route('/indicadores/api/proxima-ordem')
+@login_required
+def proxima_ordem():
+    """API para retornar a próxima ordem disponível para um ano"""
+    ano = request.args.get('ano')
+
+    if not ano:
+        return jsonify({'erro': 'Ano não informado'}), 400
+
+    # Buscar maior ordem do ano
+    maior_ordem = db.session.query(func.max(IndicadorAno.ORDEM)).filter_by(ANO=ano).scalar()
+
+    proxima = 1 if maior_ordem is None else maior_ordem + 1
+
+    return jsonify({'proxima_ordem': proxima})

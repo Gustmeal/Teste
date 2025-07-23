@@ -8,7 +8,7 @@ class Config:
     # String de conexão
     SQLALCHEMY_DATABASE_URI = (
         "mssql+pyodbc://@AMON/BDDASHBOARDBI?"
-        "driver=ODBC+Driver+18+for+SQL+Server"
+        "driver=ODBC+Driver+17+for+SQL+Server"
         "&Trusted_Connection=yes"
         "&TrustServerCertificate=yes"
     )

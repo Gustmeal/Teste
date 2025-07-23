@@ -1,0 +1,167 @@
+{#
+# Template para a listagem de Itens de Indicadores
+# Modificado por: Gustmeal
+# Data: 2025-07-23 16:15:25 (UTC)
+#}
+{% extends "base.html" %}
+
+{% block title %}Itens de Indicadores{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('indicador.index') }}" class="btn btn-light border mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+            <h1 class="fw-bold">
+                <i class="fas fa-list-alt text-success me-2"></i>
+                Itens de Indicadores
+            </h1>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('indicador.novo_item') }}" class="btn btn-success">
+                <i class="fas fa-plus me-2"></i>Novo Item
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <label for="filtroAno" class="form-label">Filtrar por Ano</label>
+                    <select class="form-select" id="filtroAno">
+                        <option value="">Todos os anos</option>
+                        {% for ano in anos_disponiveis %}
+                        <option value="{{ ano }}">{{ ano }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if itens %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="tabelaItens">
+                    <thead>
+                        <tr>
+                            <th>Ano</th>
+                            <th>Ordem</th>
+                            <th>Indicador</th>
+                            <th>Descrição</th>
+                            <th>Dimensão</th>
+                            <th>Unidade</th>
+                            <th>Meta</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in itens %}
+                        <tr data-ano="{{ item.ANO }}">
+                            <td>{{ item.ANO }}</td>
+                            <td>{{ item.ORDEM }}</td>
+                            <td>{{ item.INDICADOR }}</td>
+                            <td>{{ item.DSC_INDICADOR }}</td>
+                            <td>{{ item.DIMENSAO or '-' }}</td>
+                            <td>{{ item.UNIDADE or '-' }}</td>
+                            <td class="text-end">
+                                {# Formata o número para o padrão brasileiro #}
+                                {% if item.META is not none %}
+                                    {{ '{:,.2f}'.format(item.META).replace(',', 'v').replace('.', ',').replace('v', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('indicador.editar_item', ano=item.ANO, ordem=item.ORDEM) }}"
+                                   class="btn btn-sm btn-outline-primary" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-danger" title="Excluir"
+                                        onclick="confirmarExclusaoItem('{{ item.ANO }}', {{ item.ORDEM }})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhum item cadastrado.
+        <a href="{{ url_for('indicador.novo_item') }}" class="alert-link">Clique aqui</a> para incluir o primeiro.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="modalExcluirItem" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir este item?</p>
+                <p class="text-muted small">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="formExcluirItem" method="POST" action="">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const filtroAno = document.getElementById('filtroAno');
+    if (filtroAno) {
+        filtroAno.addEventListener('change', function () {
+            const anoSelecionado = this.value;
+            const linhas = document.querySelectorAll('#tabelaItens tbody tr');
+
+            linhas.forEach(linha => {
+                if (anoSelecionado === '' || linha.dataset.ano === anoSelecionado) {
+                    linha.style.display = '';
+                } else {
+                    linha.style.display = 'none';
+                }
+            });
+        });
+    }
+});
+
+function confirmarExclusaoItem(ano, ordem) {
+    // CORREÇÃO: Gera uma URL base com um placeholder válido (0) para o tipo inteiro.
+    const urlTemplate = "{{ url_for('indicador.excluir_item', ano='__ano__', ordem=0) }}";
+
+    // Substitui os placeholders pelos valores reais.
+    const finalUrl = urlTemplate.replace('__ano__', ano).replace('/0', '/' + ordem);
+
+    // Define o 'action' do formulário no modal.
+    document.getElementById('formExcluirItem').action = finalUrl;
+
+    // Exibe o modal usando o Bootstrap 5.
+    const modal = new bootstrap.Modal(document.getElementById('modalExcluirItem'));
+    modal.show();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <a href="{{ url_for('indicador.itens') }}" class="btn btn-back mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-plus-circle me-2"></i>
+                        {% if editando %}Editar{% else %}Novo{% endif %} Item de Indicador
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="formItem">
+                        <div class="row mb-3">
+                            <!-- Ano -->
+                            <div class="col-md-6">
+                                <label for="ano" class="form-label">Ano <span class="text-danger">*</span></label>
+                                <select class="form-select" id="ano" name="ano" required {% if editando %}disabled{% endif %}>
+                                    <option value="">Selecione o ano</option>
+                                    {% for ano in anos %}
+                                    <option value="{{ ano }}" {% if item and item.ANO == ano %}selected{% endif %}>
+                                        {{ ano }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                {% if editando %}
+                                <input type="hidden" name="ano" value="{{ item.ANO }}">
+                                {% endif %}
+                            </div>
+
+                            <!-- Ordem -->
+                            <div class="col-md-6">
+                                <label for="ordem" class="form-label">Ordem <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="ordem" name="ordem" 
+                                       value="{{ item.ORDEM if item else '' }}"
+                                       {% if editando %}readonly{% endif %}
+                                       required>
+                                <small class="text-muted" id="ordemSugestao"></small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Indicador -->
+                            <div class="col-md-6">
+                                <label for="indicador" class="form-label">
+                                    Indicador <span class="text-danger">*</span>
+                                    <small class="text-muted">(máx. 18 caracteres)</small>
+                                </label>
+                                <input type="text" class="form-control" id="indicador" name="indicador" 
+                                       value="{{ item.INDICADOR if item else '' }}"
+                                       maxlength="18" required>
+                            </div>
+
+                            <!-- Descrição -->
+                            <div class="col-md-6">
+                                <label for="dsc_indicador" class="form-label">
+                                    Descrição <span class="text-danger">*</span>
+                                    <small class="text-muted">(máx. 50 caracteres)</small>
+                                </label>
+                                <input type="text" class="form-control" id="dsc_indicador" name="dsc_indicador" 
+                                       value="{{ item.DSC_INDICADOR if item else '' }}"
+                                       maxlength="50" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Dimensão -->
+                            <div class="col-md-6">
+                                <label for="dimensao" class="form-label">Dimensão</label>
+                                <select class="form-select" id="dimensao" name="dimensao">
+                                    <option value="">Selecione...</option>
+                                    {% for dim in dimensoes %}
+                                    <option value="{{ dim }}" {% if item and item.DIMENSAO == dim %}selected{% endif %}>
+                                        {{ dim }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Unidade de Medida -->
+                            <div class="col-md-6">
+                                <label for="unidade_medida" class="form-label">Unidade de Medida</label>
+                                <select class="form-select" id="unidade_medida" name="unidade_medida">
+                                    <option value="">Selecione...</option>
+                                    {% for um in unidades_medida %}
+                                    <option value="{{ um }}" {% if item and item.UNIDADE_MEDIDA == um %}selected{% endif %}>
+                                        {{ um }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Unidade -->
+                            <div class="col-md-6">
+                                <label for="unidade" class="form-label">
+                                    Unidade
+                                    <small class="text-muted">(máx. 50 caracteres)</small>
+                                </label>
+                                <input type="text" class="form-control" id="unidade" name="unidade" 
+                                       value="{{ item.UNIDADE if item else '' }}"
+                                       maxlength="50">
+                            </div>
+
+                            <!-- Meta -->
+                            <div class="col-md-6">
+                                <label for="meta" class="form-label">Meta</label>
+                                <input type="text" class="form-control" id="meta" name="meta" 
+                                       value="{{ '{:,.2f}'.format(item.META).replace('.', ',') if item and item.META else '' }}"
+                                       placeholder="0,00">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Quanto Maior Melhor -->
+                            <div class="col-md-6">
+                                <label class="form-label">Quanto maior melhor?</label>
+                                <div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="qt_maior_melhor" 
+                                               id="maiorMelhorSim" value="1"
+                                               {% if item and item.QT_MAIOR_MELHOR %}checked{% endif %}>
+                                        <label class="form-check-label" for="maiorMelhorSim">Sim</label>
+                                    </div>
+                                    <div class="form-check form-check-inline">
+                                        <input class="form-check-input" type="radio" name="qt_maior_melhor" 
+                                               id="maiorMelhorNao" value="0"
+                                               {% if item and item.QT_MAIOR_MELHOR == False %}checked{% endif %}>
+                                        <label class="form-check-label" for="maiorMelhorNao">Não</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Destinação -->
+                            <div class="col-md-6">
+                                <label for="destinacao" class="form-label">
+                                    Destinação
+                                    <small class="text-muted">(máx. 3 caracteres)</small>
+                                </label>
+                                <input type="text" class="form-control" id="destinacao" name="destinacao" 
+                                       value="{{ item.DESTINACAO if item else '' }}"
+                                       maxlength="3" placeholder="Nenhum">
+                            </div>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save me-2"></i>Salvar
+                            </button>
+                            <a href="{{ url_for('indicador.itens') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectAno = document.getElementById('ano');
+    const inputOrdem = document.getElementById('ordem');
+    const ordemSugestao = document.getElementById('ordemSugestao');
+    
+    // Ao mudar o ano, buscar próxima ordem disponível
+    selectAno.addEventListener('change', async function() {
+        if (this.value && !{{ 'true' if editando else 'false' }}) {
+            try {
+                const response = await fetch(`{{ url_for('indicador.proxima_ordem') }}?ano=${this.value}`);
+                const data = await response.json();
+                
+                if (data.proxima_ordem) {
+                    inputOrdem.value = data.proxima_ordem;
+                    ordemSugestao.textContent = `Próxima ordem disponível: ${data.proxima_ordem}`;
+                }
+            } catch (error) {
+                console.error('Erro ao buscar próxima ordem:', error);
+            }
+        }
+    });
+    
+    // Aplicar máscara monetária no campo meta
+    const inputMeta = document.getElementById('meta');
+    inputMeta.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        value = (value / 100).toFixed(2).replace('.', ',');
+        e.target.value = value;
+    });
+});
+</script>
+{% endblock %}

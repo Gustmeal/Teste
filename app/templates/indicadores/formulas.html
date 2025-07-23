@@ -1,0 +1,380 @@
+                                     {% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-chart-line text-primary me-2"></i>
+            Indicadores
+        </h1>
+        <div class="d-flex gap-2">
+            <a href="https://r.emgea.gov.br/Reports/powerbi/Homologacao/Asses_Homolog/Indicadores"
+               target="_blank"
+               class="btn btn-info">
+                <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+            </a>
+            <!-- FIM DO BOTÃO DASHBOARD -->
+
+            <a href="{{ url_for('indicador.novo') }}" class="btn btn-success">
+                <i class="fas fa-plus me-2"></i>Incluir Indicador
+            </a>
+        </div>
+    </div>
+
+    {% if registros_agrupados %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Data Referência</th>
+                            <th>Indicador</th>
+                            <th>Qtd. Variáveis</th>
+                            <th>Responsável</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for (dt_ref, indicador), registros in registros_agrupados.items() %}
+                        <tr>
+                            <td>{{ dt_ref.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ indicador }}</td>
+                            <td>{{ registros|length }}</td>
+                            <td>{{ registros[0].RESPONSAVEL_INCLUSAO }}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-info" onclick="verDetalhes('{{ dt_ref }}', '{{ indicador }}')">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <a href="{{ url_for('indicador.editar', dt_ref=dt_ref, indicador=indicador) }}"
+                                   class="btn btn-sm btn-warning">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao('{{ dt_ref }}', '{{ indicador }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Detalhes MAIOR -->
+    <div class="modal fade" id="modalDetalhes" tabindex="-1">
+        <div class="modal-dialog modal-fullscreen-lg-down" style="max-width: 90%; margin: 30px auto;">
+            <div class="modal-content" style="height: 90vh;">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-chart-line me-2"></i>
+                        Detalhes do Indicador
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" style="overflow-y: auto;">
+                    <div id="conteudoDetalhes">
+                        <!-- Conteúdo será carregado via JavaScript -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Exclusão -->
+    <div class="modal fade" id="modalExcluir" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirmar Exclusão</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Tem certeza que deseja excluir este indicador e todas as suas variáveis?</p>
+                    <p class="text-muted">Esta ação não pode ser desfeita.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhum indicador cadastrado.
+        <a href="{{ url_for('indicador.novo') }}">Clique aqui</a> para incluir o primeiro.
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Estilos para o modal maior */
+.info-header {
+    background-color: #f8f9fa;
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 35px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.info-header h6 {
+    margin: 0;
+    color: #495057;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.info-header .info-value {
+    font-size: 1.3rem;
+    color: #212529;
+    margin-top: 8px;
+    font-weight: 500;
+}
+
+.variavel-card {
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    transition: all 0.3s ease;
+    overflow: hidden;
+    background-color: #ffffff;
+}
+
+.variavel-card:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transform: translateY(-3px);
+    border-color: #dee2e6;
+}
+
+.variavel-header {
+    background-color: #f1f3f5;
+    padding: 20px 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.variavel-numero {
+    background-color: #007bff;
+    color: white;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.3rem;
+    box-shadow: 0 2px 5px rgba(0,123,255,0.3);
+}
+
+.variavel-content {
+    padding: 30px;
+}
+
+.variavel-info {
+    margin-bottom: 20px;
+}
+
+.variavel-label {
+    font-size: 0.95rem;
+    color: #6c757d;
+    margin-bottom: 5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.variavel-value {
+    font-size: 1.15rem;
+    color: #212529;
+    line-height: 1.5;
+}
+
+.valor-badge {
+    background-color: #28a745;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 25px;
+    font-size: 1.3rem;
+    font-weight: 600;
+    box-shadow: 0 2px 5px rgba(40,167,69,0.3);
+}
+
+.responsavel-info {
+    font-size: 0.95rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.variaveis-container {
+    max-height: calc(90vh - 350px);
+    overflow-y: auto;
+    padding-right: 15px;
+}
+
+/* Customização da scrollbar */
+.variaveis-container::-webkit-scrollbar {
+    width: 10px;
+}
+
+.variaveis-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+.variaveis-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 5px;
+}
+
+.variaveis-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Título das seções */
+.section-title {
+    font-size: 1.4rem;
+    color: #333;
+    margin-bottom: 25px;
+    font-weight: 600;
+}
+
+/* Estilo para o botão Dashboard */
+.btn-info {
+    background-color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+    border-color: #117a8b;
+}
+</style>
+
+<script>
+// Armazenar dados dos registros para exibição
+const registrosData = {
+    {% for (dt_ref, indicador), registros in registros_agrupados.items() %}
+    '{{ dt_ref }}_{{ indicador }}': [
+        {% for reg in registros %}
+        {
+            variavel: {{ reg.VARIAVEL }},
+            nome: {{ reg.NO_VARIAVEL|tojson|safe }},
+            fonte: {{ reg.FONTE|tojson|safe }},
+            valor: {{ reg.VR_VARIAVEL or 0 }},
+            responsavel: {{ reg.RESPONSAVEL_INCLUSAO|tojson|safe }}
+        },
+        {% endfor %}
+    ],
+    {% endfor %}
+};
+
+function verDetalhes(dtRef, indicador) {
+    const chave = `${dtRef}_${indicador}`;
+    const registros = registrosData[chave];
+
+    if (!registros) return;
+
+    // Pegar o responsável (assumindo que é o mesmo para todos os registros do mesmo indicador/data)
+    const responsavelGeral = registros[0].responsavel || 'Não informado';
+
+    let html = `
+        <!-- Cabeçalho com informações gerais -->
+        <div class="info-header">
+            <div class="row">
+                <div class="col-md-4">
+                    <h6><i class="fas fa-calendar-alt me-2"></i>Data Referência</h6>
+                    <div class="info-value">${formatarData(dtRef)}</div>
+                </div>
+                <div class="col-md-4">
+                    <h6><i class="fas fa-chart-line me-2"></i>Indicador</h6>
+                    <div class="info-value">${indicador}</div>
+                </div>
+                <div class="col-md-4">
+                    <h6><i class="fas fa-user me-2"></i>Responsável</h6>
+                    <div class="info-value">${responsavelGeral}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Título das variáveis -->
+        <h5 class="section-title">
+            <i class="fas fa-list me-2"></i>
+            Variáveis (${registros.length})
+        </h5>
+
+        <!-- Container das variáveis com scroll -->
+        <div class="variaveis-container">
+    `;
+
+    // Card para cada variável
+    registros.forEach(reg => {
+        html += `
+            <div class="variavel-card">
+                <div class="variavel-header">
+                    <div class="d-flex align-items-center">
+                        <div class="variavel-numero">${reg.variavel}</div>
+                        <h5 class="mb-0 ms-4">${reg.nome}</h5>
+                    </div>
+                    <div class="valor-badge">
+                        ${formatarNumero(reg.valor)}
+                    </div>
+                </div>
+                <div class="variavel-content">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="variavel-info">
+                                <div class="variavel-label">Fonte</div>
+                                <div class="variavel-value">${reg.fonte}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div class="variavel-info">
+                                <div class="variavel-label">Atualizado por</div>
+                                <div class="responsavel-info">${reg.responsavel || '-'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+
+    document.getElementById('conteudoDetalhes').innerHTML = html;
+    new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+}
+
+function confirmarExclusao(dtRef, indicador) {
+    const url = `{{ url_for('indicador.excluir', dt_ref='_dt_ref_', indicador='_indicador_') }}`
+        .replace('_dt_ref_', dtRef)
+        .replace('_indicador_', indicador);
+
+    document.getElementById('btnConfirmarExclusao').href = url;
+    new bootstrap.Modal(document.getElementById('modalExcluir')).show();
+}
+
+function formatarData(data) {
+    const [ano, mes, dia] = data.split('-');
+    return `${dia}/${mes}/${ano}`;
+}
+
+function formatarNumero(valor) {
+    return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+</script>
+{% endblock %}
