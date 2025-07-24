@@ -7,6 +7,8 @@ from datetime import datetime, date
 from sqlalchemy import extract, func, not_
 from calendar import monthrange
 from decimal import Decimal
+from app.models.indicador import MetaAnual
+
 
 indicador_bp = Blueprint('indicador', __name__)
 
@@ -398,6 +400,14 @@ def novo_item():
                 flash('Já existe um item com esta ordem neste ano.', 'warning')
                 return redirect(url_for('indicador.novo_item'))
 
+            # --- CORREÇÃO APLICADA AQUI ---
+            # Captura e trata o valor da meta, removendo o separador de milhar.
+            meta_str = request.form.get('meta')
+            meta_valor = None
+            if meta_str:
+                meta_valor = Decimal(meta_str.replace('.', '').replace(',', '.'))
+            # --- FIM DA CORREÇÃO ---
+
             # Criar novo item
             novo_item = IndicadorAno(
                 ANO=ano,
@@ -410,7 +420,7 @@ def novo_item():
                 QT_MAIOR_MELHOR=request.form.get('qt_maior_melhor') == '1' if request.form.get(
                     'qt_maior_melhor') else None,
                 DESTINACAO=request.form.get('destinacao') or None,
-                META=Decimal(request.form.get('meta').replace(',', '.')) if request.form.get('meta') else None
+                META=meta_valor  # Usa a variável tratada
             )
 
             db.session.add(novo_item)
@@ -429,7 +439,8 @@ def novo_item():
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao criar item: {str(e)}', 'danger')
+            # Adicionado o tipo da exceção ao flash para facilitar a depuração
+            flash(f'Erro ao criar item: [{type(e).__name__}] {str(e)}', 'danger')
             return redirect(url_for('indicador.novo_item'))
 
     # GET - Preparar dados para o formulário
@@ -452,7 +463,6 @@ def novo_item():
                            dimensoes=dimensoes,
                            unidades_medida=unidades_medida,
                            editando=False)
-
 
 @indicador_bp.route('/indicadores/itens/editar/<string:ano>/<int:ordem>', methods=['GET', 'POST'])
 @login_required
@@ -477,8 +487,15 @@ def editar_item(ano, ordem):
                 'qt_maior_melhor') else None
             item.DESTINACAO = get_form_value('destinacao')
 
+            # --- CORREÇÃO APLICADA AQUI ---
+            # Captura e trata o valor da meta, removendo o separador de milhar.
             meta_str = request.form.get('meta')
-            item.META = Decimal(meta_str.replace(',', '.')) if meta_str else None
+            if meta_str:
+                # Remove pontos (separador de milhar) e substitui a vírgula (decimal) por ponto
+                item.META = Decimal(meta_str.replace('.', '').replace(',', '.'))
+            else:
+                item.META = None
+            # --- FIM DA CORREÇÃO ---
 
             db.session.commit()
 
@@ -495,7 +512,8 @@ def editar_item(ano, ordem):
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao atualizar item: {str(e)}', 'danger')
+            # Adicionado o tipo da exceção ao flash para facilitar a depuração
+            flash(f'Erro ao atualizar item: [{type(e).__name__}] {str(e)}', 'danger')
 
     # GET ou erro no POST
     ano_atual = datetime.now().year
@@ -518,7 +536,6 @@ def editar_item(ano, ordem):
                            dimensoes=dimensoes,
                            unidades_medida=unidades_medida,
                            editando=True)
-
 
 @indicador_bp.route('/indicadores/itens/excluir/<string:ano>/<int:ordem>')
 @login_required
@@ -562,3 +579,254 @@ def proxima_ordem():
     proxima = 1 if maior_ordem is None else maior_ordem + 1
 
     return jsonify({'proxima_ordem': proxima})
+
+
+@indicador_bp.route('/indicadores/metas')
+@login_required
+def metas():
+    """Listar todas as metas anuais"""
+    # Filtros
+    ano_filtro = request.args.get('ano')
+    indicador_filtro = request.args.get('indicador')
+
+    # Query base
+    query = MetaAnual.query
+
+    # Aplicar filtros
+    if ano_filtro:
+        query = query.filter(MetaAnual.ANO == ano_filtro)
+    if indicador_filtro:
+        query = query.filter(MetaAnual.SG_INDICADOR == indicador_filtro)
+
+    # Executar query
+    metas = query.order_by(
+        MetaAnual.ANO.desc(),
+        MetaAnual.SG_INDICADOR,
+        MetaAnual.NO_VARIAVEL
+    ).all()
+
+    # Buscar valores únicos para os filtros
+    anos_disponiveis = db.session.query(MetaAnual.ANO).distinct().order_by(MetaAnual.ANO.desc()).all()
+    anos_disponiveis = [ano[0] for ano in anos_disponiveis]
+
+    indicadores_disponiveis = db.session.query(MetaAnual.SG_INDICADOR).distinct().order_by(MetaAnual.SG_INDICADOR).all()
+    indicadores_disponiveis = [ind[0] for ind in indicadores_disponiveis]
+
+    return render_template('indicadores/metas.html',
+                           metas=metas,
+                           anos_disponiveis=anos_disponiveis,
+                           indicadores_disponiveis=indicadores_disponiveis,
+                           ano_filtro=ano_filtro,
+                           indicador_filtro=indicador_filtro)
+
+
+@indicador_bp.route('/indicadores/metas/novo', methods=['GET', 'POST'])
+@login_required
+def nova_meta():
+    """Criar nova meta anual"""
+    if request.method == 'POST':
+        try:
+            # Capturar dados do formulário
+            ano = request.form.get('ano')
+            sg_indicador = request.form.get('sg_indicador')
+            no_variavel = request.form.get('no_variavel')
+            vr_meta_str = request.form.get('vr_meta', '0')
+            vr_meta = Decimal(vr_meta_str.replace(',', '.'))
+
+            # VARIAVEL sempre será 1 conforme solicitado
+            variavel = 1
+
+            # Verificar se já existe
+            existe = MetaAnual.query.filter_by(
+                ANO=ano,
+                SG_INDICADOR=sg_indicador,
+                VARIAVEL=variavel
+            ).first()
+
+            if existe:
+                flash('Já existe uma meta para este indicador neste ano.', 'warning')
+                return redirect(url_for('indicador.nova_meta'))
+
+            # Criar nova meta
+            nova_meta = MetaAnual(
+                ANO=ano,
+                SG_INDICADOR=sg_indicador,
+                VARIAVEL=variavel,
+                NO_VARIAVEL=no_variavel,
+                VR_META=vr_meta
+            )
+
+            db.session.add(nova_meta)
+            db.session.commit()
+
+            # Registrar log
+            registrar_log(
+                acao='criar',
+                entidade='meta_anual',
+                entidade_id=None,
+                descricao=f'Criação de meta anual: {ano} - {sg_indicador}'
+            )
+
+            flash('Meta criada com sucesso!', 'success')
+            return redirect(url_for('indicador.metas'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao criar meta: {str(e)}', 'danger')
+            return redirect(url_for('indicador.nova_meta'))
+
+    # GET - Preparar dados para o formulário
+    ano_atual = datetime.now().year
+
+    # Buscar indicadores disponíveis (DISTINCT) - da própria tabela de metas
+    indicadores_disponiveis = db.session.query(
+        MetaAnual.SG_INDICADOR
+    ).distinct().order_by(MetaAnual.SG_INDICADOR).all()
+    indicadores_disponiveis = [ind[0] for ind in indicadores_disponiveis]
+
+    # Se não houver indicadores na tabela de metas, buscar da tabela de códigos
+    if not indicadores_disponiveis:
+        codigos_indicadores = CodigoIndicador.query.order_by(CodigoIndicador.SG_INDICADOR).all()
+        indicadores_disponiveis = [cod.SG_INDICADOR for cod in codigos_indicadores]
+
+    # Buscar TODAS as variáveis disponíveis (DISTINCT) - sem filtrar por indicador
+    variaveis_disponiveis = db.session.query(
+        MetaAnual.NO_VARIAVEL
+    ).filter(
+        MetaAnual.NO_VARIAVEL.isnot(None)
+    ).distinct().order_by(MetaAnual.NO_VARIAVEL).all()
+    variaveis_disponiveis = [var[0] for var in variaveis_disponiveis if var[0]]
+
+    return render_template('indicadores/form_meta.html',
+                           ano_atual=ano_atual,
+                           indicadores_disponiveis=indicadores_disponiveis,
+                           variaveis_disponiveis=variaveis_disponiveis,
+                           editando=False)
+
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import login_required, current_user
+from app import db
+from app.models.indicador import IndicadorFormula, CodigoIndicador, VariavelIndicador, IndicadorAno, MetaAnual
+from app.utils.audit import registrar_log
+from datetime import datetime, date
+from sqlalchemy import func
+from calendar import monthrange
+from decimal import Decimal
+
+# ... (outras rotas e código do blueprint) ...
+
+@indicador_bp.route('/indicadores/metas/editar/<int:ano>/<path:sg_indicador>/<int:variavel>',
+                    methods=['GET', 'POST'])
+@login_required
+def editar_meta(ano, sg_indicador, variavel):
+    """Editar meta anual existente"""
+    meta = MetaAnual.query.filter_by(
+        ANO=ano,
+        SG_INDICADOR=sg_indicador,
+        VARIAVEL=variavel
+    ).first_or_404()
+
+    if request.method == 'POST':
+        try:
+            # Atualiza os campos que podem ser modificados
+            meta.NO_VARIAVEL = request.form.get('no_variavel')
+            vr_meta_str = request.form.get('vr_meta', '0')
+            meta.VR_META = Decimal(vr_meta_str.replace(',', '.'))
+
+            db.session.commit()
+
+            registrar_log(
+                acao='editar',
+                entidade='meta_anual',
+                entidade_id=None,
+                descricao=f'Edição de meta anual: {ano} - {sg_indicador}'
+            )
+
+            flash('Meta atualizada com sucesso!', 'success')
+            return redirect(url_for('indicador.metas'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar meta: {str(e)}', 'danger')
+
+    # GET - Preparar dados para o formulário
+    # Buscar indicadores e variáveis disponíveis para os selects
+    indicadores_disponiveis = db.session.query(
+        CodigoIndicador.SG_INDICADOR
+    ).distinct().order_by(CodigoIndicador.SG_INDICADOR).all()
+    indicadores_disponiveis = [ind[0] for ind in indicadores_disponiveis]
+
+    variaveis_disponiveis = db.session.query(
+        VariavelIndicador.NO_VARIAVEL
+    ).filter(
+        VariavelIndicador.NO_VARIAVEL.isnot(None)
+    ).distinct().order_by(VariavelIndicador.NO_VARIAVEL).all()
+    variaveis_disponiveis = [var[0] for var in variaveis_disponiveis if var[0]]
+
+    return render_template('indicadores/form_meta.html',
+                           meta=meta,
+                           indicadores_disponiveis=indicadores_disponiveis,
+                           variaveis_disponiveis=variaveis_disponiveis,
+                           editando=True)
+
+
+@indicador_bp.route('/indicadores/metas/excluir/<int:ano>/<path:sg_indicador>/<int:variavel>')
+@login_required
+def excluir_meta(ano, sg_indicador, variavel):
+    """Excluir meta anual"""
+    try:
+        meta = MetaAnual.query.filter_by(
+            ANO=ano,
+            SG_INDICADOR=sg_indicador,
+            VARIAVEL=variavel
+        ).first_or_404()
+
+        db.session.delete(meta)
+        db.session.commit()
+
+        registrar_log(
+            acao='excluir',
+            entidade='meta_anual',
+            entidade_id=None,
+            descricao=f'Exclusão de meta anual: {ano} - {sg_indicador}'
+        )
+
+        flash('Meta excluída com sucesso!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao excluir meta: {str(e)}', 'danger')
+
+    return redirect(url_for('indicador.metas'))
+
+
+@indicador_bp.route('/indicadores/api/variaveis-metas')
+@login_required
+def api_variaveis_metas():
+    """API para buscar variáveis disponíveis para um indicador"""
+    indicador = request.args.get('indicador')
+
+    if not indicador:
+        return jsonify({'variaveis': []})
+
+    # Buscar variáveis distintas para o indicador
+    variaveis = db.session.query(
+        MetaAnual.NO_VARIAVEL
+    ).filter(
+        MetaAnual.SG_INDICADOR == indicador,
+        MetaAnual.NO_VARIAVEL.isnot(None)
+    ).distinct().order_by(MetaAnual.NO_VARIAVEL).all()
+
+    variaveis_lista = [var[0] for var in variaveis if var[0]]
+
+    # Se não houver variáveis para este indicador, buscar todas as disponíveis
+    if not variaveis_lista:
+        variaveis = db.session.query(
+            MetaAnual.NO_VARIAVEL
+        ).filter(
+            MetaAnual.NO_VARIAVEL.isnot(None)
+        ).distinct().order_by(MetaAnual.NO_VARIAVEL).all()
+
+        variaveis_lista = [var[0] for var in variaveis if var[0]]
+
+    return jsonify({'variaveis': variaveis_lista})

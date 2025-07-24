@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{{ url_for('indicador.index') }}" class="btn btn-light border mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+            <h1 class="fw-bold">
+                <i class="fas fa-bullseye text-warning me-2"></i>
+                Metas Anuais
+            </h1>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('indicador.nova_meta') }}" class="btn btn-warning">
+                <i class="fas fa-plus me-2"></i>Nova Meta
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('indicador.metas') }}">
+                <div class="row">
+                    <div class="col-md-3">
+                        <label for="filtroAno" class="form-label">Filtrar por Ano</label>
+                        <select name="ano" class="form-select" id="filtroAno">
+                            <option value="">Todos os anos</option>
+                            {% for ano in anos_disponiveis %}
+                            <option value="{{ ano }}" {% if ano == ano_filtro %}selected{% endif %}>{{ ano }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filtroIndicador" class="form-label">Filtrar por Indicador</label>
+                        <select name="indicador" class="form-select" id="filtroIndicador">
+                            <option value="">Todos os indicadores</option>
+                            {% for ind in indicadores_disponiveis %}
+                            <option value="{{ ind }}" {% if ind == indicador_filtro %}selected{% endif %}>{{ ind }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-filter"></i> Filtrar
+                        </button>
+                        <a href="{{ url_for('indicador.metas') }}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if metas %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Ano</th>
+                            <th>Indicador</th>
+                            <th>Variável</th>
+                            <th class="text-end">Meta</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for meta in metas %}
+                        <tr>
+                            <td>{{ meta.ANO }}</td>
+                            <td>{{ meta.SG_INDICADOR }}</td>
+                            <td>{{ meta.NO_VARIAVEL }}</td>
+                            <td class="text-end fw-bold text-success">
+                                {{ '{:,.2f}'.format(meta.VR_META or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('indicador.editar_meta', ano=meta.ANO, sg_indicador=meta.SG_INDICADOR, variavel=meta.VARIAVEL) }}"
+                                   class="btn btn-sm btn-outline-primary" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <!-- CORREÇÃO APLICADA AQUI -->
+                                <button class="btn btn-sm btn-outline-danger" title="Excluir"
+                                        onclick="confirmarExclusaoMeta('{{ url_for('indicador.excluir_meta', ano=meta.ANO, sg_indicador=meta.SG_INDICADOR, variavel=meta.VARIAVEL) }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Confirmação de Exclusão -->
+    <div class="modal fade" id="modalExcluirMeta" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirmar Exclusão</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Tem certeza que deseja excluir esta meta?</p>
+                    <p class="text-muted">Esta ação não pode ser desfeita.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="#" id="btnConfirmarExclusaoMeta" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhuma meta cadastrada.
+        <a href="{{ url_for('indicador.nova_meta') }}" class="alert-link">Clique aqui</a> para incluir a primeira.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// CORREÇÃO APLICADA AQUI
+function confirmarExclusaoMeta(url) {
+    // A URL já vem pronta do `url_for`, basta atribuí-la
+    document.getElementById('btnConfirmarExclusaoMeta').href = url;
+    new bootstrap.Modal(document.getElementById('modalExcluirMeta')).show();
+}
+</script>
+{% endblock %}

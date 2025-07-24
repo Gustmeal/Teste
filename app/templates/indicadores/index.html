@@ -45,20 +45,20 @@
             </div>
         </div>
 
-        <!-- Card 3: Em breve -->
+        <!-- Card 3: Metas Anuais -->
         <div class="col-md-4 mb-4">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm hover-card">
                 <div class="card-body text-center">
                     <div class="icon-container mb-3">
-                        <i class="fas fa-clock fa-3x text-secondary"></i>
+                        <i class="fas fa-bullseye fa-3x text-warning"></i>
                     </div>
-                    <h4 class="card-title text-secondary">Em Breve</h4>
+                    <h4 class="card-title">Metas Anuais</h4>
                     <p class="card-text text-muted">
-                        Nova funcionalidade em desenvolvimento
+                        Defina e acompanhe as metas anuais dos indicadores
                     </p>
-                    <button class="btn btn-secondary" disabled>
-                        <i class="fas fa-lock me-2"></i>Indisponível
-                    </button>
+                    <a href="{{ url_for('indicador.metas') }}" class="btn btn-warning">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
                 </div>
             </div>
         </div>

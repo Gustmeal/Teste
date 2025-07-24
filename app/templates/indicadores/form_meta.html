@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <a href="{{ url_for('indicador.metas') }}" class="btn btn-back mb-3">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">
+                        <i class="fas fa-bullseye me-2"></i>
+                        {% if editando %}Editar{% else %}Nova{% endif %} Meta Anual
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="formMeta">
+                        <div class="row mb-3">
+                            <!-- Ano -->
+                            <div class="col-md-6">
+                                <label for="ano" class="form-label">Ano <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="ano" name="ano"
+                                       value="{{ meta.ANO if meta else ano_atual }}"
+                                       min="2020" max="2030" required
+                                       {% if editando %}readonly{% endif %}>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Indicador -->
+                            <div class="col-md-12">
+                                <label for="sg_indicador" class="form-label">
+                                    Indicador <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="sg_indicador" name="sg_indicador" required
+                                        {% if editando %}disabled{% endif %}>
+                                    <option value="">Selecione o indicador</option>
+                                    {% for ind in indicadores_disponiveis %}
+                                    <option value="{{ ind }}" {% if meta and meta.SG_INDICADOR == ind %}selected{% endif %}>
+                                        {{ ind }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                {% if editando %}
+                                <input type="hidden" name="sg_indicador" value="{{ meta.SG_INDICADOR }}">
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <!-- Variável -->
+                            <div class="col-md-12">
+                                <label for="no_variavel" class="form-label">
+                                    Variável <span class="text-danger">*</span>
+                                </label>
+                                <select class="form-select" id="no_variavel" name="no_variavel" required
+                                        {% if editando %}disabled{% endif %}>
+                                    <option value="">Selecione a variável</option>
+                                    {% for var in variaveis_disponiveis %}
+                                    <option value="{{ var }}" {% if meta and meta.NO_VARIAVEL == var %}selected{% endif %}>
+                                        {{ var }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                {% if editando %}
+                                <input type="hidden" name="no_variavel" value="{{ meta.NO_VARIAVEL }}">
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <!-- Valor da Meta -->
+                            <div class="col-md-6">
+                                <label for="vr_meta" class="form-label">
+                                    Valor da Meta <span class="text-danger">*</span>
+                                </label>
+                                <input type="text" class="form-control" id="vr_meta" name="vr_meta"
+                                       value="{{ '{:,.2f}'.format(meta.VR_META or 0).replace('.', ',') if meta else '' }}"
+                                       placeholder="0,00" required>
+                                <small class="text-muted">Digite o valor da meta anual</small>
+                            </div>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="mt-4 d-flex gap-2">
+                            <button type="submit" class="btn btn-warning">
+                                <i class="fas fa-save me-2"></i>Salvar
+                            </button>
+                            <a href="{{ url_for('indicador.metas') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Aplicar máscara monetária no campo de valor
+    const inputMeta = document.getElementById('vr_meta');
+    inputMeta.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        value = (value / 100).toFixed(2).replace('.', ',');
+        e.target.value = value;
+    });
+});
+</script>
+{% endblock %}

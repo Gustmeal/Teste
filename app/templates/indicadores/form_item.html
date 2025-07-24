@@ -112,9 +112,12 @@
                             <!-- Meta -->
                             <div class="col-md-6">
                                 <label for="meta" class="form-label">Meta</label>
-                                <input type="text" class="form-control" id="meta" name="meta" 
-                                       value="{{ '{:,.2f}'.format(item.META).replace('.', ',') if item and item.META else '' }}"
+                                <!-- --- CORREÇÃO APLICADA AQUI --- -->
+                                <!-- Formata o número para o padrão brasileiro (1.234,56) de forma segura -->
+                                <input type="text" class="form-control" id="meta" name="meta"
+                                       value="{{ '{:,.2f}'.format(item.META).replace(',', 'X').replace('.', ',').replace('X', '.') if item and item.META is not none else '' }}"
                                        placeholder="0,00">
+                                <!-- --- FIM DA CORREÇÃO --- -->
                             </div>
                         </div>
 
@@ -124,15 +127,15 @@
                                 <label class="form-label">Quanto maior melhor?</label>
                                 <div>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="qt_maior_melhor" 
+                                        <input class="form-check-input" type="radio" name="qt_maior_melhor"
                                                id="maiorMelhorSim" value="1"
                                                {% if item and item.QT_MAIOR_MELHOR %}checked{% endif %}>
                                         <label class="form-check-label" for="maiorMelhorSim">Sim</label>
                                     </div>
                                     <div class="form-check form-check-inline">
-                                        <input class="form-check-input" type="radio" name="qt_maior_melhor" 
+                                        <input class="form-check-input" type="radio" name="qt_maior_melhor"
                                                id="maiorMelhorNao" value="0"
-                                               {% if item and item.QT_MAIOR_MELHOR == False %}checked{% endif %}>
+                                               {% if item and not item.QT_MAIOR_MELHOR %}checked{% endif %}>
                                         <label class="form-check-label" for="maiorMelhorNao">Não</label>
                                     </div>
                                 </div>
@@ -144,7 +147,7 @@
                                     Destinação
                                     <small class="text-muted">(máx. 3 caracteres)</small>
                                 </label>
-                                <input type="text" class="form-control" id="destinacao" name="destinacao" 
+                                <input type="text" class="form-control" id="destinacao" name="destinacao"
                                        value="{{ item.DESTINACAO if item else '' }}"
                                        maxlength="3" placeholder="Nenhum">
                             </div>
@@ -171,14 +174,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectAno = document.getElementById('ano');
     const inputOrdem = document.getElementById('ordem');
     const ordemSugestao = document.getElementById('ordemSugestao');
-    
+
     // Ao mudar o ano, buscar próxima ordem disponível
     selectAno.addEventListener('change', async function() {
         if (this.value && !{{ 'true' if editando else 'false' }}) {
             try {
                 const response = await fetch(`{{ url_for('indicador.proxima_ordem') }}?ano=${this.value}`);
                 const data = await response.json();
-                
+
                 if (data.proxima_ordem) {
                     inputOrdem.value = data.proxima_ordem;
                     ordemSugestao.textContent = `Próxima ordem disponível: ${data.proxima_ordem}`;
@@ -188,14 +191,35 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
     // Aplicar máscara monetária no campo meta
     const inputMeta = document.getElementById('meta');
     inputMeta.addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        value = (value / 100).toFixed(2).replace('.', ',');
-        e.target.value = value;
+        let value = e.target.value.replace(/\D/g, ''); // Remove tudo que não é dígito
+
+        // Evita que o campo fique vazio se o usuário apagar tudo
+        if (value === '') {
+            e.target.value = '';
+            return;
+        }
+
+        // Adiciona zeros à esquerda se necessário
+        value = value.padStart(3, '0');
+
+        // Formata para o padrão monetário brasileiro
+        let integerPart = value.slice(0, -2);
+        let decimalPart = value.slice(-2);
+
+        // Adiciona separador de milhar
+        integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+        e.target.value = `${integerPart},${decimalPart}`;
     });
+
+    // Dispara o evento 'input' no carregamento da página para formatar o valor inicial
+    if (inputMeta.value) {
+        inputMeta.dispatchEvent(new Event('input'));
+    }
 });
 </script>
 {% endblock %}

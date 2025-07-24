@@ -1,5 +1,6 @@
 from datetime import datetime
 from app import db
+from sqlalchemy.dialects.mysql import TINYINT
 
 
 class IndicadorFormula(db.Model):
@@ -66,3 +67,17 @@ class IndicadorAno(db.Model):
 
     def __repr__(self):
         return f'<IndicadorAno {self.ANO} - {self.ORDEM}>'
+
+class MetaAnual(db.Model):
+    """Modelo para a tabela de metas anuais"""
+    __tablename__ = 'IND_TB005_METAS_ANUAIS'
+    __table_args__ = {'schema': 'BDG'}
+
+    ANO = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    SG_INDICADOR = db.Column(db.String(18), primary_key=True)
+    VARIAVEL = db.Column(TINYINT, primary_key=True, autoincrement=False)
+    NO_VARIAVEL = db.Column(db.String(100), nullable=True)
+    VR_META = db.Column(db.Numeric(18, 2), nullable=False)
+
+    def __repr__(self):
+        return f'<MetaAnual {self.ANO} - {self.SG_INDICADOR}>'
