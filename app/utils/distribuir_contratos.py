@@ -1078,8 +1078,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
 
     return contratos_distribuidos
 
-
-
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
     Atualiza a tabela de limites de distribuição preenchendo:

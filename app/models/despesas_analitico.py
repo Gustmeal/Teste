@@ -89,7 +89,7 @@ class DespesasAnalitico(db.Model):
 
 class OcorrenciasMovItemServico(db.Model):
     """Modelo para a tabela PAR_TB015_OCORRENCIAS_MOV_ITEM_SERVICO"""
-    __tablename__ = 'PAR_TB015_OCORRENCIAS_MOV_ITEM_SERVICO'
+    __tablename__ = 'PAR_TB007_OCORRENCIAS_MOV_ITEM_SERVICO'
     __table_args__ = {'schema': 'BDG'}
 
     ID_ITEM_SERVICO = db.Column(db.Integer, primary_key=True)
