@@ -489,282 +489,148 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
 
 def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     """
-    Aplica a regra de arrasto para contratos sem acordo.
-    Versão corrigida que resolve o erro ResourceClosedError.
-
-    Args:
-        edital_id: ID do edital a ser processado
-        periodo_id: ID do período a ser processado
-
-    Returns:
-        int: Total de contratos distribuídos
+    Aplica a regra de arrasto para múltiplos contratos sem acordo de forma OTIMIZADA e PROPORCIONAL,
+    distribuindo os CPFs de acordo com o percentual de participação de cada empresa.
     """
-    contratos_distribuidos = 0
+    print(f"Iniciando distribuição OTIMIZADA e PROPORCIONAL (sem acordo) - regra de arrasto")
 
     try:
-        print(
-            f"Iniciando distribuição de contratos sem acordo - regra de arrasto - Edital: {edital_id}, Período: {periodo_id}")
+        with db.engine.begin() as connection:
+            sql_script = text("""
+                SET NOCOUNT ON;
 
-        # Primeiro, verificamos se existem empresas participantes
-        empresas = db.session.execute(
-            text("""
-                SELECT COUNT(*) 
-                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-                JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP ON LD.ID_EMPRESA = EP.ID_EMPRESA
-                    AND LD.ID_EDITAL = EP.ID_EDITAL
-                    AND LD.ID_PERIODO = EP.ID_PERIODO
-                WHERE LD.ID_EDITAL = :edital_id
-                AND LD.ID_PERIODO = :periodo_id
-                AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
-                AND LD.PERCENTUAL_FINAL > 0
-            """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).scalar()
+                -- ETAPA 1: Identificar e numerar aleatoriamente os CPFs que se enquadram na regra.
+                -- A ordem aleatória (NEWID()) evita vieses na distribuição.
+                IF OBJECT_ID('tempdb..#CPFsParaArrasto') IS NOT NULL DROP TABLE #CPFsParaArrasto;
 
-        if not empresas:
-            print("Nenhuma empresa participante encontrada com percentual de distribuição")
-            return 0
-
-        # Depois, verificamos se existem CPFs com múltiplos contratos
-        cpfs_multiplos = db.session.execute(
-            text("""
-                SELECT COUNT(*) 
-                FROM (
-                    SELECT [NR_CPF_CNPJ], COUNT(*) as qtd_contratos
-                    FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    GROUP BY [NR_CPF_CNPJ]
-                    HAVING COUNT(*) > 1
-                ) AS CPFsMultiplos
-            """)
-        ).scalar()
-
-        if not cpfs_multiplos:
-            print("Nenhum CPF com múltiplos contratos encontrado para aplicar regra de arrasto")
-            return 0
-
-        print(f"{cpfs_multiplos} CPFs com múltiplos contratos encontrados")
-
-        # Script SQL que realiza todo o processamento, sem tentar recuperar um resultado diretamente
-        db.session.execute(
-            text("""
-            -- Declarar variável para contagem
-            DECLARE @contratos_distribuidos INT = 0;
-
-            -- ETAPA 1: Identificar empresas participantes
-            IF OBJECT_ID('tempdb..#Empresas') IS NOT NULL
-                DROP TABLE #Empresas;
-
-            SELECT 
-                LD.ID_EMPRESA,
-                LD.PERCENTUAL_FINAL AS percentual,
-                ROW_NUMBER() OVER (ORDER BY LD.PERCENTUAL_FINAL DESC) AS ranking
-            INTO #Empresas
-            FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
-            JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP 
-                ON LD.ID_EMPRESA = EP.ID_EMPRESA
-                AND LD.ID_EDITAL = EP.ID_EDITAL
-                AND LD.ID_PERIODO = EP.ID_PERIODO
-            WHERE LD.ID_EDITAL = :edital_id
-            AND LD.ID_PERIODO = :periodo_id
-            AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
-            AND LD.PERCENTUAL_FINAL > 0;
-
-            -- ETAPA 2: Normalizar percentuais se necessário
-            DECLARE @total_percentual DECIMAL(10, 6);
-            SELECT @total_percentual = SUM(percentual) FROM #Empresas;
-
-            IF @total_percentual <= 0
-            BEGIN
-                UPDATE #Empresas
-                SET percentual = 100.0 / (SELECT COUNT(*) FROM #Empresas);
-            END
-            ELSE IF ABS(@total_percentual - 100) > 0.01
-            BEGIN
-                UPDATE #Empresas
-                SET percentual = percentual * 100.0 / @total_percentual;
-            END;
-  
-            -- ETAPA 3: Identificar CPFs com múltiplos contratos e marcar para distribuição
-            IF OBJECT_ID('tempdb..#CPFsMultiplos') IS NOT NULL
-                DROP TABLE #CPFsMultiplos;
-
-            SELECT 
-                NR_CPF_CNPJ,
-                COUNT(*) AS qtd_contratos,
-                ROW_NUMBER() OVER (ORDER BY NR_CPF_CNPJ) AS ordem,
-                NULL AS empresa_id
-            INTO #CPFsMultiplos
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
-            GROUP BY NR_CPF_CNPJ
-            HAVING COUNT(*) > 1;
-
-            DECLARE @total_cpfs INT;
-            SELECT @total_cpfs = COUNT(*) FROM #CPFsMultiplos;
-
-            -- ETAPA 4: Distribuir CPFs entre empresas com base nos percentuais
-
-            -- 4.1: Calcular quantos CPFs cada empresa deve receber
-            IF OBJECT_ID('tempdb..#DistribuicaoEmpresas') IS NOT NULL
-                DROP TABLE #DistribuicaoEmpresas;
-
-            SELECT 
-                ID_EMPRESA,
-                percentual,
-                FLOOR(@total_cpfs * percentual / 100.0) AS cpfs_inteiros,
-                @total_cpfs * percentual / 100.0 - FLOOR(@total_cpfs * percentual / 100.0) AS parte_fracionaria,
-                0 AS cpfs_extra,
-                0 AS total_cpfs
-            INTO #DistribuicaoEmpresas
-            FROM #Empresas;
-
-            -- 4.2: Distribuir CPFs restantes com base nas partes fracionárias
-            DECLARE @total_inteiros INT, @cpfs_restantes INT;
-            SELECT @total_inteiros = SUM(cpfs_inteiros) FROM #DistribuicaoEmpresas;
-            SET @cpfs_restantes = @total_cpfs - @total_inteiros;
-
-            IF @cpfs_restantes > 0
-            BEGIN
-                WITH EmpresasOrdenadas AS (
-                    SELECT 
-                        ID_EMPRESA,
-                        parte_fracionaria,
-                        ROW_NUMBER() OVER (ORDER BY parte_fracionaria DESC) AS ranking_fracao
-                    FROM #DistribuicaoEmpresas
+                SELECT
+                    D.NR_CPF_CNPJ,
+                    ROW_NUMBER() OVER (ORDER BY NEWID()) as CpfRowNumber
+                INTO #CPFsParaArrasto
+                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIST
+                    WHERE DIST.NR_CPF_CNPJ = D.NR_CPF_CNPJ
+                    AND DIST.ID_EDITAL = :edital_id
+                    AND DIST.ID_PERIODO = :periodo_id
                 )
-                UPDATE #DistribuicaoEmpresas
-                SET cpfs_extra = CASE WHEN EO.ranking_fracao <= @cpfs_restantes THEN 1 ELSE 0 END
-                FROM #DistribuicaoEmpresas DE
-                JOIN EmpresasOrdenadas EO ON DE.ID_EMPRESA = EO.ID_EMPRESA;
-            END;
+                GROUP BY D.NR_CPF_CNPJ
+                HAVING COUNT(*) > 1;
 
-            -- 4.3: Calcular total final de CPFs por empresa
-            UPDATE #DistribuicaoEmpresas
-            SET total_cpfs = cpfs_inteiros + cpfs_extra;
+                DECLARE @TotalCPFsParaArrastar INT;
+                SELECT @TotalCPFsParaArrastar = COUNT(*) FROM #CPFsParaArrasto;
 
-            -- ETAPA 5: Atribuir empresas aos CPFs
+                IF @TotalCPFsParaArrastar = 0
+                BEGIN
+                    SELECT 0 AS ContratosInseridos;
+                    RETURN;
+                END;
 
-            -- 5.1: Criar tabela de faixas de CPFs por empresa
-            IF OBJECT_ID('tempdb..#FaixasCPFs') IS NOT NULL
-                DROP TABLE #FaixasCPFs;
+                -- ETAPA 2: Calcular a cota de CPFs para cada empresa com base no seu percentual.
+                IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
 
-            CREATE TABLE #FaixasCPFs (
-                ID_EMPRESA INT,
-                ordem_inicio INT,
-                ordem_fim INT
-            );
+                SELECT
+                    EP.ID_EMPRESA,
+                    LD.PERCENTUAL_FINAL AS percentual,
+                    -- Calcula a meta exata e a parte inteira/fracionária
+                    (@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS meta_exata,
+                    FLOOR(@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS meta_inteira,
+                    (@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) - FLOOR(@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS parte_fracionaria
+                INTO #EmpresasInfo
+                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+                JOIN [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                    ON EP.ID_EMPRESA = LD.ID_EMPRESA
+                    AND EP.ID_EDITAL = LD.ID_EDITAL
+                    AND EP.ID_PERIODO = LD.ID_PERIODO
+                WHERE EP.ID_EDITAL = :edital_id
+                AND EP.ID_PERIODO = :periodo_id
+                AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
+                AND LD.PERCENTUAL_FINAL > 0;
 
-            -- 5.2: Definir faixas de CPFs por empresa
-            DECLARE @ordem_atual INT = 1;
-            DECLARE @empresa_id INT, @total_cpfs_empresa INT;
+                IF NOT EXISTS (SELECT 1 FROM #EmpresasInfo)
+                BEGIN
+                    SELECT 0 AS ContratosInseridos;
+                    RETURN;
+                END;
 
-            DECLARE cursor_empresas CURSOR FOR
-            SELECT ID_EMPRESA, total_cpfs
-            FROM #DistribuicaoEmpresas
-            WHERE total_cpfs > 0
-            ORDER BY percentual DESC;
+                -- ETAPA 3: Calcular a cota final, distribuindo os CPFs "extras" para as maiores frações.
+                DECLARE @TotalMetaInteira INT;
+                SELECT @TotalMetaInteira = SUM(meta_inteira) FROM #EmpresasInfo;
 
-            OPEN cursor_empresas;
-            FETCH NEXT FROM cursor_empresas INTO @empresa_id, @total_cpfs_empresa;
+                DECLARE @ContratosExtras INT;
+                SET @ContratosExtras = @TotalCPFsParaArrastar - @TotalMetaInteira;
 
-            WHILE @@FETCH_STATUS = 0
-            BEGIN
-                INSERT INTO #FaixasCPFs (ID_EMPRESA, ordem_inicio, ordem_fim)
-                VALUES (@empresa_id, @ordem_atual, @ordem_atual + @total_cpfs_empresa - 1);
+                ALTER TABLE #EmpresasInfo ADD total_a_receber INT;
 
-                SET @ordem_atual = @ordem_atual + @total_cpfs_empresa;
+                WITH RankingFracao AS (
+                    SELECT ID_EMPRESA, ROW_NUMBER() OVER (ORDER BY parte_fracionaria DESC, ID_EMPRESA) as rn
+                    FROM #EmpresasInfo
+                )
+                UPDATE #EmpresasInfo
+                SET total_a_receber = meta_inteira +
+                    CASE WHEN RF.rn <= @ContratosExtras THEN 1 ELSE 0 END
+                FROM #EmpresasInfo EI
+                JOIN RankingFracao RF ON EI.ID_EMPRESA = RF.ID_EMPRESA;
 
-                FETCH NEXT FROM cursor_empresas INTO @empresa_id, @total_cpfs_empresa;
-            END;
+                -- ETAPA 4: Criar as "faixas de atribuição" para cada empresa.
+                -- Ex: Empresa A (40 CPFs) -> faixa 1 a 40, Empresa B (60 CPFs) -> faixa 41 a 100.
+                IF OBJECT_ID('tempdb..#FaixasDeAtribuicao') IS NOT NULL DROP TABLE #FaixasDeAtribuicao;
 
-            CLOSE cursor_empresas;
-            DEALLOCATE cursor_empresas;
+                SELECT
+                    ID_EMPRESA,
+                    total_a_receber,
+                    ISNULL(SUM(total_a_receber) OVER (ORDER BY ID_EMPRESA ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) + 1 as inicio_faixa,
+                    SUM(total_a_receber) OVER (ORDER BY ID_EMPRESA) as fim_faixa
+                INTO #FaixasDeAtribuicao
+                FROM #EmpresasInfo;
 
-            -- 5.3: Atribuir empresas aos CPFs
-            UPDATE #CPFsMultiplos
-            SET empresa_id = F.ID_EMPRESA
-            FROM #CPFsMultiplos C
-            JOIN #FaixasCPFs F ON C.ordem BETWEEN F.ordem_inicio AND F.ordem_fim;
+                -- ETAPA 5: Criar o mapa final (CPF -> Empresa) juntando os CPFs numerados com suas faixas.
+                IF OBJECT_ID('tempdb..#ArrastoMapping') IS NOT NULL DROP TABLE #ArrastoMapping;
 
-            -- ETAPA 6: Inserir todos os contratos de uma vez e remover da tabela de distribuíveis
+                SELECT
+                    C.NR_CPF_CNPJ,
+                    F.ID_EMPRESA
+                INTO #ArrastoMapping
+                FROM #CPFsParaArrasto C
+                JOIN #FaixasDeAtribuicao F ON C.CpfRowNumber BETWEEN F.inicio_faixa AND F.fim_faixa;
 
-            BEGIN TRANSACTION;
+                -- ETAPAS FINAIS: Inserir e Deletar em massa usando o mapa de atribuição.
+                INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                 [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                 [VR_SD_DEVEDOR], [CREATED_AT])
+                SELECT
+                    GETDATE(), :edital_id, :periodo_id, D.[FkContratoSISCTR],
+                    M.ID_EMPRESA, 3, D.[NR_CPF_CNPJ], D.[VR_SD_DEVEDOR], GETDATE()
+                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+                JOIN #ArrastoMapping M ON D.NR_CPF_CNPJ = M.NR_CPF_CNPJ;
 
-            -- 6.1: Inserir todos os contratos
-            INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-            (
-                [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                [VR_SD_DEVEDOR], [CREATED_AT]
-            )
-            SELECT 
-                GETDATE(), 
-                :edital_id, 
-                :periodo_id, 
-                D.[FkContratoSISCTR], 
-                C.empresa_id, 
-                3, -- Código 3: Regra de Arrasto Sem Acordo
-                D.[NR_CPF_CNPJ], 
-                D.[VR_SD_DEVEDOR], 
-                GETDATE()
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
-            INNER JOIN #CPFsMultiplos C ON D.[NR_CPF_CNPJ] = C.NR_CPF_CNPJ;
+                DECLARE @ContratosInseridos INT = @@ROWCOUNT;
 
-            -- Capturar o número total de contratos inseridos
-            SET @contratos_distribuidos = @@ROWCOUNT;
+                DELETE D
+                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+                JOIN #ArrastoMapping M ON D.NR_CPF_CNPJ = M.NR_CPF_CNPJ;
 
-            -- 6.2: Remover contratos distribuídos
-            DELETE D
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
-            INNER JOIN #CPFsMultiplos C ON D.[NR_CPF_CNPJ] = C.NR_CPF_CNPJ;
+                DROP TABLE #CPFsParaArrasto;
+                DROP TABLE #EmpresasInfo;
+                DROP TABLE #FaixasDeAtribuicao;
+                DROP TABLE #ArrastoMapping;
 
-            COMMIT;
+                SELECT @ContratosInseridos AS ContratosInseridos;
+            """)
 
-            -- ETAPA 7: Salvar o resultado em uma tabela temporária global para recuperação posterior
-            IF OBJECT_ID('tempdb..##ResultadoArrasto') IS NOT NULL
-                DROP TABLE ##ResultadoArrasto;
+            result = connection.execute(sql_script, {"edital_id": edital_id, "periodo_id": periodo_id})
+            contratos_distribuidos = result.scalar_one_or_none() or 0
 
-            CREATE TABLE ##ResultadoArrasto (contratos_distribuidos INT);
-            INSERT INTO ##ResultadoArrasto VALUES (@contratos_distribuidos);
-
-            -- Limpeza
-            DROP TABLE #Empresas;
-            DROP TABLE #CPFsMultiplos;
-            DROP TABLE #DistribuicaoEmpresas;
-            DROP TABLE #FaixasCPFs;
-            """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        )
-
-        # Recuperar o resultado da tabela temporária global
-        result = db.session.execute(text("SELECT contratos_distribuidos FROM ##ResultadoArrasto")).scalar()
-        contratos_distribuidos = result if result is not None else 0
-
-        # Limpar a tabela temporária global
-        db.session.execute(text("IF OBJECT_ID('tempdb..##ResultadoArrasto') IS NOT NULL DROP TABLE ##ResultadoArrasto"))
-
-        print(f"Regra de arrasto processada com sucesso: {contratos_distribuidos} contratos distribuídos")
+            print(f"Regra de arrasto PROPORCIONAL concluída: {contratos_distribuidos} contratos distribuídos")
+            return contratos_distribuidos
 
     except Exception as e:
-        db.session.rollback()
-        # Limpeza das tabelas temporárias em caso de erro
-        try:
-            db.session.execute(text("""
-                IF OBJECT_ID('tempdb..#Empresas') IS NOT NULL DROP TABLE #Empresas;
-                IF OBJECT_ID('tempdb..#CPFsMultiplos') IS NOT NULL DROP TABLE #CPFsMultiplos;
-                IF OBJECT_ID('tempdb..#DistribuicaoEmpresas') IS NOT NULL DROP TABLE #DistribuicaoEmpresas;
-                IF OBJECT_ID('tempdb..#FaixasCPFs') IS NOT NULL DROP TABLE #FaixasCPFs;
-                IF OBJECT_ID('tempdb..##ResultadoArrasto') IS NOT NULL DROP TABLE ##ResultadoArrasto;
-            """))
-            db.session.commit()
-        except:
-            pass
-
-        print(f"Erro ao distribuir contratos pela regra de arrasto: {str(e)}")
+        print(f"Erro na regra de arrasto PROPORCIONAL: {str(e)}")
         import traceback
         print(traceback.format_exc())
-
-    return contratos_distribuidos
-
+        return 0
 
 def distribuir_demais_contratos(edital_id, periodo_id):
     """
@@ -1309,13 +1175,144 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
         return {'resultados': [], 'total_qtde': 0, 'total_saldo': 0}
 
 
-def processar_distribuicao_completa(edital_id, periodo_id):
+def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, periodo_id, empresa_descredenciada_id,
+                                                                    data_inicio_periodo_atual):
+    """
+    Distribui igualitariamente os contratos ATUAIS que, no período imediatamente anterior,
+    estavam com a empresa descredenciada.
+    A lógica do período anterior é baseada na data de início do período atual.
+    """
+    try:
+        print(f"Iniciando distribuição igualitária para empresa descredenciada {empresa_descredenciada_id}")
+        print(f"Buscando contratos do período anterior que terminou em {data_inicio_periodo_atual} - 1 dia.")
+
+        # 1. Buscar contratos na tabela de distribuíveis que PERTENCIAM à empresa descredenciada no período anterior.
+        #    A lógica foi alterada para usar a nova tabela e a data de fim do período.
+        contratos_para_distribuir = db.session.execute(
+            text("""
+                 SELECT DIS.[FkContratoSISCTR],
+                        DIS.[NR_CPF_CNPJ],
+                        DIS.[VR_SD_DEVEDOR]
+                 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                     INNER JOIN [BDG].[COM_TB012_EMPRESA_COBRANCA_ANTERIORES] AS ANT
+                 ON DIS.FkContratoSISCTR = ANT.fkContratoSISCTR
+                 WHERE
+                 -- Filtra pelos contratos que estavam com a empresa descredenciada
+                     ANT.COD_EMPRESA_COBRANCA = :empresa_id
+                 -- E que pertenciam ao período imediatamente anterior, identificado pela data.
+                   AND ANT.DT_PERIODO_FIM = DATEADD(day
+                     , -1
+                     , :data_inicio_atual)
+                 """),
+            {
+                "empresa_id": empresa_descredenciada_id,
+                "data_inicio_atual": data_inicio_periodo_atual
+            }
+        ).fetchall()
+
+        if not contratos_para_distribuir:
+            print(
+                f"Nenhum contrato da empresa {empresa_descredenciada_id} referente ao período anterior foi encontrado na tabela de distribuíveis.")
+            return {
+                "success": True,  # Não é um erro, apenas não há o que fazer.
+                "message": "Nenhum contrato para redistribuir desta empresa descredenciada.",
+                "contratos_distribuidos": 0
+            }
+
+        total_contratos = len(contratos_para_distribuir)
+        print(f"Encontrados {total_contratos} contratos para distribuir igualitariamente.")
+
+        # 2. Buscar empresas que PERMANECEM no período atual (lógica inalterada)
+        empresas_permanecem = db.session.execute(
+            text("""
+                 SELECT ID_EMPRESA
+                 FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+                 WHERE ID_EDITAL = :edital_id
+                   AND ID_PERIODO = :periodo_id
+                   AND DS_CONDICAO = 'PERMANECE'
+                   AND DELETED_AT IS NULL
+                 ORDER BY ID_EMPRESA
+                 """),
+            {"edital_id": edital_id, "periodo_id": periodo_id}
+        ).fetchall()
+
+        if not empresas_permanecem:
+            return {
+                "success": False,
+                "message": "Nenhuma empresa na condição 'PERMANECE' foi encontrada para receber os contratos.",
+                "contratos_distribuidos": 0
+            }
+
+        empresas_ids = [e[0] for e in empresas_permanecem]
+        total_empresas = len(empresas_ids)
+
+        print(f"Distribuindo {total_contratos} contratos entre {total_empresas} empresas que 'PERMANECE'")
+
+        # Lógica de distribuição igualitária (inalterada)
+        contratos_por_empresa = total_contratos // total_empresas
+        contratos_extras = total_contratos % total_empresas
+
+        contrato_idx = 0
+        for i, empresa_id in enumerate(empresas_ids):
+            qtd_contratos_para_esta_empresa = contratos_por_empresa + (1 if i < contratos_extras else 0)
+
+            for _ in range(qtd_contratos_para_esta_empresa):
+                if contrato_idx < total_contratos:
+                    contrato = contratos_para_distribuir[contrato_idx]
+
+                    db.session.execute(
+                        text("""
+                             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                             ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                                 [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                                 [VR_SD_DEVEDOR], [CREATED_AT])
+                             VALUES (
+                                 GETDATE(), :edital_id, :periodo_id, :contrato_id, :empresa_id, 10, :cpf_cnpj, :valor, GETDATE()
+                                 )
+                             """),
+                        {
+                            "edital_id": edital_id,
+                            "periodo_id": periodo_id,
+                            "contrato_id": contrato[0],
+                            "empresa_id": empresa_id,
+                            "cpf_cnpj": contrato[1],
+                            "valor": contrato[2]
+                        }
+                    )
+                    contrato_idx += 1
+
+        # 3. Remover contratos distribuídos da tabela de distribuíveis (lógica inalterada)
+        contratos_ids_distribuidos = [c[0] for c in contratos_para_distribuir]
+        if contratos_ids_distribuidos:
+            placeholders = ','.join([f':c{i}' for i in range(len(contratos_ids_distribuidos))])
+            params = {f'c{i}': cid for i, cid in enumerate(contratos_ids_distribuidos)}
+            db.session.execute(
+                text(f"DELETE FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE [FkContratoSISCTR] IN ({placeholders})"),
+                params
+            )
+
+        db.session.commit()
+        print("Distribuição igualitária concluída")
+        return {"success": True, "message": "Distribuição igualitária concluída",
+                "contratos_distribuidos": total_contratos}
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Erro na distribuição igualitária: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return {"success": False, "message": "Erro: " + str(e), "contratos_distribuidos": 0}
+
+def processar_distribuicao_completa(edital_id, periodo_id, usar_distribuicao_igualitaria=False,
+                                    empresa_descredenciada_id=None):
     """
     Executa todo o processo de distribuição em ordem.
 
     Args:
         edital_id (int): ID do edital
         periodo_id (int): ID do período
+        usar_distribuicao_igualitaria (bool): Se True, usa distribuição igualitária para empresa descredenciada
+        empresa_descredenciada_id (int): ID da empresa descredenciada (quando usar distribuição igualitária)
 
     Returns:
         dict: Estatísticas do processo de distribuição
@@ -1327,7 +1324,8 @@ def processar_distribuicao_completa(edital_id, periodo_id):
         'regra_arrasto_acordos': 0,
         'regra_arrasto_sem_acordo': 0,
         'demais_contratos': 0,
-        'total_distribuido': 0
+        'total_distribuido': 0,
+        'usou_distribuicao_igualitaria': usar_distribuicao_igualitaria
     }
 
     try:
@@ -1337,20 +1335,53 @@ def processar_distribuicao_completa(edital_id, periodo_id):
         if resultados['contratos_distribuiveis'] == 0:
             return resultados
 
-        # 1.1.1. Contratos com acordo vigente de empresa que permanece
+        # 1.1.1. Contratos com acordo vigente de empresa que permanece (SEMPRE EXECUTA)
         resultados['acordos_empresas_permanece'] = distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id)
 
-        # 1.1.2. Contratos com acordo vigente com empresa descredenciada
-        resultados['acordos_empresas_descredenciadas'] = distribuir_acordos_vigentes_empresas_descredenciadas(edital_id,
-                                                                                                              periodo_id)
+        # 1.1.2. DECISÃO: Usar distribuição normal OU igualitária para empresas descredenciadas
+        if usar_distribuicao_igualitaria and empresa_descredenciada_id:
+            # SUBSTITUIR a função normal pela distribuição igualitária
+            print(f"SUBSTITUINDO distribuição normal por IGUALITÁRIA para empresa {empresa_descredenciada_id}")
 
-        # 1.1.3. Contratos com acordo vigente – regra do arrasto
+            # Buscar contratos com acordo da empresa descredenciada específica
+            contratos_empresa = db.session.execute(
+                text("""
+                     SELECT COUNT(DISTINCT DIS.fkContratoSISCTR)
+                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
+                         INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+                     ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
+                         INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
+                         ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
+                     WHERE ALV.fkEstadoAcordo = 1
+                       AND ECA.COD_EMPRESA_COBRANCA = :empresa_id
+                     """),
+                {"empresa_id": empresa_descredenciada_id}
+            ).scalar()
+
+            if contratos_empresa > 0:
+                # Executar distribuição igualitária SOMENTE para esta empresa
+                resultado_igualitaria = distribuir_contratos_descredenciada_igualitariamente_especifica(
+                    edital_id, periodo_id, empresa_descredenciada_id
+                )
+
+                if resultado_igualitaria['success']:
+                    resultados['acordos_empresas_descredenciadas'] = resultado_igualitaria['contratos_distribuidos']
+                    print(
+                        f"Distribuição igualitária concluída: {resultado_igualitaria['contratos_distribuidos']} contratos")
+        else:
+            # Usar distribuição normal para TODAS as empresas descredenciadas
+            print("Usando distribuição NORMAL para empresas descredenciadas")
+            resultados['acordos_empresas_descredenciadas'] = distribuir_acordos_vigentes_empresas_descredenciadas(
+                edital_id, periodo_id
+            )
+
+        # 1.1.3. Contratos com acordo vigente – regra do arrasto (SEMPRE EXECUTA)
         resultados['regra_arrasto_acordos'] = aplicar_regra_arrasto_acordos(edital_id, periodo_id)
 
-        # 1.1.4. Demais contratos sem acordo – regra do arrasto
+        # 1.1.4. Demais contratos sem acordo – regra do arrasto (SEMPRE EXECUTA)
         resultados['regra_arrasto_sem_acordo'] = aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id)
 
-        # 1.1.5. Demais contratos sem acordo
+        # 1.1.5. Demais contratos sem acordo (SEMPRE EXECUTA)
         resultados['demais_contratos'] = distribuir_demais_contratos(edital_id, periodo_id)
 
         # Calcular total
@@ -1373,7 +1404,7 @@ def processar_distribuicao_completa(edital_id, periodo_id):
         # Atualizar limites de distribuição
         atualizar_limites_distribuicao(edital_id, periodo_id)
 
-        # NOVO: Obter resultados finais da distribuição
+        # Obter resultados finais da distribuição
         resultados_finais = obter_resultados_finais_distribuicao(edital_id, periodo_id)
         resultados['resultados_finais'] = resultados_finais
 

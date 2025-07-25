@@ -1640,7 +1640,6 @@ def detalhe_limite(id):
 def distribuir_contratos():
     """
     Página para distribuição de contratos conforme limites cadastrados.
-    Implementa o processo descrito no documento "Distribuição para cobrança.docx".
     """
     try:
         # Encontrar automaticamente o edital mais recente
@@ -1660,11 +1659,18 @@ def distribuir_contratos():
             flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
             return redirect(url_for('periodo.lista_periodos'))
 
+        # Buscar empresas descredenciadas para o formulário
+        empresas_descredenciadas = EmpresaParticipante.query.filter(
+            EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
+            EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.DS_CONDICAO == 'DESCREDENCIADA',
+            EmpresaParticipante.DELETED_AT == None
+        ).all()
+
         # Logging detalhado para debug
-        logging.info(
-            f"Distribuição de contratos - Edital selecionado: ID={ultimo_edital.ID}, NU_EDITAL={ultimo_edital.NU_EDITAL}")
-        logging.info(
-            f"Distribuição de contratos - Período selecionado: ID={ultimo_periodo.ID}, ID_PERIODO={ultimo_periodo.ID_PERIODO}")
+        logging.info(f"Distribuição de contratos - Edital: {ultimo_edital.NU_EDITAL}")
+        logging.info(f"Distribuição de contratos - Período: {ultimo_periodo.ID_PERIODO}")
+        logging.info(f"Empresas descredenciadas encontradas: {len(empresas_descredenciadas)}")
 
         # Status da execução
         resultados = None
@@ -1672,42 +1678,71 @@ def distribuir_contratos():
         # Se for POST, processar a distribuição
         if request.method == 'POST':
             try:
-                # Usar sempre o último edital e período identificados
                 edital_id = ultimo_edital.ID
-                periodo_id = ultimo_periodo.ID_PERIODO  # IMPORTANTE: Usa ID_PERIODO em vez de ID
+                periodo_id = ultimo_periodo.ID_PERIODO
 
-                logging.info(f"Iniciando distribuição para: edital_id={edital_id}, periodo_id={periodo_id}")
-
-                # Importar a função para selecionar contratos distribuíveis
+                # Importar as funções necessárias
                 from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
                     processar_distribuicao_completa
 
-                # Opção para execução completa ou apenas seleção de contratos
                 modo_execucao = request.form.get('modo_execucao', 'selecao')
                 logging.info(f"Modo de execução selecionado: {modo_execucao}")
 
                 if modo_execucao == 'completo':
+                    # Verificar se deve usar distribuição igualitária
+                    usar_distribuicao_igualitaria = request.form.get('usar_distribuicao_igualitaria') == '1'
+                    empresa_descredenciada_id = None
+
+                    if usar_distribuicao_igualitaria:
+                        empresa_descredenciada_id = request.form.get('empresa_descredenciada_id', type=int)
+                        if not empresa_descredenciada_id:
+                            flash('Selecione uma empresa descredenciada para distribuição igualitária.', 'warning')
+                            return redirect(url_for('limite.distribuir_contratos'))
+
+                        logging.info(f"Distribuição igualitária ativada para empresa {empresa_descredenciada_id}")
+
                     # Executar o processo completo de distribuição
-                    logging.info("Iniciando processo completo de distribuição...")
-                    resultados = processar_distribuicao_completa(edital_id, periodo_id)
+                    resultados = processar_distribuicao_completa(
+                        edital_id,
+                        periodo_id,
+                        usar_distribuicao_igualitaria=usar_distribuicao_igualitaria,
+                        empresa_descredenciada_id=empresa_descredenciada_id
+                    )
+
                     logging.info(f"Resultados obtidos: {resultados}")
 
                     if resultados['contratos_distribuiveis'] > 0:
-                        flash(
-                            f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos de um total de {resultados["contratos_distribuiveis"]} contratos distribuíveis.',
-                            'success')
+                        mensagem = f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos.'
+
+                        if usar_distribuicao_igualitaria:
+                            mensagem += f' A distribuição igualitária foi aplicada para a empresa selecionada.'
+
+                        flash(mensagem, 'success')
+
+                        # Registrar log de auditoria
+                        registrar_log(
+                            acao='distribuir',
+                            entidade='distribuicao',
+                            entidade_id=periodo_id,
+                            descricao=f'Distribuição de contratos - Edital {ultimo_edital.NU_EDITAL}/{ultimo_edital.ANO}',
+                            dados_novos={
+                                'modo': 'completo',
+                                'usou_distribuicao_igualitaria': usar_distribuicao_igualitaria,
+                                'empresa_descredenciada_id': empresa_descredenciada_id,
+                                'resultados': resultados
+                            }
+                        )
                     else:
                         flash('Nenhum contrato disponível para distribuição.', 'warning')
-                else:
+
+                else:  # modo == 'selecao'
                     # Executar apenas a seleção de contratos distribuíveis
                     logging.info("Iniciando seleção de contratos distribuíveis...")
                     num_contratos = selecionar_contratos_distribuiveis()
                     logging.info(f"Contratos selecionados: {num_contratos}")
 
                     if num_contratos > 0:
-                        flash(
-                            f'Seleção de contratos concluída. {num_contratos} contratos disponíveis para distribuição.',
-                            'success')
+                        flash(f'Seleção concluída. {num_contratos} contratos disponíveis.', 'success')
                         resultados = {'contratos_distribuiveis': num_contratos}
                     else:
                         flash('Nenhum contrato disponível para distribuição.', 'warning')
@@ -1718,15 +1753,17 @@ def distribuir_contratos():
                 logging.error(traceback.format_exc())
                 flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
 
-        # Renderizar o formulário inicial
+        # Renderizar o formulário
         return render_template(
             'credenciamento/distribuir_contratos.html',
             ultimo_edital=ultimo_edital,
             ultimo_periodo=ultimo_periodo,
-            resultados=resultados
+            resultados=resultados,
+            empresas_descredenciadas=empresas_descredenciadas
         )
+
     except Exception as e:
-        logging.error(f"Erro na página de distribuição de contratos: {str(e)}")
+        logging.error(f"Erro na página de distribuição: {str(e)}")
         import traceback
         logging.error(traceback.format_exc())
         flash(f'Erro na página de distribuição: {str(e)}', 'danger')

@@ -1,361 +1,304 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container fade-in">
+<div class="container-fluid fade-in">
     <a href="{{ url_for('limite.lista_limites') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Distribuição de Contratos</h1>
-    </div>
-
-    <!-- Formulário de parâmetros -->
-    <div class="card shadow mb-4">
+    <div class="card shadow">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Parâmetros para Distribuição</h5>
+            <h1 class="mb-0">
+                <i class="fas fa-random"></i> Distribuição de Contratos
+            </h1>
         </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('limite.distribuir_contratos') }}">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label class="form-label">Edital</label>
-                        <select name="edital_id" class="form-select" disabled>
-                            <option value="{{ ultimo_edital.ID }}" selected>
-                                {{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }} - {{ ultimo_edital.DESCRICAO }}
-                            </option>
-                        </select>
-                        <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Período</label>
-                        <select name="periodo_id" class="form-select" disabled>
-                            <option value="{{ ultimo_periodo.ID_PERIODO }}" selected>
-                                {{ ultimo_periodo.ID_PERIODO }} - {{ ultimo_periodo.DT_INICIO.strftime('%d/%m/%Y') }}
-                                a {{ ultimo_periodo.DT_FIM.strftime('%d/%m/%Y') }}
-                            </option>
-                        </select>
-                        <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
-                    </div>
-
-                    <div class="col-md-12">
-                        <label class="form-label">Modo de Execução</label>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="modo_execucao" id="modo_selecao"
-                                   value="selecao" checked>
-                            <label class="form-check-label" for="modo_selecao">
-                                Apenas selecionar contratos distribuíveis
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="modo_execucao" id="modo_completo"
-                                   value="completo">
-                            <label class="form-check-label" for="modo_completo">
-                                Executar processo completo de distribuição
-                            </label>
-                        </div>
+            <!-- Informações do Edital e Período -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="info-box">
+                        <h5>Edital Selecionado</h5>
+                        <p class="mb-0"><strong>{{ ultimo_edital.NU_EDITAL }}/{{ ultimo_edital.ANO }}</strong></p>
+                        <p class="text-muted">{{ ultimo_edital.DESCRICAO }}</p>
                     </div>
                 </div>
-
-                <div class="mt-4 text-center">
-                    <button type="submit" class="btn btn-success px-4">
-                        <i class="fas fa-random me-2"></i> Iniciar Processo
-                    </button>
+                <div class="col-md-6">
+                    <div class="info-box">
+                        <h5>Período Selecionado</h5>
+                        <p class="mb-0"><strong>Período {{ ultimo_periodo.ID_PERIODO }}</strong></p>
+                        <p class="text-muted">
+                            {{ ultimo_periodo.DT_INICIO.strftime('%d/%m/%Y') }} a
+                            {{ ultimo_periodo.DT_FIM.strftime('%d/%m/%Y') }}
+                        </p>
+                    </div>
                 </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Área para exibir resultados -->
-    {% if resultados %}
-    <div class="card shadow mb-4">
-        <div class="card-header bg-success text-white">
-            <h5 class="mb-0">Resultados do Processamento</h5>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-bordered">
-                    <thead class="bg-light">
-                        <tr>
-                            <th>Etapa</th>
-                            <th class="text-center">Contratos Processados</th>
-                            <th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- 1 -->
-                        <tr>
-                            <td>1. Seleção de contratos distribuíveis</td>
-                            <td class="text-center">{{ resultados.contratos_distribuiveis|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.contratos_distribuiveis|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-warning">Sem contratos</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- 2 -->
-                        <tr>
-                            <td>2. Contratos com acordo vigente (empresas que permanecem)</td>
-                            <td class="text-center">{{ resultados.acordos_empresas_permanece|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.acordos_empresas_permanece|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Nenhum contrato</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- 3 -->
-                        <tr>
-                            <td>3. Contratos com acordo vigente (empresas descredenciadas)</td>
-                            <td class="text-center">{{ resultados.acordos_empresas_descredenciadas|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.acordos_empresas_descredenciadas|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Nenhum contrato</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- 4 -->
-                        <tr>
-                            <td>4. Regra de arrasto (contratos com acordo)</td>
-                            <td class="text-center">{{ resultados.regra_arrasto_acordos|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.regra_arrasto_acordos|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Nenhum contrato</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- 5 -->
-                        <tr>
-                            <td>5. Demais contratos sem acordo - regra do arrasto</td>
-                            <td class="text-center">{{ resultados.regra_arrasto_sem_acordo|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.regra_arrasto_sem_acordo|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Nenhum contrato</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- 6 -->
-                        <tr>
-                            <td>6. Demais contratos sem acordo</td>
-                            <td class="text-center">{{ resultados.demais_contratos|default(0) }}</td>
-                            <td class="text-center">
-                                {% if resultados.demais_contratos|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-secondary">Nenhum contrato</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        <!-- Linha de Totais -->
-                        <tr class="table-primary">
-                            <td><strong>Total de Contratos</strong></td>
-                            <td class="text-center"><strong>{{ resultados.total_distribuido|default(0) }}</strong></td>
-                            <td class="text-center">
-                                {% if resultados.total_distribuido|default(0) > 0 %}
-                                    <span class="badge bg-success">Concluído</span>
-                                {% else %}
-                                    <span class="badge bg-warning">Sem processamento</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
 
-<!-- Resultado Final da Distribuição -->
-{% if resultados and resultados.resultados_finais and resultados.resultados_finais.resultados %}
-<div class="card shadow mb-4">
-    <div class="card-header bg-success text-white">
-        <h5 class="mb-0">Resultado Final da Distribuição</h5>
-    </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped">
-                <thead class="bg-primary text-white">
-                    <tr>
-                        <th>COD</th>
-                        <th>NO_EMPRESA_ABREVIADA</th>
-                        <th class="text-center">QTDE</th>
-                        <th class="text-center">%</th>
-                        <th class="text-end">SALDO</th>
-                        <th class="text-center">%</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for resultado in resultados.resultados_finais.resultados %}
-                    <tr>
-                        <td>{{ resultado.cod_empresa }}</td>
-                        <td>{{ resultado.empresa_abrev }}</td>
-                        <td class="text-center">{{ "{:,.0f}".format(resultado.qtde).replace(',', '.') }}</td>
-                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_qtde) }}</td>
-                        <td class="text-end">{{ "R$ {:,.2f}".format(resultado.saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">{{ "%.2f%%"|format(resultado.pct_saldo) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot class="table-secondary">
-                    <tr class="fw-bold">
-                        <td colspan="2">TOTAL</td>
-                        <td class="text-center">{{ "{:,.0f}".format(resultados.resultados_finais.total_qtde).replace(',', '.') }}</td>
-                        <td class="text-center">100,00%</td>
-                        <td class="text-end">{{ "R$ {:,.2f}".format(resultados.resultados_finais.total_saldo).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">100,00%</td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-</div>
-{% endif %}
-            <!-- NOVA SEÇÃO: Área para homologação com a modificação -->
-            {% if resultados.total_distribuido|default(0) > 0 %}
-            <div class="card shadow mb-4">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">Homologação da Distribuição</h5>
-                </div>
-                <div class="card-body text-center">
-                    <p class="mb-4">
-                        <i class="fas fa-check-circle text-success fa-2x"></i><br>
-                        Distribuição concluída. Homologue os resultados para gerar o arquivo para importação no sistema.
-                    </p>
-
-                    <!-- Formulário para homologação -->
-                    <form id="formHomologacao" action="{{ url_for('limite.homologar_distribuicao') }}" method="POST">
-                        <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
-                        <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
-                        <input type="hidden" name="download_arquivo" value="1" id="download_arquivo">
-
-                        <div class="d-grid gap-2 d-md-block">
-                            <button type="button" class="btn btn-primary btn-lg me-2" onclick="iniciarHomologacao(false)">
-                                <i class="fas fa-check me-2"></i> Homologar
-                            </button>
-                            <button type="button" class="btn btn-success btn-lg" onclick="iniciarHomologacao(true)">
-                                <i class="fas fa-download me-2"></i> Homologar e Baixar Arquivo
-                            </button>
+            <!-- Formulário de Distribuição -->
+            <form method="POST" id="formDistribuicao">
+                <div class="card mb-4">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">Opções de Execução</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="radio" name="modo_execucao"
+                                   id="modoSelecao" value="selecao" checked>
+                            <label class="form-check-label" for="modoSelecao">
+                                <strong>Apenas Selecionar Contratos Distribuíveis</strong>
+                                <br>
+                                <small class="text-muted">Identifica e prepara os contratos para distribuição</small>
+                            </label>
                         </div>
-                    </form>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="modo_execucao"
+                                   id="modoCompleto" value="completo">
+                            <label class="form-check-label" for="modoCompleto">
+                                <strong>Executar Distribuição Completa</strong>
+                                <br>
+                                <small class="text-muted">Executa todo o processo de distribuição conforme os critérios definidos</small>
+                            </label>
+                        </div>
+
+                        <!-- Opção de Distribuição Igualitária (aparece quando modo completo é selecionado) -->
+                        {% if empresas_descredenciadas %}
+                        <div class="mt-4 p-3 border rounded bg-light" id="opcaoIgualitaria" style="display: none;">
+                            <h6 class="text-warning">
+                                <i class="fas fa-balance-scale"></i> Opção Especial: Distribuição Igualitária
+                            </h6>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="usarDistribuicaoIgualitaria"
+                                       name="usar_distribuicao_igualitaria" value="1">
+                                <label class="form-check-label" for="usarDistribuicaoIgualitaria">
+                                    Usar distribuição igualitária para uma empresa descredenciada
+                                </label>
+                            </div>
+
+                            <div id="empresaDescredenciadaDiv" style="display: none;">
+                                <label class="form-label">Selecione a Empresa Descredenciada:</label>
+                                <select name="empresa_descredenciada_id" class="form-select" id="empresaDescredenciadaSelect">
+                                    <option value="">-- Selecione --</option>
+                                    {% for empresa in empresas_descredenciadas %}
+                                    <option value="{{ empresa.ID_EMPRESA }}">
+                                        {{ empresa.NO_EMPRESA_ABREVIADA or empresa.NO_EMPRESA }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+
+                                <div class="alert alert-info mt-2">
+                                    <strong>Como funciona:</strong>
+                                    <ul class="mb-0 small">
+                                        <li>Os contratos COM ACORDO da empresa selecionada serão distribuídos igualitariamente</li>
+                                        <li>Esta opção substitui APENAS o processamento desta empresa específica</li>
+                                        <li>Todas as outras etapas da distribuição continuam normalmente</li>
+                                        <li>Contratos distribuídos assim NÃO podem ser redistribuídos depois</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg" id="btnExecutar">
+                    <i class="fas fa-play"></i> Executar
+                </button>
+            </form>
+
+            <!-- Resultados da Distribuição -->
+            {% if resultados %}
+            <div class="card mt-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle"></i> Resultados da Distribuição
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Alerta se usou distribuição igualitária -->
+                    {% if resultados.usou_distribuicao_igualitaria %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle"></i> Foi utilizada distribuição igualitária para uma empresa descredenciada.
+                    </div>
+                    {% endif %}
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Resumo da Distribuição</h6>
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr>
+                                        <td>Contratos Distribuíveis:</td>
+                                        <td class="text-end"><strong>{{ resultados.contratos_distribuiveis|br_number }}</strong></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Acordos - Empresas que Permanecem:</td>
+                                        <td class="text-end">{{ resultados.acordos_empresas_permanece|br_number }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Acordos - Empresas Descredenciadas:</td>
+                                        <td class="text-end">{{ resultados.acordos_empresas_descredenciadas|br_number }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Regra de Arrasto com Acordo:</td>
+                                        <td class="text-end">{{ resultados.regra_arrasto_acordos|br_number }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Regra de Arrasto sem Acordo:</td>
+                                        <td class="text-end">{{ resultados.regra_arrasto_sem_acordo|br_number }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Demais Contratos:</td>
+                                        <td class="text-end">{{ resultados.demais_contratos|br_number }}</td>
+                                    </tr>
+                                    <tr class="table-success">
+                                        <td><strong>Total Distribuído:</strong></td>
+                                        <td class="text-end"><strong>{{ resultados.total_distribuido|br_number }}</strong></td>
+                                    </tr>
+                                    {% if resultados.contratos_restantes %}
+                                    <tr class="table-warning">
+                                        <td>Contratos Não Distribuídos:</td>
+                                        <td class="text-end">{{ resultados.contratos_restantes|br_number }}</td>
+                                    </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if resultados.resultados_finais %}
+                        <div class="col-md-6">
+                            <h6>Distribuição por Empresa</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Empresa</th>
+                                            <th class="text-end">Qtde</th>
+                                            <th class="text-end">%</th>
+                                            <th class="text-end">Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for empresa in resultados.resultados_finais.resultados %}
+                                        <tr>
+                                            <td>{{ empresa.empresa_abrev }}</td>
+                                            <td class="text-end">{{ empresa.qtde|br_number }}</td>
+                                            <td class="text-end">{{ "%.2f"|format(empresa.pct_qtde) }}%</td>
+                                            <td class="text-end">{{ empresa.saldo|br_currency }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="table-light">
+                                            <th>Total</th>
+                                            <th class="text-end">{{ resultados.resultados_finais.total_qtde|br_number }}</th>
+                                            <th class="text-end">100,00%</th>
+                                            <th class="text-end">{{ resultados.resultados_finais.total_saldo|br_currency }}</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Botões de Ação após Distribuição -->
+                    <div class="mt-4">
+                        <form method="POST" action="{{ url_for('limite.homologar_distribuicao') }}" class="d-inline">
+                            <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                            <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                            <input type="hidden" name="download_arquivo" value="0">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-check"></i> Homologar Distribuição
+                            </button>
+                        </form>
+
+                        <form method="POST" action="{{ url_for('limite.homologar_distribuicao') }}" class="d-inline">
+                            <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
+                            <input type="hidden" name="periodo_id" value="{{ ultimo_periodo.ID_PERIODO }}">
+                            <input type="hidden" name="download_arquivo" value="1">
+                            <button type="submit" class="btn btn-info">
+                                <i class="fas fa-download"></i> Homologar e Baixar Arquivo
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
             {% endif %}
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Processo descritivo -->
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">Processo de Distribuição de Contratos</h5>
-        </div>
-        <div class="card-body">
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                O processo de distribuição seguirá as seguintes etapas:
-            </div>
-            <ol class="list-group list-group-numbered mb-4">
-                <li class="list-group-item">Seleção de contratos distribuíveis</li>
-                <li class="list-group-item">Contratos com acordo vigente de empresa que permanece</li>
-                <li class="list-group-item">Contratos com acordo vigente de empresa descredenciada</li>
-                <li class="list-group-item">Contratos com acordo - regra do arrasto</li>
-                <li class="list-group-item">Demais contratos sem acordo - regra do arrasto</li>
-                <li class="list-group-item">Demais contratos sem acordo</li>
-            </ol>
-        </div>
-    </div>
-</div>
-
-<!-- Modal de confirmação -->
-<div class="modal fade" id="confirmacaoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="modalTitulo">Confirmar Homologação</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
-            </div>
-            <div class="modal-body">
-                <p id="modalMensagem">Deseja homologar a distribuição?</p>
-                <p class="text-muted mb-0" id="modalDescricao">A homologação será registrada no histórico do sistema.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-primary" id="btnConfirmarHomologacao">
-                    <i class="fas fa-check me-2"></i> <span id="btnTextoConfirmar">Confirmar</span>
-                </button>
-            </div>
         </div>
     </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
+    const formDistribuicao = document.getElementById('formDistribuicao');
+    const btnExecutar = document.getElementById('btnExecutar');
+    const modoCompleto = document.getElementById('modoCompleto');
+    const opcaoIgualitaria = document.getElementById('opcaoIgualitaria');
+    const checkboxIgualitaria = document.getElementById('usarDistribuicaoIgualitaria');
+    const empresaDiv = document.getElementById('empresaDescredenciadaDiv');
+    const empresaSelect = document.getElementById('empresaDescredenciadaSelect');
+
+    // Mostrar/ocultar opção igualitária baseado no modo
+    document.querySelectorAll('input[name="modo_execucao"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (modoCompleto && modoCompleto.checked && opcaoIgualitaria) {
+                opcaoIgualitaria.style.display = 'block';
+            } else if (opcaoIgualitaria) {
+                opcaoIgualitaria.style.display = 'none';
+                if (checkboxIgualitaria) checkboxIgualitaria.checked = false;
+                if (empresaDiv) empresaDiv.style.display = 'none';
+                if (empresaSelect) empresaSelect.value = '';
+            }
+        });
     });
-});
 
-// Variável para controlar se o download será feito
-let comDownload = false;
-
-function iniciarHomologacao(download) {
-    // Configurar o tipo de homologação
-    comDownload = download;
-    document.getElementById('download_arquivo').value = download ? '1' : '0';
-
-    // Configurar o modal
-    document.getElementById('modalTitulo').textContent = download ?
-        'Homologar e Baixar Arquivo' : 'Confirmar Homologação';
-
-    document.getElementById('modalMensagem').textContent = download ?
-        'Deseja homologar a distribuição e baixar o arquivo?' :
-        'Deseja homologar a distribuição?';
-
-    document.getElementById('modalDescricao').textContent = download ?
-        'O arquivo será gerado e o download iniciará automaticamente.' :
-        'A homologação será registrada no histórico do sistema.';
-
-    document.getElementById('btnTextoConfirmar').textContent = download ?
-        'Homologar e Baixar' : 'Homologar';
-
-    // Exibir o modal
-    const modal = new bootstrap.Modal(document.getElementById('confirmacaoModal'));
-    modal.show();
-}
-
-// Configurar ação do botão de confirmar
-document.getElementById('btnConfirmarHomologacao').addEventListener('click', function() {
-    // Fechar o modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('confirmacaoModal'));
-    modal.hide();
-
-    // Se for com download, mostrar indicador de carregamento
-    if (comDownload) {
-        // Usar o gerenciador de loading global (se disponível)
-        if (window.autoLoadingManager) {
-            window.autoLoadingManager.showLoading();
-
-            // Esconder indicador após 3 segundos
-            setTimeout(() => {
-                window.autoLoadingManager.hideLoading();
-                // Exibir notificação
-                if (window.showToast) {
-                    window.showToast('Download iniciado com sucesso!', 'success');
-                }
-            }, 3000);
-        }
+    // Controlar visibilidade da seleção de empresa
+    if (checkboxIgualitaria) {
+        checkboxIgualitaria.addEventListener('change', function() {
+            if (this.checked) {
+                empresaDiv.style.display = 'block';
+                empresaSelect.required = true;
+            } else {
+                empresaDiv.style.display = 'none';
+                empresaSelect.required = false;
+                empresaSelect.value = '';
+            }
+        });
     }
 
-    // Submeter o formulário (isso iniciará o download via navegador se for o caso)
-    document.getElementById('formHomologacao').submit();
+    formDistribuicao.addEventListener('submit', function(e) {
+        const modoSelecionado = document.querySelector('input[name="modo_execucao"]:checked').value;
+
+        if (modoSelecionado === 'completo') {
+            let mensagem = 'Tem certeza que deseja executar a distribuição completa?';
+
+            if (checkboxIgualitaria && checkboxIgualitaria.checked) {
+                if (!empresaSelect.value) {
+                    alert('Por favor, selecione uma empresa descredenciada.');
+                    e.preventDefault();
+                    return false;
+                }
+                mensagem += '\n\nA empresa selecionada terá seus contratos distribuídos igualitariamente.';
+            }
+
+            if (!confirm(mensagem + '\n\nEste processo pode levar alguns minutos.')) {
+                e.preventDefault();
+                return false;
+            }
+        }
+
+        btnExecutar.disabled = true;
+        btnExecutar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando...';
+    });
 });
 </script>
+
+<style>
+.info-box {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+}
+</style>
 {% endblock %}
