@@ -13,7 +13,6 @@
             </h1>
         </div>
         <div class="card-body">
-            <!-- Informações do Edital e Período -->
             <div class="row mb-4">
                 <div class="col-md-6">
                     <div class="info-box">
@@ -34,7 +33,6 @@
                 </div>
             </div>
 
-            <!-- Formulário de Distribuição -->
             <form method="POST" id="formDistribuicao">
                 <div class="card mb-4">
                     <div class="card-header bg-secondary text-white">
@@ -60,7 +58,6 @@
                             </label>
                         </div>
 
-                        <!-- Opção de Distribuição Igualitária (aparece quando modo completo é selecionado) -->
                         {% if empresas_descredenciadas %}
                         <div class="mt-4 p-3 border rounded bg-light" id="opcaoIgualitaria" style="display: none;">
                             <h6 class="text-warning">
@@ -85,13 +82,23 @@
                                     {% endfor %}
                                 </select>
 
+                                <div id="dataAnteriorDiv" class="mt-3" style="display: none;">
+                                    <label for="dataFimPeriodoAnterior" class="form-label">
+                                        <strong>Data de Fim do Período Anterior:</strong>
+                                    </label>
+                                    <input type="date" class="form-control"
+                                           id="dataFimPeriodoAnterior"
+                                           name="data_fim_periodo_anterior">
+                                    <small class="form-text text-muted">
+                                        Informe a data exata de término do período anterior para buscar os contratos corretos da empresa descredenciada.
+                                    </small>
+                                </div>
                                 <div class="alert alert-info mt-2">
                                     <strong>Como funciona:</strong>
                                     <ul class="mb-0 small">
-                                        <li>Os contratos COM ACORDO da empresa selecionada serão distribuídos igualitariamente</li>
-                                        <li>Esta opção substitui APENAS o processamento desta empresa específica</li>
-                                        <li>Todas as outras etapas da distribuição continuam normalmente</li>
-                                        <li>Contratos distribuídos assim NÃO podem ser redistribuídos depois</li>
+                                        <li>Os contratos da empresa selecionada, referentes ao período anterior, serão distribuídos igualitariamente entre as empresas que permanecem.</li>
+                                        <li>Esta opção substitui a distribuição normal de acordos para esta empresa específica.</li>
+                                        <li>Todas as outras etapas da distribuição continuam normalmente.</li>
                                     </ul>
                                 </div>
                             </div>
@@ -105,7 +112,6 @@
                 </button>
             </form>
 
-            <!-- Resultados da Distribuição -->
             {% if resultados %}
             <div class="card mt-4">
                 <div class="card-header bg-success text-white">
@@ -114,7 +120,6 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    <!-- Alerta se usou distribuição igualitária -->
                     {% if resultados.usou_distribuicao_igualitaria %}
                     <div class="alert alert-warning">
                         <i class="fas fa-info-circle"></i> Foi utilizada distribuição igualitária para uma empresa descredenciada.
@@ -201,7 +206,6 @@
                         {% endif %}
                     </div>
 
-                    <!-- Botões de Ação após Distribuição -->
                     <div class="mt-4">
                         <form method="POST" action="{{ url_for('limite.homologar_distribuicao') }}" class="d-inline">
                             <input type="hidden" name="edital_id" value="{{ ultimo_edital.ID }}">
@@ -238,16 +242,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const empresaDiv = document.getElementById('empresaDescredenciadaDiv');
     const empresaSelect = document.getElementById('empresaDescredenciadaSelect');
 
-    // Mostrar/ocultar opção igualitária baseado no modo
+    // --- NOVO: Selecionar os novos elementos de data ---
+    const dataAnteriorDiv = document.getElementById('dataAnteriorDiv');
+    const dataFimPeriodoAnterior = document.getElementById('dataFimPeriodoAnterior');
+
+    // Função para resetar completamente a seção de distribuição igualitária
+    function resetarOpcaoIgualitaria() {
+        if (checkboxIgualitaria) checkboxIgualitaria.checked = false;
+        if (empresaDiv) empresaDiv.style.display = 'none';
+        if (empresaSelect) {
+            empresaSelect.value = '';
+            empresaSelect.required = false;
+        }
+        if (dataAnteriorDiv) dataAnteriorDiv.style.display = 'none';
+        if (dataFimPeriodoAnterior) {
+            dataFimPeriodoAnterior.value = '';
+            dataFimPeriodoAnterior.required = false;
+        }
+    }
+
+    // Mostrar/ocultar opção igualitária baseado no modo de execução
     document.querySelectorAll('input[name="modo_execucao"]').forEach(radio => {
         radio.addEventListener('change', function() {
             if (modoCompleto && modoCompleto.checked && opcaoIgualitaria) {
                 opcaoIgualitaria.style.display = 'block';
             } else if (opcaoIgualitaria) {
                 opcaoIgualitaria.style.display = 'none';
-                if (checkboxIgualitaria) checkboxIgualitaria.checked = false;
-                if (empresaDiv) empresaDiv.style.display = 'none';
-                if (empresaSelect) empresaSelect.value = '';
+                resetarOpcaoIgualitaria();
             }
         });
     });
@@ -257,28 +278,48 @@ document.addEventListener('DOMContentLoaded', function() {
         checkboxIgualitaria.addEventListener('change', function() {
             if (this.checked) {
                 empresaDiv.style.display = 'block';
-                empresaSelect.required = true;
             } else {
+                resetarOpcaoIgualitaria(); // Reseta tudo se desmarcar
                 empresaDiv.style.display = 'none';
-                empresaSelect.required = false;
-                empresaSelect.value = '';
             }
         });
     }
 
+    // --- NOVO: Controlar visibilidade do campo de data baseado na seleção da empresa ---
+    if (empresaSelect) {
+        empresaSelect.addEventListener('change', function() {
+            if (this.value) { // Se uma empresa for selecionada
+                dataAnteriorDiv.style.display = 'block';
+                empresaSelect.required = true;
+                dataFimPeriodoAnterior.required = true;
+            } else { // Se "-- Selecione --" for escolhido
+                dataAnteriorDiv.style.display = 'none';
+                dataFimPeriodoAnterior.value = '';
+                dataFimPeriodoAnterior.required = false;
+            }
+        });
+    }
+
+    // Validação antes de enviar o formulário
     formDistribuicao.addEventListener('submit', function(e) {
         const modoSelecionado = document.querySelector('input[name="modo_execucao"]:checked').value;
 
         if (modoSelecionado === 'completo') {
             let mensagem = 'Tem certeza que deseja executar a distribuição completa?';
 
+            // --- MODIFICADO: Validação para os novos campos obrigatórios ---
             if (checkboxIgualitaria && checkboxIgualitaria.checked) {
                 if (!empresaSelect.value) {
                     alert('Por favor, selecione uma empresa descredenciada.');
                     e.preventDefault();
                     return false;
                 }
-                mensagem += '\n\nA empresa selecionada terá seus contratos distribuídos igualitariamente.';
+                if (!dataFimPeriodoAnterior.value) {
+                    alert('Por favor, informe a data de fim do período anterior.');
+                    e.preventDefault();
+                    return false;
+                }
+                mensagem += '\n\nA empresa selecionada terá seus contratos do período anterior distribuídos igualitariamente.';
             }
 
             if (!confirm(mensagem + '\n\nEste processo pode levar alguns minutos.')) {
@@ -292,7 +333,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-
 <style>
 .info-box {
     background-color: #f8f9fa;

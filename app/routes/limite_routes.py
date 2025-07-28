@@ -1635,6 +1635,8 @@ def detalhe_limite(id):
     )
 
 
+# SUBSTITUA A FUNÇÃO INTEIRA NO SEU ARQUIVO limite_routes.py
+
 @limite_bp.route('/limites/distribuir-contratos', methods=['GET', 'POST'])
 @login_required
 def distribuir_contratos():
@@ -1667,21 +1669,18 @@ def distribuir_contratos():
             EmpresaParticipante.DELETED_AT == None
         ).all()
 
-        # Logging detalhado para debug
         logging.info(f"Distribuição de contratos - Edital: {ultimo_edital.NU_EDITAL}")
         logging.info(f"Distribuição de contratos - Período: {ultimo_periodo.ID_PERIODO}")
         logging.info(f"Empresas descredenciadas encontradas: {len(empresas_descredenciadas)}")
 
-        # Status da execução
         resultados = None
 
-        # Se for POST, processar a distribuição
         if request.method == 'POST':
             try:
                 edital_id = ultimo_edital.ID
                 periodo_id = ultimo_periodo.ID_PERIODO
 
-                # Importar as funções necessárias
+                # Importar as funções necessárias do seu arquivo de utils
                 from app.utils.distribuir_contratos import selecionar_contratos_distribuiveis, \
                     processar_distribuicao_completa
 
@@ -1692,27 +1691,37 @@ def distribuir_contratos():
                     # Verificar se deve usar distribuição igualitária
                     usar_distribuicao_igualitaria = request.form.get('usar_distribuicao_igualitaria') == '1'
                     empresa_descredenciada_id = None
+                    data_fim_periodo_anterior = None  # ADICIONADO: Inicializar a variável
 
                     if usar_distribuicao_igualitaria:
                         empresa_descredenciada_id = request.form.get('empresa_descredenciada_id', type=int)
-                        if not empresa_descredenciada_id:
-                            flash('Selecione uma empresa descredenciada para distribuição igualitária.', 'warning')
+
+                        # ADICIONADO: Obter a data do formulário
+                        data_fim_periodo_anterior = request.form.get('data_fim_periodo_anterior')
+
+                        if not empresa_descredenciada_id or not data_fim_periodo_anterior:
+                            flash(
+                                'Para distribuição igualitária, selecione a empresa e a data de fim do período anterior.',
+                                'warning')
                             return redirect(url_for('limite.distribuir_contratos'))
 
-                        logging.info(f"Distribuição igualitária ativada para empresa {empresa_descredenciada_id}")
+                        logging.info(
+                            f"Distribuição igualitária ativada para empresa {empresa_descredenciada_id} com data {data_fim_periodo_anterior}")
 
                     # Executar o processo completo de distribuição
+                    # MODIFICADO: A chamada agora inclui o parâmetro 'data_fim_periodo_anterior'
                     resultados = processar_distribuicao_completa(
                         edital_id,
                         periodo_id,
                         usar_distribuicao_igualitaria=usar_distribuicao_igualitaria,
-                        empresa_descredenciada_id=empresa_descredenciada_id
+                        empresa_descredenciada_id=empresa_descredenciada_id,
+                        data_fim_periodo_anterior=data_fim_periodo_anterior
                     )
 
                     logging.info(f"Resultados obtidos: {resultados}")
 
-                    if resultados['contratos_distribuiveis'] > 0:
-                        mensagem = f'Processo de distribuição concluído. {resultados["total_distribuido"]} contratos distribuídos.'
+                    if resultados.get('contratos_distribuiveis', 0) > 0:
+                        mensagem = f'Processo de distribuição concluído. {resultados.get("total_distribuido", 0)} contratos distribuídos.'
 
                         if usar_distribuicao_igualitaria:
                             mensagem += f' A distribuição igualitária foi aplicada para a empresa selecionada.'
@@ -1729,6 +1738,7 @@ def distribuir_contratos():
                                 'modo': 'completo',
                                 'usou_distribuicao_igualitaria': usar_distribuicao_igualitaria,
                                 'empresa_descredenciada_id': empresa_descredenciada_id,
+                                'data_fim_periodo_anterior': data_fim_periodo_anterior,
                                 'resultados': resultados
                             }
                         )
@@ -1736,7 +1746,6 @@ def distribuir_contratos():
                         flash('Nenhum contrato disponível para distribuição.', 'warning')
 
                 else:  # modo == 'selecao'
-                    # Executar apenas a seleção de contratos distribuíveis
                     logging.info("Iniciando seleção de contratos distribuíveis...")
                     num_contratos = selecionar_contratos_distribuiveis()
                     logging.info(f"Contratos selecionados: {num_contratos}")
@@ -1753,7 +1762,6 @@ def distribuir_contratos():
                 logging.error(traceback.format_exc())
                 flash(f'Erro ao processar a distribuição: {str(e)}', 'danger')
 
-        # Renderizar o formulário
         return render_template(
             'credenciamento/distribuir_contratos.html',
             ultimo_edital=ultimo_edital,

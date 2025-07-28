@@ -31,44 +31,42 @@ def selecionar_contratos_distribuiveis():
                 # Em seguida, inserir os contratos selecionados com critérios melhorados
                 logging.info("Selecionando contratos distribuíveis...")
                 insert_sql = text("""
-                INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                SELECT
-                    ECA.fkContratoSISCTR
-                    , CON.NR_CPF_CNPJ
-                    , SIT.VR_SD_DEVEDOR
-                    , CREATED_AT = GETDATE()
-                    , UPDATED_AT = NULL
-                    , DELETED_AT = NULL
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL 
-                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422,407)
-                    -- Garantir que não haja duplicatas
-                    AND NOT EXISTS (
-                        SELECT 1 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D 
-                        WHERE D.FkContratoSISCTR = ECA.fkContratoSISCTR
-                    )""")
+                                  INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                                  SELECT ECA.fkContratoSISCTR
+                                       , CON.NR_CPF_CNPJ
+                                       , SIT.VR_SD_DEVEDOR
+                                       , CREATED_AT = GETDATE()
+                                       , UPDATED_AT = NULL
+                                       , DELETED_AT = NULL
+                                  FROM
+                                      [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                                      INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                                  ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                                      INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                                      ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                                      LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                                      ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                                  WHERE
+                                      SIT.[fkSituacaoCredito] = 1
+                                    AND SDJ.fkContratoSISCTR IS NULL
+                                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422
+                                      , 407)
+                                  -- Garantir que não haja duplicatas
+                                    AND NOT EXISTS (
+                                      SELECT 1 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+                                      WHERE D.FkContratoSISCTR = ECA.fkContratoSISCTR
+                                      )""")
 
                 # Verificar informações das tabelas de origem
                 origem_count_sql = text("""
-                SELECT COUNT(*) FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                    ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                    ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                WHERE SIT.[fkSituacaoCredito] = 1
-                """)
+                                        SELECT COUNT(*)
+                                        FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                                            INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                                            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                                        WHERE SIT.[fkSituacaoCredito] = 1
+                                        """)
                 origem_count = connection.execute(origem_count_sql).scalar()
                 logging.info(f"Contratos elegíveis nas tabelas de origem: {origem_count}")
 
@@ -95,6 +93,7 @@ def selecionar_contratos_distribuiveis():
         logging.error(f"Erro na seleção de contratos: {str(e)}")
         return 0
 
+
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
     Distribui contratos com acordos vigentes para empresas que permanecem.
@@ -110,25 +109,25 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     contratos_distribuidos = 0
 
     try:
-        print(f"Iniciando distribuição de acordos vigentes para empresas que permanecem - Edital: {edital_id}, Período: {periodo_id}")
+        print(
+            f"Iniciando distribuição de acordos vigentes para empresas que permanecem - Edital: {edital_id}, Período: {periodo_id}")
 
         # 1. Limpar a tabela de distribuição apenas para este edital/período
         db.session.execute(text(
             "DELETE FROM [BDG].[DCA_TB005_DISTRIBUICAO] WHERE ID_EDITAL = :edital_id AND ID_PERIODO = :periodo_id"),
-                           {"edital_id": edital_id, "periodo_id": periodo_id})
+            {"edital_id": edital_id, "periodo_id": periodo_id})
         print("Tabela DCA_TB005_DISTRIBUICAO limpa para este edital/período")
 
         # 2. Inserir contratos com acordos vigentes para empresas que permanecem
         # IMPORTANTE: usar EXISTS para controle de duplicatas
         resultado_acordos = db.session.execute(
             text("""
-                INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-                ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                [VR_SD_DEVEDOR], [CREATED_AT])
+                 INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                 ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                     [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                     [VR_SD_DEVEDOR], [CREATED_AT])
 
-                SELECT 
-                    GETDATE() AS [DT_REFERENCIA],
+                 SELECT GETDATE() AS [DT_REFERENCIA],
                     :edital_id,
                     :periodo_id,
                     DIS.[FkContratoSISCTR],
@@ -137,25 +136,25 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
                     DIS.[NR_CPF_CNPJ],
                     DIS.[VR_SD_DEVEDOR],
                     GETDATE() AS [CREATED_AT]
-                FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                    INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                        ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
-                    INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
-                        ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-                    INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
-                        ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
-                WHERE EMP.ID_EDITAL = :edital_id
-                    AND EMP.ID_PERIODO = :periodo_id
-                    AND EMP.DS_CONDICAO = 'PERMANECE'
-                    AND ALV.fkEstadoAcordo = 1
-                    -- Garantir que não haja duplicatas
-                    AND NOT EXISTS (
-                        SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
-                        WHERE D.fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                        AND D.ID_EDITAL = :edital_id
-                        AND D.ID_PERIODO = :periodo_id
-                    )
-            """),
+                 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+                     INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                 ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
+                     INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
+                     ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
+                     INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                     ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+                 WHERE EMP.ID_EDITAL = :edital_id
+                   AND EMP.ID_PERIODO = :periodo_id
+                   AND EMP.DS_CONDICAO = 'PERMANECE'
+                   AND ALV.fkEstadoAcordo = 1
+                 -- Garantir que não haja duplicatas
+                   AND NOT EXISTS (
+                     SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                     WHERE D.fkContratoSISCTR = DIS.[FkContratoSISCTR]
+                   AND D.ID_EDITAL = :edital_id
+                   AND D.ID_PERIODO = :periodo_id
+                     )
+                 """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         )
         contratos_distribuidos = resultado_acordos.rowcount
@@ -211,12 +210,12 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
         # 1. Obter lista de empresas participantes (não descredenciadas)
         empresas_participantes = db.session.execute(
             text("""
-                SELECT ID_EMPRESA
-                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND DS_CONDICAO <> 'DESCREDENCIADA'
-            """),
+                 SELECT ID_EMPRESA
+                 FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+                 WHERE ID_EDITAL = :edital_id
+                   AND ID_PERIODO = :periodo_id
+                   AND DS_CONDICAO <> 'DESCREDENCIADA'
+                 """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).fetchall()
 
@@ -230,29 +229,28 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 
         # 2. Identificar contratos com acordos vigentes de empresas descredenciadas
         query_contratos_descredenciados = """
-            SELECT 
-                DIS.[FkContratoSISCTR],
-                DIS.[NR_CPF_CNPJ],
-                DIS.[VR_SD_DEVEDOR]
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
-            INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA 
-                ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
-            INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
-                ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
-                ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
-            WHERE ALV.fkEstadoAcordo = 1
-                AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
-                AND EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-                -- Garantir que o contrato não foi distribuído anteriormente
-                AND NOT EXISTS (
-                    SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIST
-                    WHERE DIST.fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                    AND DIST.ID_EDITAL = :edital_id
-                    AND DIST.ID_PERIODO = :periodo_id
-                )
-        """
+                                          SELECT DIS.[FkContratoSISCTR], \
+                                                 DIS.[NR_CPF_CNPJ], \
+                                                 DIS.[VR_SD_DEVEDOR]
+                                          FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
+                                              INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+                                          ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
+                                              INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
+                                              ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
+                                              INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
+                                              ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+                                          WHERE ALV.fkEstadoAcordo = 1
+                                            AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
+                                            AND EMP.ID_EDITAL = :edital_id
+                                            AND EMP.ID_PERIODO = :periodo_id
+                                          -- Garantir que o contrato não foi distribuído anteriormente
+                                            AND NOT EXISTS (
+                                              SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIST
+                                              WHERE DIST.fkContratoSISCTR = DIS.[FkContratoSISCTR]
+                                            AND DIST.ID_EDITAL = :edital_id
+                                            AND DIST.ID_PERIODO = :periodo_id
+                                              ) \
+                                          """
 
         contratos_descred = db.session.execute(
             text(query_contratos_descredenciados),
@@ -281,22 +279,15 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
             # Inserir contrato
             db.session.execute(
                 text("""
-                    INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-                    ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                    [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                    [VR_SD_DEVEDOR], [CREATED_AT])
-                    VALUES (
-                        GETDATE(),
-                        :edital_id,
-                        :periodo_id,
-                        :contrato,
-                        :empresa,
-                        3, -- Contrato com acordo com assessoria descredenciada
-                        :cpf_cnpj,
-                        :valor,
-                        GETDATE()
-                    )
-                """),
+                     INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                     ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                         [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                         [VR_SD_DEVEDOR], [CREATED_AT])
+                     VALUES (
+                         GETDATE(), :edital_id, :periodo_id, :contrato, :empresa, 3, -- Contrato com acordo com assessoria descredenciada
+                         :cpf_cnpj, :valor, GETDATE()
+                         )
+                     """),
                 {
                     "edital_id": edital_id,
                     "periodo_id": periodo_id,
@@ -350,6 +341,7 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
 def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
     """
     Aplica a regra de arrasto com acordo para distribuição de contratos.
+    CORREÇÃO: Só arrasta contratos de CPFs que ainda têm contratos na tabela de distribuíveis.
     """
     from app import db
     from sqlalchemy import text
@@ -361,36 +353,47 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
     try:
         print(f"Iniciando distribuição pela regra de arrasto com acordo - Edital: {edital_id}, Período: {periodo_id}")
 
-        # Verificar se existem acordos para processar
+        # CORREÇÃO: Buscar apenas CPFs com acordos que ainda têm contratos para distribuir
         acordos_count = db.session.execute(
             text("""
-                SELECT COUNT(DISTINCT NR_CPF_CNPJ) 
-                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital
-                AND ID_PERIODO = :periodo
-                AND COD_CRITERIO_SELECAO IN (1, 3)
-            """),
+                 SELECT COUNT(DISTINCT D.NR_CPF_CNPJ)
+                 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                 WHERE D.ID_EDITAL = :edital
+                   AND D.ID_PERIODO = :periodo
+                   AND D.COD_CRITERIO_SELECAO IN (1
+                     , 3)
+                 -- CORREÇÃO: Verificar se ainda existem contratos deste CPF na tabela de distribuíveis
+                   AND EXISTS (
+                     SELECT 1
+                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
+                     WHERE DIS.NR_CPF_CNPJ = D.NR_CPF_CNPJ
+                     )
+                 """),
             {"edital": edital_id, "periodo": periodo_id}
         ).scalar()
 
         if not acordos_count:
-            print("Nenhum CPF/CNPJ com acordo foi encontrado.")
+            print("Nenhum CPF/CNPJ com acordo e contratos pendentes foi encontrado.")
             return 0
 
-        print(f"Total de CPFs/CNPJs com acordo: {acordos_count}")
+        print(f"Total de CPFs/CNPJs com acordo e contratos pendentes: {acordos_count}")
 
-        # ABORDAGEM SIMPLIFICADA: Processar cada CPF individualmente
-        # para evitar problemas com a transação complexa
-
-        # 1. Buscar CPFs/CNPJs com acordos
+        # CORREÇÃO: Buscar CPFs/CNPJs com acordos que ainda têm contratos para distribuir
         cpfs_acordos = db.session.execute(
             text("""
-                SELECT DISTINCT NR_CPF_CNPJ, COD_EMPRESA_COBRANCA
-                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital
-                AND ID_PERIODO = :periodo
-                AND COD_CRITERIO_SELECAO IN (1, 3)
-            """),
+                 SELECT DISTINCT D.NR_CPF_CNPJ, D.COD_EMPRESA_COBRANCA
+                 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                 WHERE D.ID_EDITAL = :edital
+                   AND D.ID_PERIODO = :periodo
+                   AND D.COD_CRITERIO_SELECAO IN (1
+                     , 3)
+                 -- CORREÇÃO: Verificar se ainda existem contratos deste CPF na tabela de distribuíveis
+                   AND EXISTS (
+                     SELECT 1
+                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
+                     WHERE DIS.NR_CPF_CNPJ = D.NR_CPF_CNPJ
+                     )
+                 """),
             {"edital": edital_id, "periodo": periodo_id}
         ).fetchall()
 
@@ -402,10 +405,10 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
             # Buscar contratos distribuíveis para este CPF/CNPJ
             contratos = db.session.execute(
                 text("""
-                    SELECT FkContratoSISCTR, VR_SD_DEVEDOR
-                    FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    WHERE NR_CPF_CNPJ = :cpf_cnpj
-                """),
+                     SELECT FkContratoSISCTR, VR_SD_DEVEDOR
+                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                     WHERE NR_CPF_CNPJ = :cpf_cnpj
+                     """),
                 {"cpf_cnpj": cpf_cnpj}
             ).fetchall()
 
@@ -417,12 +420,12 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
                 # Verificar se já foi distribuído
                 ja_distribuido = db.session.execute(
                     text("""
-                        SELECT COUNT(*)
-                        FROM [BDG].[DCA_TB005_DISTRIBUICAO]
-                        WHERE fkContratoSISCTR = :contrato_id
-                        AND ID_EDITAL = :edital_id
-                        AND ID_PERIODO = :periodo_id
-                    """),
+                         SELECT COUNT(*)
+                         FROM [BDG].[DCA_TB005_DISTRIBUICAO]
+                         WHERE fkContratoSISCTR = :contrato_id
+                           AND ID_EDITAL = :edital_id
+                           AND ID_PERIODO = :periodo_id
+                         """),
                     {"contrato_id": contrato_id, "edital_id": edital_id, "periodo_id": periodo_id}
                 ).scalar()
 
@@ -430,24 +433,15 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
                     # Inserir na distribuição
                     db.session.execute(
                         text("""
-                            INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-                            (
-                                [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
-                                [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ], 
-                                [VR_SD_DEVEDOR], [CREATED_AT]
-                            )
-                            VALUES (
-                                GETDATE(),
-                                :edital_id,
-                                :periodo_id,
-                                :contrato_id,
-                                :empresa_cobranca,
-                                6, -- Código 6: Regra de Arrasto
-                                :cpf_cnpj,
-                                :valor_sd,
-                                GETDATE()
-                            )
-                        """),
+                             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                             ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                                 [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                                 [VR_SD_DEVEDOR], [CREATED_AT])
+                             VALUES (
+                                 GETDATE(), :edital_id, :periodo_id, :contrato_id, :empresa_cobranca, 6, -- Código 6: Regra de Arrasto
+                                 :cpf_cnpj, :valor_sd, GETDATE()
+                                 )
+                             """),
                         {
                             "edital_id": edital_id,
                             "periodo_id": periodo_id,
@@ -461,9 +455,10 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
                     # Remover da tabela de distribuíveis
                     db.session.execute(
                         text("""
-                            DELETE FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                            WHERE FkContratoSISCTR = :contrato_id
-                        """),
+                             DELETE
+                             FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                             WHERE FkContratoSISCTR = :contrato_id
+                             """),
                         {"contrato_id": contrato_id}
                     )
 
@@ -491,6 +486,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     """
     Aplica a regra de arrasto para múltiplos contratos sem acordo de forma OTIMIZADA e PROPORCIONAL,
     distribuindo os CPFs de acordo com o percentual de participação de cada empresa.
+    Só arrasta CPFs que não têm nenhum contrato distribuído ainda.
     """
     print(f"Iniciando distribuição OTIMIZADA e PROPORCIONAL (sem acordo) - regra de arrasto")
 
@@ -501,6 +497,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
                 -- ETAPA 1: Identificar e numerar aleatoriamente os CPFs que se enquadram na regra.
                 -- A ordem aleatória (NEWID()) evita vieses na distribuição.
+                -- MODIFICADO: Garantir que só pega CPFs sem nenhum contrato distribuído
                 IF OBJECT_ID('tempdb..#CPFsParaArrasto') IS NOT NULL DROP TABLE #CPFsParaArrasto;
 
                 SELECT
@@ -514,6 +511,13 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                     WHERE DIST.NR_CPF_CNPJ = D.NR_CPF_CNPJ
                     AND DIST.ID_EDITAL = :edital_id
                     AND DIST.ID_PERIODO = :periodo_id
+                )
+                -- Garantir que o CPF tem múltiplos contratos não distribuídos
+                AND D.NR_CPF_CNPJ IN (
+                    SELECT NR_CPF_CNPJ
+                    FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                    GROUP BY NR_CPF_CNPJ
+                    HAVING COUNT(*) > 1
                 )
                 GROUP BY D.NR_CPF_CNPJ
                 HAVING COUNT(*) > 1;
@@ -632,6 +636,8 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         print(traceback.format_exc())
         return 0
 
+
+
 def distribuir_demais_contratos(edital_id, periodo_id):
     """
     Distribui os contratos restantes entre as empresas.
@@ -652,17 +658,19 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         # Verificar se existem empresas e contratos antes de iniciar o processamento
         empresas_count = db.session.execute(
             text("""
-                SELECT COUNT(*) 
-                FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
-                LEFT JOIN [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD 
-                    ON EP.ID_EMPRESA = LD.ID_EMPRESA 
-                    AND EP.ID_EDITAL = LD.ID_EDITAL 
-                    AND EP.ID_PERIODO = LD.ID_PERIODO
-                WHERE EP.ID_EDITAL = :edital_id
-                AND EP.ID_PERIODO = :periodo_id
-                AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
-                AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL)
-            """),
+                 SELECT COUNT(*)
+                 FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
+                     LEFT JOIN [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO] LD
+                 ON EP.ID_EMPRESA = LD.ID_EMPRESA
+                     AND EP.ID_EDITAL = LD.ID_EDITAL
+                     AND EP.ID_PERIODO = LD.ID_PERIODO
+                 WHERE EP.ID_EDITAL = :edital_id
+                   AND EP.ID_PERIODO = :periodo_id
+                   AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
+                   AND (LD.PERCENTUAL_FINAL
+                     > 0
+                    OR LD.PERCENTUAL_FINAL IS NULL)
+                 """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).scalar()
 
@@ -944,6 +952,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
 
     return contratos_distribuidos
 
+
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
     Atualiza a tabela de limites de distribuição preenchendo:
@@ -958,16 +967,15 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
         # 1. Obter estatísticas de distribuição por empresa
         estatisticas = db.session.execute(
             text("""
-                SELECT 
-                    COD_EMPRESA_COBRANCA,
-                    COUNT(*) as quantidade,
-                    SUM(VR_SD_DEVEDOR) as valor_total
-                FROM [BDG].[DCA_TB005_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND DELETED_AT IS NULL
-                GROUP BY COD_EMPRESA_COBRANCA
-            """),
+                 SELECT COD_EMPRESA_COBRANCA,
+                        COUNT(*)           as quantidade,
+                        SUM(VR_SD_DEVEDOR) as valor_total
+                 FROM [BDG].[DCA_TB005_DISTRIBUICAO]
+                 WHERE ID_EDITAL = :edital_id
+                   AND ID_PERIODO = :periodo_id
+                   AND DELETED_AT IS NULL
+                 GROUP BY COD_EMPRESA_COBRANCA
+                 """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).fetchall()
 
@@ -976,13 +984,13 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
             # Verificar se o limite já existe para esta empresa
             limite_existente = db.session.execute(
                 text("""
-                    SELECT ID, PERCENTUAL_FINAL 
-                    FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                    WHERE ID_EDITAL = :edital_id
-                    AND ID_PERIODO = :periodo_id
-                    AND ID_EMPRESA = :empresa_id
-                    AND DELETED_AT IS NULL
-                """),
+                     SELECT ID, PERCENTUAL_FINAL
+                     FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                     WHERE ID_EDITAL = :edital_id
+                       AND ID_PERIODO = :periodo_id
+                       AND ID_EMPRESA = :empresa_id
+                       AND DELETED_AT IS NULL
+                     """),
                 {"edital_id": edital_id, "periodo_id": periodo_id, "empresa_id": empresa_id}
             ).fetchone()
 
@@ -990,32 +998,23 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                 # Se não existe, inserir novo registro com percentual padrão
                 db.session.execute(
                     text("""
-                        INSERT INTO [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                        (
-                            ID_EDITAL,
-                            ID_PERIODO,
-                            ID_EMPRESA,
-                            COD_CRITERIO_SELECAO,
-                            QTDE_MAXIMA,
-                            VALOR_MAXIMO,
-                            PERCENTUAL_FINAL,
-                            VR_ARRECADACAO,
-                            DT_APURACAO,
-                            CREATED_AT
-                        )
-                        VALUES (
-                            :edital_id,
-                            :periodo_id,
-                            :empresa_id,
-                            4, -- Código padrão
-                            :qtde,
-                            :valor_total,
-                            0, -- Percentual provisório
-                            :valor_total,
-                            GETDATE(),
-                            GETDATE()
-                        )
-                    """),
+                         INSERT INTO [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                         (ID_EDITAL,
+                          ID_PERIODO,
+                          ID_EMPRESA,
+                          COD_CRITERIO_SELECAO,
+                          QTDE_MAXIMA,
+                          VALOR_MAXIMO,
+                          PERCENTUAL_FINAL,
+                          VR_ARRECADACAO,
+                          DT_APURACAO,
+                          CREATED_AT)
+                         VALUES (
+                             :edital_id, :periodo_id, :empresa_id, 4, -- Código padrão
+                             :qtde, :valor_total, 0,                  -- Percentual provisório
+                             :valor_total, GETDATE(), GETDATE()
+                             )
+                         """),
                     {
                         "edital_id": edital_id,
                         "periodo_id": periodo_id,
@@ -1028,18 +1027,14 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                 # Se existe, atualizar apenas quantidade e valor, mantendo percentual
                 db.session.execute(
                     text("""
-                        UPDATE [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                        SET 
-                            VR_ARRECADACAO = :valor_total,
-                            QTDE_MAXIMA = :qtde,
-                            VALOR_MAXIMO = :valor_total,
-                            UPDATED_AT = GETDATE(),
-                            DT_APURACAO = GETDATE()
-                            -- PERCENTUAL_FINAL não é alterado
-                        WHERE ID_EDITAL = :edital_id
-                        AND ID_PERIODO = :periodo_id
-                        AND ID_EMPRESA = :empresa_id
-                    """),
+                         UPDATE [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                         SET
+                             VR_ARRECADACAO = :valor_total, QTDE_MAXIMA = :qtde, VALOR_MAXIMO = :valor_total, UPDATED_AT = GETDATE(), DT_APURACAO = GETDATE()
+                         -- PERCENTUAL_FINAL não é alterado
+                         WHERE ID_EDITAL = :edital_id
+                           AND ID_PERIODO = :periodo_id
+                           AND ID_EMPRESA = :empresa_id
+                         """),
                     {
                         "edital_id": edital_id,
                         "periodo_id": periodo_id,
@@ -1055,18 +1050,17 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
         # Exibir resumo dos limites atualizados
         limites = db.session.execute(
             text("""
-                SELECT 
-                    ID_EMPRESA,
-                    VR_ARRECADACAO,
-                    QTDE_MAXIMA,
-                    VALOR_MAXIMO,
-                    PERCENTUAL_FINAL
-                FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                WHERE ID_EDITAL = :edital_id
-                AND ID_PERIODO = :periodo_id
-                AND DELETED_AT IS NULL
-                ORDER BY PERCENTUAL_FINAL DESC
-            """),
+                 SELECT ID_EMPRESA,
+                        VR_ARRECADACAO,
+                        QTDE_MAXIMA,
+                        VALOR_MAXIMO,
+                        PERCENTUAL_FINAL
+                 FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
+                 WHERE ID_EDITAL = :edital_id
+                   AND ID_PERIODO = :periodo_id
+                   AND DELETED_AT IS NULL
+                 ORDER BY PERCENTUAL_FINAL DESC
+                 """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).fetchall()
 
@@ -1116,22 +1110,21 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
 
         # Executar consulta SQL para obter resultados da distribuição
         query = text("""
-            SELECT 
-                DIS.[COD_EMPRESA_COBRANCA], 
-                EMP.NO_EMPRESA_ABREVIADA, 
-                COUNT(*) AS QTDE, 
-                SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
-            FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS 
-            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP 
-                ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA 
-                AND EMP.ID_EDITAL = :edital_id
-                AND EMP.ID_PERIODO = :periodo_id
-            WHERE DIS.ID_EDITAL = :edital_id
-                AND DIS.ID_PERIODO = :periodo_id
-                AND DIS.DELETED_AT IS NULL
-            GROUP BY [COD_EMPRESA_COBRANCA], EMP.NO_EMPRESA_ABREVIADA 
-            ORDER BY EMP.NO_EMPRESA_ABREVIADA
-        """)
+                     SELECT DIS.[COD_EMPRESA_COBRANCA],
+                            EMP.NO_EMPRESA_ABREVIADA,
+                            COUNT(*)                 AS QTDE,
+                            SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
+                     FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS
+                         INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                     ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA
+                         AND EMP.ID_EDITAL = :edital_id
+                         AND EMP.ID_PERIODO = :periodo_id
+                     WHERE DIS.ID_EDITAL = :edital_id
+                       AND DIS.ID_PERIODO = :periodo_id
+                       AND DIS.DELETED_AT IS NULL
+                     GROUP BY [COD_EMPRESA_COBRANCA], EMP.NO_EMPRESA_ABREVIADA
+                     ORDER BY EMP.NO_EMPRESA_ABREVIADA
+                     """)
 
         resultados = db.session.execute(query, {"edital_id": edital_id, "periodo_id": periodo_id}).fetchall()
 
@@ -1175,126 +1168,150 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
         return {'resultados': [], 'total_qtde': 0, 'total_saldo': 0}
 
 
+
 def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, periodo_id, empresa_descredenciada_id,
-                                                                    data_inicio_periodo_atual):
+                                                                    data_fim_periodo_anterior):
     """
-    Distribui igualitariamente os contratos ATUAIS que, no período imediatamente anterior,
-    estavam com a empresa descredenciada.
-    A lógica do período anterior é baseada na data de início do período atual.
+    [VERSÃO COM CORREÇÃO DE ARRASTO]
+    Distribui igualitariamente os CONTRATOS de uma empresa descredenciada,
+    respeitando as decisões de arrasto das etapas anteriores.
     """
     try:
-        print(f"Iniciando distribuição igualitária para empresa descredenciada {empresa_descredenciada_id}")
-        print(f"Buscando contratos do período anterior que terminou em {data_inicio_periodo_atual} - 1 dia.")
+        print("--- EXECUTANDO VERSÃO SIMPLIFICADA (COM CORREÇÃO DE ARRASTO) ---")
+        print(f"Iniciando distribuição igualitária SIMPLES para empresa {empresa_descredenciada_id}")
 
-        # 1. Buscar contratos na tabela de distribuíveis que PERTENCIAM à empresa descredenciada no período anterior.
-        #    A lógica foi alterada para usar a nova tabela e a data de fim do período.
-        contratos_para_distribuir = db.session.execute(
-            text("""
-                 SELECT DIS.[FkContratoSISCTR],
-                        DIS.[NR_CPF_CNPJ],
-                        DIS.[VR_SD_DEVEDOR]
-                 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-                     INNER JOIN [BDG].[COM_TB012_EMPRESA_COBRANCA_ANTERIORES] AS ANT
-                 ON DIS.FkContratoSISCTR = ANT.fkContratoSISCTR
-                 WHERE
-                 -- Filtra pelos contratos que estavam com a empresa descredenciada
-                     ANT.COD_EMPRESA_COBRANCA = :empresa_id
-                 -- E que pertenciam ao período imediatamente anterior, identificado pela data.
-                   AND ANT.DT_PERIODO_FIM = DATEADD(day
-                     , -1
-                     , :data_inicio_atual)
-                 """),
-            {
-                "empresa_id": empresa_descredenciada_id,
-                "data_inicio_atual": data_inicio_periodo_atual
-            }
-        ).fetchall()
+        sql_script = text("""
+            SET NOCOUNT ON;
 
-        if not contratos_para_distribuir:
+            IF OBJECT_ID('tempdb..#ContratosParaDistribuir') IS NOT NULL DROP TABLE #ContratosParaDistribuir;
+            IF OBJECT_ID('tempdb..#EmpresasReceptoras') IS NOT NULL DROP TABLE #EmpresasReceptoras;
+            IF OBJECT_ID('tempdb..#MapeamentoContratos') IS NOT NULL DROP TABLE #MapeamentoContratos;
+
+            -- ETAPA 1: Identificar os CONTRATOS da empresa descredenciada cujos CPFs ainda não foram processados.
+            SELECT
+                DIS.FkContratoSISCTR,
+                DIS.NR_CPF_CNPJ,
+                DIS.VR_SD_DEVEDOR,
+                ROW_NUMBER() OVER (ORDER BY NEWID()) as ContratoRowNumber
+            INTO #ContratosParaDistribuir
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+            INNER JOIN [BDG].[COM_TB012_EMPRESA_COBRANCA_ANTERIORES] AS ANT
+                ON DIS.FkContratoSISCTR = ANT.fkContratoSISCTR
+            WHERE
+                ANT.COD_EMPRESA_COBRANCA = :empresa_id
+                AND ANT.DT_PERIODO_FIM = :data_fim_periodo_anterior
+                -- =================== INÍCIO DA CORREÇÃO DE ARRASTO ===================
+                -- Garante que o CPF deste contrato ainda não foi "reivindicado" por nenhuma
+                -- regra anterior (como a de 'acordos que permanecem').
+                AND DIS.NR_CPF_CNPJ NOT IN (
+                    SELECT D.NR_CPF_CNPJ
+                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                    WHERE D.ID_EDITAL = :edital_id
+                      AND D.ID_PERIODO = :periodo_id
+                )
+                -- =================== FIM DA CORREÇÃO DE ARRASTO ===================
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                    WHERE D.fkContratoSISCTR = DIS.FkContratoSISCTR
+                      AND D.ID_EDITAL = :edital_id
+                      AND D.ID_PERIODO = :periodo_id
+                );
+
+            DECLARE @TotalContratos INT;
+            SELECT @TotalContratos = COUNT(*) FROM #ContratosParaDistribuir;
+            IF @TotalContratos = 0
+            BEGIN
+                SELECT 0 AS ContratosDistribuidos;
+                RETURN;
+            END;
+
+            -- ETAPA 2: Obter as empresas que receberão os contratos (inalterado).
+            SELECT
+                ID_EMPRESA,
+                ROW_NUMBER() OVER (ORDER BY ID_EMPRESA) as EmpresaRowNumber
+            INTO #EmpresasReceptoras
+            FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+            WHERE ID_EDITAL = :edital_id
+              AND ID_PERIODO = :periodo_id
+              AND DS_CONDICAO = 'PERMANECE'
+              AND DELETED_AT IS NULL;
+
+            DECLARE @TotalEmpresas INT;
+            SELECT @TotalEmpresas = COUNT(*) FROM #EmpresasReceptoras;
+            IF @TotalEmpresas = 0
+            BEGIN
+                SELECT 0 AS ContratosDistribuidos;
+                RETURN;
+            END;
+
+            -- ETAPA 3: Atribuir cada CONTRATO a uma empresa receptora.
+            SELECT
+                C.FkContratoSISCTR,
+                C.NR_CPF_CNPJ,
+                C.VR_SD_DEVEDOR,
+                E.ID_EMPRESA
+            INTO #MapeamentoContratos
+            FROM #ContratosParaDistribuir C
+            JOIN #EmpresasReceptoras E ON (C.ContratoRowNumber - 1) % @TotalEmpresas + 1 = E.EmpresaRowNumber;
+
+            -- ETAPA 4: Inserir em massa na tabela de distribuição.
+            INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+            ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+             [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+             [VR_SD_DEVEDOR], [CREATED_AT])
+            SELECT
+                GETDATE(),
+                :edital_id,
+                :periodo_id,
+                MAP.FkContratoSISCTR,
+                MAP.ID_EMPRESA,
+                3, -- Código 3: Contrato com acordo com assessoria descredenciada
+                MAP.NR_CPF_CNPJ,
+                MAP.VR_SD_DEVEDOR,
+                GETDATE()
+            FROM #MapeamentoContratos AS MAP;
+
+            DECLARE @ContratosInseridos INT = @@ROWCOUNT;
+
+            -- ETAPA 5: Remover em massa os contratos que foram inseridos.
+            DELETE DIS
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+            WHERE EXISTS (
+                SELECT 1 FROM #MapeamentoContratos MAP WHERE MAP.FkContratoSISCTR = DIS.FkContratoSISCTR
+            );
+
+            DROP TABLE #ContratosParaDistribuir;
+            DROP TABLE #EmpresasReceptoras;
+            DROP TABLE #MapeamentoContratos;
+
+            SELECT @ContratosInseridos AS ContratosDistribuidos;
+        """)
+
+        params = {
+            "empresa_id": empresa_descredenciada_id,
+            "data_fim_periodo_anterior": data_fim_periodo_anterior,
+            "edital_id": edital_id,
+            "periodo_id": periodo_id
+        }
+
+        result = db.session.execute(sql_script, params).scalar()
+        contratos_distribuidos = result or 0
+
+        if contratos_distribuidos > 0:
             print(
-                f"Nenhum contrato da empresa {empresa_descredenciada_id} referente ao período anterior foi encontrado na tabela de distribuíveis.")
-            return {
-                "success": True,  # Não é um erro, apenas não há o que fazer.
-                "message": "Nenhum contrato para redistribuir desta empresa descredenciada.",
-                "contratos_distribuidos": 0
-            }
-
-        total_contratos = len(contratos_para_distribuir)
-        print(f"Encontrados {total_contratos} contratos para distribuir igualitariamente.")
-
-        # 2. Buscar empresas que PERMANECEM no período atual (lógica inalterada)
-        empresas_permanecem = db.session.execute(
-            text("""
-                 SELECT ID_EMPRESA
-                 FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
-                 WHERE ID_EDITAL = :edital_id
-                   AND ID_PERIODO = :periodo_id
-                   AND DS_CONDICAO = 'PERMANECE'
-                   AND DELETED_AT IS NULL
-                 ORDER BY ID_EMPRESA
-                 """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).fetchall()
-
-        if not empresas_permanecem:
-            return {
-                "success": False,
-                "message": "Nenhuma empresa na condição 'PERMANECE' foi encontrada para receber os contratos.",
-                "contratos_distribuidos": 0
-            }
-
-        empresas_ids = [e[0] for e in empresas_permanecem]
-        total_empresas = len(empresas_ids)
-
-        print(f"Distribuindo {total_contratos} contratos entre {total_empresas} empresas que 'PERMANECE'")
-
-        # Lógica de distribuição igualitária (inalterada)
-        contratos_por_empresa = total_contratos // total_empresas
-        contratos_extras = total_contratos % total_empresas
-
-        contrato_idx = 0
-        for i, empresa_id in enumerate(empresas_ids):
-            qtd_contratos_para_esta_empresa = contratos_por_empresa + (1 if i < contratos_extras else 0)
-
-            for _ in range(qtd_contratos_para_esta_empresa):
-                if contrato_idx < total_contratos:
-                    contrato = contratos_para_distribuir[contrato_idx]
-
-                    db.session.execute(
-                        text("""
-                             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-                             ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
-                                 [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
-                                 [VR_SD_DEVEDOR], [CREATED_AT])
-                             VALUES (
-                                 GETDATE(), :edital_id, :periodo_id, :contrato_id, :empresa_id, 10, :cpf_cnpj, :valor, GETDATE()
-                                 )
-                             """),
-                        {
-                            "edital_id": edital_id,
-                            "periodo_id": periodo_id,
-                            "contrato_id": contrato[0],
-                            "empresa_id": empresa_id,
-                            "cpf_cnpj": contrato[1],
-                            "valor": contrato[2]
-                        }
-                    )
-                    contrato_idx += 1
-
-        # 3. Remover contratos distribuídos da tabela de distribuíveis (lógica inalterada)
-        contratos_ids_distribuidos = [c[0] for c in contratos_para_distribuir]
-        if contratos_ids_distribuidos:
-            placeholders = ','.join([f':c{i}' for i in range(len(contratos_ids_distribuidos))])
-            params = {f'c{i}': cid for i, cid in enumerate(contratos_ids_distribuidos)}
-            db.session.execute(
-                text(f"DELETE FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE [FkContratoSISCTR] IN ({placeholders})"),
-                params
-            )
+                f"Distribuição igualitária SIMPLES (com respeito ao arrasto) concluída: {contratos_distribuidos} contratos distribuídos.")
+        else:
+            print(
+                "Nenhum contrato elegível (e de CPF ainda não processado) foi encontrado para a distribuição igualitária SIMPLES.")
 
         db.session.commit()
-        print("Distribuição igualitária concluída")
-        return {"success": True, "message": "Distribuição igualitária concluída",
-                "contratos_distribuidos": total_contratos}
+
+        return {
+            "success": True,
+            "message": "Processo de distribuição igualitária SIMPLES (com respeito ao arrasto) concluído.",
+            "contratos_distribuidos": contratos_distribuidos
+        }
 
     except Exception as e:
         db.session.rollback()
@@ -1303,19 +1320,12 @@ def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, p
         print(traceback.format_exc())
         return {"success": False, "message": "Erro: " + str(e), "contratos_distribuidos": 0}
 
+
 def processar_distribuicao_completa(edital_id, periodo_id, usar_distribuicao_igualitaria=False,
-                                    empresa_descredenciada_id=None):
+                                    empresa_descredenciada_id=None, data_fim_periodo_anterior=None):
     """
     Executa todo o processo de distribuição em ordem.
-
-    Args:
-        edital_id (int): ID do edital
-        periodo_id (int): ID do período
-        usar_distribuicao_igualitaria (bool): Se True, usa distribuição igualitária para empresa descredenciada
-        empresa_descredenciada_id (int): ID da empresa descredenciada (quando usar distribuição igualitária)
-
-    Returns:
-        dict: Estatísticas do processo de distribuição
+    Implementa a lógica de substituição completa para a distribuição de descredenciadas.
     """
     resultados = {
         'contratos_distribuiveis': 0,
@@ -1329,62 +1339,30 @@ def processar_distribuicao_completa(edital_id, periodo_id, usar_distribuicao_igu
     }
 
     try:
-        # 0. Selecionar contratos distribuíveis (pré-requisito)
         resultados['contratos_distribuiveis'] = selecionar_contratos_distribuiveis()
-
         if resultados['contratos_distribuiveis'] == 0:
+            print("Nenhum contrato distribuível encontrado. Processo encerrado.")
             return resultados
 
-        # 1.1.1. Contratos com acordo vigente de empresa que permanece (SEMPRE EXECUTA)
         resultados['acordos_empresas_permanece'] = distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id)
 
-        # 1.1.2. DECISÃO: Usar distribuição normal OU igualitária para empresas descredenciadas
-        if usar_distribuicao_igualitaria and empresa_descredenciada_id:
-            # SUBSTITUIR a função normal pela distribuição igualitária
-            print(f"SUBSTITUINDO distribuição normal por IGUALITÁRIA para empresa {empresa_descredenciada_id}")
-
-            # Buscar contratos com acordo da empresa descredenciada específica
-            contratos_empresa = db.session.execute(
-                text("""
-                     SELECT COUNT(DISTINCT DIS.fkContratoSISCTR)
-                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
-                         INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
-                     ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
-                         INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
-                         ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-                     WHERE ALV.fkEstadoAcordo = 1
-                       AND ECA.COD_EMPRESA_COBRANCA = :empresa_id
-                     """),
-                {"empresa_id": empresa_descredenciada_id}
-            ).scalar()
-
-            if contratos_empresa > 0:
-                # Executar distribuição igualitária SOMENTE para esta empresa
-                resultado_igualitaria = distribuir_contratos_descredenciada_igualitariamente_especifica(
-                    edital_id, periodo_id, empresa_descredenciada_id
-                )
-
-                if resultado_igualitaria['success']:
-                    resultados['acordos_empresas_descredenciadas'] = resultado_igualitaria['contratos_distribuidos']
-                    print(
-                        f"Distribuição igualitária concluída: {resultado_igualitaria['contratos_distribuidos']} contratos")
+        if usar_distribuicao_igualitaria and empresa_descredenciada_id and data_fim_periodo_anterior:
+            print(f"MODO ESPECIAL ATIVADO: Substituindo a distribuição de descredenciadas pela regra igualitária.")
+            resultado_igualitaria = distribuir_contratos_descredenciada_igualitariamente_especifica(
+                edital_id, periodo_id, empresa_descredenciada_id, data_fim_periodo_anterior
+            )
+            if resultado_igualitaria['success']:
+                resultados['acordos_empresas_descredenciadas'] = resultado_igualitaria['contratos_distribuidos']
         else:
-            # Usar distribuição normal para TODAS as empresas descredenciadas
-            print("Usando distribuição NORMAL para empresas descredenciadas")
+            print("MODO PADRÃO ATIVADO: Executando a distribuição normal para empresas descredenciadas.")
             resultados['acordos_empresas_descredenciadas'] = distribuir_acordos_vigentes_empresas_descredenciadas(
                 edital_id, periodo_id
             )
 
-        # 1.1.3. Contratos com acordo vigente – regra do arrasto (SEMPRE EXECUTA)
         resultados['regra_arrasto_acordos'] = aplicar_regra_arrasto_acordos(edital_id, periodo_id)
-
-        # 1.1.4. Demais contratos sem acordo – regra do arrasto (SEMPRE EXECUTA)
         resultados['regra_arrasto_sem_acordo'] = aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id)
-
-        # 1.1.5. Demais contratos sem acordo (SEMPRE EXECUTA)
         resultados['demais_contratos'] = distribuir_demais_contratos(edital_id, periodo_id)
 
-        # Calcular total
         resultados['total_distribuido'] = (
                 resultados['acordos_empresas_permanece'] +
                 resultados['acordos_empresas_descredenciadas'] +
@@ -1393,25 +1371,15 @@ def processar_distribuicao_completa(edital_id, periodo_id, usar_distribuicao_igu
                 resultados['demais_contratos']
         )
 
-        # Verificar contratos restantes não distribuídos
-        contratos_restantes = db.session.execute(
-            text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-        ).scalar()
-
+        contratos_restantes = db.session.execute(text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")).scalar()
         resultados['contratos_restantes'] = contratos_restantes
-        resultados['total_com_restantes'] = resultados['total_distribuido'] + contratos_restantes
-
-        # Atualizar limites de distribuição
         atualizar_limites_distribuicao(edital_id, periodo_id)
-
-        # Obter resultados finais da distribuição
-        resultados_finais = obter_resultados_finais_distribuicao(edital_id, periodo_id)
-        resultados['resultados_finais'] = resultados_finais
+        resultados['resultados_finais'] = obter_resultados_finais_distribuicao(edital_id, periodo_id)
 
         return resultados
 
     except Exception as e:
-        logging.error(f"Erro no processo de distribuição: {str(e)}")
+        logging.error(f"Erro CRÍTICO no processo de distribuição completa: {str(e)}")
         import traceback
         logging.error(traceback.format_exc())
         return resultados
