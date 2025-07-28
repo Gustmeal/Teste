@@ -191,8 +191,9 @@ def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
 
 def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
     """
-    Distribui contratos com acordos vigentes de empresas descredenciadas.
-    Implementa o item 1.1.2 dos requisitos.
+    [VERSÃO CORRIGIDA]
+    Distribui contratos com acordos vigentes de empresas descredenciadas, agrupando por CPF
+    para respeitar a regra de arrasto. Implementa o item 1.1.2 dos requisitos.
 
     Args:
         edital_id: ID do edital a ser processado
@@ -201,133 +202,115 @@ def distribuir_acordos_vigentes_empresas_descredenciadas(edital_id, periodo_id):
     Returns:
         int: Total de contratos distribuídos
     """
+    ### ALTERAÇÕES REALIZADAS ###
+    # 1. A lógica foi migrada para um script T-SQL único e otimizado.
+    # 2. A distribuição agora é baseada em CPFs únicos, não em contratos individuais.
+    #    Isso garante que todos os contratos de um mesmo CPF sejam atribuídos à mesma empresa.
+    # 3. O código de critério (3) foi mantido, pois está correto para esta regra.
+    ############################
+
     contratos_distribuidos = 0
+    print(
+        f"Iniciando distribuição (AGRUPADA POR CPF) de acordos de empresas descredenciadas - Edital: {edital_id}, Período: {periodo_id}")
 
     try:
+        sql_script = text("""
+            SET NOCOUNT ON;
+
+            -- Temp tables para evitar recriação
+            IF OBJECT_ID('tempdb..#CPFsParaDistribuir') IS NOT NULL DROP TABLE #CPFsParaDistribuir;
+            IF OBJECT_ID('tempdb..#EmpresasReceptoras') IS NOT NULL DROP TABLE #EmpresasReceptoras;
+            IF OBJECT_ID('tempdb..#CpfEmpresaMap') IS NOT NULL DROP TABLE #CpfEmpresaMap;
+
+            -- ETAPA 1: Identificar os CPFs únicos que precisam ser redistribuídos.
+            -- Estes são CPFs de contratos com acordos vigentes em empresas descredenciadas.
+            SELECT
+                DIS.NR_CPF_CNPJ,
+                ROW_NUMBER() OVER (ORDER BY NEWID()) as CpfRowNumber -- Ordem aleatória para distribuição justa
+            INTO #CPFsParaDistribuir
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
+            INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA ON DIS.FkContratoSISCTR = ECA.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV ON DIS.FkContratoSISCTR = ALV.fkContratoSISCTR
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+            WHERE ALV.fkEstadoAcordo = 1
+              AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
+              AND EMP.ID_EDITAL = :edital_id
+              AND EMP.ID_PERIODO = :periodo_id
+              AND NOT EXISTS (
+                  SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIST
+                  WHERE DIST.NR_CPF_CNPJ = DIS.NR_CPF_CNPJ
+                    AND DIST.ID_EDITAL = :edital_id
+                    AND DIST.ID_PERIODO = :periodo_id
+              )
+            GROUP BY DIS.NR_CPF_CNPJ;
+
+            DECLARE @TotalCPFs INT;
+            SELECT @TotalCPFs = COUNT(*) FROM #CPFsParaDistribuir;
+
+            IF @TotalCPFs = 0 BEGIN
+                SELECT 0 AS ContratosDistribuidos;
+                RETURN;
+            END;
+
+            -- ETAPA 2: Obter as empresas que podem receber os contratos.
+            SELECT
+                ID_EMPRESA,
+                ROW_NUMBER() OVER (ORDER BY ID_EMPRESA) as EmpresaRowNumber
+            INTO #EmpresasReceptoras
+            FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+            WHERE ID_EDITAL = :edital_id
+              AND ID_PERIODO = :periodo_id
+              AND DS_CONDICAO <> 'DESCREDENCIADA';
+
+            DECLARE @TotalEmpresas INT;
+            SELECT @TotalEmpresas = COUNT(*) FROM #EmpresasReceptoras;
+
+            IF @TotalEmpresas = 0 BEGIN
+                SELECT 0 AS ContratosDistribuidos;
+                RETURN;
+            END;
+
+            -- ETAPA 3: Mapear cada CPF para uma empresa receptora (distribuição round-robin).
+            SELECT
+                C.NR_CPF_CNPJ,
+                E.ID_EMPRESA
+            INTO #CpfEmpresaMap
+            FROM #CPFsParaDistribuir C
+            JOIN #EmpresasReceptoras E ON (C.CpfRowNumber - 1) % @TotalEmpresas + 1 = E.EmpresaRowNumber;
+
+            -- ETAPA 4: Inserir todos os contratos, usando o mapa CPF -> Empresa.
+            INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+                   ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+                    [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+                    [VR_SD_DEVEDOR], [CREATED_AT])
+            SELECT GETDATE(), :edital_id, :periodo_id, D.FkContratoSISCTR,
+                   MAP.ID_EMPRESA,
+                   3, -- Código 3: Contrato com acordo com assessoria descredenciada
+                   D.NR_CPF_CNPJ, D.VR_SD_DEVEDOR, GETDATE()
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+            JOIN #CpfEmpresaMap MAP ON D.NR_CPF_CNPJ = MAP.NR_CPF_CNPJ;
+
+            DECLARE @ContratosInseridos INT = @@ROWCOUNT;
+
+            -- ETAPA 5: Remover os CPFs processados da tabela de distribuíveis.
+            DELETE D
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+            WHERE EXISTS (SELECT 1 FROM #CpfEmpresaMap MAP WHERE MAP.NR_CPF_CNPJ = D.NR_CPF_CNPJ);
+
+            -- Limpeza
+            DROP TABLE #CPFsParaDistribuir;
+            DROP TABLE #EmpresasReceptoras;
+            DROP TABLE #CpfEmpresaMap;
+
+            SELECT @ContratosInseridos AS ContratosDistribuidos;
+        """)
+
+        with db.engine.begin() as connection:
+            result = connection.execute(sql_script, {"edital_id": edital_id, "periodo_id": periodo_id})
+            contratos_distribuidos = result.scalar_one_or_none() or 0
+
         print(
-            f"Iniciando distribuição de acordos vigentes de empresas descredenciadas - Edital: {edital_id}, Período: {periodo_id}")
-
-        # 1. Obter lista de empresas participantes (não descredenciadas)
-        empresas_participantes = db.session.execute(
-            text("""
-                 SELECT ID_EMPRESA
-                 FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
-                 WHERE ID_EDITAL = :edital_id
-                   AND ID_PERIODO = :periodo_id
-                   AND DS_CONDICAO <> 'DESCREDENCIADA'
-                 """),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).fetchall()
-
-        if not empresas_participantes:
-            print("Nenhuma empresa participante encontrada para o período atual")
-            return 0
-
-        empresas_ids = [empresa[0] for empresa in empresas_participantes]
-        total_empresas = len(empresas_ids)
-        print(f"Total de empresas participantes: {total_empresas}")
-
-        # 2. Identificar contratos com acordos vigentes de empresas descredenciadas
-        query_contratos_descredenciados = """
-                                          SELECT DIS.[FkContratoSISCTR], \
-                                                 DIS.[NR_CPF_CNPJ], \
-                                                 DIS.[VR_SD_DEVEDOR]
-                                          FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] DIS
-                                              INNER JOIN [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
-                                          ON DIS.[FkContratoSISCTR] = ECA.fkContratoSISCTR
-                                              INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
-                                              ON DIS.[FkContratoSISCTR] = ALV.fkContratoSISCTR
-                                              INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
-                                              ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
-                                          WHERE ALV.fkEstadoAcordo = 1
-                                            AND EMP.DS_CONDICAO = 'DESCREDENCIADA'
-                                            AND EMP.ID_EDITAL = :edital_id
-                                            AND EMP.ID_PERIODO = :periodo_id
-                                          -- Garantir que o contrato não foi distribuído anteriormente
-                                            AND NOT EXISTS (
-                                              SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIST
-                                              WHERE DIST.fkContratoSISCTR = DIS.[FkContratoSISCTR]
-                                            AND DIST.ID_EDITAL = :edital_id
-                                            AND DIST.ID_PERIODO = :periodo_id
-                                              ) \
-                                          """
-
-        contratos_descred = db.session.execute(
-            text(query_contratos_descredenciados),
-            {"edital_id": edital_id, "periodo_id": periodo_id}
-        ).fetchall()
-
-        total_contratos = len(contratos_descred)
-        if total_contratos == 0:
-            print("Nenhum contrato com acordo vigente de empresa descredenciada encontrado")
-            return 0
-
-        print(f"Total de contratos com acordo de empresas descredenciadas: {total_contratos}")
-
-        # 3. Distribuir contratos equitativamente entre as empresas
-        empresa_index = 0
-        contratos_inseridos = 0
-
-        # Criar lista de contratos a remover após inserção
-        contratos_a_remover = []
-
-        # Inserir contratos um por vez
-        for contrato in contratos_descred:
-            # Rotação circular pelas empresas para distribuição igualitária
-            empresa_atual = empresas_ids[empresa_index]
-
-            # Inserir contrato
-            db.session.execute(
-                text("""
-                     INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
-                     ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
-                         [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
-                         [VR_SD_DEVEDOR], [CREATED_AT])
-                     VALUES (
-                         GETDATE(), :edital_id, :periodo_id, :contrato, :empresa, 3, -- Contrato com acordo com assessoria descredenciada
-                         :cpf_cnpj, :valor, GETDATE()
-                         )
-                     """),
-                {
-                    "edital_id": edital_id,
-                    "periodo_id": periodo_id,
-                    "contrato": contrato[0],  # FkContratoSISCTR
-                    "cpf_cnpj": contrato[1],  # NR_CPF_CNPJ
-                    "valor": contrato[2],  # VR_SD_DEVEDOR
-                    "empresa": empresa_atual
-                }
-            )
-            contratos_inseridos += 1
-            contratos_a_remover.append(contrato[0])  # Adicionar à lista de contratos a remover
-
-            # Avança para a próxima empresa na lista circular
-            empresa_index = (empresa_index + 1) % total_empresas
-
-            # Commit a cada 100 registros para evitar bloqueios longos
-            if contratos_inseridos % 100 == 0:
-                db.session.commit()
-                print(f"Progresso: {contratos_inseridos}/{total_contratos} contratos inseridos")
-
-        contratos_distribuidos = contratos_inseridos
-        print(f"{contratos_distribuidos} contratos com acordo de empresas descredenciadas distribuídos")
-
-        # 4. Excluir os contratos inseridos da tabela de distribuíveis
-        if contratos_distribuidos > 0:
-            # Usar a lista de contratos para remoção direta
-            placeholders = ','.join(':c' + str(i) for i in range(len(contratos_a_remover)))
-            params = {f'c{i}': contrato_id for i, contrato_id in enumerate(contratos_a_remover)}
-            params.update({"edital_id": edital_id, "periodo_id": periodo_id})
-
-            db.session.execute(
-                text(f"""
-                    DELETE FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    WHERE [FkContratoSISCTR] IN ({placeholders})
-                """),
-                params
-            )
-
-        db.session.commit()
-        print("Processo de distribuição de acordos vigentes de empresas descredenciadas concluído com sucesso")
+            f"Processo de distribuição de descredenciadas (agrupado por CPF) concluído: {contratos_distribuidos} contratos distribuídos.")
 
     except Exception as e:
         db.session.rollback()
@@ -484,10 +467,16 @@ def aplicar_regra_arrasto_acordos(edital_id, periodo_id):
 
 def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
     """
+    [VERSÃO CORRIGIDA]
     Aplica a regra de arrasto para múltiplos contratos sem acordo de forma OTIMIZADA e PROPORCIONAL,
     distribuindo os CPFs de acordo com o percentual de participação de cada empresa.
     Só arrasta CPFs que não têm nenhum contrato distribuído ainda.
     """
+    ### ALTERAÇÕES REALIZADAS ###
+    # 1. Corrigido o COD_CRITERIO_SELECAO de 3 para 6.
+    #    Agora ele usa corretamente o código para "Regra do arrasto".
+    ############################
+
     print(f"Iniciando distribuição OTIMIZADA e PROPORCIONAL (sem acordo) - regra de arrasto")
 
     try:
@@ -496,8 +485,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 SET NOCOUNT ON;
 
                 -- ETAPA 1: Identificar e numerar aleatoriamente os CPFs que se enquadram na regra.
-                -- A ordem aleatória (NEWID()) evita vieses na distribuição.
-                -- MODIFICADO: Garantir que só pega CPFs sem nenhum contrato distribuído
                 IF OBJECT_ID('tempdb..#CPFsParaArrasto') IS NOT NULL DROP TABLE #CPFsParaArrasto;
 
                 SELECT
@@ -512,21 +499,18 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                     AND DIST.ID_EDITAL = :edital_id
                     AND DIST.ID_PERIODO = :periodo_id
                 )
-                -- Garantir que o CPF tem múltiplos contratos não distribuídos
                 AND D.NR_CPF_CNPJ IN (
                     SELECT NR_CPF_CNPJ
                     FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
                     GROUP BY NR_CPF_CNPJ
                     HAVING COUNT(*) > 1
                 )
-                GROUP BY D.NR_CPF_CNPJ
-                HAVING COUNT(*) > 1;
+                GROUP BY D.NR_CPF_CNPJ;
 
                 DECLARE @TotalCPFsParaArrastar INT;
                 SELECT @TotalCPFsParaArrastar = COUNT(*) FROM #CPFsParaArrasto;
 
-                IF @TotalCPFsParaArrastar = 0
-                BEGIN
+                IF @TotalCPFsParaArrastar = 0 BEGIN
                     SELECT 0 AS ContratosInseridos;
                     RETURN;
                 END;
@@ -537,7 +521,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 SELECT
                     EP.ID_EMPRESA,
                     LD.PERCENTUAL_FINAL AS percentual,
-                    -- Calcula a meta exata e a parte inteira/fracionária
                     (@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS meta_exata,
                     FLOOR(@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS meta_inteira,
                     (@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) - FLOOR(@TotalCPFsParaArrastar * LD.PERCENTUAL_FINAL / 100.0) AS parte_fracionaria
@@ -552,8 +535,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
                 AND LD.PERCENTUAL_FINAL > 0;
 
-                IF NOT EXISTS (SELECT 1 FROM #EmpresasInfo)
-                BEGIN
+                IF NOT EXISTS (SELECT 1 FROM #EmpresasInfo) BEGIN
                     SELECT 0 AS ContratosInseridos;
                     RETURN;
                 END;
@@ -578,7 +560,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 JOIN RankingFracao RF ON EI.ID_EMPRESA = RF.ID_EMPRESA;
 
                 -- ETAPA 4: Criar as "faixas de atribuição" para cada empresa.
-                -- Ex: Empresa A (40 CPFs) -> faixa 1 a 40, Empresa B (60 CPFs) -> faixa 41 a 100.
                 IF OBJECT_ID('tempdb..#FaixasDeAtribuicao') IS NOT NULL DROP TABLE #FaixasDeAtribuicao;
 
                 SELECT
@@ -606,7 +587,9 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                  [VR_SD_DEVEDOR], [CREATED_AT])
                 SELECT
                     GETDATE(), :edital_id, :periodo_id, D.[FkContratoSISCTR],
-                    M.ID_EMPRESA, 3, D.[NR_CPF_CNPJ], D.[VR_SD_DEVEDOR], GETDATE()
+                    M.ID_EMPRESA,
+                    6, -- CÓDIGO CORRIGIDO: 6 = Regra do arrasto
+                    D.[NR_CPF_CNPJ], D.[VR_SD_DEVEDOR], GETDATE()
                 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
                 JOIN #ArrastoMapping M ON D.NR_CPF_CNPJ = M.NR_CPF_CNPJ;
 
@@ -635,7 +618,6 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
         import traceback
         print(traceback.format_exc())
         return 0
-
 
 
 def distribuir_demais_contratos(edital_id, periodo_id):
@@ -1168,65 +1150,58 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
         return {'resultados': [], 'total_qtde': 0, 'total_saldo': 0}
 
 
-
 def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, periodo_id, empresa_descredenciada_id,
                                                                     data_fim_periodo_anterior):
     """
-    [VERSÃO COM CORREÇÃO DE ARRASTO]
+    [VERSÃO CORRIGIDA E OTIMIZADA]
     Distribui igualitariamente os CONTRATOS de uma empresa descredenciada,
-    respeitando as decisões de arrasto das etapas anteriores.
+    AGRUPANDO POR CPF para respeitar as decisões de arrasto.
     """
+    ### ALTERAÇÕES REALIZADAS ###
+    # 1. A lógica SQL foi completamente substituída para operar sobre CPFs, não contratos.
+    #    Isso resolve a falha fundamental da regra de arrasto.
+    # 2. A estrutura agora usa tabelas temporárias para mapear CPFs a empresas antes de inserir.
+    # 3. O código de critério (3) foi mantido, pois está correto para esta regra.
+    ############################
+
     try:
-        print("--- EXECUTANDO VERSÃO SIMPLIFICADA (COM CORREÇÃO DE ARRASTO) ---")
-        print(f"Iniciando distribuição igualitária SIMPLES para empresa {empresa_descredenciada_id}")
+        print(f"--- EXECUTANDO VERSÃO CORRIGIDA (AGRUPADA POR CPF) ---")
+        print(f"Iniciando distribuição igualitária para empresa {empresa_descredenciada_id}")
 
         sql_script = text("""
             SET NOCOUNT ON;
 
-            IF OBJECT_ID('tempdb..#ContratosParaDistribuir') IS NOT NULL DROP TABLE #ContratosParaDistribuir;
+            IF OBJECT_ID('tempdb..#CPFsParaDistribuir') IS NOT NULL DROP TABLE #CPFsParaDistribuir;
             IF OBJECT_ID('tempdb..#EmpresasReceptoras') IS NOT NULL DROP TABLE #EmpresasReceptoras;
-            IF OBJECT_ID('tempdb..#MapeamentoContratos') IS NOT NULL DROP TABLE #MapeamentoContratos;
+            IF OBJECT_ID('tempdb..#CpfEmpresaMap') IS NOT NULL DROP TABLE #CpfEmpresaMap;
 
-            -- ETAPA 1: Identificar os CONTRATOS da empresa descredenciada cujos CPFs ainda não foram processados.
+            -- ETAPA 1: Identificar os CPFs únicos da empresa descredenciada que ainda não foram distribuídos.
             SELECT
-                DIS.FkContratoSISCTR,
                 DIS.NR_CPF_CNPJ,
-                DIS.VR_SD_DEVEDOR,
-                ROW_NUMBER() OVER (ORDER BY NEWID()) as ContratoRowNumber
-            INTO #ContratosParaDistribuir
+                ROW_NUMBER() OVER (ORDER BY NEWID()) as CpfRowNumber
+            INTO #CPFsParaDistribuir
             FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
             INNER JOIN [BDG].[COM_TB012_EMPRESA_COBRANCA_ANTERIORES] AS ANT
                 ON DIS.FkContratoSISCTR = ANT.fkContratoSISCTR
             WHERE
                 ANT.COD_EMPRESA_COBRANCA = :empresa_id
                 AND ANT.DT_PERIODO_FIM = :data_fim_periodo_anterior
-                -- =================== INÍCIO DA CORREÇÃO DE ARRASTO ===================
-                -- Garante que o CPF deste contrato ainda não foi "reivindicado" por nenhuma
-                -- regra anterior (como a de 'acordos que permanecem').
-                AND DIS.NR_CPF_CNPJ NOT IN (
-                    SELECT D.NR_CPF_CNPJ
-                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
-                    WHERE D.ID_EDITAL = :edital_id
-                      AND D.ID_PERIODO = :periodo_id
-                )
-                -- =================== FIM DA CORREÇÃO DE ARRASTO ===================
                 AND NOT EXISTS (
-                    SELECT 1
-                    FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
-                    WHERE D.fkContratoSISCTR = DIS.FkContratoSISCTR
+                    SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                    WHERE D.NR_CPF_CNPJ = DIS.NR_CPF_CNPJ
                       AND D.ID_EDITAL = :edital_id
                       AND D.ID_PERIODO = :periodo_id
-                );
+                )
+            GROUP BY DIS.NR_CPF_CNPJ;
 
-            DECLARE @TotalContratos INT;
-            SELECT @TotalContratos = COUNT(*) FROM #ContratosParaDistribuir;
-            IF @TotalContratos = 0
-            BEGIN
+            DECLARE @TotalCPFs INT;
+            SELECT @TotalCPFs = COUNT(*) FROM #CPFsParaDistribuir;
+            IF @TotalCPFs = 0 BEGIN
                 SELECT 0 AS ContratosDistribuidos;
                 RETURN;
             END;
 
-            -- ETAPA 2: Obter as empresas que receberão os contratos (inalterado).
+            -- ETAPA 2: Obter as empresas que receberão os contratos.
             SELECT
                 ID_EMPRESA,
                 ROW_NUMBER() OVER (ORDER BY ID_EMPRESA) as EmpresaRowNumber
@@ -1234,56 +1209,47 @@ def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, p
             FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
             WHERE ID_EDITAL = :edital_id
               AND ID_PERIODO = :periodo_id
-              AND DS_CONDICAO = 'PERMANECE'
+              AND DS_CONDICAO = 'PERMANECE' -- Ou a condição que for correta para receptoras
               AND DELETED_AT IS NULL;
 
             DECLARE @TotalEmpresas INT;
             SELECT @TotalEmpresas = COUNT(*) FROM #EmpresasReceptoras;
-            IF @TotalEmpresas = 0
-            BEGIN
+            IF @TotalEmpresas = 0 BEGIN
                 SELECT 0 AS ContratosDistribuidos;
                 RETURN;
             END;
 
-            -- ETAPA 3: Atribuir cada CONTRATO a uma empresa receptora.
+            -- ETAPA 3: Mapear cada CPF para uma empresa receptora.
             SELECT
-                C.FkContratoSISCTR,
                 C.NR_CPF_CNPJ,
-                C.VR_SD_DEVEDOR,
                 E.ID_EMPRESA
-            INTO #MapeamentoContratos
-            FROM #ContratosParaDistribuir C
-            JOIN #EmpresasReceptoras E ON (C.ContratoRowNumber - 1) % @TotalEmpresas + 1 = E.EmpresaRowNumber;
+            INTO #CpfEmpresaMap
+            FROM #CPFsParaDistribuir C
+            JOIN #EmpresasReceptoras E ON (C.CpfRowNumber - 1) % @TotalEmpresas + 1 = E.EmpresaRowNumber;
 
-            -- ETAPA 4: Inserir em massa na tabela de distribuição.
+            -- ETAPA 4: Inserir todos os contratos dos CPFs mapeados.
             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
             ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
              [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
              [VR_SD_DEVEDOR], [CREATED_AT])
             SELECT
-                GETDATE(),
-                :edital_id,
-                :periodo_id,
-                MAP.FkContratoSISCTR,
+                GETDATE(), :edital_id, :periodo_id, DIS.FkContratoSISCTR,
                 MAP.ID_EMPRESA,
                 3, -- Código 3: Contrato com acordo com assessoria descredenciada
-                MAP.NR_CPF_CNPJ,
-                MAP.VR_SD_DEVEDOR,
-                GETDATE()
-            FROM #MapeamentoContratos AS MAP;
+                DIS.NR_CPF_CNPJ, DIS.VR_SD_DEVEDOR, GETDATE()
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
+            JOIN #CpfEmpresaMap AS MAP ON DIS.NR_CPF_CNPJ = MAP.NR_CPF_CNPJ;
 
             DECLARE @ContratosInseridos INT = @@ROWCOUNT;
 
-            -- ETAPA 5: Remover em massa os contratos que foram inseridos.
+            -- ETAPA 5: Remover os CPFs processados da tabela de distribuíveis.
             DELETE DIS
             FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] AS DIS
-            WHERE EXISTS (
-                SELECT 1 FROM #MapeamentoContratos MAP WHERE MAP.FkContratoSISCTR = DIS.FkContratoSISCTR
-            );
+            WHERE EXISTS (SELECT 1 FROM #CpfEmpresaMap MAP WHERE MAP.NR_CPF_CNPJ = DIS.NR_CPF_CNPJ);
 
-            DROP TABLE #ContratosParaDistribuir;
+            DROP TABLE #CPFsParaDistribuir;
             DROP TABLE #EmpresasReceptoras;
-            DROP TABLE #MapeamentoContratos;
+            DROP TABLE #CpfEmpresaMap;
 
             SELECT @ContratosInseridos AS ContratosDistribuidos;
         """)
@@ -1295,26 +1261,24 @@ def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, p
             "periodo_id": periodo_id
         }
 
-        result = db.session.execute(sql_script, params).scalar()
-        contratos_distribuidos = result or 0
+        with db.engine.begin() as connection:
+            result = connection.execute(sql_script, params)
+            contratos_distribuidos = result.scalar_one_or_none() or 0
 
         if contratos_distribuidos > 0:
             print(
-                f"Distribuição igualitária SIMPLES (com respeito ao arrasto) concluída: {contratos_distribuidos} contratos distribuídos.")
+                f"Distribuição igualitária (agrupada por CPF) concluída: {contratos_distribuidos} contratos distribuídos.")
         else:
-            print(
-                "Nenhum contrato elegível (e de CPF ainda não processado) foi encontrado para a distribuição igualitária SIMPLES.")
-
-        db.session.commit()
+            print("Nenhum CPF elegível foi encontrado para a distribuição igualitária.")
 
         return {
             "success": True,
-            "message": "Processo de distribuição igualitária SIMPLES (com respeito ao arrasto) concluído.",
+            "message": "Processo de distribuição igualitária (agrupado por CPF) concluído.",
             "contratos_distribuidos": contratos_distribuidos
         }
 
     except Exception as e:
-        db.session.rollback()
+        # O rollback é gerenciado pelo `with db.engine.begin() as connection:`
         print(f"Erro na distribuição igualitária: {str(e)}")
         import traceback
         print(traceback.format_exc())
