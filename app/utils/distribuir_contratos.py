@@ -622,20 +622,14 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
 
 def distribuir_demais_contratos(edital_id, periodo_id):
     """
-    Distribui os contratos restantes entre as empresas.
+    [VERSÃO CORRIGIDA - RESPEITA REGRA DE ARRASTO]
+    Distribui os contratos restantes entre as empresas, AGRUPANDO POR CPF.
     Implementa o item 1.1.5 dos requisitos: Demais contratos sem acordo.
-
-    Args:
-        edital_id: ID do edital a ser processado
-        periodo_id: ID do período a ser processado
-
-    Returns:
-        int: Total de contratos distribuídos
     """
     contratos_distribuidos = 0
 
     try:
-        print(f"Iniciando distribuição dos demais contratos sem acordo - Edital: {edital_id}, Período: {periodo_id}")
+        print(f"Iniciando distribuição dos demais contratos (AGRUPADO POR CPF) - Edital: {edital_id}, Período: {periodo_id}")
 
         # Verificar se existem empresas e contratos antes de iniciar o processamento
         empresas_count = db.session.execute(
@@ -649,9 +643,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                  WHERE EP.ID_EDITAL = :edital_id
                    AND EP.ID_PERIODO = :periodo_id
                    AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
-                   AND (LD.PERCENTUAL_FINAL
-                     > 0
-                    OR LD.PERCENTUAL_FINAL IS NULL)
+                   AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL)
                  """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).scalar()
@@ -660,23 +652,35 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             print("Nenhuma empresa participante encontrada.")
             return 0
 
-        contratos_count = db.session.execute(
-            text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-        ).scalar()
-
-        if not contratos_count:
-            print("Nenhum contrato restante para distribuir.")
-            return 0
-
-        print(f"Total de contratos restantes: {contratos_count}")
-
-        # Executar o script SQL principal sem tentar recuperar resultado diretamente
+        # Executar o script SQL principal
         db.session.execute(
             text("""
             -- Declaração de variáveis
             DECLARE @contratos_distribuidos INT = 0;
 
-            -- ETAPA 1: Buscar empresas e seus percentuais + contratos atuais
+            -- ETAPA 1: Identificar CPFs únicos restantes
+            IF OBJECT_ID('tempdb..#CPFsRestantes') IS NOT NULL
+                DROP TABLE #CPFsRestantes;
+
+            SELECT DISTINCT 
+                NR_CPF_CNPJ,
+                COUNT(*) as qtd_contratos,
+                SUM(VR_SD_DEVEDOR) as valor_total,
+                ROW_NUMBER() OVER (ORDER BY NEWID()) as ordem_cpf
+            INTO #CPFsRestantes
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]
+            GROUP BY NR_CPF_CNPJ;
+
+            DECLARE @total_cpfs INT;
+            SELECT @total_cpfs = COUNT(*) FROM #CPFsRestantes;
+
+            IF @total_cpfs = 0
+            BEGIN
+                SELECT 0 AS contratos_distribuidos;
+                RETURN;
+            END
+
+            -- ETAPA 2: Buscar empresas e seus percentuais + contratos atuais
             IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL
                 DROP TABLE #EmpresasInfo;
 
@@ -684,18 +688,18 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 EP.ID_EMPRESA,
                 COALESCE(LD.PERCENTUAL_FINAL, 0) AS percentual,
                 COALESCE((
-                    SELECT COUNT(*) 
+                    SELECT COUNT(DISTINCT NR_CPF_CNPJ) 
                     FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
                     WHERE D.ID_EDITAL = EP.ID_EDITAL
                     AND D.ID_PERIODO = EP.ID_PERIODO
                     AND D.COD_EMPRESA_COBRANCA = EP.ID_EMPRESA
-                ), 0) AS contratos_atuais,
-                0 AS meta_total_exata,
-                0 AS meta_total_inteira,
-                0 AS contratos_faltantes,
+                ), 0) AS cpfs_atuais,
+                0 AS meta_cpfs_exata,
+                0 AS meta_cpfs_inteira,
+                0 AS cpfs_faltantes,
                 0 AS parte_fracionaria,
-                0 AS contratos_extra,
-                0 AS total_a_receber,
+                0 AS cpfs_extra,
+                0 AS total_cpfs_a_receber,
                 ROW_NUMBER() OVER (ORDER BY COALESCE(LD.PERCENTUAL_FINAL, 0) DESC) AS ranking
             INTO #EmpresasInfo
             FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EP
@@ -707,7 +711,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             AND EP.ID_PERIODO = :periodo_id
             AND EP.DS_CONDICAO <> 'DESCREDENCIADA';
 
-            -- ETAPA 2: Normalizar percentuais
+            -- ETAPA 3: Normalizar percentuais
             DECLARE @total_percentual DECIMAL(10,6);
             DECLARE @total_empresas INT;
 
@@ -727,45 +731,40 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 SET percentual = percentual * 100.0 / @total_percentual;
             END;
 
-            -- ETAPA 3: Calcular metas e contratos a distribuir
-            DECLARE @total_contratos_restantes INT;
-            SELECT @total_contratos_restantes = COUNT(*) 
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS];
+            -- ETAPA 4: Calcular quantos CPFs cada empresa deve receber
+            DECLARE @total_cpfs_atuais INT;
+            DECLARE @total_cpfs_final INT;
 
-            -- 3.1 Calcular total de contratos (atuais + restantes)
-            DECLARE @total_contratos_atuais INT;
-            DECLARE @total_contratos INT;
-
-            SELECT @total_contratos_atuais = SUM(contratos_atuais)
+            SELECT @total_cpfs_atuais = SUM(cpfs_atuais)
             FROM #EmpresasInfo;
 
-            SET @total_contratos = @total_contratos_atuais + @total_contratos_restantes;
+            SET @total_cpfs_final = @total_cpfs_atuais + @total_cpfs;
 
-            -- 3.2 Calcular metas para cada empresa
+            -- Calcular metas para cada empresa
             UPDATE #EmpresasInfo
             SET
-                meta_total_exata = @total_contratos * percentual / 100.0,
-                meta_total_inteira = FLOOR(@total_contratos * percentual / 100.0),
-                parte_fracionaria = @total_contratos * percentual / 100.0 - FLOOR(@total_contratos * percentual / 100.0);
+                meta_cpfs_exata = @total_cpfs_final * percentual / 100.0,
+                meta_cpfs_inteira = FLOOR(@total_cpfs_final * percentual / 100.0),
+                parte_fracionaria = @total_cpfs_final * percentual / 100.0 - FLOOR(@total_cpfs_final * percentual / 100.0);
 
-            -- 3.3 Calcular quantos contratos faltam para cada empresa
+            -- Calcular quantos CPFs faltam para cada empresa
             UPDATE #EmpresasInfo
-            SET contratos_faltantes = CASE
-                                        WHEN meta_total_inteira > contratos_atuais THEN meta_total_inteira - contratos_atuais
-                                        ELSE 0
-                                      END;
+            SET cpfs_faltantes = CASE
+                                    WHEN meta_cpfs_inteira > cpfs_atuais THEN meta_cpfs_inteira - cpfs_atuais
+                                    ELSE 0
+                                  END;
 
-            -- 3.4 Verificar quantos contratos faltam distribuir pelos fracionais
+            -- Verificar quantos CPFs faltam distribuir pelos fracionais
             DECLARE @total_faltantes INT;
-            DECLARE @contratos_nao_alocados INT;
+            DECLARE @cpfs_nao_alocados INT;
 
-            SELECT @total_faltantes = SUM(contratos_faltantes)
+            SELECT @total_faltantes = SUM(cpfs_faltantes)
             FROM #EmpresasInfo;
 
-            SET @contratos_nao_alocados = @total_contratos_restantes - @total_faltantes;
+            SET @cpfs_nao_alocados = @total_cpfs - @total_faltantes;
 
-            -- 3.5 Distribuir contratos extras por maiores fracionais
-            IF @contratos_nao_alocados > 0
+            -- Distribuir CPFs extras por maiores fracionais
+            IF @cpfs_nao_alocados > 0
             BEGIN
                 WITH EmpresasOrdenadas AS (
                     SELECT 
@@ -775,88 +774,62 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                     FROM #EmpresasInfo
                 )
                 UPDATE #EmpresasInfo
-                SET contratos_extra = CASE WHEN EO.ranking_fracao <= @contratos_nao_alocados THEN 1 ELSE 0 END
+                SET cpfs_extra = CASE WHEN EO.ranking_fracao <= @cpfs_nao_alocados THEN 1 ELSE 0 END
                 FROM #EmpresasInfo EI
                 JOIN EmpresasOrdenadas EO ON EI.ID_EMPRESA = EO.ID_EMPRESA;
             END;
 
-            -- 3.6 Calcular total de contratos a receber
+            -- Calcular total de CPFs a receber
             UPDATE #EmpresasInfo
-            SET total_a_receber = contratos_faltantes + contratos_extra;
+            SET total_cpfs_a_receber = cpfs_faltantes + cpfs_extra;
 
-            -- ETAPA 4: Criar tabela de contratos distribuíveis estrategicamente embaralhados
-            IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL
-                DROP TABLE #ContratosEmbaralhados;
+            -- ETAPA 5: Criar tabela de atribuição CPF -> Empresa
+            IF OBJECT_ID('tempdb..#AtribuicaoCPF') IS NOT NULL
+                DROP TABLE #AtribuicaoCPF;
 
-            -- 4.1 Embaralhar todos os contratos aleatoriamente sem considerar valor
-            SELECT 
-                [FkContratoSISCTR],
-                [NR_CPF_CNPJ],
-                [VR_SD_DEVEDOR],
-                ROW_NUMBER() OVER (ORDER BY NEWID()) AS ordem
-            INTO #ContratosEmbaralhados
-            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS];
-
-            -- ETAPA 5: Distribuir contratos para empresas
-
-            -- 5.1 Criar tabela para faixas de ordem por empresa
-            IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL
-                DROP TABLE #FaixasOrdem;
-
-            CREATE TABLE #FaixasOrdem (
-                ID_EMPRESA INT,
-                ordem_inicio INT,
-                ordem_fim INT
+            CREATE TABLE #AtribuicaoCPF (
+                NR_CPF_CNPJ BIGINT,
+                ID_EMPRESA INT
             );
 
-            -- 5.2 Definir faixas de ordem por empresa
+            -- Atribuir CPFs às empresas respeitando os limites calculados
             DECLARE @ordem_atual INT = 1;
-            DECLARE @empresa_id INT, @contratos_empresa INT;
+            DECLARE @empresa_id INT, @cpfs_empresa INT;
 
-            -- Usar NEWID() para randomizar a ordem das empresas na distribuição
             DECLARE cursor_empresas CURSOR FOR
-            SELECT ID_EMPRESA, total_a_receber
+            SELECT ID_EMPRESA, total_cpfs_a_receber
             FROM #EmpresasInfo
-            WHERE total_a_receber > 0
+            WHERE total_cpfs_a_receber > 0
             ORDER BY NEWID(); -- Randomiza a ordem das empresas
 
             OPEN cursor_empresas;
-            FETCH NEXT FROM cursor_empresas INTO @empresa_id, @contratos_empresa;
+            FETCH NEXT FROM cursor_empresas INTO @empresa_id, @cpfs_empresa;
 
             WHILE @@FETCH_STATUS = 0
             BEGIN
-                IF @contratos_empresa > 0
+                IF @cpfs_empresa > 0
                 BEGIN
-                    INSERT INTO #FaixasOrdem (ID_EMPRESA, ordem_inicio, ordem_fim)
-                    VALUES (@empresa_id, @ordem_atual, @ordem_atual + @contratos_empresa - 1);
+                    -- Inserir os próximos N CPFs para esta empresa
+                    INSERT INTO #AtribuicaoCPF (NR_CPF_CNPJ, ID_EMPRESA)
+                    SELECT TOP(@cpfs_empresa) 
+                        NR_CPF_CNPJ, 
+                        @empresa_id
+                    FROM #CPFsRestantes
+                    WHERE ordem_cpf >= @ordem_atual
+                    ORDER BY ordem_cpf;
 
-                    SET @ordem_atual = @ordem_atual + @contratos_empresa;
+                    SET @ordem_atual = @ordem_atual + @cpfs_empresa;
                 END
 
-                FETCH NEXT FROM cursor_empresas INTO @empresa_id, @contratos_empresa;
+                FETCH NEXT FROM cursor_empresas INTO @empresa_id, @cpfs_empresa;
             END;
 
             CLOSE cursor_empresas;
             DEALLOCATE cursor_empresas;
 
-            -- 5.3 Atribuir empresas aos contratos
-            IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL
-                DROP TABLE #AtribuicaoFinal;
-
-            SELECT 
-                C.[FkContratoSISCTR],
-                C.[NR_CPF_CNPJ],
-                C.[VR_SD_DEVEDOR],
-                F.ID_EMPRESA
-            INTO #AtribuicaoFinal
-            FROM #ContratosEmbaralhados C
-            JOIN #FaixasOrdem F ON C.ordem BETWEEN F.ordem_inicio AND F.ordem_fim;
-
-            -- ETAPA 6: Inserir contratos e remover da tabela de distribuíveis
-
+            -- ETAPA 6: Inserir TODOS os contratos de cada CPF na empresa designada
             BEGIN TRANSACTION;
 
-            -- 6.1 Inserir todos os contratos
             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
             (
                 [DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR], 
@@ -867,27 +840,28 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 GETDATE(), 
                 :edital_id, 
                 :periodo_id, 
-                [FkContratoSISCTR], 
-                ID_EMPRESA, 
+                D.[FkContratoSISCTR], 
+                A.ID_EMPRESA, 
                 4, -- Código 4: Demais Contratos Sem Acordo
-                [NR_CPF_CNPJ], 
-                [VR_SD_DEVEDOR], 
+                D.[NR_CPF_CNPJ], 
+                D.[VR_SD_DEVEDOR], 
                 GETDATE()
-            FROM #AtribuicaoFinal;
+            FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
+            INNER JOIN #AtribuicaoCPF A ON D.NR_CPF_CNPJ = A.NR_CPF_CNPJ;
 
-            -- Capturar o número total de contratos inseridos
             SET @contratos_distribuidos = @@ROWCOUNT;
 
-            -- 6.2 Remover contratos distribuídos
+            -- Remover contratos distribuídos
             DELETE D
             FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
-            WHERE [FkContratoSISCTR] IN (
-                SELECT [FkContratoSISCTR] FROM #AtribuicaoFinal
+            WHERE EXISTS (
+                SELECT 1 FROM #AtribuicaoCPF A 
+                WHERE A.NR_CPF_CNPJ = D.NR_CPF_CNPJ
             );
 
             COMMIT;
 
-            -- ETAPA 7: Salvar o resultado para recuperação posterior
+            -- Salvar resultado
             IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL
                 DROP TABLE ##ResultadoDemaisContratos;
 
@@ -895,33 +869,31 @@ def distribuir_demais_contratos(edital_id, periodo_id):
             INSERT INTO ##ResultadoDemaisContratos VALUES (@contratos_distribuidos);
 
             -- Limpeza
+            IF OBJECT_ID('tempdb..#CPFsRestantes') IS NOT NULL DROP TABLE #CPFsRestantes;
             IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
-            IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL DROP TABLE #ContratosEmbaralhados;
-            IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL DROP TABLE #FaixasOrdem;
-            IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL DROP TABLE #AtribuicaoFinal;
+            IF OBJECT_ID('tempdb..#AtribuicaoCPF') IS NOT NULL DROP TABLE #AtribuicaoCPF;
             """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         )
 
-        # Recuperar o resultado da tabela temporária global
+        # Recuperar resultado
         result = db.session.execute(text("SELECT contratos_distribuidos FROM ##ResultadoDemaisContratos")).scalar()
         contratos_distribuidos = result if result is not None else 0
 
-        # Limpar a tabela temporária global
+        # Limpar tabela temporária global
         db.session.execute(text(
             "IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL DROP TABLE ##ResultadoDemaisContratos"))
 
-        print(f"Distribuição dos demais contratos concluída: {contratos_distribuidos} contratos distribuídos")
+        print(f"Distribuição dos demais contratos (AGRUPADO POR CPF) concluída: {contratos_distribuidos} contratos distribuídos")
 
     except Exception as e:
         db.session.rollback()
-        # Limpeza das tabelas temporárias em caso de erro
+        # Limpeza em caso de erro
         try:
             db.session.execute(text("""
+                IF OBJECT_ID('tempdb..#CPFsRestantes') IS NOT NULL DROP TABLE #CPFsRestantes;
                 IF OBJECT_ID('tempdb..#EmpresasInfo') IS NOT NULL DROP TABLE #EmpresasInfo;
-                IF OBJECT_ID('tempdb..#ContratosEmbaralhados') IS NOT NULL DROP TABLE #ContratosEmbaralhados;
-                IF OBJECT_ID('tempdb..#FaixasOrdem') IS NOT NULL DROP TABLE #FaixasOrdem;
-                IF OBJECT_ID('tempdb..#AtribuicaoFinal') IS NOT NULL DROP TABLE #AtribuicaoFinal;
+                IF OBJECT_ID('tempdb..#AtribuicaoCPF') IS NOT NULL DROP TABLE #AtribuicaoCPF;
                 IF OBJECT_ID('tempdb..##ResultadoDemaisContratos') IS NOT NULL DROP TABLE ##ResultadoDemaisContratos;
             """))
             db.session.commit()
@@ -933,7 +905,6 @@ def distribuir_demais_contratos(edital_id, periodo_id):
         print(traceback.format_exc())
 
     return contratos_distribuidos
-
 
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
