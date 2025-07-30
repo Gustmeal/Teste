@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('demonstrativo_sucor.index') }}" class="btn-back mb-3">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow-lg">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">
+                <i class="fas fa-chart-bar"></i> {{ tipo_demonstrativo }}
+            </h2>
+            <div class="text-end">
+                <span class="badge bg-light text-dark me-2">{{ periodo1 }}</span>
+                <i class="fas fa-arrow-right"></i>
+                <span class="badge bg-light text-dark ms-2">{{ periodo2 }}</span>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tabelaDemonstrativoSucor">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4" style="min-width: 400px;">Item</th>
+                            <th class="text-end" style="min-width: 150px;">{{ periodo1 }}</th>
+                            <th class="text-end" style="min-width: 150px;">{{ periodo2 }}</th>
+                            <th class="text-end" style="min-width: 150px;">Variação {{ tipo_demonstrativo[:3] }}</th>
+                            <th class="text-center" style="width: 80px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in dados_comparacao %}
+                        <tr class="linha-demonstrativo" data-co-demonstrativo="{{ item.co_demonstrativo }}" data-ordem="{{ item.ordem }}">
+                            <td class="ps-4">
+                                <span class="text-muted me-2">{{ '%02d'|format(item.ordem) }}</span>
+                                {{ item.grupo }}
+                            </td>
+                            <td class="text-end valor-periodo1">
+                                {{ item.valor_periodo1|br_currency }}
+                            </td>
+                            <td class="text-end valor-periodo2">
+                                {{ item.valor_periodo2|br_currency }}
+                            </td>
+                            <td class="text-end variacao-cell {% if item.variacao < 0 %}text-danger{% elif item.variacao > 0 %}text-success{% endif %}"
+                                data-variacao-original="{{ item.variacao }}"
+                                data-variacao-atual="{{ item.variacao_justificada }}">
+                                <span class="valor-variacao">{{ item.variacao_justificada|br_currency }}</span>
+                                {% if item.tem_justificativa %}
+                                    <i class="fas fa-edit text-primary ms-2" title="Justificativa editada"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-primary btn-editar-variacao-sucor"
+                                        title="Editar Justificativa"
+                                        data-co-demonstrativo="{{ item.co_demonstrativo }}"
+                                        data-ordem="{{ item.ordem }}"
+                                        data-grupo="{{ item.grupo }}"
+                                        data-variacao="{{ item.variacao_justificada }}"
+                                        data-descricao="{{ item.descricao_justificativa or '' }}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr>
+                            <th class="ps-4">TOTAL</th>
+                            <th class="text-end">{{ dados_comparacao|sum(attribute='valor_periodo1')|br_currency }}</th>
+                            <th class="text-end">{{ dados_comparacao|sum(attribute='valor_periodo2')|br_currency }}</th>
+                            <th class="text-end">{{ dados_comparacao|sum(attribute='variacao_justificada')|br_currency }}</th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Edição de Justificativa -->
+<div class="modal fade" id="modalJustificativaSucor" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit"></i> Editar Justificativa
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formJustificativaSucor">
+                    <input type="hidden" id="co_demonstrativo_sucor" name="co_demonstrativo">
+                    <input type="hidden" id="ordem_sucor" name="ordem">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Item</label>
+                        <input type="text" class="form-control-plaintext" id="item_grupo_sucor" readonly>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Valor Original</label>
+                                <input type="text" class="form-control-plaintext" id="variacao_original_sucor" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="variacao_justificada_sucor" class="form-label fw-bold">Valor Ajustado</label>
+                                <input type="number" class="form-control" id="variacao_justificada_sucor"
+                                       name="variacao_justificada" step="0.01" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="descricao_sucor" class="form-label fw-bold">Descrição da Justificativa</label>
+                        <textarea class="form-control" id="descricao_sucor" name="descricao"
+                                  rows="4" placeholder="Descreva o motivo do ajuste..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="btnExcluirJustificativaSucor">
+                    <i class="fas fa-trash"></i> Excluir
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnSalvarJustificativaSucor">
+                    <i class="fas fa-save"></i> Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table > :not(caption) > * > * {
+    padding: 1rem 0.75rem;
+}
+
+.linha-demonstrativo:hover {
+    background-color: rgba(108, 99, 255, 0.05);
+}
+
+.variacao-cell {
+    font-weight: 600;
+}
+
+.btn-editar-variacao-sucor {
+    opacity: 0.7;
+    transition: all 0.3s;
+}
+
+.btn-editar-variacao-sucor:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.modal-content {
+    border-radius: 15px;
+}
+
+.form-control-plaintext {
+    font-weight: 500;
+}
+</style>
+
+<script>
+// Dados do período para uso no JavaScript
+const periodo2DataSucor = {
+    ano: {{ periodo2_data.ano }},
+    mes: {{ periodo2_data.mes }}
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Manipular clique no botão de editar
+    document.querySelectorAll('.btn-editar-variacao-sucor').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const co_demonstrativo = this.getAttribute('data-co-demonstrativo');
+            const ordem = this.getAttribute('data-ordem');
+            const grupo = this.getAttribute('data-grupo');
+            const variacao = this.getAttribute('data-variacao');
+            const descricao = this.getAttribute('data-descricao');
+
+            // Buscar variação original da célula
+            const linha = this.closest('tr');
+            const variacaoOriginal = linha.querySelector('.variacao-cell').getAttribute('data-variacao-original');
+
+            // Preencher modal
+            document.getElementById('co_demonstrativo_sucor').value = co_demonstrativo;
+            document.getElementById('ordem_sucor').value = ordem;
+            document.getElementById('item_grupo_sucor').value = grupo;
+            document.getElementById('variacao_original_sucor').value = formatarMoeda(parseFloat(variacaoOriginal));
+            document.getElementById('variacao_justificada_sucor').value = variacao;
+            document.getElementById('descricao_sucor').value = descricao;
+
+            // Abrir modal
+            const modal = new bootstrap.Modal(document.getElementById('modalJustificativaSucor'));
+            modal.show();
+        });
+    });
+
+    // Salvar justificativa
+    document.getElementById('btnSalvarJustificativaSucor').addEventListener('click', function() {
+        const formData = {
+            co_demonstrativo: parseInt(document.getElementById('co_demonstrativo_sucor').value),
+            ordem: parseInt(document.getElementById('ordem_sucor').value),
+            ano: periodo2DataSucor.ano,
+            mes: periodo2DataSucor.mes,
+            descricao: document.getElementById('descricao_sucor').value,
+            variacao: parseFloat(document.getElementById('variacao_justificada_sucor').value)
+        };
+
+        fetch('{{ url_for("demonstrativo_sucor.salvar_justificativa") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Fechar modal
+                bootstrap.Modal.getInstance(document.getElementById('modalJustificativaSucor')).hide();
+
+                // Mostrar mensagem de sucesso
+                showToast(data.message, 'success');
+
+                // Recarregar página após 1 segundo
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                showToast('Erro ao salvar: ' + data.error, 'danger');
+            }
+        })
+        .catch(error => {
+            showToast('Erro ao salvar justificativa', 'danger');
+            console.error('Error:', error);
+        });
+    });
+
+    // Excluir justificativa
+    document.getElementById('btnExcluirJustificativaSucor').addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja excluir esta justificativa?')) {
+            const formData = {
+                co_demonstrativo: parseInt(document.getElementById('co_demonstrativo_sucor').value),
+                ordem: parseInt(document.getElementById('ordem_sucor').value),
+                ano: periodo2DataSucor.ano,
+                mes: periodo2DataSucor.mes
+            };
+
+            fetch('{{ url_for("demonstrativo_sucor.excluir_justificativa") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('modalJustificativaSucor')).hide();
+                    showToast(data.message, 'success');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
+                } else {
+                    showToast('Erro ao excluir: ' + data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showToast('Erro ao excluir justificativa', 'danger');
+                console.error('Error:', error);
+            });
+        }
+    });
+});
+
+function formatarMoeda(valor) {
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    }).format(valor);
+}
+</script>
+{% endblock %}

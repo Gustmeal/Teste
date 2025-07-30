@@ -108,6 +108,10 @@ def create_app():
 
     from app.routes.export_routes import export_bp
     app.register_blueprint(export_bp)
+
+    from app.routes.demonstrativo_sucor_routes import demonstrativo_sucor_bp
+    app.register_blueprint(demonstrativo_sucor_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
