@@ -12,43 +12,55 @@
                 <i class="fas fa-chart-bar"></i> {{ tipo_demonstrativo }}
             </h2>
             <div class="text-end">
-                <span class="badge bg-light text-dark me-2">{{ periodo1 }}</span>
-                <i class="fas fa-arrow-right"></i>
-                <span class="badge bg-light text-dark ms-2">{{ periodo2 }}</span>
+                <small class="d-block">{{ periodo1 }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {{ periodo2 }}</small>
             </div>
         </div>
 
         <div class="card-body p-0">
+            <div class="text-end px-3 py-2 bg-light">
+                <strong>R$ em mil</strong>
+            </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0" id="tabelaDemonstrativoSucor">
-                    <thead class="table-light">
+                    <thead style="background-color: #a8e6cf;">
                         <tr>
                             <th class="ps-4" style="min-width: 400px;">Item</th>
-                            <th class="text-end" style="min-width: 150px;">{{ periodo1 }}</th>
-                            <th class="text-end" style="min-width: 150px;">{{ periodo2 }}</th>
-                            <th class="text-end" style="min-width: 150px;">Variação {{ tipo_demonstrativo[:3] }}</th>
+                            <th class="text-end" style="min-width: 200px;">{{ periodo1 }}</th>
+                            <th class="text-end" style="min-width: 200px;">{{ periodo2 }}</th>
+                            <th class="text-end" style="min-width: 200px;">Variação {{ tipo_demonstrativo[:3] }}</th>
                             <th class="text-center" style="width: 80px;">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in dados_comparacao %}
-                        <tr class="linha-demonstrativo" data-co-demonstrativo="{{ item.co_demonstrativo }}" data-ordem="{{ item.ordem }}">
+                        <tr class="linha-demonstrativo {% if item.tem_justificativa %}linha-editada{% endif %}"
+                            data-co-demonstrativo="{{ item.co_demonstrativo }}"
+                            data-ordem="{{ item.ordem }}">
                             <td class="ps-4">
                                 <span class="text-muted me-2">{{ '%02d'|format(item.ordem) }}</span>
                                 {{ item.grupo }}
                             </td>
                             <td class="text-end valor-periodo1">
-                                {{ item.valor_periodo1|br_currency }}
+                                {{ "{:,.2f}".format(item.valor_periodo1).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                             </td>
                             <td class="text-end valor-periodo2">
-                                {{ item.valor_periodo2|br_currency }}
+                                {{ "{:,.2f}".format(item.valor_periodo2).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                             </td>
-                            <td class="text-end variacao-cell {% if item.variacao < 0 %}text-danger{% elif item.variacao > 0 %}text-success{% endif %}"
+                            <td class="text-end variacao-cell {% if item.variacao_justificada < 0 %}text-danger{% elif item.variacao_justificada > 0 %}text-success{% endif %}"
                                 data-variacao-original="{{ item.variacao }}"
                                 data-variacao-atual="{{ item.variacao_justificada }}">
-                                <span class="valor-variacao">{{ item.variacao_justificada|br_currency }}</span>
+                                <span class="valor-variacao">{{ "{:,.2f}".format(item.variacao_justificada).replace(',', 'X').replace('.', ',').replace('X', '.') }}</span>
                                 {% if item.tem_justificativa %}
-                                    <i class="fas fa-edit text-primary ms-2" title="Justificativa editada"></i>
+                                    <i class="fas fa-comment-dots text-warning ms-2 justificativa-icon"
+                                       style="cursor: pointer; font-size: 1.1rem;"
+                                       data-bs-toggle="popover"
+                                       data-bs-trigger="hover focus"
+                                       data-bs-placement="left"
+                                       data-bs-html="true"
+                                       title="Justificativa de Ajuste"
+                                       data-bs-content="{{ item.descricao_justificativa or 'Sem descrição' }}"
+                                       data-descricao="{{ item.descricao_justificativa or 'Sem descrição' }}">
+                                    </i>
                                 {% endif %}
                             </td>
                             <td class="text-center">
@@ -65,12 +77,18 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                    <tfoot class="table-secondary">
+                    <tfoot style="background-color: #f0f0f0;">
                         <tr>
                             <th class="ps-4">TOTAL</th>
-                            <th class="text-end">{{ dados_comparacao|sum(attribute='valor_periodo1')|br_currency }}</th>
-                            <th class="text-end">{{ dados_comparacao|sum(attribute='valor_periodo2')|br_currency }}</th>
-                            <th class="text-end">{{ dados_comparacao|sum(attribute='variacao_justificada')|br_currency }}</th>
+                            <th class="text-end">
+                                {{ "{:,.2f}".format(dados_comparacao|sum(attribute='valor_periodo1')).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </th>
+                            <th class="text-end">
+                                {{ "{:,.2f}".format(dados_comparacao|sum(attribute='valor_periodo2')).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </th>
+                            <th class="text-end {% if dados_comparacao|sum(attribute='variacao_justificada') < 0 %}text-danger{% elif dados_comparacao|sum(attribute='variacao_justificada') > 0 %}text-success{% endif %}">
+                                {{ "{:,.2f}".format(dados_comparacao|sum(attribute='variacao_justificada')).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </th>
                             <th></th>
                         </tr>
                     </tfoot>
@@ -137,16 +155,36 @@
 </div>
 
 <style>
+/* Estilo da tabela similar ao Power BI */
+.table {
+    font-size: 0.9rem;
+}
+
 .table > :not(caption) > * > * {
-    padding: 1rem 0.75rem;
+    padding: 0.5rem 0.75rem;
+    vertical-align: middle;
+}
+
+.table thead th {
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
 }
 
 .linha-demonstrativo:hover {
     background-color: rgba(108, 99, 255, 0.05);
 }
 
+/* Estilo para linha editada */
+.linha-editada {
+    background-color: rgba(255, 193, 7, 0.05);
+}
+
+.linha-editada:hover {
+    background-color: rgba(255, 193, 7, 0.1);
+}
+
 .variacao-cell {
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .btn-editar-variacao-sucor {
@@ -166,6 +204,54 @@
 .form-control-plaintext {
     font-weight: 500;
 }
+
+/* Estilo para valores negativos */
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.text-success {
+    color: #28a745 !important;
+}
+
+/* Largura fixa para colunas numéricas */
+.table td.text-end,
+.table th.text-end {
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+/* Estilo do ícone de justificativa */
+.justificativa-icon {
+    transition: all 0.3s ease;
+}
+
+.justificativa-icon:hover {
+    transform: scale(1.2);
+    color: #ffc107 !important;
+}
+
+/* Personalização do popover */
+.popover {
+    max-width: 400px;
+}
+
+.popover-header {
+    background-color: #ffc107;
+    color: #212529;
+    font-weight: 600;
+}
+
+.popover-body {
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Estilo para o tooltip */
+.tooltip-inner {
+    max-width: 300px;
+    text-align: left;
+}
 </style>
 
 <script>
@@ -176,6 +262,73 @@ const periodo2DataSucor = {
 };
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Inicializar tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    });
+
+    // Inicializar popovers personalizados
+    document.querySelectorAll('.justificativa-icon').forEach(icon => {
+        // Tooltip ao passar o mouse
+        const tooltip = new bootstrap.Tooltip(icon, {
+            trigger: 'hover',
+            placement: 'left',
+            html: true,
+            title: function() {
+                const descricao = this.getAttribute('data-descricao');
+                return `<strong>Justificativa:</strong><br>${descricao}`;
+            }
+        });
+
+        // Popover ao clicar
+        icon.addEventListener('click', function(e) {
+            e.stopPropagation();
+
+            // Fechar outros popovers abertos
+            document.querySelectorAll('.popover').forEach(p => p.remove());
+
+            const descricao = this.getAttribute('data-descricao');
+
+            // Criar popover customizado
+            const popover = document.createElement('div');
+            popover.className = 'popover bs-popover-start show';
+            popover.innerHTML = `
+                <div class="popover-arrow"></div>
+                <h3 class="popover-header">
+                    Justificativa de Ajuste
+                    <button type="button" class="btn-close btn-close-sm float-end" aria-label="Close"></button>
+                </h3>
+                <div class="popover-body">
+                    ${descricao}
+                </div>
+            `;
+
+            // Posicionar popover
+            document.body.appendChild(popover);
+
+            const iconRect = this.getBoundingClientRect();
+            popover.style.position = 'absolute';
+            popover.style.top = (iconRect.top + window.scrollY - popover.offsetHeight/2 + iconRect.height/2) + 'px';
+            popover.style.left = (iconRect.left + window.scrollX - popover.offsetWidth - 10) + 'px';
+
+            // Fechar ao clicar no X
+            popover.querySelector('.btn-close').addEventListener('click', function() {
+                popover.remove();
+            });
+
+            // Fechar ao clicar fora
+            setTimeout(() => {
+                document.addEventListener('click', function closePopover(e) {
+                    if (!popover.contains(e.target) && e.target !== icon) {
+                        popover.remove();
+                        document.removeEventListener('click', closePopover);
+                    }
+                });
+            }, 100);
+        });
+    });
+
     // Manipular clique no botão de editar
     document.querySelectorAll('.btn-editar-variacao-sucor').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -193,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('co_demonstrativo_sucor').value = co_demonstrativo;
             document.getElementById('ordem_sucor').value = ordem;
             document.getElementById('item_grupo_sucor').value = grupo;
-            document.getElementById('variacao_original_sucor').value = formatarMoeda(parseFloat(variacaoOriginal));
+            document.getElementById('variacao_original_sucor').value = formatarValor(parseFloat(variacaoOriginal));
             document.getElementById('variacao_justificada_sucor').value = variacao;
             document.getElementById('descricao_sucor').value = descricao;
 
@@ -281,11 +434,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-function formatarMoeda(valor) {
-    return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-    }).format(valor);
+function formatarValor(valor) {
+    return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 </script>
 {% endblock %}

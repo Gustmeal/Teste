@@ -6,6 +6,7 @@ from datetime import datetime, date
 from sqlalchemy import distinct, and_
 from decimal import Decimal
 import logging
+from sqlalchemy import distinct, and_, text
 
 demonstrativo_sucor_bp = Blueprint('demonstrativo_sucor', __name__, url_prefix='/demonstrativos-sucor')
 
@@ -62,50 +63,80 @@ def comparar_demonstrativos():
         ano_periodo2 = int(request.form.get('ano_periodo2'))
         mes_periodo2 = int(request.form.get('mes_periodo2'))
 
-        # Buscar demonstrativos do tipo selecionado
-        demonstrativos_periodo1 = DemonstrativoSucorMeses.query.filter(
-            DemonstrativoSucorMeses.NO_DEMONSTRATIVO == tipo_demonstrativo,
-            DemonstrativoSucorMeses.ANO == ano_periodo1
-        ).order_by(DemonstrativoSucorMeses.ORDEM).all()
+        mes_coluna1 = MESES[mes_periodo1]
+        mes_coluna2 = MESES[mes_periodo2]
 
-        demonstrativos_periodo2 = DemonstrativoSucorMeses.query.filter(
-            DemonstrativoSucorMeses.NO_DEMONSTRATIVO == tipo_demonstrativo,
-            DemonstrativoSucorMeses.ANO == ano_periodo2
-        ).order_by(DemonstrativoSucorMeses.ORDEM).all()
+        # Query SQL para buscar todos os registros e valores
+        sql = text("""
+            WITH base_demonstrativos AS (
+                SELECT DISTINCT 
+                    CO_DEMONSTRATIVO, 
+                    ORDEM, 
+                    GRUPO
+                FROM BDG.COR_DEM_TB005_DEMONSTRATIVOS_MESES
+                WHERE NO_DEMONSTRATIVO = :tipo_demonstrativo
+            ),
+            periodo1 AS (
+                SELECT 
+                    CO_DEMONSTRATIVO,
+                    ORDEM,
+                    """ + mes_coluna1 + """ as valor_periodo1
+                FROM BDG.COR_DEM_TB005_DEMONSTRATIVOS_MESES
+                WHERE NO_DEMONSTRATIVO = :tipo_demonstrativo
+                AND ANO = :ano_periodo1
+            ),
+            periodo2 AS (
+                SELECT 
+                    CO_DEMONSTRATIVO,
+                    ORDEM,
+                    """ + mes_coluna2 + """ as valor_periodo2
+                FROM BDG.COR_DEM_TB005_DEMONSTRATIVOS_MESES
+                WHERE NO_DEMONSTRATIVO = :tipo_demonstrativo
+                AND ANO = :ano_periodo2
+            )
+            SELECT 
+                b.CO_DEMONSTRATIVO,
+                b.ORDEM,
+                b.GRUPO,
+                COALESCE(p1.valor_periodo1, 0) as valor_periodo1,
+                COALESCE(p2.valor_periodo2, 0) as valor_periodo2,
+                COALESCE(p2.valor_periodo2, 0) - COALESCE(p1.valor_periodo1, 0) as variacao
+            FROM base_demonstrativos b
+            LEFT JOIN periodo1 p1 ON b.CO_DEMONSTRATIVO = p1.CO_DEMONSTRATIVO AND b.ORDEM = p1.ORDEM
+            LEFT JOIN periodo2 p2 ON b.CO_DEMONSTRATIVO = p2.CO_DEMONSTRATIVO AND b.ORDEM = p2.ORDEM
+            ORDER BY b.ORDEM
+        """)
+
+        resultados = db.session.execute(sql, {
+            'tipo_demonstrativo': tipo_demonstrativo,
+            'ano_periodo1': ano_periodo1,
+            'ano_periodo2': ano_periodo2
+        }).fetchall()
 
         # Preparar dados para comparação
         dados_comparacao = []
 
-        # Criar dicionário para facilitar comparação
-        dict_periodo2 = {d.CO_DEMONSTRATIVO: d for d in demonstrativos_periodo2}
+        for row in resultados:
+            # Buscar justificativa se existir
+            dt_ref = date(ano_periodo2, mes_periodo2, 1)
+            justificativa = JustificativaSucor.query.filter(
+                JustificativaSucor.DT_REFERENCIA == dt_ref,
+                JustificativaSucor.CO_DEMONSTRATIVO == row.CO_DEMONSTRATIVO,
+                JustificativaSucor.ORDEM == row.ORDEM
+            ).first()
 
-        for demo1 in demonstrativos_periodo1:
-            demo2 = dict_periodo2.get(demo1.CO_DEMONSTRATIVO)
-
-            if demo2:
-                valor1 = float(demo1.get_valor_mes(mes_periodo1) or 0)
-                valor2 = float(demo2.get_valor_mes(mes_periodo2) or 0)
-                variacao = valor2 - valor1
-
-                # Buscar justificativa se existir
-                dt_ref = date(ano_periodo2, mes_periodo2, 1)
-                justificativa = JustificativaSucor.query.filter(
-                    JustificativaSucor.DT_REFERENCIA == dt_ref,
-                    JustificativaSucor.CO_DEMONSTRATIVO == demo1.CO_DEMONSTRATIVO,
-                    JustificativaSucor.ORDEM == demo1.ORDEM
-                ).first()
-
-                dados_comparacao.append({
-                    'co_demonstrativo': demo1.CO_DEMONSTRATIVO,
-                    'ordem': demo1.ORDEM,
-                    'grupo': demo1.GRUPO,
-                    'valor_periodo1': valor1,
-                    'valor_periodo2': valor2,
-                    'variacao': variacao,
-                    'variacao_justificada': float(justificativa.VARIACAO_DEM) if justificativa else variacao,
-                    'tem_justificativa': justificativa is not None,
-                    'descricao_justificativa': justificativa.DESCRICAO if justificativa else None
-                })
+            dados_comparacao.append({
+                'co_demonstrativo': row.CO_DEMONSTRATIVO,
+                'ordem': row.ORDEM,
+                'grupo': row.GRUPO,
+                'valor_periodo1': float(row.valor_periodo1 or 0),
+                'valor_periodo2': float(row.valor_periodo2 or 0),
+                'variacao': float(row.variacao or 0),
+                'variacao_justificada': float(justificativa.VARIACAO_DEM) if justificativa else float(
+                    row.variacao or 0),
+                'tem_justificativa': justificativa is not None,
+                'descricao_justificativa': justificativa.DESCRICAO if justificativa else None
+            })
 
         # Preparar dados do período para exibição
         periodo1_str = f"{MESES_NOMES[mes_periodo1]}/{ano_periodo1}"
@@ -123,6 +154,8 @@ def comparar_demonstrativos():
 
     except Exception as e:
         logging.error(f"Erro ao comparar demonstrativos SUCOR: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
         flash(f'Erro ao comparar demonstrativos: {str(e)}', 'danger')
         return redirect(url_for('demonstrativo_sucor.index'))
 
