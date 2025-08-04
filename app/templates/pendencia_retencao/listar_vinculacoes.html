@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Vinculações Realizadas - GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('pendencia_retencao.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Vinculações Realizadas
+            </h1>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('pendencia_retencao.consultar') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>
+                Nova Consulta
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card shadow">
+                <div class="card-body">
+                    {% if vinculacoes %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Contrato</th>
+                                        <th>Processo</th>
+                                        <th>Arquivo</th>
+                                        <th>Valor</th>
+                                        <th>Data Repasse</th>
+                                        <th>Observação</th>
+                                        <th>Responsável</th>
+                                        <th>Data Análise</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for v in vinculacoes %}
+                                    <tr>
+                                        <td>{{ v.NU_CONTRATO }}</td>
+                                        <td>{{ v.NU_PROCESSO or 'N/A' }}</td>
+                                        <td>{{ v.NO_ARQUIVO or 'N/A' }}</td>
+                                        <td>R$ {{ '{:,.2f}'.format(v.VALOR or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                        <td>{{ v.DT_REPASSE.strftime('%d/%m/%Y') if v.DT_REPASSE else 'N/A' }}</td>
+                                        <td>{{ v.PenRelacionaVlrRetido.OBS or '' }}</td>
+                                        <td>{{ v.PenRelacionaVlrRetido.NO_RSPONSAVEL or '' }}</td>
+                                        <td>{{ v.PenRelacionaVlrRetido.DT_ANALISE.strftime('%d/%m/%Y %H:%M') if v.PenRelacionaVlrRetido.DT_ANALISE else '' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Nenhuma vinculação foi realizada ainda.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

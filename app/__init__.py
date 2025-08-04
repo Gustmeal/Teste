@@ -112,6 +112,9 @@ def create_app():
     from app.routes.demonstrativo_sucor_routes import demonstrativo_sucor_bp
     app.register_blueprint(demonstrativo_sucor_bp)
 
+    from app.routes.pendencia_retencao_routes import pendencia_retencao_bp
+    app.register_blueprint(pendencia_retencao_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Consultar Pendências - GEINC{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('pendencia_retencao.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Consultar Pendências
+            </h1>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('pendencia_retencao.consultar') }}">
+                        <div class="mb-3">
+                            <label for="nu_contrato" class="form-label">
+                                <i class="fas fa-file-contract me-1"></i>
+                                Número do Contrato
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="nu_contrato"
+                                   name="nu_contrato"
+                                   placeholder="Digite o número do contrato"
+                                   required
+                                   autofocus>
+                            <div class="form-text">
+                                Informe o número do contrato para buscar pendências e valores retidos
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-search me-2"></i>
+                                Buscar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

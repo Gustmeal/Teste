@@ -87,18 +87,35 @@
         </div>
 
         <!-- Card Demonstrativos SUCOR -->
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card home-card h-100">
-                <div class="card-body text-center">
-                    <div class="mb-3">
-                        <i class="fas fa-chart-line fa-3x text-primary"></i>
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon indicators-color mx-auto">
+                        <i class="fas fa-code-compare"></i>
                     </div>
-                    <h3>Demonstrativos SUCOR</h3>
-                    <p class="text-muted">
+                    <h3 class="system-title">Demonstrativos SUCOR</h3>
+                    <p class="text-muted mb-4">
                         Compare demonstrativos financeiros entre períodos e gerencie justificativas de variações
                     </p>
                     <a href="{{ url_for('demonstrativo_sucor.index') }}" class="btn btn-access">
-                        <i class="fas fa-chart-bar me-2"></i> Acessar
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100 d-flex flex-column">
+                <div class="card-body d-flex flex-column text-center p-4">
+                    <div class="system-icon indicators-color mx-auto">
+                        <i class="fa-solid fa-virus"></i>
+                    </div>
+                    <h3 class="system-title">Pendência Vs Retenção</h3>
+                    <p class="text-muted mb-4">
+                        Sistema de comparação e vinculação de pendências com valores retidos
+                    </p>
+                    <a href="{{ url_for('pendencia_retencao.index') }}" class="btn btn-access">
+                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
                     </a>
                 </div>
             </div>

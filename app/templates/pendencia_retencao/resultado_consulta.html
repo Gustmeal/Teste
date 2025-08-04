@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Resultado da Consulta - GEINC{% endblock %}
+
+{% block head %}
+<style>
+    .table-container {
+        overflow-x: auto;
+        overflow-y: visible;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 0.375rem;
+    }
+
+    .table-container::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    .table {
+        min-width: 1200px;
+        margin-bottom: 0;
+    }
+
+    /* Indicador visual de que há mais conteúdo */
+    .table-container {
+        position: relative;
+    }
+
+    .table-container::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 30px;
+        background: linear-gradient(to right, transparent, rgba(255,255,255,0.8));
+        pointer-events: none;
+    }
+
+    .table-container:hover::after {
+        opacity: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('pendencia_retencao.consultar') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Resultado da Consulta
+            </h1>
+        </div>
+    </div>
+
+    <form id="formVinculacao">
+        <!-- Tabela de Pendências -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Pendências Encontradas
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if pendencias %}
+                            <div class="table-container">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th width="50">
+                                                <input type="checkbox" id="selectAllPendencias" class="form-check-input">
+                                            </th>
+                                            <th>ID</th>
+                                            <th>Contrato</th>
+                                            <th>Processo</th>
+                                            <th>Carteira</th>
+                                            <th>Ocorrência</th>
+                                            <th>Valor Real Falha</th>
+                                            <th>Data Pagamento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for pendencia in pendencias %}
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox"
+                                                       class="form-check-input select-pendencia"
+                                                       value="{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}">
+                                            </td>
+                                            <td>{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_CONTRATO }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
+                                            <td>{{ pendencia.DSC_CARTEIRA or 'N/A' }}</td>
+                                            <td>{{ pendencia.DSC_OCORRENCIA or 'N/A' }}</td>
+                                            <td>R$ {{ '{:,.2f}'.format(pendencia.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if pendencia.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de Valores Retidos -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-hand-holding-usd me-2"></i>
+                            Valores Retidos Encontrados
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if analiticos %}
+                            <div class="table-container">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th width="50">
+                                                <input type="checkbox" id="selectAllAnaliticos" class="form-check-input">
+                                            </th>
+                                            <th>Repasse</th>
+                                            <th>Remessa</th>
+                                            <th>Evento</th>
+                                            <th>Resgate</th>
+                                            <th>Tipo Pedido</th>
+                                            <th>Arquivo</th>
+                                            <th>Valor</th>
+                                            <th>Carteira</th>
+                                            <th>Observação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for analitico in analiticos %}
+                                        <tr>
+                                            <td>
+                                                <input type="checkbox"
+                                                       class="form-check-input select-analitico"
+                                                       value="{{ analitico.ID }}">
+                                            </td>
+                                            <td>{{ analitico.DT_REPASSE.strftime('%d/%m/%Y') if analitico.DT_REPASSE else '' }}</td>
+                                            <td>{{ analitico.DT_REMESSA.strftime('%d/%m/%Y') if analitico.DT_REMESSA else '' }}</td>
+                                            <td>{{ analitico.DT_EVENTO.strftime('%d/%m/%Y') if analitico.DT_EVENTO else '' }}</td>
+                                            <td>{{ analitico.DT_RESGATE.strftime('%d/%m/%Y') if analitico.DT_RESGATE else '' }}</td>
+                                            <td>{{ analitico.CO_TIPO_PEDIDO or '' }}</td>
+                                            <td>{{ analitico.NO_ARQUIVO or '' }}</td>
+                                            <td>R$ {{ '{:,.2f}'.format(analitico.VALOR or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td>{{ analitico.CARTEIRA or '' }}</td>
+                                            <td>{{ analitico.OBSERVACAO or '' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhum valor retido foi encontrado para este contrato.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Área de Observação e Botão Salvar -->
+        <div class="row">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <label for="observacao" class="form-label">
+                                    <strong>Observação sobre a vinculação:</strong>
+                                </label>
+                                <textarea class="form-control"
+                                          id="observacao"
+                                          rows="3"
+                                          placeholder="Informe o motivo da vinculação destes valores..."
+                                          required></textarea>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="fas fa-save me-2"></i>
+                                    Salvar Vinculação
+                                </button>
+                            </div>
+                        </div>
+
+                        {% if vinculacoes_por_pendencia %}
+                        <div class="alert alert-warning mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Atenção:</strong> Algumas pendências já possuem vinculações.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Select All para pendências
+    document.getElementById('selectAllPendencias')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.select-pendencia');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    // Select All para analíticos
+    document.getElementById('selectAllAnaliticos')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.select-analitico');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    // Form submission
+    document.getElementById('formVinculacao')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const pendenciasSelecionadas = Array.from(document.querySelectorAll('.select-pendencia:checked'))
+            .map(cb => parseInt(cb.value));
+
+        const analiticosSelecionados = Array.from(document.querySelectorAll('.select-analitico:checked'))
+            .map(cb => parseInt(cb.value));
+
+        if (pendenciasSelecionadas.length === 0) {
+            alert('Selecione ao menos uma pendência.');
+            return;
+        }
+
+        if (analiticosSelecionados.length === 0) {
+            alert('Selecione ao menos um registro analítico.');
+            return;
+        }
+
+        const observacao = document.getElementById('observacao').value.trim();
+        if (!observacao) {
+            alert('Por favor, informe a observação sobre a vinculação.');
+            return;
+        }
+
+        const totalVinculacoes = pendenciasSelecionadas.length * analiticosSelecionados.length;
+        if (!confirm(`Serão criadas ${totalVinculacoes} vinculações. Confirma?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("pendencia_retencao.salvar_vinculacao") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ids_pendencias: pendenciasSelecionadas,
+                    ids_analiticos: analiticosSelecionados,
+                    observacao: observacao
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                window.location.href = '{{ url_for("pendencia_retencao.listar_vinculacoes") }}';
+            } else {
+                alert('Erro: ' + data.message);
+            }
+        } catch (error) {
+            alert('Erro ao salvar vinculação: ' + error.message);
+        }
+    });
+});
+</script>
+{% endblock %}

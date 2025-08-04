@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Pendência Vs Retenção - GEINC{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <i class="fas fa-exchange-alt text-primary me-2"></i>
+                Pendência Vs Retenção
+            </h1>
+            <p class="text-muted">Sistema de comparação e vinculação de pendências com valores retidos</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-search fa-3x text-primary mb-3"></i>
+                    <h5 class="card-title">Consultar Pendências</h5>
+                    <p class="card-text">Busque pendências por número de contrato e compare com valores retidos</p>
+                    <a href="{{ url_for('pendencia_retencao.consultar') }}" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Consultar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-4">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-list fa-3x text-info mb-3"></i>
+                    <h5 class="card-title">Vinculações Realizadas</h5>
+                    <p class="card-text">Visualize todas as vinculações entre pendências e retenções</p>
+                    <a href="{{ url_for('pendencia_retencao.listar_vinculacoes') }}" class="btn btn-info">
+                        <i class="fas fa-list me-2"></i>Listar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
