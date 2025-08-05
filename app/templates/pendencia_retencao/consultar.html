@@ -15,25 +15,32 @@
         </div>
     </div>
 
-    <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card shadow">
+    <div class="row">
+        <!-- Card de busca por número -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-keyboard me-2"></i>
+                        Buscar por Número
+                    </h5>
+                </div>
                 <div class="card-body">
                     <form method="POST" action="{{ url_for('pendencia_retencao.consultar') }}">
                         <div class="mb-3">
                             <label for="nu_contrato" class="form-label">
-                                <i class="fas fa-file-contract me-1"></i>
                                 Número do Contrato
                             </label>
                             <input type="text"
                                    class="form-control"
                                    id="nu_contrato"
                                    name="nu_contrato"
+                                   value="{{ request.args.get('nu_contrato', '') }}"
                                    placeholder="Digite o número do contrato"
                                    required
                                    autofocus>
                             <div class="form-text">
-                                Informe o número do contrato para buscar pendências e valores retidos
+                                Informe o número do contrato para buscar pendências
                             </div>
                         </div>
 
@@ -47,6 +54,40 @@
                 </div>
             </div>
         </div>
+
+        <!-- Card de lista -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2"></i>
+                        Selecionar da Lista
+                    </h5>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <p class="flex-grow-1">
+                        Visualize todos os contratos com pendências disponíveis para análise.
+                        A lista mostra apenas contratos com valor real de falha negativo.
+                    </p>
+
+                    <div class="d-grid">
+                        <a href="{{ url_for('pendencia_retencao.listar_contratos') }}" class="btn btn-info">
+                            <i class="fas fa-list me-2"></i>
+                            Ver Lista de Contratos
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<script>
+// Se veio com número de contrato por parâmetro, submeter automaticamente
+{% if request.args.get('nu_contrato') %}
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelector('form').submit();
+});
+{% endif %}
+</script>
 {% endblock %}

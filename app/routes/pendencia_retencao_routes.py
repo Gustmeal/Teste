@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from app import db
 from app.models.pendencia_retencao import (
     PenDetalhamento, AexAnalitico, PenRelacionaVlrRetido,
-    PenCarteiras, PenOcorrencias, AexConsolidado
+    PenCarteiras, PenOcorrencias, AexConsolidado, PenStatusOcorrencia
 )
 from app.utils.audit import registrar_log
 from datetime import datetime
@@ -29,6 +29,9 @@ def index():
 @login_required
 def consultar():
     """Consulta de pendências e retenções por contrato"""
+    # Verificar se veio número de contrato por GET
+    nu_contrato_param = request.args.get('nu_contrato', '')
+
     if request.method == 'POST':
         nu_contrato = request.form.get('nu_contrato', '').strip()
 
@@ -96,6 +99,50 @@ def consultar():
             return redirect(url_for('pendencia_retencao.consultar'))
 
     return render_template('pendencia_retencao/consultar.html')
+
+
+@pendencia_retencao_bp.route('/listar-contratos')
+@login_required
+def listar_contratos():
+    """Listar contratos disponíveis para seleção"""
+    try:
+        # Buscar contratos conforme query fornecida
+        contratos = db.session.query(
+            PenDetalhamento,
+            PenCarteiras.DSC_CARTEIRA,
+            PenOcorrencias.DSC_OCORRENCIA,
+            PenStatusOcorrencia.DSC_STATUS
+        ).join(
+            PenCarteiras,
+            PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
+        ).join(
+            PenStatusOcorrencia,
+            PenDetalhamento.ID_STATUS == PenStatusOcorrencia.ID_STATUS
+        ).outerjoin(
+            PenOcorrencias,
+            PenDetalhamento.ID_OCORRENCIA == PenOcorrencias.ID_OCORRENCIA
+        ).filter(
+            PenDetalhamento.VR_REAL_FALHA < 0,
+            PenDetalhamento.IC_EXCLUIR == None
+        ).order_by(
+            PenDetalhamento.NU_CONTRATO.desc()
+        ).all()
+
+        return render_template(
+            'pendencia_retencao/listar_contratos.html',
+            contratos=contratos
+        )
+
+    except Exception as e:
+        flash(f'Erro ao listar contratos: {str(e)}', 'danger')
+        return redirect(url_for('pendencia_retencao.index'))
+
+
+@pendencia_retencao_bp.route('/consultar-contrato/<nu_contrato>')
+@login_required
+def consultar_contrato_direto(nu_contrato):
+    """Redireciona para consulta com o contrato já preenchido"""
+    return redirect(url_for('pendencia_retencao.consultar', nu_contrato=nu_contrato))
 
 
 @pendencia_retencao_bp.route('/salvar-vinculacao', methods=['POST'])

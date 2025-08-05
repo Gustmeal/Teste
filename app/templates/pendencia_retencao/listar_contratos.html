@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Lista de Contratos - GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('pendencia_retencao.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Lista de Contratos com Pendências
+            </h1>
+            <p class="text-muted">Contratos com valor real de falha negativo</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('pendencia_retencao.consultar') }}" class="btn btn-primary">
+                <i class="fas fa-search me-2"></i>
+                Buscar por Número
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card shadow">
+                <div class="card-header bg-light">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-list me-2"></i>
+                                Contratos Disponíveis
+                            </h5>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-primary">{{ contratos|length }} contratos</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if contratos %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Contrato</th>
+                                        <th>Carteira</th>
+                                        <th>Ocorrência</th>
+                                        <th>Processo</th>
+                                        <th>Status</th>
+                                        <th>Ofício</th>
+                                        <th>Valor Real Falha</th>
+                                        <th>Data Pagamento</th>
+                                        <th width="100">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for contrato in contratos %}
+                                    <tr class="contrato-row" data-contrato="{{ contrato.PenDetalhamento.NU_CONTRATO }}">
+                                        <td>{{ contrato.PenDetalhamento.ID_DETALHAMENTO }}</td>
+                                        <td>
+                                            <strong>{{ contrato.PenDetalhamento.NU_CONTRATO }}</strong>
+                                        </td>
+                                        <td>{{ contrato.DSC_CARTEIRA or 'N/A' }}</td>
+                                        <td>{{ contrato.DSC_OCORRENCIA or 'N/A' }}</td>
+                                        <td>{{ contrato.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">
+                                                {{ contrato.DSC_STATUS or 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td>{{ contrato.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
+                                        <td class="text-danger">
+                                            <strong>
+                                                R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                            </strong>
+                                        </td>
+                                        <td>
+                                            {{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if contrato.PenDetalhamento.DT_PAGTO else 'N/A' }}
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO) }}"
+                                               class="btn btn-sm btn-primary">
+                                                <i class="fas fa-search"></i>
+                                                Consultar
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info m-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Nenhum contrato encontrado com os critérios especificados.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.contrato-row {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.contrato-row:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Adicionar click em toda a linha
+    document.querySelectorAll('.contrato-row').forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Não fazer nada se clicou no botão
+            if (e.target.closest('.btn')) return;
+
+            const contrato = this.dataset.contrato;
+            window.location.href = `{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato='') }}${contrato}`;
+        });
+    });
+});
+</script>
+{% endblock %}

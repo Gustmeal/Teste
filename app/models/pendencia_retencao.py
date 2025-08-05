@@ -126,3 +126,14 @@ class AexConsolidado(db.Model):
 
     def __repr__(self):
         return f'<AexConsolidado {self.ANO_REPASSE} - {self.CARTEIRA}>'
+
+class PenStatusOcorrencia(db.Model):
+    """Modelo para a tabela PEN_TB003_STATUS_OCORRENCIA"""
+    __tablename__ = 'PEN_TB003_STATUS_OCORRENCIA'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID_STATUS = db.Column(db.Integer, primary_key=True)
+    DSC_STATUS = db.Column(db.String(255), nullable=True)
+
+    def __repr__(self):
+        return f'<PenStatusOcorrencia {self.ID_STATUS} - {self.DSC_STATUS}>'
