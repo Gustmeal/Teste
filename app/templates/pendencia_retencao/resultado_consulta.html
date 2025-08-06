@@ -54,6 +54,15 @@
     .table-container:hover::after {
         opacity: 0;
     }
+
+    /* Estilo para pendências já vinculadas */
+    .pendencia-vinculada {
+        background-color: #e8f5e9 !important;
+    }
+
+    .pendencia-vinculada td {
+        opacity: 0.8;
+    }
 </style>
 {% endblock %}
 
@@ -65,7 +74,7 @@
                 <a href="{{ url_for('pendencia_retencao.consultar') }}" class="text-decoration-none">
                     <i class="fas fa-arrow-left text-secondary me-2"></i>
                 </a>
-                Resultado da Consulta
+                Resultado da Consulta - Contrato {{ nu_contrato }}
             </h1>
         </div>
     </div>
@@ -83,6 +92,10 @@
                     </div>
                     <div class="card-body">
                         {% if pendencias %}
+                            <div class="alert alert-info mb-3">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Nota:</strong> Pendências em verde já possuem vinculação e estão desabilitadas para edição.
+                            </div>
                             <div class="table-container">
                                 <table class="table table-hover">
                                     <thead>
@@ -97,15 +110,21 @@
                                             <th>Ocorrência</th>
                                             <th>Valor Real Falha</th>
                                             <th>Data Pagamento</th>
+                                            <th>Nº Ofício</th>
+                                            <th>Data Ofício</th>
+                                            <th>Status</th>
+                                            <th width="30"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {% for pendencia in pendencias %}
-                                        <tr>
+                                        {% set ja_vinculada = pendencia.PenDetalhamento.ID_DETALHAMENTO in pendencias_com_vinculacao %}
+                                        <tr class="{% if ja_vinculada %}pendencia-vinculada{% endif %}">
                                             <td>
                                                 <input type="checkbox"
                                                        class="form-check-input select-pendencia"
-                                                       value="{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}">
+                                                       value="{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}"
+                                                       {% if ja_vinculada %}checked disabled{% endif %}>
                                             </td>
                                             <td>{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}</td>
                                             <td>{{ pendencia.PenDetalhamento.NU_CONTRATO }}</td>
@@ -114,10 +133,33 @@
                                             <td>{{ pendencia.DSC_OCORRENCIA or 'N/A' }}</td>
                                             <td>R$ {{ '{:,.2f}'.format(pendencia.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                                             <td>{{ pendencia.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if pendencia.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
+                                            <td>
+                                                {% if pendencia.DT_OFICIO %}
+                                                    {% if pendencia.DT_OFICIO.__class__.__name__ == 'date' %}
+                                                        {{ pendencia.DT_OFICIO.strftime('%d/%m/%Y') }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ pendencia.DSC_STATUS or 'N/A' }}</td>
+                                            <td>
+                                                {% if ja_vinculada %}
+                                                    <i class="fas fa-check-circle text-success" title="Pendência já vinculada"></i>
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
                                 </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhuma pendência encontrada para este contrato. Você pode vincular apenas os valores retidos.
                             </div>
                         {% endif %}
                     </div>
@@ -144,34 +186,41 @@
                                             <th width="50">
                                                 <input type="checkbox" id="selectAllAnaliticos" class="form-check-input">
                                             </th>
-                                            <th>Repasse</th>
-                                            <th>Remessa</th>
-                                            <th>Evento</th>
-                                            <th>Resgate</th>
-                                            <th>Tipo Pedido</th>
-                                            <th>Arquivo</th>
+                                            <th>ID</th>
+                                            <th>Contrato</th>
                                             <th>Valor</th>
+                                            <th>Data Repasse</th>
+                                            <th>Data Remessa</th>
+                                            <th>Tipo Processo</th>
+                                            <th>Tipo Despesa</th>
                                             <th>Carteira</th>
                                             <th>Observação</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {% for analitico in analiticos %}
-                                        <tr>
+                                        {% set is_vinculado = false %}
+                                        {% for pendencia_id, lista_ids in vinculacoes_por_pendencia.items() %}
+                                            {% if analitico.ID in lista_ids %}
+                                                {% set is_vinculado = true %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        <tr {% if is_vinculado %}class="table-warning"{% endif %}>
                                             <td>
                                                 <input type="checkbox"
                                                        class="form-check-input select-analitico"
-                                                       value="{{ analitico.ID }}">
+                                                       value="{{ analitico.ID }}"
+                                                       {% if is_vinculado %}disabled{% endif %}>
                                             </td>
-                                            <td>{{ analitico.DT_REPASSE.strftime('%d/%m/%Y') if analitico.DT_REPASSE else '' }}</td>
-                                            <td>{{ analitico.DT_REMESSA.strftime('%d/%m/%Y') if analitico.DT_REMESSA else '' }}</td>
-                                            <td>{{ analitico.DT_EVENTO.strftime('%d/%m/%Y') if analitico.DT_EVENTO else '' }}</td>
-                                            <td>{{ analitico.DT_RESGATE.strftime('%d/%m/%Y') if analitico.DT_RESGATE else '' }}</td>
-                                            <td>{{ analitico.CO_TIPO_PEDIDO or '' }}</td>
-                                            <td>{{ analitico.NO_ARQUIVO or '' }}</td>
+                                            <td>{{ analitico.ID }}</td>
+                                            <td>{{ analitico.NU_CONTRATO }}</td>
                                             <td>R$ {{ '{:,.2f}'.format(analitico.VALOR or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                                            <td>{{ analitico.CARTEIRA or '' }}</td>
-                                            <td>{{ analitico.OBSERVACAO or '' }}</td>
+                                            <td>{{ analitico.DT_REPASSE.strftime('%d/%m/%Y') if analitico.DT_REPASSE else 'N/A' }}</td>
+                                            <td>{{ analitico.DT_REMESSA.strftime('%d/%m/%Y') if analitico.DT_REMESSA else 'N/A' }}</td>
+                                            <td>{{ analitico.DS_TIPO_PROCESSO or 'N/A' }}</td>
+                                            <td>{{ analitico.DS_TIPO_DESPESA or 'N/A' }}</td>
+                                            <td>{{ analitico.CARTEIRA or 'N/A' }}</td>
+                                            <td>{{ analitico.OBSERVACAO or 'N/A' }}</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -180,7 +229,7 @@
                         {% else %}
                             <div class="alert alert-info mb-0">
                                 <i class="fas fa-info-circle me-2"></i>
-                                Nenhum valor retido foi encontrado para este contrato.
+                                Nenhum valor retido encontrado para este contrato.
                             </div>
                         {% endif %}
                     </div>
@@ -227,15 +276,15 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Select All para pendências
+    // Select All para pendências - ajustado para não selecionar as desabilitadas
     document.getElementById('selectAllPendencias')?.addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.select-pendencia');
+        const checkboxes = document.querySelectorAll('.select-pendencia:not(:disabled)');
         checkboxes.forEach(cb => cb.checked = this.checked);
     });
 
     // Select All para analíticos
     document.getElementById('selectAllAnaliticos')?.addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('.select-analitico');
+        const checkboxes = document.querySelectorAll('.select-analitico:not(:disabled)');
         checkboxes.forEach(cb => cb.checked = this.checked);
     });
 
@@ -243,18 +292,23 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('formVinculacao')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        const pendenciasSelecionadas = Array.from(document.querySelectorAll('.select-pendencia:checked'))
+        const pendenciasSelecionadas = Array.from(document.querySelectorAll('.select-pendencia:checked:not(:disabled)'))
             .map(cb => parseInt(cb.value));
 
         const analiticosSelecionados = Array.from(document.querySelectorAll('.select-analitico:checked'))
             .map(cb => parseInt(cb.value));
 
-        if (pendenciasSelecionadas.length === 0) {
-            alert('Selecione ao menos uma pendência.');
+        // Verificar se existem checkboxes de analíticos disponíveis
+        const temAnaliticosDisponiveis = document.querySelectorAll('.select-analitico').length > 0;
+
+        // Se não há analíticos disponíveis e não há pendências selecionadas
+        if (!temAnaliticosDisponiveis && pendenciasSelecionadas.length === 0) {
+            alert('Selecione ao menos uma pendência para registrar a observação.');
             return;
         }
 
-        if (analiticosSelecionados.length === 0) {
+        // Se há analíticos disponíveis mas nenhum foi selecionado
+        if (temAnaliticosDisponiveis && analiticosSelecionados.length === 0) {
             alert('Selecione ao menos um registro analítico.');
             return;
         }
@@ -265,8 +319,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const totalVinculacoes = pendenciasSelecionadas.length * analiticosSelecionados.length;
-        if (!confirm(`Serão criadas ${totalVinculacoes} vinculações. Confirma?`)) {
+        let mensagemConfirmacao = '';
+        if (!temAnaliticosDisponiveis && pendenciasSelecionadas.length > 0) {
+            // Não há analíticos disponíveis mas há pendências selecionadas
+            mensagemConfirmacao = `Serão registradas ${pendenciasSelecionadas.length} pendência(s) com observação (sem valores retidos). Confirma?`;
+        } else if (pendenciasSelecionadas.length > 0 && analiticosSelecionados.length > 0) {
+            const totalVinculacoes = pendenciasSelecionadas.length * analiticosSelecionados.length;
+            mensagemConfirmacao = `Serão criadas ${totalVinculacoes} vinculações. Confirma?`;
+        } else if (pendenciasSelecionadas.length === 0 && analiticosSelecionados.length > 0) {
+            mensagemConfirmacao = `Serão vinculados ${analiticosSelecionados.length} registros analíticos sem pendência associada. Confirma?`;
+        }
+
+        if (!confirm(mensagemConfirmacao)) {
             return;
         }
 
@@ -279,7 +343,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 body: JSON.stringify({
                     ids_pendencias: pendenciasSelecionadas,
                     ids_analiticos: analiticosSelecionados,
-                    observacao: observacao
+                    observacao: observacao,
+                    apenas_observacao: !temAnaliticosDisponiveis  // Flag indicando que é apenas observação
                 })
             });
 

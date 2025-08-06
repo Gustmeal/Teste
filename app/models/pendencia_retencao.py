@@ -76,8 +76,8 @@ class PenRelacionaVlrRetido(db.Model):
     __tablename__ = 'PEN_TB010_RELACIONA_VLR_RETIDO'
     __table_args__ = {'schema': 'BDG'}
 
-    ID_PENDENCIA = db.Column(db.Integer, primary_key=True)
-    ID_ARREC_EXT_SISTEMA = db.Column(db.BigInteger, primary_key=True)  # CORRIGIDO: bigint pois ID de AexAnalitico é bigint
+    ID_PENDENCIA = db.Column(db.Integer, primary_key=True, nullable=True)  # Permitir NULL
+    ID_ARREC_EXT_SISTEMA = db.Column(db.BigInteger, nullable=True)
     OBS = db.Column(db.Text, nullable=True)
     NO_RSPONSAVEL = db.Column(db.String(100), nullable=True)
     DT_ANALISE = db.Column(db.DateTime, nullable=True)
@@ -137,3 +137,16 @@ class PenStatusOcorrencia(db.Model):
 
     def __repr__(self):
         return f'<PenStatusOcorrencia {self.ID_STATUS} - {self.DSC_STATUS}>'
+
+
+class PenOficios(db.Model):
+    """Modelo para a tabela PEN_TB002_OFICIOS"""
+    __tablename__ = 'PEN_TB002_OFICIOS'
+    __table_args__ = {'schema': 'BDG'}
+
+    DT_OFICIO = db.Column(db.Date, nullable=True)
+    NU_OFICIO = db.Column(db.Integer, primary_key=True)
+    VIGENCIA_CTR_CAIXA = db.Column(db.String(50), nullable=True)
+
+    def __repr__(self):
+        return f'<PenOficios {self.NU_OFICIO} - {self.DT_OFICIO}>'
