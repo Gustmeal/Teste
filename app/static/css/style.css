@@ -45,6 +45,11 @@ body > .container p:not(.card p) {
   font-weight: 600;
 }
 
+.bg-custom-orange {
+    background-color: #ff9800 !important;
+    color: white !important;
+}
+
 .container {
   flex: 1;
   padding-bottom: 80px;
@@ -929,4 +934,24 @@ body::before {
     background-color: #5b52e5;
     transform: translateY(-2px);
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+}
+
+/* Para a tabela de valores retidos */
+.table-valores-retidos thead {
+    background-color: #ffc107 !important; /* Amarelo */
+    color: #212529 !important; /* Texto escuro */
+}
+
+.table-valores-retidos thead th {
+    border-color: #ffc107 !important;
+}
+
+/* Ou se preferir um laranja */
+.table-valores-retidos-orange thead {
+    background-color: #ff9800 !important; /* Laranja */
+    color: white !important;
+}
+
+.table-valores-retidos-orange thead th {
+    border-color: #ff9800 !important;
 }
