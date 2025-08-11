@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Resultado da Consulta - GEINC{% endblock %}
+
+{% block head %}
+<style>
+    .table-container {
+        overflow-x: auto;
+        overflow-y: visible;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 0.375rem;
+    }
+
+    .table-container::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    .table {
+        min-width: 1200px;
+        margin-bottom: 0;
+    }
+
+    .table-container {
+        position: relative;
+    }
+
+    .table-container::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 30px;
+        background: linear-gradient(to right, transparent, rgba(255,255,255,0.8));
+        pointer-events: none;
+    }
+
+    .table-container:hover::after {
+        opacity: 0;
+    }
+
+    .pendencia-vinculada {
+        background-color: #e8f5e9 !important;
+    }
+
+    .pendencia-vinculada td {
+        opacity: 0.8;
+    }
+
+    /* Tabela de valores repassados com cabeçalho amarelo */
+    .table-valores-repassados thead {
+        background-color: #ffc107 !important;
+        color: #212529 !important;
+    }
+
+    .table-valores-repassados thead th {
+        border-color: #ffc107 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('cobrado_repassado.consultar') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Resultado da Consulta - Contrato {{ nu_contrato }}
+            </h1>
+        </div>
+    </div>
+
+    <form id="formVinculacao">
+        <!-- Tabela de Valores Cobrados -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0">
+                            <i class="fas fa-file-invoice-dollar me-2"></i>
+                            Valores Cobrados da Caixa
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if pendencias %}
+                            <div class="alert alert-info mb-3">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <strong>Nota:</strong> Valores em verde já possuem vinculação e estão desabilitados para edição.
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th width="50">
+                                                <input type="checkbox" id="selectAllPendencias" class="form-check-input">
+                                            </th>
+                                            <th>ID</th>
+                                            <th>Contrato</th>
+                                            <th>Processo</th>
+                                            <th>Carteira</th>
+                                            <th>Ocorrência</th>
+                                            <th>Valor Cobrado</th>
+                                            <th>Data Pagamento</th>
+                                            <th>Nº Ofício</th>
+                                            <th>Data Ofício</th>
+                                            <th>Status</th>
+                                            <th width="30"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for pendencia in pendencias %}
+                                        {% set ja_vinculada = pendencia.PenDetalhamento.ID_DETALHAMENTO in pendencias_com_vinculacao %}
+                                        <tr class="{% if ja_vinculada %}pendencia-vinculada{% endif %}">
+                                            <td>
+                                                <input type="checkbox"
+                                                       class="form-check-input select-pendencia"
+                                                       value="{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}"
+                                                       {% if ja_vinculada %}checked disabled{% endif %}>
+                                            </td>
+                                            <td>{{ pendencia.PenDetalhamento.ID_DETALHAMENTO }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_CONTRATO }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
+                                            <td>{{ pendencia.DSC_CARTEIRA or 'N/A' }}</td>
+                                            <td>{{ pendencia.DSC_OCORRENCIA or 'N/A' }}</td>
+                                            <td class="text-success fw-bold">R$ {{ '{:,.2f}'.format(pendencia.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if pendencia.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
+                                            <td>{{ pendencia.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
+                                            <td>
+                                                {% if pendencia.DT_OFICIO %}
+                                                    {% if pendencia.DT_OFICIO.__class__.__name__ == 'date' %}
+                                                        {{ pendencia.DT_OFICIO.strftime('%d/%m/%Y') }}
+                                                    {% else %}
+                                                        N/A
+                                                    {% endif %}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ pendencia.DSC_STATUS or 'N/A' }}</td>
+                                            <td>
+                                                {% if ja_vinculada %}
+                                                    <i class="fas fa-check-circle text-success" title="Valor já vinculado"></i>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhum valor cobrado encontrado para este contrato. Você pode vincular apenas os valores repassados.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabela de Valores Repassados -->
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-hand-holding-usd me-2"></i>
+                            Valores Repassados Encontrados
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        {% if analiticos %}
+                            <div class="table-container">
+                                <table class="table table-hover table-valores-repassados">
+                                    <thead>
+                                        <tr>
+                                            <th width="50">
+                                                <input type="checkbox" id="selectAllAnaliticos" class="form-check-input">
+                                            </th>
+                                            <th>ID</th>
+                                            <th>Contrato</th>
+                                            <th>Valor</th>
+                                            <th>Data Repasse</th>
+                                            <th>Data Remessa</th>
+                                            <th>Tipo Processo</th>
+                                            <th>Tipo Despesa</th>
+                                            <th>Carteira</th>
+                                            <th>Observação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for analitico in analiticos %}
+                                        {% set is_vinculado = false %}
+                                        {% for pendencia_id, lista_ids in vinculacoes_por_pendencia.items() %}
+                                            {% if analitico.ID in lista_ids %}
+                                                {% set is_vinculado = true %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        <tr {% if is_vinculado %}class="table-warning"{% endif %}>
+                                            <td>
+                                                <input type="checkbox"
+                                                       class="form-check-input select-analitico"
+                                                       value="{{ analitico.ID }}"
+                                                       {% if is_vinculado %}disabled{% endif %}>
+                                            </td>
+                                            <td>{{ analitico.ID }}</td>
+                                            <td>{{ analitico.NU_CONTRATO }}</td>
+                                            <td class="text-primary fw-bold">R$ {{ '{:,.2f}'.format(analitico.VALOR or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td>{{ analitico.DT_REPASSE.strftime('%d/%m/%Y') if analitico.DT_REPASSE else 'N/A' }}</td>
+                                            <td>{{ analitico.DT_REMESSA.strftime('%d/%m/%Y') if analitico.DT_REMESSA else 'N/A' }}</td>
+                                            <td>{{ analitico.DS_TIPO_PROCESSO or 'N/A' }}</td>
+                                            <td>{{ analitico.DS_TIPO_DESPESA or 'N/A' }}</td>
+                                            <td>{{ analitico.CARTEIRA or 'N/A' }}</td>
+                                            <td>{{ analitico.OBSERVACAO or 'N/A' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhum valor repassado encontrado para este contrato.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Área de Observação e Botão Salvar -->
+        <div class="row">
+            <div class="col">
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <label for="observacao" class="form-label">
+                                    <strong>Observação sobre a vinculação:</strong>
+                                </label>
+                                <textarea class="form-control"
+                                          id="observacao"
+                                          rows="3"
+                                          placeholder="Informe o motivo da vinculação destes valores..."
+                                          required></textarea>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="fas fa-save me-2"></i>
+                                    Salvar Vinculação
+                                </button>
+                            </div>
+                        </div>
+
+                        {% if vinculacoes_por_pendencia %}
+                        <div class="alert alert-warning mt-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Atenção:</strong> Alguns valores já possuem vinculações.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Select All para pendências
+    document.getElementById('selectAllPendencias')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.select-pendencia:not(:disabled)');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    // Select All para analíticos
+    document.getElementById('selectAllAnaliticos')?.addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.select-analitico:not(:disabled)');
+        checkboxes.forEach(cb => cb.checked = this.checked);
+    });
+
+    // Form submission
+    document.getElementById('formVinculacao')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const pendenciasSelecionadas = Array.from(document.querySelectorAll('.select-pendencia:checked:not(:disabled)'))
+            .map(cb => parseInt(cb.value));
+
+        const analiticosSelecionados = Array.from(document.querySelectorAll('.select-analitico:checked'))
+            .map(cb => parseInt(cb.value));
+
+        const temAnaliticosDisponiveis = document.querySelectorAll('.select-analitico').length > 0;
+
+        if (!temAnaliticosDisponiveis && pendenciasSelecionadas.length === 0) {
+            alert('Selecione ao menos um valor cobrado para registrar a observação.');
+            return;
+        }
+
+        if (temAnaliticosDisponiveis && analiticosSelecionados.length === 0) {
+            alert('Selecione ao menos um registro analítico.');
+            return;
+        }
+
+        const observacao = document.getElementById('observacao').value.trim();
+        if (!observacao) {
+            alert('Por favor, informe a observação sobre a vinculação.');
+            return;
+        }
+
+        let mensagemConfirmacao = '';
+        if (!temAnaliticosDisponiveis && pendenciasSelecionadas.length > 0) {
+            mensagemConfirmacao = `Serão registrados ${pendenciasSelecionadas.length} valor(es) cobrado(s) com observação (sem valores repassados). Confirma?`;
+        } else if (pendenciasSelecionadas.length > 0 && analiticosSelecionados.length > 0) {
+            const totalVinculacoes = pendenciasSelecionadas.length * analiticosSelecionados.length;
+            mensagemConfirmacao = `Serão criadas ${totalVinculacoes} vinculações. Confirma?`;
+        } else if (pendenciasSelecionadas.length === 0 && analiticosSelecionados.length > 0) {
+            mensagemConfirmacao = `Serão vinculados ${analiticosSelecionados.length} registros analíticos sem valor cobrado associado. Confirma?`;
+        }
+
+        if (!confirm(mensagemConfirmacao)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('{{ url_for("cobrado_repassado.salvar_vinculacao") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ids_pendencias: pendenciasSelecionadas,
+                    ids_analiticos: analiticosSelecionados,
+                    observacao: observacao,
+                    apenas_observacao: !temAnaliticosDisponiveis
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                window.location.href = '{{ url_for("cobrado_repassado.listar_vinculacoes") }}';
+            } else {
+                alert('Erro: ' + data.message);
+            }
+        } catch (error) {
+            alert('Erro ao salvar vinculação: ' + error.message);
+        }
+    });
+});
+</script>
+{% endblock %}

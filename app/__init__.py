@@ -115,6 +115,10 @@ def create_app():
     from app.routes.pendencia_retencao_routes import pendencia_retencao_bp
     app.register_blueprint(pendencia_retencao_bp)
 
+    from app.routes.cobrado_repassado_routes import cobrado_repassado_bp
+    app.register_blueprint(cobrado_repassado_bp)
+
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

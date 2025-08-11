@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Consultar Valores - GEINC{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('cobrado_repassado.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Consultar Valores Cobrados
+            </h1>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Card de busca por número -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header bg-warning text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-keyboard me-2"></i>
+                        Buscar por Número
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('cobrado_repassado.consultar') }}">
+                        <div class="mb-3">
+                            <label for="nu_contrato" class="form-label">
+                                Número do Contrato
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="nu_contrato"
+                                   name="nu_contrato"
+                                   value="{{ request.args.get('nu_contrato', '') }}"
+                                   placeholder="Digite o número do contrato"
+                                   required
+                                   autofocus>
+                            <div class="form-text">
+                                Informe o número do contrato para buscar valores cobrados
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-warning text-white">
+                                <i class="fas fa-search me-2"></i>
+                                Buscar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card de lista -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2"></i>
+                        Selecionar da Lista
+                    </h5>
+                </div>
+                <div class="card-body d-flex flex-column">
+                    <p class="flex-grow-1">
+                        Visualize todos os contratos com valores cobrados da Caixa disponíveis para análise.
+                        A lista mostra apenas contratos com valor real de falha positivo.
+                    </p>
+                    <div class="d-grid">
+                        <a href="{{ url_for('cobrado_repassado.listar_contratos') }}" class="btn btn-info">
+                            <i class="fas fa-list me-2"></i>
+                            Ver Lista Completa
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

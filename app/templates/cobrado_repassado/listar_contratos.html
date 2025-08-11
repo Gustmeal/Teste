@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Lista de Contratos - GEINC{% endblock %}
+
+{% block head %}
+<style>
+    .table-container {
+        overflow-x: auto;
+        overflow-y: visible;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-container::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 5px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+
+    .table {
+        min-width: 1200px;
+        margin-bottom: 0;
+    }
+
+    .clickable-row {
+        cursor: pointer;
+    }
+
+    .clickable-row:hover {
+        background-color: #f5f5f5;
+    }
+
+    .contrato-vinculado {
+        background-color: #d4edda !important;
+    }
+
+    .contrato-vinculado:hover {
+        background-color: #c3e6cb !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('cobrado_repassado.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Lista de contratos com valores cobrados da Caixa
+            </h1>
+            <p class="text-muted">Contratos com valor real de falha positivo</p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('cobrado_repassado.consultar') }}" class="btn btn-warning text-white">
+                <i class="fas fa-search me-2"></i>
+                Buscar por Número
+            </a>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('cobrado_repassado.listar_contratos') }}">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="fas fa-filter"></i>
+                            </span>
+                            <select class="form-select" name="carteira" onchange="this.form.submit()">
+                                <option value="">Todas as Carteiras</option>
+                                {% for carteira in carteiras_unicas %}
+                                    <option value="{{ carteira }}" {% if carteira == carteira_selecionada %}selected{% endif %}>
+                                        {{ carteira }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Legenda:</strong>
+                <span class="badge bg-success me-2">Verde</span> Contrato com vinculações realizadas
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col">
+            <div class="card shadow">
+                <div class="card-header bg-light">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-list me-2"></i>
+                                Contratos Disponíveis
+                                {% if carteira_selecionada %}
+                                    <small class="text-muted">- Filtrado por: {{ carteira_selecionada }}</small>
+                                {% endif %}
+                            </h5>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-primary">{{ contratos|length }} contratos</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if contratos %}
+                        <div class="table-container">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th width="30"></th>
+                                        <th>ID</th>
+                                        <th>Contrato</th>
+                                        <th>Carteira</th>
+                                        <th>Ocorrência</th>
+                                        <th>Processo</th>
+                                        <th>Status</th>
+                                        <th>Ofício</th>
+                                        <th>Data Ofício</th>
+                                        <th>Valor Cobrado</th>
+                                        <th>Data Pagamento</th>
+                                        <th width="100">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for contrato in contratos %}
+                                    {# ===== INÍCIO DA CORREÇÃO ===== #}
+                                    {# A linha da tabela só será renderizada se o NU_CONTRATO existir, evitando o erro #}
+                                    {% if contrato.PenDetalhamento and contrato.PenDetalhamento.NU_CONTRATO %}
+                                    {% set is_vinculado = contrato.PenDetalhamento.NU_CONTRATO in contratos_com_vinculacao %}
+                                    <tr class="clickable-row {% if is_vinculado %}contrato-vinculado{% endif %}"
+                                        data-href="{{ url_for('cobrado_repassado.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO) }}">
+                                        <td>
+                                            {% if is_vinculado %}
+                                                <i class="fas fa-check-circle text-success" title="Contrato com vinculações"></i>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ contrato.PenDetalhamento.ID_DETALHAMENTO }}</td>
+                                        <td><strong>{{ contrato.PenDetalhamento.NU_CONTRATO }}</strong></td>
+                                        <td>{{ contrato.DSC_CARTEIRA or 'N/A' }}</td>
+                                        <td>{{ contrato.DSC_OCORRENCIA or 'N/A' }}</td>
+                                        <td>{{ contrato.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
+                                        <td>
+                                            <span class="badge bg-info">{{ contrato.DSC_STATUS or 'N/A' }}</span>
+                                        </td>
+                                        <td>{{ contrato.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
+                                        <td>
+                                            {% if contrato.DT_OFICIO %}
+                                                {% if contrato.DT_OFICIO.__class__.__name__ == 'date' %}
+                                                    {{ contrato.DT_OFICIO.strftime('%d/%m/%Y') }}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-success">
+                                            R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        </td>
+                                        <td>{{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if contrato.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
+                                        <td>
+                                            <a href="{{ url_for('cobrado_repassado.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO) }}"
+                                               class="btn btn-sm btn-warning text-white">
+                                                <i class="fas fa-search"></i>
+                                                Consultar
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    {# ===== FIM DA CORREÇÃO ===== #}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Nenhum contrato com valores cobrados encontrado.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const clickableRows = document.querySelectorAll('.clickable-row');
+    clickableRows.forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Impede a navegação se o clique foi em um botão dentro da linha
+            if (e.target.closest('.btn')) {
+                return;
+            }
+            window.location.href = this.dataset.href;
+        });
+    });
+});
+</script>
+{% endblock %}
