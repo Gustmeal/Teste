@@ -139,14 +139,27 @@ class PenStatusOcorrencia(db.Model):
         return f'<PenStatusOcorrencia {self.ID_STATUS} - {self.DSC_STATUS}>'
 
 
+from datetime import datetime
+
+
 class PenOficios(db.Model):
     """Modelo para a tabela PEN_TB002_OFICIOS"""
     __tablename__ = 'PEN_TB002_OFICIOS'
     __table_args__ = {'schema': 'BDG'}
 
-    DT_OFICIO = db.Column(db.Date, nullable=True)
     NU_OFICIO = db.Column(db.Integer, primary_key=True)
+    DT_OFICIO = db.Column(db.String(8), nullable=True)  # Vem como string YYYYMMDD
     VIGENCIA_CTR_CAIXA = db.Column(db.String(50), nullable=True)
+
+    @property
+    def dt_oficio_formatada(self):
+        """Converte a string YYYYMMDD para objeto date"""
+        if self.DT_OFICIO and len(self.DT_OFICIO) == 8:
+            try:
+                return datetime.strptime(self.DT_OFICIO, '%Y%m%d').date()
+            except:
+                return None
+        return None
 
     def __repr__(self):
         return f'<PenOficios {self.NU_OFICIO} - {self.DT_OFICIO}>'

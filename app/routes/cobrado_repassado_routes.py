@@ -372,7 +372,9 @@ def listar_vinculacoes():
             AexAnalitico,
             PenCarteiras.DSC_CARTEIRA,
             PenOcorrencias.DSC_OCORRENCIA,
-            PenStatusOcorrencia.DSC_STATUS
+            PenStatusOcorrencia.DSC_STATUS,
+            PenOficios.NU_OFICIO,
+            PenOficios.DT_OFICIO
         ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRepassado.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO
@@ -388,6 +390,9 @@ def listar_vinculacoes():
         ).outerjoin(
             PenStatusOcorrencia,
             PenDetalhamento.ID_STATUS == PenStatusOcorrencia.ID_STATUS
+        ).outerjoin(
+            PenOficios,
+            PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
         ).order_by(
             PenRelacionaVlrRepassado.DT_ANALISE.desc()
         ).all()
