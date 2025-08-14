@@ -118,6 +118,8 @@ def create_app():
     from app.routes.cobrado_repassado_routes import cobrado_repassado_bp
     app.register_blueprint(cobrado_repassado_bp)
 
+    from app.routes.depositos_judiciais_routes import depositos_judiciais_bp
+    app.register_blueprint(depositos_judiciais_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
