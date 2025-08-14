@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Editar Depósito Judicial</h1>
+        <p class="text-muted">Nº Linha: {{ deposito.NU_LINHA }} | Processo: {{ nr_processo or 'Não informado' }}</p>
+    </div>
+
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>Atenção:</strong> Ao alterar a carteira para uma opção diferente de "Institucional",
+        será criada automaticamente uma linha de estorno com valor negativo.
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+                <div class="row g-3">
+                    <!-- Primeira Linha -->
+                    <div class="col-md-4">
+                        <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
+                               maxlength="15" required value="{{ deposito.LANCAMENTO_RM or '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="dt_lancamento_dj" class="form-label">Data Lançamento DJ <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="dt_lancamento_dj" name="dt_lancamento_dj"
+                               required value="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y-%m-%d') if deposito.DT_LANCAMENTO_DJ else '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
+                               required value="{{ '{:,.2f}'.format(deposito.VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') if deposito.VR_RATEIO else '' }}">
+                    </div>
+
+                    <!-- Segunda Linha -->
+                    <div class="col-md-4">
+                        <label for="memo_sufin" class="form-label">Memo SUFIN</label>
+                        <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
+                               maxlength="15" value="{{ deposito.MEMO_SUFIN or '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="dt_memo" class="form-label">Data Memo</label>
+                        <input type="date" class="form-control" id="dt_memo" name="dt_memo"
+                               value="{{ deposito.DT_MEMO.strftime('%Y-%m-%d') if deposito.DT_MEMO else '' }}">
+                        <small class="text-muted">Se preenchida, marca como identificado</small>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="dt_identificacao" class="form-label">Data Identificação</label>
+                        <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
+                               value="{{ deposito.DT_IDENTIFICACAO.strftime('%Y-%m-%d') if deposito.DT_IDENTIFICACAO else '' }}">
+                    </div>
+
+                    <!-- Terceira Linha -->
+                    <div class="col-md-6">
+                        <label for="id_area" class="form-label">Área</label>
+                        <select class="form-select" id="id_area" name="id_area">
+                            <option value="">Selecione uma área...</option>
+                            {% for area in areas %}
+                            <option value="{{ area.ID_AREA }}"
+                                    {% if deposito.ID_AREA == area.ID_AREA %}selected{% endif %}>
+                                {{ area.NO_AREA }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="id_centro" class="form-label">
+                            Centro de Resultado (Carteira)
+                            <span class="text-warning">
+                                <i class="fas fa-exclamation-circle" title="Alterar para diferente de 'Institucional' criará estorno"></i>
+                            </span>
+                        </label>
+                        <select class="form-select" id="id_centro" name="id_centro" data-original="{{ deposito.ID_CENTRO }}">
+                            <option value="">Selecione uma carteira...</option>
+                            {% for centro in centros %}
+                            <option value="{{ centro.ID_CENTRO }}"
+                                    {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}
+                                    data-nome="{{ centro.NO_CARTEIRA }}">
+                                {{ centro.NO_CARTEIRA }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Quarta Linha -->
+                    <div class="col-md-4">
+                        <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
+                        <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm"
+                               value="{{ deposito.DT_AJUSTE_RM.strftime('%Y-%m-%d') if deposito.DT_AJUSTE_RM else '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="nu_contrato" class="form-label">Número Contrato</label>
+                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
+                               maxlength="19" value="{{ deposito.NU_CONTRATO or '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
+                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
+                               value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
+                    </div>
+
+                    <!-- Quinta Linha -->
+                    <div class="col-md-4">
+                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
+                        <input type="number" class="form-control" id="evento_contabil_anterior"
+                               name="evento_contabil_anterior" value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
+                        <input type="number" class="form-control" id="evento_contabil_atual"
+                               name="evento_contabil_atual" value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="obs" class="form-label">Observações</label>
+                        <input type="text" class="form-control" id="obs" name="obs"
+                               maxlength="70" value="{{ deposito.OBS or '' }}">
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="col-12 mt-4">
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i> Salvar Alterações
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-label {
+        font-weight: 600;
+        color: var(--text-color);
+    }
+
+    .text-danger {
+        color: #dc3545 !important;
+    }
+
+    .text-warning {
+        color: #ffc107 !important;
+    }
+
+    .card {
+        margin-top: 1rem;
+    }
+
+    .money {
+        text-align: right;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Máscara para valor monetário
+    const moneyInput = document.getElementById('vr_rateio');
+
+    // Formatar valor inicial
+    if (moneyInput.value) {
+        let value = moneyInput.value.replace(/\./g, '').replace(',', '.');
+        value = parseFloat(value);
+        moneyInput.value = value.toFixed(2).replace('.', ',');
+    }
+
+    moneyInput.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        value = (value / 100).toFixed(2).replace('.', ',');
+        e.target.value = value;
+    });
+
+    // Validação e aviso sobre mudança de carteira
+    const selectCentro = document.getElementById('id_centro');
+    const valorOriginal = selectCentro.getAttribute('data-original');
+
+    document.getElementById('formEdicao').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const novoValor = selectCentro.value;
+        const nomeCarteira = selectCentro.options[selectCentro.selectedIndex]?.getAttribute('data-nome');
+
+        // Verificar se mudou a carteira e não é Institucional
+        if (novoValor !== valorOriginal && nomeCarteira && nomeCarteira !== 'Institucional') {
+            const confirmacao = confirm(
+                'ATENÇÃO: Você está alterando a carteira para "' + nomeCarteira + '".\n\n' +
+                'Isso criará automaticamente:\n' +
+                '1. Uma linha de ESTORNO com valor negativo\n' +
+                '2. O registro será atualizado com a nova carteira\n\n' +
+                'Deseja continuar?'
+            );
+
+            if (!confirmacao) {
+                return false;
+            }
+        }
+
+        // Validar campos obrigatórios
+        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio'];
+        let valido = true;
+
+        camposObrigatorios.forEach(campo => {
+            const input = document.getElementById(campo);
+            if (!input.value) {
+                input.classList.add('is-invalid');
+                valido = false;
+            } else {
+                input.classList.remove('is-invalid');
+            }
+        });
+
+        if (valido) {
+            this.submit();
+        } else {
+            alert('Por favor, preencha todos os campos obrigatórios.');
+        }
+    });
+});
+</script>
+{% endblock %}

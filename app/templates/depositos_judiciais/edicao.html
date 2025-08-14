@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('depositos_judiciais.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Edição de Depósitos Judiciais</h1>
+        <p class="text-muted">Consulte e edite os depósitos judiciais cadastrados</p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i> Filtros de Pesquisa
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('depositos_judiciais.edicao') }}">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="nu_contrato" class="form-label">Número Contrato</label>
+                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
+                               value="{{ filtros.nu_contrato }}" placeholder="Digite o número">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="id_centro" class="form-label">Carteira</label>
+                        <select class="form-select" id="id_centro" name="id_centro">
+                            <option value="">Todas as carteiras</option>
+                            {% for centro in centros %}
+                            <option value="{{ centro.ID_CENTRO }}"
+                                    {% if filtros.id_centro == centro.ID_CENTRO|string %}selected{% endif %}>
+                                {{ centro.NO_CARTEIRA }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="vr_rateio" class="form-label">Valor Rateio</label>
+                        <input type="text" class="form-control" id="vr_rateio" name="vr_rateio"
+                               value="{{ filtros.vr_rateio }}" placeholder="0,00">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_identificacao" class="form-label">Data Identificação</label>
+                        <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
+                               value="{{ filtros.dt_identificacao }}">
+                    </div>
+
+                    <div class="col-12 mt-3">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-2"></i> Pesquisar
+                        </button>
+                        <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
+                            <i class="fas fa-eraser me-2"></i> Limpar Filtros
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela de Resultados -->
+    <div class="card shadow tabela-fullscreen">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0 d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="fas fa-list me-2"></i> Depósitos Cadastrados
+                </span>
+                <small class="text-white-50 fs-6 fw-normal">Clique em qualquer linha para editar</small>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-container">
+                <table class="table table-bordered table-hover table-sm mb-0" id="tabelaDepositos">
+                    <thead class="sticky-header">
+                        <tr>
+                            <th class="sortable" data-column="0">
+                                Nº Linha
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="1">
+                                Nº Processo
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="2">
+                                Lançamento RM
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="3">
+                                Dt. Lançamento
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="4">
+                                Valor Rateio
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="5">
+                                Memo SUFIN
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="6">
+                                Carteira
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="7">
+                                Contrato
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="8">
+                                Dt. Identificação
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="9">
+                                Dt. SISCOR
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for deposito, nr_processo, no_area, no_carteira in depositos %}
+                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+                            <td>{{ deposito.NU_LINHA }}</td>
+                            <td>{{ nr_processo or '-' }}</td>
+                            <td>{{ deposito.LANCAMENTO_RM or '-' }}</td>
+                            <td data-sort="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y%m%d') if deposito.DT_LANCAMENTO_DJ else '0' }}">
+                                {{ deposito.DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if deposito.DT_LANCAMENTO_DJ else '-' }}
+                            </td>
+                            <td class="text-end" data-sort="{{ deposito.VR_RATEIO or 0 }}">
+                                {% if deposito.VR_RATEIO %}
+                                    {% if deposito.VR_RATEIO < 0 %}
+                                        <span class="text-danger">{{ deposito.VR_RATEIO|br_currency }}</span>
+                                    {% else %}
+                                        {{ deposito.VR_RATEIO|br_currency }}
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ deposito.MEMO_SUFIN or '-' }}</td>
+                            <td>{{ no_carteira or '-' }}</td>
+                            <td>{{ deposito.NU_CONTRATO or '-' }}</td>
+                            <td data-sort="{{ deposito.DT_IDENTIFICACAO.strftime('%Y%m%d') if deposito.DT_IDENTIFICACAO else '0' }}">
+                                {{ deposito.DT_IDENTIFICACAO.strftime('%d/%m/%Y') if deposito.DT_IDENTIFICACAO else '-' }}
+                            </td>
+                            <td data-sort="{{ deposito.DT_SISCOR.strftime('%Y%m%d') if deposito.DT_SISCOR else '0' }}">
+                                {{ deposito.DT_SISCOR.strftime('%d/%m/%Y') if deposito.DT_SISCOR else '-' }}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhum depósito encontrado com os filtros aplicados.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Tabela quase tela toda */
+    .tabela-fullscreen {
+        height: 80vh;  /* 80% da altura da viewport */
+        min-height: 500px;  /* Altura mínima */
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 20px;
+    }
+
+    .table-container {
+        flex: 1;  /* Ocupa todo espaço disponível */
+        width: 100%;
+        overflow-x: scroll !important;  /* Forçar scroll horizontal sempre */
+        overflow-y: scroll !important;  /* Forçar scroll vertical sempre */
+        position: relative;
+        border: 1px solid #dee2e6;
+        background-color: #fff;
+    }
+
+    /* Tabela com largura mínima para forçar scroll horizontal */
+    .table {
+        margin-bottom: 0;
+        width: 150%;  /* Forçar largura maior que o container */
+        min-width: 1200px;  /* Largura mínima */
+    }
+
+    /* Header fixo */
+    .sticky-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background-color: #6c63ff !important;
+    }
+
+    .sticky-header th {
+        background-color: #6c63ff !important;
+        color: white !important;
+        font-weight: 600;
+        white-space: nowrap;
+        padding: 12px 15px;
+        border-bottom: 2px solid #5952d4;
+        cursor: pointer;
+        user-select: none;
+        position: relative;
+        min-width: 120px;  /* Largura mínima para cada coluna */
+    }
+
+    /* Estilo das setas de ordenação */
+    .sort-icon {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        opacity: 0.6;
+        transition: opacity 0.3s;
+    }
+
+    .sortable:hover .sort-icon {
+        opacity: 1;
+    }
+
+    .sort-asc .sort-icon i::before {
+        content: "\f0de";
+    }
+
+    .sort-desc .sort-icon i::before {
+        content: "\f0dd";
+    }
+
+    /* Linhas clicáveis */
+    .linha-clicavel {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .linha-clicavel:hover {
+        background-color: #f0f0f0 !important;
+        transform: translateX(2px);
+    }
+
+    .table td {
+        white-space: nowrap;
+        padding: 10px 15px;
+        min-width: 120px;  /* Largura mínima para cada célula */
+    }
+
+    .text-danger {
+        font-weight: 600;
+    }
+
+    /* Customização da barra de scroll - VISÍVEL E GRANDE */
+    .table-container::-webkit-scrollbar {
+        width: 18px !important;    /* Barra vertical */
+        height: 18px !important;   /* Barra horizontal */
+        display: block !important;
+    }
+
+    .table-container::-webkit-scrollbar-track {
+        background: #e9ecef;
+        border-radius: 9px;
+        border: 1px solid #ccc;
+        margin: 2px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb {
+        background: #6c63ff;
+        border-radius: 9px;
+        border: 2px solid #e9ecef;
+        min-height: 30px;
+        min-width: 30px;
+    }
+
+    .table-container::-webkit-scrollbar-thumb:hover {
+        background: #5952d4;
+        cursor: pointer;
+    }
+
+    /* Canto onde as barras se encontram */
+    .table-container::-webkit-scrollbar-corner {
+        background: #e9ecef;
+        border: 1px solid #ccc;
+    }
+
+    /* Remover padding do card-body */
+    .card-body {
+        padding: 0 !important;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;  /* Importante para conter o scroll */
+    }
+
+    /* Card header ajustado */
+    .card-header {
+        flex-shrink: 0;  /* Não encolher */
+    }
+
+    /* Zebra striping */
+    .table tbody tr:nth-of-type(odd) {
+        background-color: rgba(0,0,0,.02);
+    }
+
+    /* Para Firefox - scrollbar sempre visível */
+    @-moz-document url-prefix() {
+        .table-container {
+            scrollbar-width: auto !important;
+            scrollbar-color: #6c63ff #e9ecef !important;
+        }
+    }
+
+    /* Forçar aparição do scroll em todos navegadores */
+    .table-container {
+        -webkit-overflow-scrolling: touch;
+        -ms-overflow-style: -ms-autohiding-scrollbar;
+    }
+
+    /* Debug - garantir que o container pai não limite */
+    body, html {
+        overflow-x: hidden;
+        height: 100%;
+    }
+
+    /* Ajuste para o texto de instrução no header */
+    .card-header small {
+        opacity: 0.9;
+        font-style: italic;
+    }
+
+    .text-white-50 {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tornar linhas clicáveis
+    const linhasClicaveis = document.querySelectorAll('.linha-clicavel');
+    linhasClicaveis.forEach(linha => {
+        linha.addEventListener('click', function() {
+            window.location.href = this.getAttribute('data-href');
+        });
+    });
+
+    // Sistema de ordenação da tabela
+    const table = document.getElementById('tabelaDepositos');
+    const headers = table.querySelectorAll('.sortable');
+    let sortDirection = {};
+
+    headers.forEach(header => {
+        header.addEventListener('click', function() {
+            const column = parseInt(this.getAttribute('data-column'));
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => !row.querySelector('td[colspan]'));
+
+            // Determinar direção
+            if (!sortDirection[column] || sortDirection[column] === 'desc') {
+                sortDirection[column] = 'asc';
+            } else {
+                sortDirection[column] = 'desc';
+            }
+
+            // Remover classes de ordenação de todos os headers
+            headers.forEach(h => {
+                h.classList.remove('sort-asc', 'sort-desc');
+            });
+
+            // Adicionar classe ao header atual
+            this.classList.add(`sort-${sortDirection[column]}`);
+
+            // Ordenar
+            rows.sort((a, b) => {
+                let aValue = a.cells[column].getAttribute('data-sort') || a.cells[column].textContent.trim();
+                let bValue = b.cells[column].getAttribute('data-sort') || b.cells[column].textContent.trim();
+
+                // Tentar converter para número
+                if (!isNaN(aValue) && !isNaN(bValue)) {
+                    aValue = parseFloat(aValue);
+                    bValue = parseFloat(bValue);
+                }
+
+                if (sortDirection[column] === 'asc') {
+                    return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+                } else {
+                    return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+                }
+            });
+
+            // Reordenar as linhas no DOM
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    });
+});
+</script>
+{% endblock %}
