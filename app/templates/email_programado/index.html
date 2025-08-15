@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Emails Programados</h1>
+        <p class="text-muted">
+            {% if is_admin %}
+                Gerencie todos os emails programados do sistema
+            {% else %}
+                Gerencie seus emails programados e configurações
+            {% endif %}
+        </p>
+    </div>
+
+    <!-- Botões de ação -->
+    <div class="d-flex justify-content-between mb-4">
+        <div>
+            <a href="{{ url_for('email_programado.novo') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i> Novo Email
+            </a>
+            <a href="{{ url_for('email_programado.configuracoes') }}" class="btn btn-secondary">
+                <i class="fas fa-cog me-2"></i>
+                {% if is_admin %}Configurações Globais{% else %}Configurações{% endif %}
+            </a>
+        </div>
+        {% if is_admin and not tem_config_global %}
+        <div class="alert alert-warning mb-0">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Configure as credenciais globais para enviar emails
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tabela de emails -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-envelope me-2"></i> Emails Programados
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Status</th>
+                            <th>Assunto</th>
+                            <th>Destinatário</th>
+                            <th>Data Programada</th>
+                            <th>Data Envio</th>
+                            {% if is_admin %}
+                            <th>Criado por</th>
+                            {% endif %}
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for email in emails %}
+                        <tr>
+                            <td>
+                                {% if email.STATUS == 'pendente' %}
+                                    <span class="badge bg-warning">Pendente</span>
+                                {% elif email.STATUS == 'enviado' %}
+                                    <span class="badge bg-success">Enviado</span>
+                                {% elif email.STATUS == 'cancelado' %}
+                                    <span class="badge bg-secondary">Cancelado</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Erro</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ email.ASSUNTO }}</td>
+                            <td>
+                                {% if email.DESTINATARIO_TIPO == 'area' %}
+                                    <i class="fas fa-users me-1"></i> {{ email.area.NO_AREA if email.area else 'Área' }}
+                                {% elif email.DESTINATARIO_TIPO == 'todos' %}
+                                    <i class="fas fa-globe me-1"></i> Todos os usuários
+                                {% else %}
+                                    <i class="fas fa-user me-1"></i> {{ email.DESTINATARIO_EMAIL|truncate(30) }}
+                                {% endif %}
+                            </td>
+                            <td>{{ email.DT_PROGRAMADA.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>{{ email.DT_ENVIO.strftime('%d/%m/%Y %H:%M') if email.DT_ENVIO else '-' }}</td>
+                            {% if is_admin %}
+                            <td>{{ email.usuario.NOME if email.usuario else '-' }}</td>
+                            {% endif %}
+                            <td>
+                                {% if email.STATUS == 'pendente' %}
+                                    <form method="POST" action="{{ url_for('email_programado.cancelar', id=email.ID) }}"
+                                          style="display: inline;"
+                                          onsubmit="return confirm('Confirma o cancelamento deste email?');">
+                                        <button type="submit" class="btn btn-sm btn-warning" title="Cancelar">
+                                            <i class="fas fa-ban"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                                {% if email.STATUS == 'erro' %}
+                                    <button class="btn btn-sm btn-danger" onclick="verErro('{{ email.ERRO_MSG }}')">
+                                        <i class="fas fa-exclamation-circle"></i>
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{% if is_admin %}7{% else %}6{% endif %}" class="text-center">
+                                Nenhum email programado encontrado.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function verErro(mensagem) {
+    alert('Erro no envio: ' + mensagem);
+}
+</script>
+{% endblock %}

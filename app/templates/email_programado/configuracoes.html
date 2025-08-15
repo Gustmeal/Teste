@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('email_programado.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>{% if is_admin %}Configurações Globais de Email{% else %}Configurações de Email{% endif %}</h1>
+        <p class="text-muted">
+            {% if is_admin %}
+                Configure as credenciais globais para envio de emails corporativos
+            {% else %}
+                Configure suas credenciais para envio de emails
+            {% endif %}
+        </p>
+    </div>
+
+    {% if is_admin %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Configuração Global:</strong> Estas credenciais serão usadas para todos os emails enviados por administradores e moderadores.
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Configure aqui as credenciais do seu email corporativo ou pessoal para enviar mensagens pelo sistema.
+    </div>
+    {% endif %}
+
+    <div class="card shadow">
+        <div class="card-body">
+            <form method="POST">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="email_remetente" class="form-label">Email Remetente <span class="text-danger">*</span></label>
+                        <input type="email" class="form-control" id="email_remetente" name="email_remetente"
+                               value="{{ config.EMAIL_REMETENTE if config else '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="servidor_smtp" class="form-label">Servidor SMTP <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="servidor_smtp" name="servidor_smtp"
+                               value="{{ config.SERVIDOR_SMTP if config else '' }}"
+                               placeholder="smtp.gmail.com" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="porta_smtp" class="form-label">Porta SMTP <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="porta_smtp" name="porta_smtp"
+                               value="{{ config.PORTA_SMTP if config else '587' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="usuario_smtp" class="form-label">Usuário SMTP <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="usuario_smtp" name="usuario_smtp"
+                               value="{{ config.USUARIO_SMTP if config else '' }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="senha_smtp" class="form-label">
+                            Senha SMTP {% if not config %}<span class="text-danger">*</span>{% endif %}
+                        </label>
+                        <input type="password" class="form-control" id="senha_smtp" name="senha_smtp"
+                               {% if not config %}required{% endif %}
+                               placeholder="{% if config %}Deixe em branco para manter a atual{% else %}Digite a senha{% endif %}">
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" id="usa_tls" name="usa_tls"
+                                   {% if not config or config.USA_TLS %}checked{% endif %}>
+                            <label class="form-check-label" for="usa_tls">
+                                Usar TLS/STARTTLS
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Configurações comuns -->
+                    <div class="col-12 mt-4">
+                        <div class="alert alert-secondary">
+                            <h6>Configurações comuns:</h6>
+                            <ul class="mb-0">
+                                <li><strong>Gmail:</strong> smtp.gmail.com, porta 587, TLS ativado</li>
+                                <li><strong>Outlook:</strong> smtp-mail.outlook.com, porta 587, TLS ativado</li>
+                                <li><strong>Yahoo:</strong> smtp.mail.yahoo.com, porta 587, TLS ativado</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i> Salvar Configurações
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -25,20 +25,47 @@ def index():
     return render_template('indicadores/index.html')
 
 
+from sqlalchemy import distinct # Adicionar esta importação no início do arquivo
+
 @indicador_bp.route('/indicadores/formulas')
 @login_required
 def formulas():
-    """Página principal do sistema de fórmulas de indicadores"""
-    # Buscar todos os registros, exceto os de 'BDG', ordenados por data e indicador
-    registros = IndicadorFormula.query.filter(
+    """Página principal do sistema de fórmulas de indicadores com filtros."""
+    # Capturar filtros da URL
+    indicador_filtro = request.args.get('indicador', '')
+    data_inicio_filtro = request.args.get('data_inicio', '')
+    data_fim_filtro = request.args.get('data_fim', '')
+
+    # Query base, excluindo registros 'BDG'
+    query = IndicadorFormula.query.filter(
         not_(IndicadorFormula.RESPONSAVEL_INCLUSAO == 'BDG')
-    ).order_by(
+    )
+
+    # Aplicar filtros conforme preenchidos
+    if indicador_filtro:
+        query = query.filter(IndicadorFormula.INDICADOR == indicador_filtro)
+    if data_inicio_filtro:
+        try:
+            # Converte a data do filtro e aplica na query
+            data_inicio = datetime.strptime(data_inicio_filtro, '%Y-%m-%d').date()
+            query = query.filter(IndicadorFormula.DT_REFERENCIA >= data_inicio)
+        except ValueError:
+            flash('Data de início inválida. Use o formato AAAA-MM-DD.', 'warning')
+    if data_fim_filtro:
+        try:
+            # Converte a data do filtro e aplica na query
+            data_fim = datetime.strptime(data_fim_filtro, '%Y-%m-%d').date()
+            query = query.filter(IndicadorFormula.DT_REFERENCIA <= data_fim)
+        except ValueError:
+            flash('Data de fim inválida. Use o formato AAAA-MM-DD.', 'warning')
+
+    # Executar a query com ordenação
+    registros = query.order_by(
         IndicadorFormula.DT_REFERENCIA.desc(),
-        IndicadorFormula.INDICADOR,
-        IndicadorFormula.VARIAVEL
+        IndicadorFormula.INDICADOR
     ).all()
 
-    # Agrupar registros por data e indicador para melhor visualização
+    # Agrupar registros para a visualização
     registros_agrupados = {}
     for reg in registros:
         chave = (reg.DT_REFERENCIA, reg.INDICADOR)
@@ -46,8 +73,20 @@ def formulas():
             registros_agrupados[chave] = []
         registros_agrupados[chave].append(reg)
 
+    # Buscar indicadores únicos para popular o dropdown de filtro
+    indicadores_disponiveis = db.session.query(
+        distinct(IndicadorFormula.INDICADOR)
+    ).order_by(IndicadorFormula.INDICADOR).all()
+    # Extrai o primeiro elemento de cada tupla retornada
+    indicadores_disponiveis = [ind[0] for ind in indicadores_disponiveis]
+
+    # Renderizar o template, passando os dados e os filtros atuais
     return render_template('indicadores/formulas.html',
-                           registros_agrupados=registros_agrupados)
+                           registros_agrupados=registros_agrupados,
+                           indicadores_disponiveis=indicadores_disponiveis,
+                           indicador_filtro=indicador_filtro,
+                           data_inicio_filtro=data_inicio_filtro,
+                           data_fim_filtro=data_fim_filtro)
 
 
 @indicador_bp.route('/indicadores/novo', methods=['GET', 'POST'])

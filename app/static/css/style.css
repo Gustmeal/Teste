@@ -955,3 +955,8 @@ body::before {
 .table-valores-retidos-orange thead th {
     border-color: #ff9800 !important;
 }
+
+.email-color {
+    background-color: #17a2b8;
+    color: white;
+}

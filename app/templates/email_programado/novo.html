@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('email_programado.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Programar Novo Email</h1>
+        <p class="text-muted">
+            {% if is_admin %}
+                Envie emails corporativos para pessoas, áreas ou todos os usuários
+            {% else %}
+                Agende o envio de emails para pessoas ou áreas
+            {% endif %}
+        </p>
+    </div>
+
+    {% if not tem_config %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        {% if is_admin %}
+            Você precisa <a href="{{ url_for('email_programado.configuracoes') }}">configurar as credenciais globais de email</a> antes de enviar mensagens.
+        {% else %}
+            Você precisa <a href="{{ url_for('email_programado.configuracoes') }}">configurar suas credenciais de email</a> antes de enviar mensagens.
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card shadow">
+        <div class="card-body">
+            <form method="POST" id="formEmail">
+                <div class="row g-3">
+                    <!-- Tipo de destinatário -->
+                    <div class="col-md-12">
+                        <label class="form-label">Enviar para:</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tipo_destinatario"
+                                   id="tipo_individual" value="individual" checked>
+                            <label class="form-check-label" for="tipo_individual">
+                                <i class="fas fa-user me-1"></i> Pessoa específica
+                            </label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tipo_destinatario"
+                                   id="tipo_area" value="area">
+                            <label class="form-check-label" for="tipo_area">
+                                <i class="fas fa-users me-1"></i> Todos de uma área
+                            </label>
+                        </div>
+                        {% if is_admin %}
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="tipo_destinatario"
+                                   id="tipo_todos" value="todos">
+                            <label class="form-check-label" for="tipo_todos">
+                                <i class="fas fa-globe me-1"></i> Todos os usuários
+                            </label>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Destinatário individual -->
+                    <div class="col-md-6" id="div_individual">
+                        <label for="destinatario_email" class="form-label">Email do destinatário</label>
+                        <input type="email" class="form-control" id="destinatario_email"
+                               name="destinatario_email" placeholder="exemplo@empresa.com">
+                    </div>
+
+                    <!-- Destinatário área -->
+                    <div class="col-md-6" id="div_area" style="display: none;">
+                        <label for="id_area" class="form-label">Área</label>
+                        <select class="form-select" id="id_area" name="id_area">
+                            <option value="">Selecione uma área...</option>
+                            {% for area in areas %}
+                            <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
+                            {% endfor %}
+                        </select>
+                        <div id="usuarios_area" class="mt-2 text-muted small"></div>
+                    </div>
+
+                    <!-- Info todos -->
+                    <div class="col-md-6" id="div_todos" style="display: none;">
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="info_todos">Carregando quantidade de usuários...</span>
+                        </div>
+                    </div>
+
+                    <!-- Assunto -->
+                    <div class="col-md-12">
+                        <label for="assunto" class="form-label">Assunto <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="assunto" name="assunto" required>
+                    </div>
+
+                    <!-- Corpo do email -->
+                    <div class="col-md-12">
+                        <label for="corpo_email" class="form-label">Mensagem <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="corpo_email" name="corpo_email"
+                                  rows="10" required></textarea>
+                        <small class="text-muted">
+                            Você pode usar HTML básico para formatar o email (negrito, itálico, links, etc.)
+                        </small>
+                    </div>
+
+                    <!-- Data e hora -->
+                    <div class="col-md-6">
+                        <label for="data_envio" class="form-label">Data de envio <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="data_envio" name="data_envio"
+                               min="{{ datetime.now().strftime('%Y-%m-%d') }}" required>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="hora_envio" class="form-label">Hora de envio <span class="text-danger">*</span></label>
+                        <input type="time" class="form-control" id="hora_envio" name="hora_envio" required>
+                    </div>
+
+                    <!-- Aviso importante -->
+                    <div class="col-12">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Importante:</strong> Certifique-se de que o conteúdo do email está de acordo com as políticas da empresa.
+                        </div>
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="col-12 mt-4">
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <button type="button" class="btn btn-secondary" onclick="window.history.back()">
+                                <i class="fas fa-times me-2"></i> Cancelar
+                            </button>
+                            <button type="submit" class="btn btn-primary" {% if not tem_config %}disabled{% endif %}>
+                                <i class="fas fa-paper-plane me-2"></i> Programar Envio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Trocar entre individual, área e todos
+document.querySelectorAll('input[name="tipo_destinatario"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        // Esconder todos
+        document.getElementById('div_individual').style.display = 'none';
+        document.getElementById('div_area').style.display = 'none';
+
+        {% if is_admin %}
+        document.getElementById('div_todos').style.display = 'none';
+        {% endif %}
+
+        // Remover required
+        document.getElementById('destinatario_email').required = false;
+        document.getElementById('id_area').required = false;
+
+        // Mostrar o selecionado
+        if (this.value === 'individual') {
+            document.getElementById('div_individual').style.display = 'block';
+            document.getElementById('destinatario_email').required = true;
+        } else if (this.value === 'area') {
+            document.getElementById('div_area').style.display = 'block';
+            document.getElementById('id_area').required = true;
+        }
+        {% if is_admin %}
+        else if (this.value === 'todos') {
+            document.getElementById('div_todos').style.display = 'block';
+            // Carregar quantidade de usuários
+            fetch('/emails-programados/api/todos-usuarios')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('info_todos').textContent =
+                        `Este email será enviado para ${data.count} usuário(s) ativos do sistema.`;
+                });
+        }
+        {% endif %}
+    });
+});
+
+// Mostrar usuários da área selecionada
+document.getElementById('id_area').addEventListener('change', function() {
+    const areaId = this.value;
+    const divUsuarios = document.getElementById('usuarios_area');
+
+    if (areaId) {
+        fetch(`/emails-programados/api/usuarios-area/${areaId}`)
+            .then(response => response.json())
+            .then(usuarios => {
+                if (usuarios.length > 0) {
+                    divUsuarios.innerHTML = `<i class="fas fa-info-circle me-1"></i> ${usuarios.length} usuário(s) receberão o email`;
+                } else {
+                    divUsuarios.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i> Nenhum usuário com email nesta área';
+                }
+            });
+    } else {
+        divUsuarios.innerHTML = '';
+    }
+});
+</script>
+{% endblock %}

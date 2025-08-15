@@ -19,3 +19,5 @@ openpyxl==3.1.2
 pandas==2.0.3
 xlsxwriter==3.1.2
 numpy==1.24.3
+cryptography
+APScheduler

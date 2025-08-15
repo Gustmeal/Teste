@@ -178,7 +178,9 @@ def edicao():
     ).outerjoin(
         CentroResultado,
         DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
-    )
+    ).filter(
+        or_(DepositosSufin.ID_CENTRO != 8, DepositosSufin.ID_CENTRO.is_(None))
+    )  # EXCLUIR REGISTROS COM ID_CENTRO = 8
 
     # Aplicar filtros
     if filtro_contrato:
@@ -216,7 +218,6 @@ def edicao():
                                'vr_rateio': filtro_valor,
                                'dt_identificacao': filtro_dt_identificacao
                            })
-
 
 @depositos_judiciais_bp.route('/editar/<int:nu_linha>', methods=['GET', 'POST'])
 @login_required
