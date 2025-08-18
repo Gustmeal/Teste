@@ -46,12 +46,10 @@
                                 <td>{{ reg.NO_VARIAVEL or '-' }}</td>
                                 <td>{{ reg.FONTE or '-' }}</td>
                                 <td>
-                                    <!-- Campo oculto com valor original -->
                                     <input type="hidden"
                                            name="valor_original_{{ reg.VARIAVEL }}"
                                            value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL).replace(',', 'X').replace('.', ',').replace('X', '.') }}">
 
-                                    <!-- Campo editável com máscara -->
                                     <input type="text"
                                            class="form-control text-end valor-monetario"
                                            name="valor_{{ reg.VARIAVEL }}"
@@ -83,53 +81,59 @@
     </div>
 </div>
 
-<!-- JavaScript para máscara monetária -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Função para formatar valor monetário
-    function formatarValor(valor) {
-        // Remove tudo exceto números, vírgula e sinal negativo
-        valor = valor.replace(/[^\d,-]/g, '');
+    function aplicarMascaraMonetaria(input) {
+        // 1. Pega apenas os dígitos do valor do input
+        let valor = input.value.replace(/\D/g, '');
 
-        // Separa parte inteira e decimal
-        const partes = valor.split(',');
-        let inteiro = partes[0].replace(/\D/g, '');
-        const decimal = partes[1] || '';
+        // 2. Remove zeros à esquerda para evitar números como "00123"
+        // mas garante que, se o valor for zero, ele permaneça "0"
+        valor = String(parseInt(valor, 10) || 0);
 
-        // Adiciona separadores de milhar
-        inteiro = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        // 3. Garante que o valor tenha no mínimo 3 dígitos para os centavos (ex: "1" vira "001")
+        valor = valor.padStart(3, '0');
 
-        // Retorna valor formatado
-        return decimal ? inteiro + ',' + decimal.substring(0, 2) : inteiro;
+        // 4. Separa a parte inteira e a parte decimal
+        const parteInteira = valor.slice(0, -2);
+        const parteDecimal = valor.slice(-2);
+
+        // 5. Adiciona o separador de milhar (.) na parte inteira
+        const parteInteiraFormatada = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+        // 6. Monta o valor final e atualiza o input
+        input.value = `${parteInteiraFormatada},${parteDecimal}`;
     }
 
-    // Aplicar máscara aos campos de valor
-    document.querySelectorAll('.valor-monetario').forEach(function(input) {
-        input.addEventListener('input', function(e) {
-            const posicaoCursor = e.target.selectionStart;
-            const valorAnterior = e.target.value;
-            const valorFormatado = formatarValor(e.target.value);
+    // Seleciona todos os campos que precisam da máscara
+    const camposMonetarios = document.querySelectorAll('.valor-monetario');
 
-            e.target.value = valorFormatado;
+    camposMonetarios.forEach(function(input) {
+        // Formata o valor inicial que vem do servidor
+        aplicarMascaraMonetaria(input);
 
-            // Ajustar posição do cursor
-            const diferenca = valorFormatado.length - valorAnterior.length;
-            e.target.setSelectionRange(posicaoCursor + diferenca, posicaoCursor + diferenca);
+        // Adiciona o listener que aplica a máscara a cada alteração
+        input.addEventListener('input', function() {
+            aplicarMascaraMonetaria(input);
         });
 
-        // Formatar ao carregar a página
-        input.value = formatarValor(input.value);
+        // Garante que o campo nunca fique vazio, resetando para 0,00
+        input.addEventListener('blur', function() {
+            if (input.value === '') {
+                input.value = '0,00';
+            }
+        });
     });
 
-    // Validação ao submeter
+    // A validação de submissão pode ser mantida ou ajustada
     document.getElementById('formEditar').addEventListener('submit', function(e) {
         const inputs = document.querySelectorAll('.valor-monetario');
         for (let input of inputs) {
-            if (!input.value || input.value === '0') {
-                e.preventDefault();
-                alert('Por favor, preencha todos os valores.');
-                input.focus();
-                return false;
+            // Verifica se o valor não é "0,00" ou vazio, se isso for uma regra de negócio
+            if (!input.value || input.value === '0,00') {
+                // A validação original bloqueava o valor '0'. Ajuste conforme a necessidade.
+                // Se o valor '0,00' for válido, remova este if.
+                console.log(`Validação: O campo ${input.name} está com valor zero.`);
             }
         }
     });
