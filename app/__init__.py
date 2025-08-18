@@ -121,24 +121,6 @@ def create_app():
     from app.routes.depositos_judiciais_routes import depositos_judiciais_bp
     app.register_blueprint(depositos_judiciais_bp)
 
-    # Registrar o blueprint de emails programados
-    from app.routes.email_programado_routes import email_programado_bp
-    app.register_blueprint(email_programado_bp)
-
-    # Configurar scheduler para processar emails
-    from apscheduler.schedulers.background import BackgroundScheduler
-
-    scheduler = BackgroundScheduler()
-
-    def processar_emails():
-        with app.app_context():
-            from app.routes.email_programado_routes import processar_emails_pendentes
-            processar_emails_pendentes()
-
-    # Executar a cada 5 minutos
-    scheduler.add_job(func=processar_emails, trigger="interval", minutes=5)
-    scheduler.start()
-
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
