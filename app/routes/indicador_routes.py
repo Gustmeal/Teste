@@ -134,10 +134,10 @@ def novo():
             MAX_FONTE = 100
             MAX_RESPONSAVEL = 100
 
-            # Inserir um registro para cada variável
+            # Inserir um registro para cada variáveis
             for var in variaveis:
                 valor_str = request.form.get(f'valor_{var.VARIAVEL}', '0')
-                valor = Decimal(valor_str.replace(',', '.')) if valor_str else Decimal('0')
+                valor = Decimal(valor_str.replace('.', '').replace(',', '.')) if valor_str else Decimal('0')
 
                 # Truncar strings se necessário
                 no_variavel = var.NO_VARIAVEL[:MAX_NO_VARIAVEL] if var.NO_VARIAVEL else ''
@@ -322,11 +322,13 @@ def atualizar():
         for reg in registros:
             # Capturar valor original do formulário
             valor_original_str = request.form.get(f'valor_original_{reg.VARIAVEL}', '0')
-            valor_original = Decimal(valor_original_str.replace(',', '.'))
+            # CORREÇÃO: Remover pontos (separador de milhar) e depois substituir vírgula por ponto
+            valor_original = Decimal(valor_original_str.replace('.', '').replace(',', '.'))
 
             # Capturar novo valor
             valor_novo_str = request.form.get(f'valor_{reg.VARIAVEL}', '0')
-            valor_novo = Decimal(valor_novo_str.replace(',', '.'))
+            # CORREÇÃO: Remover pontos (separador de milhar) e depois substituir vírgula por ponto
+            valor_novo = Decimal(valor_novo_str.replace('.', '').replace(',', '.'))
 
             # Só atualizar se o valor mudou
             if valor_original != valor_novo:

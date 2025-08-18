@@ -1,100 +1,145 @@
 {% extends "base.html" %}
 
+{% block title %}Editar Indicador - {{ indicador }}{% endblock %}
+
 {% block content %}
-<div class="container mt-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <a href="{{ url_for('indicador.index') }}" class="btn btn-back mb-3">
-                <i class="fas fa-arrow-left"></i> Voltar
-            </a>
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.geinc_index') }}">Início</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('indicador.index') }}">Indicadores</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('indicador.formulas') }}">Fórmulas</a></li>
+                    <li class="breadcrumb-item active">Editar</li>
+                </ol>
+            </nav>
+            <h1 class="h2 mb-0">Editar Indicador</h1>
+        </div>
+    </div>
 
-            <div class="card shadow">
-                <div class="card-header bg-warning text-dark">
-                    <h4 class="mb-0">
-                        <i class="fas fa-edit me-2"></i>
-                        Editar Indicador
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <div class="mb-4">
-                        <h6>Data Referência: {{ dt_referencia.strftime('%d/%m/%Y') }}</h6>
-                        <h6>Indicador: {{ indicador }}</h6>
-                    </div>
+    <div class="card shadow-sm">
+        <div class="card-header bg-warning text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-edit me-2"></i>{{ indicador }} - {{ dt_referencia.strftime('%d/%m/%Y') }}
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('indicador.atualizar') }}" id="formEditar">
+                <input type="hidden" name="dt_referencia" value="{{ dt_referencia }}">
+                <input type="hidden" name="indicador" value="{{ indicador }}">
 
-                    <form method="POST" action="{{ url_for('indicador.atualizar') }}">
-                        <input type="hidden" name="dt_referencia" value="{{ dt_referencia }}">
-                        <input type="hidden" name="indicador" value="{{ indicador }}">
-
-                        <div class="row">
+                <div class="table-responsive">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th width="10%">Variável</th>
+                                <th width="45%">Nome da Variável</th>
+                                <th width="25%">Fonte</th>
+                                <th width="20%">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                             {% for reg in registros %}
-                            <!-- Campo oculto com valor original -->
-                            <input type="hidden" name="valor_original_{{ reg.VARIAVEL }}"
-                                   value="{{ reg.VR_VARIAVEL or 0 }}">
+                            <tr>
+                                <td class="text-center">{{ reg.VARIAVEL }}</td>
+                                <td>{{ reg.NO_VARIAVEL or '-' }}</td>
+                                <td>{{ reg.FONTE or '-' }}</td>
+                                <td>
+                                    <!-- Campo oculto com valor original -->
+                                    <input type="hidden"
+                                           name="valor_original_{{ reg.VARIAVEL }}"
+                                           value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL).replace(',', 'X').replace('.', ',').replace('X', '.') }}">
 
-                            <div class="col-12 mb-3">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <div class="row align-items-center">
-                                            <div class="col-md-1 text-center">
-                                                <span class="badge bg-primary fs-6">{{ reg.VARIAVEL }}</span>
-                                            </div>
-                                            <div class="col-md-5">
-                                                <label class="form-label mb-1">Nome da Variável</label>
-                                                <input type="text" class="form-control-plaintext"
-                                                       value="{{ reg.NO_VARIAVEL }}" readonly>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label mb-1">Fonte</label>
-                                                <input type="text" class="form-control-plaintext"
-                                                       value="{{ reg.FONTE }}" readonly>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label class="form-label mb-1">Valor</label>
-                                                <input type="text" class="form-control"
-                                                       name="valor_{{ reg.VARIAVEL }}"
-                                                       value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL or 0).replace('.', ',') }}"
-                                                       required>
-                                            </div>
-                                        </div>
-                                        <div class="row mt-2">
-                                            <div class="col-12 text-end">
-                                                <small class="text-muted">
-                                                    Última atualização: {{ reg.RESPONSAVEL_INCLUSAO or '-' }}
-                                                </small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                    <!-- Campo editável com máscara -->
+                                    <input type="text"
+                                           class="form-control text-end valor-monetario"
+                                           name="valor_{{ reg.VARIAVEL }}"
+                                           value="{{ '{:,.2f}'.format(reg.VR_VARIAVEL).replace(',', 'X').replace('.', ',').replace('X', '.') }}"
+                                           required>
+                                </td>
+                            </tr>
                             {% endfor %}
-                        </div>
-
-                        <div class="mt-4 d-flex gap-2">
-                            <button type="submit" class="btn btn-warning">
-                                <i class="fas fa-save me-2"></i>Atualizar
-                            </button>
-                            <a href="{{ url_for('indicador.index') }}" class="btn btn-secondary">
-                                <i class="fas fa-times me-2"></i>Cancelar
-                            </a>
-                        </div>
-                    </form>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Atenção:</strong> Use vírgula como separador decimal e ponto como separador de milhar.
+                    Exemplo: 1.234,56
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{{ url_for('indicador.formulas') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-save me-2"></i>Salvar Alterações
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
+<!-- JavaScript para máscara monetária -->
 <script>
-// Aplicar máscara monetária nos campos
 document.addEventListener('DOMContentLoaded', function() {
-    const inputs = document.querySelectorAll('input[name^="valor_"]');
-    inputs.forEach(input => {
+    // Função para formatar valor monetário
+    function formatarValor(valor) {
+        // Remove tudo exceto números, vírgula e sinal negativo
+        valor = valor.replace(/[^\d,-]/g, '');
+
+        // Separa parte inteira e decimal
+        const partes = valor.split(',');
+        let inteiro = partes[0].replace(/\D/g, '');
+        const decimal = partes[1] || '';
+
+        // Adiciona separadores de milhar
+        inteiro = inteiro.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+        // Retorna valor formatado
+        return decimal ? inteiro + ',' + decimal.substring(0, 2) : inteiro;
+    }
+
+    // Aplicar máscara aos campos de valor
+    document.querySelectorAll('.valor-monetario').forEach(function(input) {
         input.addEventListener('input', function(e) {
-            let value = e.target.value.replace(/\D/g, '');
-            value = (value / 100).toFixed(2).replace('.', ',');
-            e.target.value = value;
+            const posicaoCursor = e.target.selectionStart;
+            const valorAnterior = e.target.value;
+            const valorFormatado = formatarValor(e.target.value);
+
+            e.target.value = valorFormatado;
+
+            // Ajustar posição do cursor
+            const diferenca = valorFormatado.length - valorAnterior.length;
+            e.target.setSelectionRange(posicaoCursor + diferenca, posicaoCursor + diferenca);
         });
+
+        // Formatar ao carregar a página
+        input.value = formatarValor(input.value);
+    });
+
+    // Validação ao submeter
+    document.getElementById('formEditar').addEventListener('submit', function(e) {
+        const inputs = document.querySelectorAll('.valor-monetario');
+        for (let input of inputs) {
+            if (!input.value || input.value === '0') {
+                e.preventDefault();
+                alert('Por favor, preencha todos os valores.');
+                input.focus();
+                return false;
+            }
+        }
     });
 });
 </script>
+
+<style>
+.valor-monetario {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+}
+</style>
 {% endblock %}
