@@ -33,39 +33,45 @@
                                required placeholder="0,00">
                     </div>
 
-                    <!-- Segunda Linha -->
+                    <!-- Segunda Linha com NR_PROCESSO -->
+                    <div class="col-md-4">
+                        <label for="nr_processo" class="form-label">Número do Processo</label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               maxlength="100" placeholder="Ex: 0000000-00.0000.0.00.0000">
+                    </div>
+
                     <div class="col-md-4">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
-                               maxlength="15" placeholder="Ex: 3247/2022">
+                               maxlength="15" placeholder="Ex: SUFIN/2024/123">
                     </div>
 
                     <div class="col-md-4">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo">
-                        <small class="text-muted">Se preenchida, marca como identificado</small>
+                        <small class="text-muted">Se preenchido, marca como identificado</small>
                     </div>
 
+                    <!-- Terceira Linha -->
                     <div class="col-md-4">
                         <label for="dt_identificacao" class="form-label">Data Identificação</label>
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao">
                     </div>
 
-                    <!-- Terceira Linha -->
-                    <div class="col-md-6">
-                        <label for="id_area" class="form-label">Área</label>
-                        <select class="form-select" id="id_area" name="id_area">
-                            <option value="">Selecione uma área...</option>
+                    <div class="col-md-4">
+                        <label for="id_area" class="form-label">Área <span class="text-danger">*</span></label>
+                        <select class="form-select" id="id_area" name="id_area" required>
+                            <option value="">Selecione uma área</option>
                             {% for area in areas %}
                             <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
                             {% endfor %}
                         </select>
                     </div>
 
-                    <div class="col-md-6">
-                        <label for="id_centro" class="form-label">Centro de Resultado (Carteira)</label>
-                        <select class="form-select" id="id_centro" name="id_centro">
-                            <option value="">Selecione uma carteira...</option>
+                    <div class="col-md-4">
+                        <label for="id_centro" class="form-label">Carteira <span class="text-danger">*</span></label>
+                        <select class="form-select" id="id_centro" name="id_centro" required>
+                            <option value="">Selecione uma carteira</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
                             {% endfor %}
@@ -80,8 +86,21 @@
 
                     <div class="col-md-4">
                         <label for="nu_contrato" class="form-label">Número Contrato</label>
-                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
-                               maxlength="19" placeholder="Digite o número do contrato">
+                        <input type="number" class="form-control" id="nu_contrato" name="nu_contrato"
+                               placeholder="Ex: 123456">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
+                        <input type="number" class="form-control" id="evento_contabil_anterior"
+                               name="evento_contabil_anterior" placeholder="Ex: 1001">
+                    </div>
+
+                    <!-- Quinta Linha -->
+                    <div class="col-md-4">
+                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
+                        <input type="number" class="form-control" id="evento_contabil_atual"
+                               name="evento_contabil_atual" placeholder="Ex: 1002">
                     </div>
 
                     <div class="col-md-4">
@@ -89,109 +108,186 @@
                         <input type="date" class="form-control" id="dt_siscor" name="dt_siscor">
                     </div>
 
-                    <!-- Quinta Linha -->
                     <div class="col-md-4">
-                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
-                        <input type="number" class="form-control" id="evento_contabil_anterior"
-                               name="evento_contabil_anterior" placeholder="Digite o evento anterior">
+                        <!-- Espaço vazio para alinhamento -->
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
-                        <input type="number" class="form-control" id="evento_contabil_atual"
-                               name="evento_contabil_atual" placeholder="Digite o evento atual">
+                    <!-- Observação -->
+                    <div class="col-md-12">
+                        <label for="obs" class="form-label">Observação</label>
+                        <textarea class="form-control" id="obs" name="obs" rows="3"
+                                  maxlength="70" placeholder="Digite observações adicionais"></textarea>
                     </div>
+                </div>
 
-                    <div class="col-md-4">
-                        <label for="obs" class="form-label">Observações</label>
-                        <input type="text" class="form-control" id="obs" name="obs"
-                               maxlength="70" placeholder="Digite observações">
-                    </div>
-
-                    <!-- Botões -->
-                    <div class="col-12 mt-4">
-                        <hr>
-                        <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-secondary" onclick="limparFormulario()">
-                                <i class="fas fa-eraser me-2"></i> Limpar
-                            </button>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save me-2"></i> Salvar
-                            </button>
-                        </div>
-                    </div>
+                <!-- Botões -->
+                <div class="mt-4">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i> Salvar Depósito
+                    </button>
+                    <a href="{{ url_for('depositos_judiciais.index') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i> Cancelar
+                    </a>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<style>
-    .form-label {
-        font-weight: 600;
-        color: var(--text-color);
-    }
-
-    .text-danger {
-        color: #dc3545 !important;
-    }
-
-    .card {
-        margin-top: 2rem;
-    }
-
-    .money {
-        text-align: right;
-    }
-</style>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Máscara para valor monetário
-    const moneyInput = document.getElementById('vr_rateio');
-    moneyInput.addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        value = (value / 100).toFixed(2).replace('.', ',');
-        e.target.value = value;
+    // Função para formatar valor monetário
+    function formatarMoeda(valor) {
+        // Remove tudo que não é número
+        valor = valor.replace(/\D/g, '');
+
+        // Converte para número e divide por 100
+        valor = (parseInt(valor) / 100).toFixed(2);
+
+        // Separa parte inteira e decimal
+        let partes = valor.split('.');
+
+        // Adiciona pontos como separador de milhar
+        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+        // Junta com vírgula como separador decimal
+        return partes.join(',');
+    }
+
+    // Função para limpar formatação e deixar só números
+    function limparFormatacao(valor) {
+        // Remove pontos e troca vírgula por ponto
+        return valor.replace(/\./g, '').replace(',', '.');
+    }
+
+    // Aplica máscara nos campos monetários
+    const moneyInputs = document.querySelectorAll('.money');
+    moneyInputs.forEach(input => {
+        // Adiciona evento de formatação
+        input.addEventListener('input', function(e) {
+            let position = e.target.selectionStart;
+            let valor = e.target.value;
+
+            // Formata o valor
+            e.target.value = formatarMoeda(valor);
+
+            // Tenta manter a posição do cursor
+            e.target.setSelectionRange(position, position);
+        });
+
+        // Adiciona evento para quando o campo perde o foco
+        input.addEventListener('blur', function(e) {
+            // Se o campo estiver vazio, coloca 0,00
+            if (!e.target.value) {
+                e.target.value = '0,00';
+            }
+        });
     });
 
     // Validação do formulário
     document.getElementById('formInclusao').addEventListener('submit', function(e) {
-        e.preventDefault();
+        const vrRateio = document.getElementById('vr_rateio').value;
 
-        // Validar campos obrigatórios
-        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio'];
-        let valido = true;
+        // Verifica se tem valor
+        if (!vrRateio) {
+            e.preventDefault();
+            alert('Por favor, informe um valor de rateio.');
+            return false;
+        }
 
-        camposObrigatorios.forEach(campo => {
-            const input = document.getElementById(campo);
-            if (!input.value) {
-                input.classList.add('is-invalid');
-                valido = false;
-            } else {
-                input.classList.remove('is-invalid');
-            }
-        });
-
-        if (valido) {
-            // Confirmar antes de enviar
-            if (confirm('Confirma a inclusão do depósito judicial?')) {
-                this.submit();
-            }
-        } else {
-            alert('Por favor, preencha todos os campos obrigatórios.');
+        // Converte para número para validar
+        const valorNumerico = parseFloat(limparFormatacao(vrRateio));
+        if (isNaN(valorNumerico) || valorNumerico <= 0) {
+            e.preventDefault();
+            alert('Por favor, informe um valor de rateio válido.');
+            return false;
         }
     });
 });
-
-function limparFormulario() {
-    if (confirm('Deseja limpar todos os campos?')) {
-        document.getElementById('formInclusao').reset();
-        // Remover classes de validação
-        document.querySelectorAll('.is-invalid').forEach(el => {
-            el.classList.remove('is-invalid');
-        });
-    }
-}
 </script>
+
+<style>
+.btn-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    text-decoration: none;
+    color: #495057;
+    transition: color 0.3s;
+}
+
+.btn-back:hover {
+    color: #007bff;
+}
+
+.page-title-bar {
+    margin-bottom: 2rem;
+}
+
+.page-title-bar h1 {
+    color: #333;
+    font-weight: 300;
+    margin-bottom: 0.5rem;
+}
+
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+.text-muted {
+    font-size: 0.875rem;
+}
+
+.card {
+    border: none;
+    border-radius: 0.5rem;
+}
+
+.card-body {
+    padding: 2rem;
+}
+
+.btn {
+    padding: 0.5rem 1.5rem;
+    font-weight: 500;
+    border-radius: 0.375rem;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+    border-color: #004085;
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    border-color: #6c757d;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+    border-color: #545b62;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+textarea.form-control {
+    resize: vertical;
+}
+</style>
 {% endblock %}

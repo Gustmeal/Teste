@@ -7,7 +7,7 @@ class DepositosSufin(db.Model):
     __tablename__ = 'DPJ_TB004_DEPOSITOS_SUFIN'
     __table_args__ = {'schema': 'DEV'}
 
-    NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)  # <-- Adicionar autoincrement=False
+    NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)
     LANCAMENTO_RM = db.Column(db.String(15))
     DT_LANCAMENTO_DJ = db.Column(db.Date)
     VR_RATEIO = db.Column(db.Numeric(18, 2))
@@ -58,5 +58,5 @@ class ProcessosJudiciais(db.Model):
     __tablename__ = 'DPJ_TB006_PROCESSOS_JUDICIAIS'
     __table_args__ = {'schema': 'dbo'}
 
-    NU_LINHA = db.Column(db.Integer, primary_key=True)
+    NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)
     NR_PROCESSO = db.Column(db.String(100))

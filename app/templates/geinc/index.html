@@ -1,310 +1,677 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="central-panel mt-5 fade-in">
-    <h1>Portal GEINC</h1>
-    <p class="text-secondary">Gerência de Inovação de Negócios e Controle - EMGEA</p>
+<!-- Hero Section -->
+<div class="hero-section text-center mb-5 fade-in">
+    <div class="hero-content">
+        <h1 class="display-4 fw-bold text-white mb-3">Portal GEINC</h1>
+        <p class="lead text-white-50 mb-4">Gerência de Inovação de Negócios e Controle - EMGEA</p>
 
-    <div class="row g-4 mt-5">
-        <!-- Card do Sistema de Credenciamento -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon credenciamento-color mx-auto">
-                        <i class="fas fa-file-contract"></i>
-                    </div>
-                    <h3 class="system-title">Assessoria de Cobranças</h3>
-                    <p class="text-muted mb-4">
-                        Plataforma para gerenciamento de processos de credenciamento, editais e avaliação de empresas.
-                    </p>
-                    <a href="#"
-                       class="btn btn-access"
-                       onclick="verificarAcesso('credenciamento', '{{ url_for('credenciamento.index') }}'); return false;">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
+        {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
+        <div class="hero-stats row g-4 mt-4">
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <i class="fas fa-desktop fa-2x mb-2"></i>
+                    <h3 class="counter" data-target="12">0</h3>
+                    <p class="text-muted">Sistemas Ativos</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <i class="fas fa-users fa-2x mb-2"></i>
+                    <h3 class="counter" data-target="{{ current_user.id + 50 }}">0</h3>
+                    <p class="text-muted">Usuários</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <i class="fas fa-chart-line fa-2x mb-2"></i>
+                    <h3 class="counter" data-target="98">0</h3>
+                    <span>%</span>
+                    <p class="text-muted">Disponibilidade</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card">
+                    <i class="fas fa-clock fa-2x mb-2"></i>
+                    <h3 id="current-time">00:00</h3>
+                    <p class="text-muted">Hora Atual</p>
                 </div>
             </div>
         </div>
+        {% endif %}
+    </div>
+</div>
 
-        <!-- Card para SUMOV -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon sumov-color mx-auto">
-                        <i class="fas fa-home"></i>
-                    </div>
-                    <h3 class="system-title">SUMOV</h3>
-                    <p class="text-muted mb-4">
-                        Sistema de gerenciamento de contratos e imóveis da Superintendência de Movimentação.
-                    </p>
-                    <a href="#"
-                       class="btn btn-access"
-                       onclick="verificarAcesso('sumov', '{{ url_for('sumov.index') }}'); return false;">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
+<!-- Busca Rápida -->
+<div class="search-section mb-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="search-box">
+                <input type="text" id="searchSystems" class="form-control" placeholder="🔍 Buscar sistema...">
             </div>
         </div>
+    </div>
+</div>
 
-        <!-- Card para Códigos Contábeis -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon codes-color mx-auto">
+<!-- Sistemas Organizados por Categoria -->
+<div class="systems-section">
+    <!-- Categoria: Gestão Contábil -->
+    <div class="category-section mb-5">
+        <h2 class="category-title">
+            <i class="fas fa-book"></i> Gestão Contábil
+        </h2>
+        <div class="row g-4">
+            <!-- Códigos Contábeis -->
+            <div class="col-md-4 system-item" data-name="códigos contábeis">
+                <div class="system-card">
+                    <div class="card-icon gradient-purple">
                         <i class="fas fa-calculator"></i>
                     </div>
-                    <h3 class="system-title">Códigos Contábeis</h3>
-                    <p class="text-muted mb-4">
-                        Sistema para gerenciamento e cadastro de códigos contábeis do PDG (Plano de Dados Gerenciais).
-                    </p>
-                    <a href="#"
-                       class="btn btn-access"
-                       onclick="verificarAcesso('codigos_contabeis', '{{ url_for('codigo_contabil.index') }}'); return false;">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Card para Indicadores -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon indicators-color mx-auto">
-                        <i class="fas fa-chart-line"></i>
+                    <h4>Códigos Contábeis</h4>
+                    <p class="text-muted">Gerenciamento de códigos contábeis do PDG</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="#" onclick="verificarAcesso('codigos_contabeis', '{{ url_for('codigo_contabil.index') }}'); return false;"
+                           class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
                     </div>
-                    <h3 class="system-title">Indicadores</h3>
-                    <p class="text-muted mb-4">
-                        Sistema de gestão de indicadores e variáveis para acompanhamento de desempenho organizacional.
-                    </p>
-                    <a href="#"
-                       class="btn btn-access"
-                       onclick="verificarAcesso('indicadores', '{{ url_for('indicador.index') }}'); return false;">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
                 </div>
             </div>
-        </div>
 
-        <!-- Card Demonstrativos SUCOR -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon indicators-color mx-auto">
-                        <i class="fas fa-code-compare"></i>
+            <!-- Demonstrativos SUCOR -->
+            <div class="col-md-4 system-item" data-name="demonstrativos sucor">
+                <div class="system-card">
+                    <div class="card-icon gradient-blue">
+                        <i class="fas fa-chart-bar"></i>
                     </div>
-                    <h3 class="system-title">Demonstrativos SUCOR</h3>
-                    <p class="text-muted mb-4">
-                        Compare demonstrativos financeiros entre períodos e gerencie justificativas de variações
-                    </p>
-                    <a href="{{ url_for('demonstrativo_sucor.index') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon indicators-color mx-auto">
-                        <i class="fa-solid fa-virus"></i>
+                    <h4>Demonstrativos SUCOR</h4>
+                    <p class="text-muted">Comparação de demonstrativos entre períodos</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="{{ url_for('demonstrativo_sucor.index') }}" class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
                     </div>
-                    <h3 class="system-title">Cobrados Vs Retidos</h3>
-                    <p class="text-muted mb-4">
-                        Sistema de comparação e vinculação de pendências com valores retidos
-                    </p>
-                    <a href="{{ url_for('pendencia_retencao.index') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
                 </div>
             </div>
         </div>
+    </div>
 
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon indicators-color mx-auto">
-                        <i class="fa-solid fa-virus"></i>
-                    </div>
-                    <h3 class="system-title">Cobrado vs Repassado</h3>
-                    <p class="text-muted mb-4">
-                        Sistema de comparação de valores cobrados da Caixa com valores repassados
-                    </p>
-                    <a href="{{ url_for('cobrado_repassado.index') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Card para Depósitos Judiciais -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon indicators-color mx-auto">
+    <!-- Categoria: Gestão Financeira -->
+    <div class="category-section mb-5">
+        <h2 class="category-title">
+            <i class="fas fa-coins"></i> Gestão Financeira
+        </h2>
+        <div class="row g-4">
+            <!-- Depósitos Judiciais -->
+            <div class="col-md-4 system-item" data-name="depósitos judiciais">
+                <div class="system-card">
+                    <div class="card-icon gradient-orange">
                         <i class="fas fa-gavel"></i>
                     </div>
-                    <h3 class="system-title">Depósitos Judiciais</h3>
-                    <p class="text-muted mb-4">
-                        Sistema para gestão e controle de depósitos judiciais da SUFIN
-                    </p>
-                    <a href="{{ url_for('depositos_judiciais.index') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
+                    <h4>Depósitos Judiciais</h4>
+                    <p class="text-muted">Gestão de depósitos judiciais SUFIN</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="{{ url_for('depositos_judiciais.index') }}" class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
-
-        <!-- Card para Exportação de Dados -->
-        <div class="col-md-4">
-            <div class="card home-card shadow h-100 d-flex flex-column">
-                <div class="card-body d-flex flex-column text-center p-4">
-                    <div class="system-icon export-color mx-auto">
-                        <i class="fas fa-file-export"></i>
+    <!-- Categoria: Gestão de Contratos -->
+    <div class="category-section mb-5">
+        <h2 class="category-title">
+            <i class="fas fa-file-contract"></i> Gestão de Contratos
+        </h2>
+        <div class="row g-4">
+            <!-- Assessoria de Cobranças -->
+            <div class="col-md-4 system-item" data-name="assessoria cobranças credenciamento">
+                <div class="system-card">
+                    <div class="card-icon gradient-green">
+                        <i class="fas fa-handshake"></i>
                     </div>
-                    <h3 class="system-title">Exportação de Dados</h3>
-                    <p class="text-muted mb-4">
-                        Exporte dados do sistema para Excel, PDF ou Word para relatórios, análises e compartilhamento.
-                    </p>
-                    <a href="{{ url_for('export.index') }}" class="btn btn-access">
-                        <i class="fas fa-download me-2"></i> Acessar Exportação
-                    </a>
+                    <h4>Assessoria de Cobranças</h4>
+                    <p class="text-muted">Credenciamento e avaliação de empresas</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="#" onclick="verificarAcesso('credenciamento', '{{ url_for('credenciamento.index') }}'); return false;"
+                           class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SUMOV -->
+            <div class="col-md-4 system-item" data-name="sumov imóveis">
+                <div class="system-card">
+                    <div class="card-icon gradient-pink">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <h4>SUMOV</h4>
+                    <p class="text-muted">Gestão de contratos e imóveis</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="#" onclick="verificarAcesso('sumov', '{{ url_for('sumov.index') }}'); return false;"
+                           class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categoria: Análise e Controle -->
+    <div class="category-section mb-5">
+        <h2 class="category-title">
+            <i class="fas fa-chart-line"></i> Análise e Controle
+        </h2>
+        <div class="row g-4">
+            <!-- Indicadores -->
+            <div class="col-md-4 system-item" data-name="indicadores">
+                <div class="system-card">
+                    <div class="card-icon gradient-teal">
+                        <i class="fas fa-tachometer-alt"></i>
+                    </div>
+                    <h4>Indicadores</h4>
+                    <p class="text-muted">Gestão de indicadores de desempenho</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="#" onclick="verificarAcesso('indicadores', '{{ url_for('indicador.index') }}'); return false;"
+                           class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cobrados vs Retidos -->
+            <div class="col-md-4 system-item" data-name="cobrados retidos">
+                <div class="system-card">
+                    <div class="card-icon gradient-red">
+                        <i class="fas fa-balance-scale"></i>
+                    </div>
+                    <h4>Cobrados vs Retidos</h4>
+                    <p class="text-muted">Comparação de pendências e valores</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="{{ url_for('pendencia_retencao.index') }}" class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cobrado vs Repassado -->
+            <div class="col-md-4 system-item" data-name="cobrado repassado">
+                <div class="system-card">
+                    <div class="card-icon gradient-yellow">
+                        <i class="fas fa-exchange-alt"></i>
+                    </div>
+                    <h4>Cobrado vs Repassado</h4>
+                    <p class="text-muted">Análise de valores cobrados e repassados</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="{{ url_for('cobrado_repassado.index') }}" class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Categoria: Ferramentas -->
+    <div class="category-section mb-5">
+        <h2 class="category-title">
+            <i class="fas fa-tools"></i> Ferramentas
+        </h2>
+        <div class="row g-4">
+            <!-- Exportação de Dados -->
+            <div class="col-md-4 system-item" data-name="exportação dados">
+                <div class="system-card">
+                    <div class="card-icon gradient-indigo">
+                        <i class="fas fa-download"></i>
+                    </div>
+                    <h4>Exportação de Dados</h4>
+                    <p class="text-muted">Exporte dados para Excel, PDF ou Word</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="{{ url_for('export.index') }}" class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Em breve -->
+            <div class="col-md-4 system-item" data-name="em breve">
+                <div class="system-card disabled">
+                    <div class="card-icon gradient-gray">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <h4>Em Breve</h4>
+                    <p class="text-muted">Novos sistemas em desenvolvimento</p>
+                    <div class="card-footer">
+                        <span class="badge bg-warning text-dark">Em Desenvolvimento</span>
+                        <button class="btn-system" disabled>
+                            Em Breve
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-function verificarAcesso(sistema, url) {
-    // Fazer requisição AJAX para verificar acesso
-    fetch(`/api/verificar-acesso/${sistema}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.tem_acesso) {
-                window.location.href = url;
-            } else {
-                // Mostrar modal de acesso negado
-                const modal = new bootstrap.Modal(document.getElementById('modalAcessoNegado'));
-                modal.show();
-            }
-        })
-        .catch(error => {
-            console.error('Erro ao verificar acesso:', error);
-            window.location.href = url; // Em caso de erro, deixar o backend tratar
-        });
-}
-</script>
-
 <!-- Modal de Acesso Negado -->
 <div class="modal fade" id="modalAcessoNegado" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header bg-warning">
+            <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    Acesso Restrito
+                    Acesso Negado
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body text-center py-4">
-                <i class="fas fa-lock fa-3x text-warning mb-3"></i>
-                <p class="mb-0">
-                    <strong>Você não tem acesso para esse sistema.</strong>
-                </p>
-                <p class="text-muted">
-                    Entre em contato com o Administrador para solicitar o acesso.
-                </p>
+            <div class="modal-body">
+                <p>Você não possui permissão para acessar este sistema.</p>
+                <p>Entre em contato com o administrador para solicitar acesso.</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    Fechar
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-    .home-card {
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border: none;
-        height: 100%;
+    /* Hero Section */
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 60px 20px;
+        border-radius: 20px;
+        margin: -30px -15px 30px;
+        position: relative;
+        overflow: hidden;
     }
 
-    .home-card:hover {
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: pulse 4s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Estatísticas */
+    .hero-stats {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .stat-card {
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(10px);
+        padding: 20px;
+        border-radius: 15px;
+        color: white;
+        transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+        background: rgba(255, 255, 255, 0.3);
     }
 
-    .system-icon {
-        width: 80px;
-        height: 80px;
+    .stat-card h3 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+        display: inline-block;
+    }
+
+    .stat-card span {
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    /* Busca */
+    .search-box {
+        position: relative;
+    }
+
+    .search-box input {
+        padding: 15px 20px;
+        border-radius: 50px;
+        border: 2px solid #e0e0e0;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .search-box input:focus {
+        border-color: #667eea;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+    }
+
+    /* Categorias */
+    .category-section {
+        margin-bottom: 50px;
+    }
+
+    .category-title {
+        color: #333;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 25px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #f0f0f0;
+        position: relative;
+    }
+
+    .category-title i {
+        color: #667eea;
+        margin-right: 10px;
+    }
+
+    /* Cards de Sistema */
+    .system-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        height: 100%;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .system-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        transform: scaleX(0);
+        transition: transform 0.3s ease;
+    }
+
+    .system-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+    }
+
+    .system-card:hover::before {
+        transform: scaleX(1);
+    }
+
+    .system-card.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .system-card.disabled:hover {
+        transform: none;
+    }
+
+    /* Ícones dos Cards */
+    .card-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 15px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 50%;
         margin-bottom: 20px;
-        font-size: 35px;
+        font-size: 24px;
         color: white;
     }
 
-    .credenciamento-color {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
+    /* Gradientes para ícones */
+    .gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .gradient-blue { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+    .gradient-orange { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+    .gradient-green { background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); }
+    .gradient-pink { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+    .gradient-teal { background: linear-gradient(135deg, #4fb3d4 0%, #45b7aa 100%); }
+    .gradient-red { background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%); }
+    .gradient-yellow { background: linear-gradient(135deg, #fcb045 0%, #fd1d1d 100%); }
+    .gradient-indigo { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    .gradient-gray { background: linear-gradient(135deg, #868f96 0%, #596164 100%); }
 
-    .sumov-color {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    }
-
-    .codes-color {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-    }
-
-    .indicators-color {
-        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-    }
-
-    .export-color {
-        background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
-    }
-
-    .system-title {
-        font-size: 1.25rem;
+    .system-card h4 {
+        color: #333;
+        font-size: 1.2rem;
         font-weight: 600;
-        margin-bottom: 15px;
+        margin-bottom: 10px;
     }
 
-    .btn-access {
-        background-color: #0056b3;
+    .system-card p {
+        color: #666;
+        font-size: 0.9rem;
+        margin-bottom: 20px;
+        line-height: 1.5;
+    }
+
+    /* Footer do Card */
+    .card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: auto;
+        padding-top: 20px;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    /* Botão do Sistema */
+    .btn-system {
+        background: #667eea;
         color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 5px;
+        padding: 8px 20px;
+        border-radius: 25px;
+        text-decoration: none;
+        font-size: 0.9rem;
         font-weight: 500;
         transition: all 0.3s ease;
-        margin-top: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
     }
 
-    .btn-access:hover {
-        background-color: #004494;
+    .btn-system:hover {
+        background: #5a67d8;
         color: white;
         transform: translateX(5px);
     }
 
-    .central-panel {
-        text-align: center;
+    .btn-system:disabled {
+        background: #ccc;
+        cursor: not-allowed;
     }
 
+    /* Animações */
     .fade-in {
-        animation: fadeIn 0.5s ease-in;
+        animation: fadeIn 0.8s ease-out;
     }
 
     @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Contador animado */
+    .counter {
+        display: inline-block;
+        animation: countUp 2s ease-out;
+    }
+
+    /* Responsividade */
+    @media (max-width: 768px) {
+        .hero-section {
+            padding: 40px 15px;
+            margin: -20px -15px 20px;
+        }
+
+        .hero-section h1 {
+            font-size: 2rem;
+        }
+
+        .stat-card {
+            margin-bottom: 15px;
+        }
+
+        .category-title {
+            font-size: 1.2rem;
+        }
+
+        .system-card {
+            margin-bottom: 20px;
+        }
+    }
+
+    /* Tema escuro */
+    [data-theme="dark"] .system-card {
+        background: #2d2d3d;
+        box-shadow: 0 2px 15px rgba(0,0,0,0.3);
+    }
+
+    [data-theme="dark"] .system-card h4 {
+        color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .system-card p {
+        color: #aaa;
+    }
+
+    [data-theme="dark"] .category-title {
+        color: #e0e0e0;
+        border-bottom-color: #444;
+    }
+
+    [data-theme="dark"] .search-box input {
+        background: #2d2d3d;
+        border-color: #444;
+        color: #e0e0e0;
+    }
+
+    [data-theme="dark"] .card-footer {
+        border-top-color: #444;
     }
 </style>
+
+<script>
+    // Função para verificar acesso (mantida do original)
+    function verificarAcesso(sistema, url) {
+        fetch(`/api/verificar-permissao/${sistema}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.tem_permissao) {
+                    window.location.href = url;
+                } else {
+                    const modal = new bootstrap.Modal(document.getElementById('modalAcessoNegado'));
+                    modal.show();
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao verificar permissão:', error);
+                window.location.href = url;
+            });
+    }
+
+    // Contador animado - só executa se as estatísticas existirem
+    document.addEventListener('DOMContentLoaded', function() {
+        const counters = document.querySelectorAll('.counter');
+
+        if (counters.length > 0) {
+            counters.forEach(counter => {
+                const target = +counter.getAttribute('data-target');
+                const increment = target / 100;
+
+                const updateCounter = () => {
+                    const current = +counter.innerText;
+
+                    if (current < target) {
+                        counter.innerText = Math.ceil(current + increment);
+                        setTimeout(updateCounter, 20);
+                    } else {
+                        counter.innerText = target;
+                    }
+                };
+
+                updateCounter();
+            });
+
+            // Relógio em tempo real - só se existir o elemento
+            const timeElement = document.getElementById('current-time');
+            if (timeElement) {
+                function updateTime() {
+                    const now = new Date();
+                    const time = now.toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    timeElement.textContent = time;
+                }
+
+                updateTime();
+                setInterval(updateTime, 1000);
+            }
+        }
+
+        // Busca de sistemas
+        const searchInput = document.getElementById('searchSystems');
+        const systemItems = document.querySelectorAll('.system-item');
+
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+
+            systemItems.forEach(item => {
+                const systemName = item.getAttribute('data-name').toLowerCase();
+                if (systemName.includes(searchTerm)) {
+                    item.style.display = 'block';
+                    // Animação de fade in
+                    item.style.animation = 'fadeIn 0.5s ease-out';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+
+            // Se não houver resultados, mostra mensagem
+            const visibleItems = document.querySelectorAll('.system-item[style="display: block;"]');
+            if (visibleItems.length === 0 && searchTerm !== '') {
+                // Aqui você pode adicionar uma mensagem de "nenhum sistema encontrado"
+            }
+        });
+    });
+</script>
 {% endblock %}
