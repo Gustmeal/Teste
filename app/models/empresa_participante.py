@@ -13,7 +13,7 @@ class EmpresaParticipante(db.Model):
     NO_EMPRESA = db.Column(db.String(100), nullable=True)
     NO_EMPRESA_ABREVIADA = db.Column(db.String(30), nullable=True)
     DS_CONDICAO = db.Column(db.String(50), nullable=True)
-    DT_DESCREDENCIAMENTO = db.Column(db.Date, nullable=True)  # Nova coluna para data de descredenciamento
+    DT_DESCREDENCIAMENTO = db.Column(db.DateTime, nullable=True)  # Coluna para data/hora de descredenciamento
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
