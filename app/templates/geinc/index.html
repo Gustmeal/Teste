@@ -2,10 +2,10 @@
 
 {% block content %}
 <!-- Hero Section -->
-<div class="hero-section text-center mb-5 fade-in">
+<div class="hero-section text-center mb-5 fade-in {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}with-stats{% else %}user-normal{% endif %}">
     <div class="hero-content">
-        <h1 class="display-4 fw-bold text-white mb-3">Portal GEINC</h1>
-        <p class="lead text-white-50 mb-4">Gerência de Inovação de Negócios e Controle - EMGEA</p>
+        <h1 class="display-4 fw-bold mb-3">Portal GEINC</h1>
+        <p class="lead mb-4">Gerência de Inovação de Negócios e Controle - EMGEA</p>
 
         {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
         <div class="hero-stats row g-4 mt-4">
@@ -296,12 +296,20 @@
 <style>
     /* Hero Section */
     .hero-section {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 60px 20px;
+        background: linear-gradient(135deg, #8B9AFF 0%, #C2B6FF 100%);
+        padding: 40px 20px;
         border-radius: 20px;
-        margin: -30px -15px 30px;
+        margin: 0 auto 30px;
+        max-width: 1200px;
         position: relative;
         overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Hero section para usuários normais - mais compacta */
+    .hero-section.user-normal {
+        padding: 30px 20px;
+        background: linear-gradient(135deg, #8B9AFF 0%, #E6DEFF 100%);
     }
 
     .hero-section::before {
@@ -313,6 +321,40 @@
         height: 200%;
         background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
         animation: pulse 4s ease-in-out infinite;
+    }
+
+    /* Título principal */
+    .hero-section h1 {
+        color: #5B52E5;
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        text-shadow: none;
+    }
+
+    /* Subtítulo */
+    .hero-section p.lead {
+        color: #7B7B9F;
+        font-size: 1.1rem;
+        font-weight: 400;
+        margin-bottom: 0;
+        text-shadow: none;
+    }
+
+    /* Hero section com estatísticas para admin/moderador */
+    .hero-section.with-stats {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 60px 20px;
+    }
+
+    .hero-section.with-stats h1,
+    .hero-section.with-stats p.lead {
+        color: white;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .hero-section.with-stats p.lead {
+        color: rgba(255, 255, 255, 0.9);
     }
 
     @keyframes pulse {
