@@ -1,6 +1,21 @@
 from app import db
 from sqlalchemy import text
 
+class CodigoDemonstrativo(db.Model):
+    """Tabela de códigos dos demonstrativos"""
+    __tablename__ = 'COR_DEM_TB001_CODIGOS'
+    __table_args__ = {'schema': 'BDG'}
+
+    CO_DEMONSTRATIVO = db.Column(db.Integer, primary_key=True)
+    NO_DEMONSTRATIVO = db.Column(db.String(50), nullable=False)
+
+    def __repr__(self):
+        return f'<CodigoDemonstrativo {self.CO_DEMONSTRATIVO} - {self.NO_DEMONSTRATIVO}>'
+
+    @staticmethod
+    def obter_todos():
+        """Retorna todos os códigos de demonstrativos ordenados"""
+        return CodigoDemonstrativo.query.order_by(CodigoDemonstrativo.CO_DEMONSTRATIVO).all()
 
 class EstruturaDemonstrativo(db.Model):
     """Tabela de estrutura dos demonstrativos"""
@@ -11,11 +26,33 @@ class EstruturaDemonstrativo(db.Model):
     GRUPO = db.Column(db.String(255), nullable=False)
     SOMA = db.Column(db.String(255), nullable=True)
     FORMULA = db.Column(db.String(255), nullable=True)
-    CO_DEMONSTRATIVO = db.Column(db.String(50), nullable=True)
+    CO_DEMONSTRATIVO = db.Column(db.Integer, primary_key=True)  # ADICIONAR COMO CHAVE PRIMÁRIA COMPOSTA
 
     def __repr__(self):
-        return f'<EstruturaDemonstrativo {self.ORDEM} - {self.GRUPO}>'
+        return f'<EstruturaDemonstrativo {self.CO_DEMONSTRATIVO} - {self.ORDEM} - {self.GRUPO}>'
 
+    @staticmethod
+    def obter_por_demonstrativo(co_demonstrativo):
+        """Retorna estruturas de um demonstrativo específico"""
+        return EstruturaDemonstrativo.query.filter_by(
+            CO_DEMONSTRATIVO=co_demonstrativo
+        ).order_by(EstruturaDemonstrativo.ORDEM).all()
+
+    @staticmethod
+    def obter_estruturas_agrupadas():
+        """Retorna estruturas agrupadas por demonstrativo"""
+        from sqlalchemy import text
+        sql = text("""
+            SELECT 
+                e.ORDEM,
+                e.GRUPO,
+                e.CO_DEMONSTRATIVO,
+                c.NO_DEMONSTRATIVO
+            FROM BDG.COR_DEM_TB002_ESTRUTURA e
+            INNER JOIN BDG.COR_DEM_TB001_CODIGOS c ON e.CO_DEMONSTRATIVO = c.CO_DEMONSTRATIVO
+            ORDER BY e.CO_DEMONSTRATIVO, e.ORDEM
+        """)
+        return db.session.execute(sql).fetchall()
 
 class ContaDemonstrativo(db.Model):
     """Tabela de vinculação entre contas e demonstrativos"""

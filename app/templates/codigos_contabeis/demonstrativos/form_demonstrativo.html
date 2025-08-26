@@ -1,321 +1,186 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="editais-container fade-in">
     <a href="{{ url_for('demonstrativo.lista_demonstrativos') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <div class="form-container fade-in">
-        <div class="card shadow">
-            <div class="card-header bg-primary text-white">
-                <h1 class="mb-0">
-                    {% if demonstrativo %}Editar Demonstrativo{% else %}Novo Demonstrativo{% endif %}
-                </h1>
-            </div>
-            <div class="card-body p-4">
-                <form method="POST" id="demonstrativoForm">
-                    <!-- Campo de Conta com autocomplete -->
-                    <div class="mb-4">
-                        <label class="form-label">Conta <span class="text-danger">*</span></label>
-                        {% if demonstrativo %}
-                            <input type="text" class="form-control" value="{{ demonstrativo.CO_CONTA }}" readonly style="background-color: #f8f9fa;">
-                            <input type="hidden" name="co_conta" value="{{ demonstrativo.CO_CONTA }}">
-                        {% else %}
-                            <input type="text" class="form-control" name="co_conta" id="co_conta"
-                                   placeholder="Digite o número da conta..." required>
-                            <div class="form-text">
-                                Digite para buscar ou insira um novo número de conta
-                            </div>
-                        {% endif %}
-                    </div>
-
-                    <!-- Aviso de atualização -->
-                    <div id="avisoAtualizacao" class="alert alert-info d-none" role="alert">
-                        <i class="fas fa-info-circle"></i> Esta conta já possui vinculações. Os dados serão atualizados.
-                    </div>
-
-                    <hr class="my-4">
-
-                    <h5 class="mb-3">Vinculações com Demonstrativos</h5>
-                    <p class="text-muted mb-4">Selecione as estruturas de demonstrativos para vincular à conta. Campos opcionais.</p>
-
-                    <!-- BP Gerencial -->
-                    <div class="mb-3">
-                        <label class="form-label">BP Gerencial</label>
-                        <select name="co_bp_gerencial" class="form-select demonstrativo-select">
-                            <option value="nenhum">Nenhum</option>
-                            {% for estrutura in estruturas %}
-                                <option value="{{ estrutura.ORDEM }}"
-                                        {% if demonstrativo and demonstrativo.CO_BP_Gerencial == estrutura.ORDEM %}selected{% endif %}>
-                                    {{ estrutura.ORDEM }} - {{ estrutura.GRUPO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <!-- BP Resumida -->
-                    <div class="mb-3">
-                        <label class="form-label">BP Resumida</label>
-                        <select name="co_bp_resumida" class="form-select demonstrativo-select">
-                            <option value="nenhum">Nenhum</option>
-                            {% for estrutura in estruturas %}
-                                <option value="{{ estrutura.ORDEM }}"
-                                        {% if demonstrativo and demonstrativo.CO_BP_Resumida == estrutura.ORDEM %}selected{% endif %}>
-                                    {{ estrutura.ORDEM }} - {{ estrutura.GRUPO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <!-- DRE Gerencial -->
-                    <div class="mb-3">
-                        <label class="form-label">DRE Gerencial</label>
-                        <select name="co_dre_gerencial" class="form-select demonstrativo-select">
-                            <option value="nenhum">Nenhum</option>
-                            {% for estrutura in estruturas %}
-                                <option value="{{ estrutura.ORDEM }}"
-                                        {% if demonstrativo and demonstrativo.CO_DRE_Gerencial == estrutura.ORDEM %}selected{% endif %}>
-                                    {{ estrutura.ORDEM }} - {{ estrutura.GRUPO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <!-- DRE Resumida -->
-                    <div class="mb-3">
-                        <label class="form-label">DRE Resumida</label>
-                        <select name="co_dre_resumida" class="form-select demonstrativo-select">
-                            <option value="nenhum">Nenhum</option>
-                            {% for estrutura in estruturas %}
-                                <option value="{{ estrutura.ORDEM }}"
-                                        {% if demonstrativo and demonstrativo.CO_DRE_Resumida == estrutura.ORDEM %}selected{% endif %}>
-                                    {{ estrutura.ORDEM }} - {{ estrutura.GRUPO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <!-- DVA Gerencial -->
-                    <div class="mb-3">
-                        <label class="form-label">DVA Gerencial</label>
-                        <select name="co_dva_gerencial" class="form-select demonstrativo-select">
-                            <option value="nenhum">Nenhum</option>
-                            {% for estrutura in estruturas %}
-                                <option value="{{ estrutura.ORDEM }}"
-                                        {% if demonstrativo and demonstrativo.CO_DVA_Gerencial == estrutura.ORDEM %}selected{% endif %}>
-                                    {{ estrutura.ORDEM }} - {{ estrutura.GRUPO }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                        <a href="{{ url_for('demonstrativo.lista_demonstrativos') }}" class="btn btn-secondary">
-                            Cancelar
-                        </a>
-                        <button type="submit" class="btn btn-success submit-btn">
-                            <span class="btn-text">{% if demonstrativo %}Salvar{% else %}Criar{% endif %}</span>
-                            <span class="spinner d-none">
-                                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                                Processando...
-                            </span>
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+    <div class="page-title-bar">
+        <h1>{% if demonstrativo %}Editar{% else %}Nova{% endif %} Vinculação de Demonstrativo</h1>
+        <p class="text-muted">Vincule contas aos demonstrativos contábeis</p>
     </div>
 
-    <!-- CSS para melhorar a aparência dos selects -->
-    <style>
-        .demonstrativo-select {
-            font-family: 'Courier New', monospace;
-        }
+    <div class="card shadow">
+        <div class="card-body">
+            <form method="POST">
+                <div class="row g-3">
+                    <!-- Campo de Conta -->
+                    <div class="col-md-12">
+                        <label for="co_conta" class="form-label">Código da Conta <span class="text-danger">*</span></label>
+                        <input type="text"
+                               class="form-control"
+                               id="co_conta"
+                               name="co_conta"
+                               value="{{ demonstrativo.CO_CONTA if demonstrativo else '' }}"
+                               {% if demonstrativo %}readonly{% endif %}
+                               required>
+                        <small class="text-muted">Digite o código da conta a ser vinculada</small>
+                    </div>
 
-        .demonstrativo-select option {
-            padding: 8px;
-        }
+                    <!-- BP Gerencial (CO_DEMONSTRATIVO = 1) -->
+                    <div class="col-md-6">
+                        <label for="co_bp_gerencial" class="form-label">BP Gerencial</label>
+                        <select class="form-select" id="co_bp_gerencial" name="co_bp_gerencial" data-demonstrativo="1">
+                            <option value="nenhum">Nenhum</option>
+                            {% for estrutura in estruturas_por_demonstrativo.get(1, {}).get('estruturas', []) %}
+                            <option value="{{ estrutura.ordem }}"
+                                    {% if demonstrativo and demonstrativo.CO_BP_Gerencial == estrutura.ordem %}selected{% endif %}>
+                                {{ estrutura.ordem }} - {{ estrutura.grupo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-        #co_conta {
-            font-size: 1.1rem;
-            font-weight: 500;
-        }
+                    <!-- BP Resumida (CO_DEMONSTRATIVO = 2) -->
+                    <div class="col-md-6">
+                        <label for="co_bp_resumida" class="form-label">BP Resumida</label>
+                        <select class="form-select" id="co_bp_resumida" name="co_bp_resumida" data-demonstrativo="2">
+                            <option value="nenhum">Nenhum</option>
+                            {% for estrutura in estruturas_por_demonstrativo.get(2, {}).get('estruturas', []) %}
+                            <option value="{{ estrutura.ordem }}"
+                                    {% if demonstrativo and demonstrativo.CO_BP_Resumida == estrutura.ordem %}selected{% endif %}>
+                                {{ estrutura.ordem }} - {{ estrutura.grupo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-        .list-group-item-action:hover {
-            background-color: var(--primary-color);
-            color: white;
-        }
+                    <!-- DRE Gerencial (CO_DEMONSTRATIVO = 3) -->
+                    <div class="col-md-6">
+                        <label for="co_dre_gerencial" class="form-label">DRE Gerencial</label>
+                        <select class="form-select" id="co_dre_gerencial" name="co_dre_gerencial" data-demonstrativo="3">
+                            <option value="nenhum">Nenhum</option>
+                            {% for estrutura in estruturas_por_demonstrativo.get(3, {}).get('estruturas', []) %}
+                            <option value="{{ estrutura.ordem }}"
+                                    {% if demonstrativo and demonstrativo.CO_DRE_Gerencial == estrutura.ordem %}selected{% endif %}>
+                                {{ estrutura.ordem }} - {{ estrutura.grupo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-        .alert-info {
-            border-left: 4px solid #0dcaf0;
-        }
-    </style>
+                    <!-- DRE Resumida (CO_DEMONSTRATIVO = 4) -->
+                    <div class="col-md-6">
+                        <label for="co_dre_resumida" class="form-label">DRE Resumida</label>
+                        <select class="form-select" id="co_dre_resumida" name="co_dre_resumida" data-demonstrativo="4">
+                            <option value="nenhum">Nenhum</option>
+                            {% for estrutura in estruturas_por_demonstrativo.get(4, {}).get('estruturas', []) %}
+                            <option value="{{ estrutura.ordem }}"
+                                    {% if demonstrativo and demonstrativo.CO_DRE_Resumida == estrutura.ordem %}selected{% endif %}>
+                                {{ estrutura.ordem }} - {{ estrutura.grupo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('demonstrativoForm');
+                    <!-- DVA Gerencial (CO_DEMONSTRATIVO = 5) -->
+                    <div class="col-md-6">
+                        <label for="co_dva_gerencial" class="form-label">DVA Gerencial</label>
+                        <select class="form-select" id="co_dva_gerencial" name="co_dva_gerencial" data-demonstrativo="5">
+                            <option value="nenhum">Nenhum</option>
+                            {% for estrutura in estruturas_por_demonstrativo.get(5, {}).get('estruturas', []) %}
+                            <option value="{{ estrutura.ordem }}"
+                                    {% if demonstrativo and demonstrativo.CO_DVA_Gerencial == estrutura.ordem %}selected{% endif %}>
+                                {{ estrutura.ordem }} - {{ estrutura.grupo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
 
-            {% if not demonstrativo %}
-            // Configurar autocomplete para o campo de conta
-            const contaInput = document.getElementById('co_conta');
-            let timeoutId;
-            const sugestoes = document.createElement('div');
-            sugestoes.className = 'list-group position-absolute w-100 shadow-sm';
-            sugestoes.style.zIndex = '1000';
-            sugestoes.style.maxHeight = '300px';
-            sugestoes.style.overflowY = 'auto';
-            sugestoes.style.display = 'none';
+                    <!-- Botões -->
+                    <div class="col-12 mt-4">
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('demonstrativo.lista_demonstrativos') }}"
+                               class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i> Salvar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
-            contaInput.parentElement.style.position = 'relative';
-            contaInput.parentElement.appendChild(sugestoes);
+<style>
+    .form-label {
+        font-weight: 600;
+        color: var(--text-color);
+    }
 
-            // Função para buscar contas
-            function buscarContas(termo) {
-                fetch(`/codigos-contabeis/demonstrativos/api/buscar-contas?q=${termo}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        sugestoes.innerHTML = '';
+    .text-danger {
+        color: #dc3545 !important;
+    }
 
-                        if (data.results && data.results.length > 0) {
-                            data.results.forEach(conta => {
-                                const item = document.createElement('a');
-                                item.href = '#';
-                                item.className = 'list-group-item list-group-item-action';
-                                item.textContent = conta.text;
-                                item.onclick = function(e) {
-                                    e.preventDefault();
-                                    contaInput.value = conta.id;
-                                    sugestoes.style.display = 'none';
-                                    // Verificar se a conta já existe
-                                    verificarContaExistente(conta.id);
-                                };
-                                sugestoes.appendChild(item);
-                            });
-                            sugestoes.style.display = 'block';
-                        } else {
-                            // Mostrar opção de criar nova conta
-                            const novoItem = document.createElement('div');
-                            novoItem.className = 'list-group-item text-muted';
-                            novoItem.innerHTML = '<i class="fas fa-plus-circle"></i> Digite para criar nova conta';
-                            sugestoes.appendChild(novoItem);
-                            sugestoes.style.display = 'block';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Erro ao buscar contas:', error);
-                        sugestoes.style.display = 'none';
-                    });
+    .card {
+        margin-top: 2rem;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Se estiver em modo de edição, não permitir mudança de conta
+    const contaInput = document.getElementById('co_conta');
+    if (contaInput.hasAttribute('readonly')) {
+        contaInput.style.backgroundColor = '#f8f9fa';
+    }
+
+    // Adicionar tooltip nos selects para melhor visualização
+    const selects = document.querySelectorAll('.form-select');
+    selects.forEach(select => {
+        select.addEventListener('change', function() {
+            if (this.value !== 'nenhum') {
+                this.style.borderColor = '#28a745';
+            } else {
+                this.style.borderColor = '#dee2e6';
             }
-
-            // Função para verificar se conta existe
-            function verificarContaExistente(conta) {
-                if (!conta) return;
-
-                fetch(`/codigos-contabeis/demonstrativos/api/verificar-conta/${conta}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        const aviso = document.getElementById('avisoAtualizacao');
-
-                        if (data.existe) {
-                            aviso.classList.remove('d-none');
-
-                            // Preencher os campos com os dados existentes
-                            if (data.dados) {
-                                document.querySelector('[name="co_bp_gerencial"]').value = data.dados.CO_BP_Gerencial || 'nenhum';
-                                document.querySelector('[name="co_bp_resumida"]').value = data.dados.CO_BP_Resumida || 'nenhum';
-                                document.querySelector('[name="co_dre_gerencial"]').value = data.dados.CO_DRE_Gerencial || 'nenhum';
-                                document.querySelector('[name="co_dre_resumida"]').value = data.dados.CO_DRE_Resumida || 'nenhum';
-                                document.querySelector('[name="co_dva_gerencial"]').value = data.dados.CO_DVA_Gerencial || 'nenhum';
-                            }
-                        } else {
-                            aviso.classList.add('d-none');
-
-                            // Limpar os campos
-                            document.querySelectorAll('.demonstrativo-select').forEach(select => {
-                                select.value = 'nenhum';
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Erro ao verificar conta:', error);
-                    });
-            }
-
-            // Eventos do input
-            contaInput.addEventListener('input', function() {
-                clearTimeout(timeoutId);
-                const valor = this.value.trim();
-
-                if (valor.length >= 2) {
-                    timeoutId = setTimeout(() => buscarContas(valor), 300);
-                } else {
-                    sugestoes.style.display = 'none';
-                    document.getElementById('avisoAtualizacao').classList.add('d-none');
-                }
-            });
-
-            // Verificar conta ao sair do campo
-            contaInput.addEventListener('blur', function() {
-                setTimeout(() => {
-                    sugestoes.style.display = 'none';
-                    const valor = this.value.trim();
-                    if (valor) {
-                        verificarContaExistente(valor);
-                    }
-                }, 200);
-            });
-
-            // Esconder sugestões ao clicar fora
-            document.addEventListener('click', function(e) {
-                if (!contaInput.contains(e.target) && !sugestoes.contains(e.target)) {
-                    sugestoes.style.display = 'none';
-                }
-            });
-
-            // Navegação por teclado nas sugestões
-            let selectedIndex = -1;
-
-            contaInput.addEventListener('keydown', function(e) {
-                const items = sugestoes.querySelectorAll('.list-group-item-action');
-
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-                    updateSelection(items);
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    selectedIndex = Math.max(selectedIndex - 1, -1);
-                    updateSelection(items);
-                } else if (e.key === 'Enter' && selectedIndex >= 0 && items[selectedIndex]) {
-                    e.preventDefault();
-                    items[selectedIndex].click();
-                } else if (e.key === 'Escape') {
-                    sugestoes.style.display = 'none';
-                    selectedIndex = -1;
-                }
-            });
-
-            function updateSelection(items) {
-                items.forEach((item, index) => {
-                    if (index === selectedIndex) {
-                        item.classList.add('active');
-                    } else {
-                        item.classList.remove('active');
-                    }
-                });
-            }
-            {% endif %}
-
-            // Submit do formulário
-            form.addEventListener('submit', function(e) {
-                const submitBtn = this.querySelector('.submit-btn');
-                const btnText = submitBtn.querySelector('.btn-text');
-                const spinner = submitBtn.querySelector('.spinner');
-
-                btnText.classList.add('d-none');
-                spinner.classList.remove('d-none');
-                submitBtn.disabled = true;
-            });
         });
-    </script>
+    });
+
+    // Validação do formulário
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(e) {
+        const conta = document.getElementById('co_conta').value.trim();
+
+        if (!conta) {
+            e.preventDefault();
+            alert('Por favor, informe o código da conta!');
+            return;
+        }
+
+        // Verificar se pelo menos um demonstrativo foi selecionado
+        const selects = ['co_bp_gerencial', 'co_bp_resumida', 'co_dre_gerencial', 'co_dre_resumida', 'co_dva_gerencial'];
+        let algumSelecionado = false;
+
+        for (let selectId of selects) {
+            const select = document.getElementById(selectId);
+            if (select.value !== 'nenhum') {
+                algumSelecionado = true;
+                break;
+            }
+        }
+
+        if (!algumSelecionado) {
+            if (!confirm('Nenhum demonstrativo foi selecionado. Deseja continuar?')) {
+                e.preventDefault();
+            }
+        }
+    });
+});
+</script>
 {% endblock %}

@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
-from app.models.demonstrativo import EstruturaDemonstrativo, ContaDemonstrativo
+from app.models.demonstrativo import EstruturaDemonstrativo, ContaDemonstrativo, CodigoDemonstrativo
 from app import db
 from flask_login import login_required
 from app.utils.audit import registrar_log
@@ -450,11 +450,28 @@ def novo_demonstrativo():
             db.session.rollback()
             flash(f'Erro ao processar vinculação: {str(e)}', 'danger')
 
-    # GET - Buscar estruturas disponíveis
-    estruturas = EstruturaDemonstrativo.query.order_by(EstruturaDemonstrativo.ORDEM).all()
+    # GET - Buscar estruturas disponíveis AGRUPADAS POR DEMONSTRATIVO
+    estruturas_agrupadas = EstruturaDemonstrativo.obter_estruturas_agrupadas()
+    codigos_demonstrativos = CodigoDemonstrativo.obter_todos()
+
+    # Organizar estruturas por demonstrativo
+    estruturas_por_demonstrativo = {}
+    for estrutura in estruturas_agrupadas:
+        co_demo = estrutura.CO_DEMONSTRATIVO
+        if co_demo not in estruturas_por_demonstrativo:
+            estruturas_por_demonstrativo[co_demo] = {
+                'nome': estrutura.NO_DEMONSTRATIVO,
+                'estruturas': []
+            }
+        estruturas_por_demonstrativo[co_demo]['estruturas'].append({
+            'ordem': estrutura.ORDEM,
+            'grupo': estrutura.GRUPO
+        })
 
     return render_template('codigos_contabeis/demonstrativos/form_demonstrativo.html',
-                           estruturas=estruturas)
+                           estruturas_por_demonstrativo=estruturas_por_demonstrativo,
+                           codigos_demonstrativos=codigos_demonstrativos)
+
 
 
 @demonstrativo_bp.route('/editar/<co_conta>', methods=['GET', 'POST'])
@@ -509,12 +526,70 @@ def editar_demonstrativo(co_conta):
             db.session.rollback()
             flash(f'Erro ao atualizar: {str(e)}', 'danger')
 
-    # GET
-    estruturas = EstruturaDemonstrativo.query.order_by(EstruturaDemonstrativo.ORDEM).all()
+    # GET - Buscar estruturas agrupadas
+    estruturas_agrupadas = EstruturaDemonstrativo.obter_estruturas_agrupadas()
+    codigos_demonstrativos = CodigoDemonstrativo.obter_todos()
+
+    # Organizar estruturas por demonstrativo
+    estruturas_por_demonstrativo = {}
+    for estrutura in estruturas_agrupadas:
+        co_demo = estrutura.CO_DEMONSTRATIVO
+        if co_demo not in estruturas_por_demonstrativo:
+            estruturas_por_demonstrativo[co_demo] = {
+                'nome': estrutura.NO_DEMONSTRATIVO,
+                'estruturas': []
+            }
+        estruturas_por_demonstrativo[co_demo]['estruturas'].append({
+            'ordem': estrutura.ORDEM,
+            'grupo': estrutura.GRUPO
+        })
 
     return render_template('codigos_contabeis/demonstrativos/form_demonstrativo.html',
                            demonstrativo=demonstrativo,
-                           estruturas=estruturas)
+                           estruturas_por_demonstrativo=estruturas_por_demonstrativo,
+                           codigos_demonstrativos=codigos_demonstrativos)
+
+    # GET - Buscar estruturas organizadas por CO_DEMONSTRATIVO
+    estruturas_por_demonstrativo = {}
+
+    demonstrativos_map = {
+        1: 'BP_Gerencial',
+        2: 'BP_Resumida',
+        3: 'DRE_Gerencial',
+        4: 'DRE_Resumida',
+        5: 'DVA_Gerencial'
+    }
+
+    for co_dem, nome_dem in demonstrativos_map.items():
+        estruturas = EstruturaDemonstrativo.query.filter_by(
+            CO_DEMONSTRATIVO=str(co_dem)
+        ).order_by(EstruturaDemonstrativo.ORDEM).all()
+        estruturas_por_demonstrativo[nome_dem] = estruturas
+
+    return render_template('codigos_contabeis/demonstrativos/form_demonstrativo.html',
+                           demonstrativo=demonstrativo,
+                           estruturas_por_demonstrativo=estruturas_por_demonstrativo,
+                           demonstrativos_map=demonstrativos_map)
+
+
+@demonstrativo_bp.route('/api/estruturas/<int:co_demonstrativo>', methods=['GET'])
+@login_required
+def obter_estruturas_demonstrativo(co_demonstrativo):
+    """API para obter estruturas de um demonstrativo específico"""
+    try:
+        estruturas = EstruturaDemonstrativo.obter_por_demonstrativo(co_demonstrativo)
+        return jsonify({
+            'success': True,
+            'estruturas': [{
+                'ordem': e.ORDEM,
+                'grupo': e.GRUPO
+            } for e in estruturas]
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
 
 
 @demonstrativo_bp.route('/excluir/<co_conta>', methods=['POST'])
