@@ -6,7 +6,7 @@ from app import db
 class DistribuicaoSumario(db.Model):
     """Tabela resumo da distribuição - uma linha por empresa"""
     __tablename__ = 'DCA_TB017_DISTRIBUICAO_SUMARIO'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ID_EDITAL = db.Column(db.Integer, nullable=False)
@@ -30,7 +30,7 @@ class DistribuicaoSumario(db.Model):
 class DistribuicaoMensal(db.Model):
     """Tabela de detalhes mensais da distribuição"""
     __tablename__ = 'DCA_TB019_DISTRIBUICAO_MENSAL'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ID_DISTRIBUICAO_SUMARIO = db.Column(db.Integer, db.ForeignKey('BDG.DCA_TB017_DISTRIBUICAO_SUMARIO.ID'), nullable=False)

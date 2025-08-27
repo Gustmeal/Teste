@@ -20,7 +20,7 @@ class MetasPercentuaisDistribuicao(db.Model):
 
 class Metas(db.Model):
     __tablename__ = 'DCA_TB012_METAS'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
     DT_REFERENCIA = db.Column(db.Date, nullable=False)
