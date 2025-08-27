@@ -37,12 +37,7 @@ def inclusao():
             novo_deposito.NU_LINHA = proximo_nu_linha
             novo_deposito.LANCAMENTO_RM = request.form.get('lancamento_rm')
             novo_deposito.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
-
-            # Tratar valor de rateio
-            vr_rateio_str = request.form.get('vr_rateio')
-            vr_rateio_str = vr_rateio_str.replace('.', '').replace(',', '.')
-            novo_deposito.VR_RATEIO = float(vr_rateio_str)
-
+            novo_deposito.VR_RATEIO = float(request.form.get('vr_rateio').replace(',', '.'))
             novo_deposito.MEMO_SUFIN = request.form.get('memo_sufin')
 
             # Lógica para DT_MEMO e ID_IDENTIFICADO
@@ -110,12 +105,12 @@ def inclusao():
             # Salvar no banco
             db.session.add(novo_deposito)
 
-            # NOVA PARTE: Incluir o processo judicial se foi informado
+            # Criar registro de processo judicial se informado
             nr_processo = request.form.get('nr_processo')
-            if nr_processo:
+            if nr_processo and nr_processo.strip():
                 novo_processo = ProcessosJudiciais()
-                novo_processo.NU_LINHA = proximo_nu_linha  # Mesmo NU_LINHA
-                novo_processo.NR_PROCESSO = nr_processo
+                novo_processo.NU_LINHA = proximo_nu_linha
+                novo_processo.NR_PROCESSO = nr_processo.strip()
                 db.session.add(novo_processo)
 
             db.session.commit()
@@ -125,7 +120,7 @@ def inclusao():
                 'depositos_judiciais',
                 'create',
                 f'Novo depósito incluído - NU_LINHA: {proximo_nu_linha}',
-                {'nu_linha': proximo_nu_linha, 'nr_processo': nr_processo if nr_processo else 'Não informado'}
+                {'nu_linha': proximo_nu_linha}
             )
 
             flash('Depósito judicial incluído com sucesso!', 'success')
@@ -265,24 +260,6 @@ def editar(nu_linha):
             # Pegar novo centro
             novo_centro = int(request.form.get('id_centro')) if request.form.get('id_centro') else None
 
-            # NOVA PARTE: Atualizar ou criar processo judicial
-            novo_nr_processo = request.form.get('nr_processo')
-            if novo_nr_processo:
-                # Verificar se já existe um processo para este NU_LINHA
-                processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
-                if processo_existente:
-                    processo_existente.NR_PROCESSO = novo_nr_processo
-                else:
-                    novo_processo = ProcessosJudiciais()
-                    novo_processo.NU_LINHA = nu_linha
-                    novo_processo.NR_PROCESSO = novo_nr_processo
-                    db.session.add(novo_processo)
-            else:
-                # Se o campo foi limpo, remover o processo
-                processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
-                if processo_existente:
-                    db.session.delete(processo_existente)
-
             # Verificar se mudou o centro e se não é Institucional
             if novo_centro != centro_antigo and novo_centro is not None:
                 # Buscar o nome da nova carteira
@@ -296,31 +273,38 @@ def editar(nu_linha):
                     ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
                     proximo_nu_linha_estorno = (ultimo_nu_linha or 0) + 1
 
-                    # 2. Criar linha de ESTORNO (valor negativo, centro 8)
-                    linha_estorno = DepositosSufin()
-                    linha_estorno.NU_LINHA = proximo_nu_linha_estorno
-                    linha_estorno.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
-                    linha_estorno.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
-                    linha_estorno.VR_RATEIO = -abs(deposito_obj.VR_RATEIO)  # VALOR NEGATIVO
-                    linha_estorno.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
-                    linha_estorno.DT_MEMO = deposito_obj.DT_MEMO
-                    linha_estorno.ID_IDENTIFICADO = deposito_obj.ID_IDENTIFICADO
-                    linha_estorno.DT_IDENTIFICACAO = deposito_obj.DT_IDENTIFICACAO
-                    linha_estorno.ID_AREA = deposito_obj.ID_AREA
-                    linha_estorno.ID_AREA_2 = None
-                    linha_estorno.ID_CENTRO = 8  # CENTRO 8 para estornos
-                    linha_estorno.ID_AJUSTE_RM = deposito_obj.ID_AJUSTE_RM
-                    linha_estorno.DT_AJUSTE_RM = deposito_obj.DT_AJUSTE_RM
-                    linha_estorno.NU_CONTRATO = deposito_obj.NU_CONTRATO
-                    linha_estorno.NU_CONTRATO_2 = None
-                    linha_estorno.EVENTO_CONTABIL_ANTERIOR = deposito_obj.EVENTO_CONTABIL_ANTERIOR
-                    linha_estorno.EVENTO_CONTABIL_ATUAL = deposito_obj.EVENTO_CONTABIL_ATUAL
-                    linha_estorno.OBS = f"ESTORNO - REF. LINHA {nu_linha}"
-                    linha_estorno.IC_APROPRIADO = deposito_obj.IC_APROPRIADO
-                    linha_estorno.DT_SISCOR = deposito_obj.DT_SISCOR
-                    linha_estorno.IC_INCLUIDO_ACERTO = deposito_obj.IC_INCLUIDO_ACERTO
+                    # 2. Criar ESTORNO (cópia com valor negativo)
+                    estorno = DepositosSufin()
+                    estorno.NU_LINHA = proximo_nu_linha_estorno
+                    estorno.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
+                    estorno.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
+                    estorno.VR_RATEIO = -abs(deposito_obj.VR_RATEIO) if deposito_obj.VR_RATEIO else 0
+                    estorno.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
+                    estorno.DT_MEMO = deposito_obj.DT_MEMO
+                    estorno.ID_IDENTIFICADO = deposito_obj.ID_IDENTIFICADO
+                    estorno.DT_IDENTIFICACAO = deposito_obj.DT_IDENTIFICACAO
+                    estorno.ID_AREA = deposito_obj.ID_AREA
+                    estorno.ID_AREA_2 = deposito_obj.ID_AREA_2
+                    estorno.ID_CENTRO = deposito_obj.ID_CENTRO  # MANTÉM O CENTRO ORIGINAL
+                    estorno.ID_AJUSTE_RM = deposito_obj.ID_AJUSTE_RM
+                    estorno.DT_AJUSTE_RM = deposito_obj.DT_AJUSTE_RM
+                    estorno.NU_CONTRATO = deposito_obj.NU_CONTRATO
+                    estorno.NU_CONTRATO_2 = deposito_obj.NU_CONTRATO_2
+                    estorno.EVENTO_CONTABIL_ANTERIOR = deposito_obj.EVENTO_CONTABIL_ANTERIOR
+                    estorno.EVENTO_CONTABIL_ATUAL = deposito_obj.EVENTO_CONTABIL_ATUAL
+                    estorno.OBS = f"ESTORNO REF. LINHA {deposito_obj.NU_LINHA}"
+                    estorno.IC_APROPRIADO = deposito_obj.IC_APROPRIADO
+                    estorno.DT_SISCOR = deposito_obj.DT_SISCOR
+                    estorno.IC_INCLUIDO_ACERTO = deposito_obj.IC_INCLUIDO_ACERTO
 
-                    db.session.add(linha_estorno)
+                    db.session.add(estorno)
+
+                    # Copiar processo judicial para estorno se existir
+                    if nr_processo:
+                        processo_estorno = ProcessosJudiciais()
+                        processo_estorno.NU_LINHA = proximo_nu_linha_estorno
+                        processo_estorno.NR_PROCESSO = nr_processo
+                        db.session.add(processo_estorno)
 
                     # 3. Buscar próximo NU_LINHA para nova linha
                     proximo_nu_linha_nova = proximo_nu_linha_estorno + 1
@@ -330,12 +314,7 @@ def editar(nu_linha):
                     nova_linha.NU_LINHA = proximo_nu_linha_nova
                     nova_linha.LANCAMENTO_RM = request.form.get('lancamento_rm')
                     nova_linha.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
-
-                    # Tratar valor de rateio
-                    vr_rateio_str = request.form.get('vr_rateio')
-                    vr_rateio_str = vr_rateio_str.replace('.', '').replace(',', '.')
-                    nova_linha.VR_RATEIO = float(vr_rateio_str)
-
+                    nova_linha.VR_RATEIO = float(request.form.get('vr_rateio').replace(',', '.'))
                     nova_linha.MEMO_SUFIN = request.form.get('memo_sufin')
 
                     # Lógica para DT_MEMO e ID_IDENTIFICADO
@@ -399,14 +378,16 @@ def editar(nu_linha):
 
                     db.session.add(nova_linha)
 
-                    # NOVA PARTE: Se houver processo judicial, criar cópia para a nova linha
-                    if novo_nr_processo:
-                        novo_processo_nova_linha = ProcessosJudiciais()
-                        novo_processo_nova_linha.NU_LINHA = proximo_nu_linha_nova
-                        novo_processo_nova_linha.NR_PROCESSO = novo_nr_processo
-                        db.session.add(novo_processo_nova_linha)
+                    # Criar processo judicial para nova linha se informado
+                    nr_processo_form = request.form.get('nr_processo')
+                    if nr_processo_form and nr_processo_form.strip():
+                        processo_novo = ProcessosJudiciais()
+                        processo_novo.NU_LINHA = proximo_nu_linha_nova
+                        processo_novo.NR_PROCESSO = nr_processo_form.strip()
+                        db.session.add(processo_novo)
 
                     # NÃO ALTERAR O REGISTRO ORIGINAL!
+
                     db.session.commit()
 
                     flash('Depósito judicial processado com sucesso! Criadas linha de estorno e nova linha.', 'success')
@@ -417,12 +398,7 @@ def editar(nu_linha):
                     # Atualizar todos os campos normalmente
                     deposito_obj.LANCAMENTO_RM = request.form.get('lancamento_rm')
                     deposito_obj.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
-
-                    # Tratar valor de rateio
-                    vr_rateio_str = request.form.get('vr_rateio')
-                    vr_rateio_str = vr_rateio_str.replace('.', '').replace(',', '.')
-                    deposito_obj.VR_RATEIO = float(vr_rateio_str)
-
+                    deposito_obj.VR_RATEIO = float(request.form.get('vr_rateio').replace(',', '.'))
                     deposito_obj.MEMO_SUFIN = request.form.get('memo_sufin')
 
                     dt_memo = request.form.get('dt_memo')
@@ -474,21 +450,36 @@ def editar(nu_linha):
                     else:
                         deposito_obj.DT_SISCOR = None
 
+                    # Atualizar ou criar registro de processo judicial
+                    nr_processo_form = request.form.get('nr_processo')
+                    if nr_processo_form and nr_processo_form.strip():
+                        # Verificar se já existe registro de processo
+                        processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+
+                        if processo_existente:
+                            # Atualizar existente
+                            processo_existente.NR_PROCESSO = nr_processo_form.strip()
+                        else:
+                            # Criar novo
+                            novo_processo = ProcessosJudiciais()
+                            novo_processo.NU_LINHA = nu_linha
+                            novo_processo.NR_PROCESSO = nr_processo_form.strip()
+                            db.session.add(novo_processo)
+                    else:
+                        # Se o campo foi limpo, remover registro de processo se existir
+                        processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+                        if processo_existente:
+                            db.session.delete(processo_existente)
+
                     db.session.commit()
 
                     flash('Depósito judicial atualizado com sucesso!', 'success')
                     return redirect(url_for('depositos_judiciais.edicao'))
-
             else:
-                # Não mudou centro ou é NULL - EDIÇÃO NORMAL
+                # Não mudou centro - EDIÇÃO NORMAL de todos os campos
                 deposito_obj.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 deposito_obj.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
-
-                # Tratar valor de rateio
-                vr_rateio_str = request.form.get('vr_rateio')
-                vr_rateio_str = vr_rateio_str.replace('.', '').replace(',', '.')
-                deposito_obj.VR_RATEIO = float(vr_rateio_str)
-
+                deposito_obj.VR_RATEIO = float(request.form.get('vr_rateio').replace(',', '.'))
                 deposito_obj.MEMO_SUFIN = request.form.get('memo_sufin')
 
                 dt_memo = request.form.get('dt_memo')
@@ -539,6 +530,27 @@ def editar(nu_linha):
                     deposito_obj.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
                 else:
                     deposito_obj.DT_SISCOR = None
+
+                # Atualizar ou criar registro de processo judicial
+                nr_processo_form = request.form.get('nr_processo')
+                if nr_processo_form and nr_processo_form.strip():
+                    # Verificar se já existe registro de processo
+                    processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+
+                    if processo_existente:
+                        # Atualizar existente
+                        processo_existente.NR_PROCESSO = nr_processo_form.strip()
+                    else:
+                        # Criar novo
+                        novo_processo = ProcessosJudiciais()
+                        novo_processo.NU_LINHA = nu_linha
+                        novo_processo.NR_PROCESSO = nr_processo_form.strip()
+                        db.session.add(novo_processo)
+                else:
+                    # Se o campo foi limpo, remover registro de processo se existir
+                    processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+                    if processo_existente:
+                        db.session.delete(processo_existente)
 
                 db.session.commit()
 

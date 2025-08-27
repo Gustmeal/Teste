@@ -16,18 +16,24 @@
             <form method="POST" id="formInclusao" action="{{ url_for('depositos_judiciais.inclusao') }}">
                 <div class="row g-3">
                     <!-- Primeira Linha -->
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <label for="nr_processo" class="form-label">Número do Processo</label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               maxlength="100" placeholder="Ex: 1234567-89.2023.8.26.0100">
+                    </div>
+
+                    <div class="col-md-3">
                         <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
                                maxlength="15" required placeholder="Ex: R1008202">
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="dt_lancamento_dj" class="form-label">Data Lançamento DJ <span class="text-danger">*</span></label>
                         <input type="date" class="form-control" id="dt_lancamento_dj" name="dt_lancamento_dj" required>
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
                         <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
                                required placeholder="0,00">
