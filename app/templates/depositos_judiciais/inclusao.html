@@ -69,8 +69,8 @@
                     </div>
 
                     <div class="col-md-6">
-                        <label for="id_centro" class="form-label">Centro de Resultado (Carteira)</label>
-                        <select class="form-select" id="id_centro" name="id_centro">
+                        <label for="id_centro" class="form-label">Centro de Resultado (Carteira) <span class="text-danger">*</span></label>
+                        <select class="form-select" id="id_centro" name="id_centro" required>
                             <option value="">Selecione uma carteira...</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
@@ -117,13 +117,18 @@
                     <!-- Botões -->
                     <div class="col-12 mt-4">
                         <hr>
-                        <div class="d-flex justify-content-end gap-2">
+                        <div class="d-flex justify-content-between">
                             <button type="button" class="btn btn-secondary" onclick="limparFormulario()">
                                 <i class="fas fa-eraser me-2"></i> Limpar
                             </button>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save me-2"></i> Salvar
-                            </button>
+                            <div>
+                                <button type="submit" class="btn btn-success" name="salvar_e_continuar">
+                                    <i class="fas fa-plus me-2"></i> Salvar e Incluir Mais
+                                </button>
+                                <button type="submit" class="btn btn-primary" name="salvar_e_sair">
+                                    <i class="fas fa-save me-2"></i> Salvar e Sair
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -216,7 +221,7 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
 
         // Validar campos obrigatórios
-        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio'];
+        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
         let valido = true;
 
         camposObrigatorios.forEach(campo => {
@@ -231,7 +236,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (valido) {
             // Confirmar antes de enviar
-            if (confirm('Confirma a inclusão do depósito judicial?')) {
+            const botaoClicado = e.submitter.name;
+            const mensagem = botaoClicado === 'salvar_e_continuar'
+                ? 'Confirma a inclusão do depósito judicial e deseja incluir outro?'
+                : 'Confirma a inclusão do depósito judicial?';
+
+            if (confirm(mensagem)) {
                 this.submit();
             }
         } else {

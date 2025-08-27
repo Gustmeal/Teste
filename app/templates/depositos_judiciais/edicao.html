@@ -8,21 +8,21 @@
 
     <div class="page-title-bar">
         <h1>Edição de Depósitos Judiciais</h1>
-        <p class="text-muted">Pesquise e edite os depósitos judiciais cadastrados</p>
+        <p class="text-muted">Consulte e edite os depósitos judiciais cadastrados</p>
     </div>
 
-    <!-- Filtros de Pesquisa -->
+    <!-- Filtros -->
     <div class="card shadow mb-4">
-        <div class="card-header bg-light">
+        <div class="card-header bg-primary text-white">
             <h5 class="mb-0">
-                <i class="fas fa-filter me-2"></i>Filtros de Pesquisa
+                <i class="fas fa-filter me-2"></i> Filtros de Pesquisa
             </h5>
         </div>
         <div class="card-body">
             <form method="GET" action="{{ url_for('depositos_judiciais.edicao') }}">
                 <div class="row g-3">
                     <div class="col-md-3">
-                        <label for="nu_contrato" class="form-label">Número do Contrato</label>
+                        <label for="nu_contrato" class="form-label">Número Contrato</label>
                         <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
                                value="{{ filtros.nu_contrato }}" placeholder="Digite o número">
                     </div>
@@ -43,7 +43,7 @@
                     <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio</label>
                         <input type="text" class="form-control" id="vr_rateio" name="vr_rateio"
-                               value="{{ filtros.vr_rateio }}" placeholder="Ex: 1000,00">
+                               value="{{ filtros.vr_rateio }}" placeholder="0,00">
                     </div>
 
                     <div class="col-md-3">
@@ -51,18 +51,34 @@
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
                                value="{{ filtros.dt_identificacao }}">
                     </div>
-                </div>
 
-                <div class="row mt-3">
-                    <div class="col-12">
-                        <div class="d-flex justify-content-end gap-2">
-                            <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
-                                <i class="fas fa-eraser me-2"></i>Limpar
-                            </a>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search me-2"></i>Pesquisar
-                            </button>
-                        </div>
+                    <!-- Nova linha para DT_SISCOR -->
+                    <div class="col-md-3">
+                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
+                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
+                               value="{{ filtros.dt_siscor }}">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_siscor_status" class="form-label">Status Data SISCOR</label>
+                        <select class="form-select" id="dt_siscor_status" name="dt_siscor_status">
+                            <option value="">Todos</option>
+                            <option value="preenchido" {% if filtros.dt_siscor_status == 'preenchido' %}selected{% endif %}>
+                                Com Data SISCOR
+                            </option>
+                            <option value="nulo" {% if filtros.dt_siscor_status == 'nulo' %}selected{% endif %}>
+                                Sem Data SISCOR (Vazio)
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="col-12 mt-3">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-2"></i> Pesquisar
+                        </button>
+                        <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
+                            <i class="fas fa-eraser me-2"></i> Limpar Filtros
+                        </a>
                     </div>
                 </div>
             </form>
@@ -70,75 +86,239 @@
     </div>
 
     <!-- Tabela de Resultados -->
-    <div class="card shadow">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">
-                <i class="fas fa-list me-2"></i>Depósitos Encontrados
+    <div class="card shadow tabela-fullscreen">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0 d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="fas fa-list me-2"></i> Depósitos Cadastrados
+                </span>
+                <small class="text-white-50 fs-6 fw-normal">Clique em qualquer linha para editar</small>
             </h5>
-            <span class="badge bg-primary">{{ depositos|length }} registro(s)</span>
         </div>
-        <div class="card-body">
-            {% if depositos %}
-            <div class="table-responsive">
-                <table class="table table-hover table-striped">
-                    <thead>
+        <div class="card-body p-0">
+            <div class="table-container">
+                <table class="table table-bordered table-hover table-sm mb-0" id="tabelaDepositos">
+                    <thead class="sticky-header">
                         <tr>
-                            <th>Nº Linha</th>
-                            <th>Lançamento RM</th>
-                            <th>Nº Processo</th>
-                            <th>Data Lançamento</th>
-                            <th>Valor Rateio</th>
-                            <th>Área</th>
-                            <th>Carteira</th>
-                            <th>Ações</th>
+                            <th class="sortable" data-column="0">
+                                Nº Linha
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="1">
+                                Nº Processo
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="2">
+                                Lançamento RM
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="3">
+                                Dt. Lançamento
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="4">
+                                Valor Rateio
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="5">
+                                Memo SUFIN
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="6">
+                                Carteira
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="7">
+                                Contrato
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="8">
+                                Dt. Identificação
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="9">
+                                Dt. SISCOR
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for deposito in depositos %}
-                        <tr>
-                            <td>{{ deposito[0].NU_LINHA }}</td>
-                            <td>{{ deposito[0].LANCAMENTO_RM or '-' }}</td>
-                            <td>{{ deposito[1] or '-' }}</td>
-                            <td>{{ deposito[0].DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if deposito[0].DT_LANCAMENTO_DJ else '-' }}</td>
-                            <td class="text-end">
-                                R$ {{ '{:,.2f}'.format(deposito[0].VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') if deposito[0].VR_RATEIO else '0,00' }}
+                        {% for deposito, nr_processo, no_area, no_carteira in depositos %}
+                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+                            <td>{{ deposito.NU_LINHA }}</td>
+                            <td>{{ nr_processo or '-' }}</td>
+                            <td>{{ deposito.LANCAMENTO_RM or '-' }}</td>
+                            <td data-sort="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y%m%d') if deposito.DT_LANCAMENTO_DJ else '0' }}">
+                                {{ deposito.DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if deposito.DT_LANCAMENTO_DJ else '-' }}
                             </td>
-                            <td>{{ deposito[2] or '-' }}</td>
-                            <td>{{ deposito[3] or '-' }}</td>
-                            <td>
-                                <a href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito[0].NU_LINHA) }}"
-                                   class="btn btn-sm btn-warning">
-                                    <i class="fas fa-edit"></i>
-                                </a>
+                            <td class="text-end" data-sort="{{ deposito.VR_RATEIO or 0 }}">
+                                {% if deposito.VR_RATEIO %}
+                                    {% if deposito.VR_RATEIO < 0 %}
+                                        <span class="text-danger">{{ deposito.VR_RATEIO|br_currency }}</span>
+                                    {% else %}
+                                        {{ deposito.VR_RATEIO|br_currency }}
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ deposito.MEMO_SUFIN or '-' }}</td>
+                            <td>{{ no_carteira or '-' }}</td>
+                            <td>{{ deposito.NU_CONTRATO or '-' }}</td>
+                            <td data-sort="{{ deposito.DT_IDENTIFICACAO.strftime('%Y%m%d') if deposito.DT_IDENTIFICACAO else '0' }}">
+                                {{ deposito.DT_IDENTIFICACAO.strftime('%d/%m/%Y') if deposito.DT_IDENTIFICACAO else '-' }}
+                            </td>
+                            <td data-sort="{{ deposito.DT_SISCOR.strftime('%Y%m%d') if deposito.DT_SISCOR else '0' }}">
+                                {% if deposito.DT_SISCOR %}
+                                    {{ deposito.DT_SISCOR.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    <span class="text-warning">
+                                        <i class="fas fa-exclamation-triangle"></i> Vazio
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Nenhum depósito encontrado com os filtros aplicados.
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <div class="text-center py-5">
-                <i class="fas fa-search fa-3x text-muted mb-3"></i>
-                <p class="text-muted">Nenhum depósito encontrado com os filtros aplicados.</p>
-            </div>
-            {% endif %}
         </div>
     </div>
 </div>
 
 <style>
-    .table th {
+    /* Estilos para a tabela */
+    .table-container {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+
+    .sticky-header {
+        position: sticky;
+        top: 0;
         background-color: #f8f9fa;
-        font-weight: 600;
-        border-bottom: 2px solid #dee2e6;
+        z-index: 10;
     }
 
-    .badge {
-        font-size: 0.875rem;
+    .linha-clicavel {
+        cursor: pointer;
+        transition: background-color 0.2s;
     }
 
-    .text-end {
-        text-align: right;
+    .linha-clicavel:hover {
+        background-color: #e9ecef;
+    }
+
+    .sortable {
+        cursor: pointer;
+        position: relative;
+        user-select: none;
+    }
+
+    .sortable:hover {
+        background-color: #e3e6e8;
+    }
+
+    .sort-icon {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
     }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Máscara para valor monetário no filtro
+    const vrRateioInput = document.getElementById('vr_rateio');
+    if (vrRateioInput) {
+        vrRateioInput.addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            value = (value / 100).toFixed(2).replace('.', ',');
+            e.target.value = value;
+        });
+    }
+
+    // Tornar linhas clicáveis
+    document.querySelectorAll('.linha-clicavel').forEach(row => {
+        row.addEventListener('click', function() {
+            window.location.href = this.dataset.href;
+        });
+    });
+
+    // Ordenação de colunas
+    let currentSort = { column: null, ascending: true };
+
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', function() {
+            const column = parseInt(this.dataset.column);
+            const tbody = document.querySelector('#tabelaDepositos tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => !row.querySelector('td[colspan]'));
+
+            // Determinar direção da ordenação
+            if (currentSort.column === column) {
+                currentSort.ascending = !currentSort.ascending;
+            } else {
+                currentSort.column = column;
+                currentSort.ascending = true;
+            }
+
+            // Ordenar as linhas
+            rows.sort((a, b) => {
+                let aValue = a.cells[column].dataset.sort || a.cells[column].textContent.trim();
+                let bValue = b.cells[column].dataset.sort || b.cells[column].textContent.trim();
+
+                // Tentar converter para número
+                if (!isNaN(aValue) && !isNaN(bValue)) {
+                    aValue = parseFloat(aValue);
+                    bValue = parseFloat(bValue);
+                }
+
+                if (aValue < bValue) return currentSort.ascending ? -1 : 1;
+                if (aValue > bValue) return currentSort.ascending ? 1 : -1;
+                return 0;
+            });
+
+            // Reordenar no DOM
+            rows.forEach(row => tbody.appendChild(row));
+
+            // Atualizar ícones
+            document.querySelectorAll('.sort-icon i').forEach(icon => {
+                icon.className = 'fas fa-sort';
+            });
+
+            const icon = this.querySelector('.sort-icon i');
+            icon.className = currentSort.ascending ? 'fas fa-sort-up' : 'fas fa-sort-down';
+        });
+    });
+});
+</script>
 {% endblock %}

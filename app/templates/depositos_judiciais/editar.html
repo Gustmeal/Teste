@@ -14,7 +14,8 @@
     <div class="alert alert-warning" role="alert">
         <i class="fas fa-exclamation-triangle me-2"></i>
         <strong>Atenção:</strong> Ao alterar a carteira para uma opção diferente de "Institucional",
-        será criada automaticamente uma linha de estorno com valor negativo.
+        será criada automaticamente uma linha de estorno com valor negativo. Se a carteira atual ou nova for "Institucional",
+        a edição será feita diretamente na linha.
     </div>
 
     <div class="card shadow">
@@ -83,12 +84,12 @@
 
                     <div class="col-md-6">
                         <label for="id_centro" class="form-label">
-                            Centro de Resultado (Carteira)
+                            Centro de Resultado (Carteira) <span class="text-danger">*</span>
                             <span class="text-warning">
                                 <i class="fas fa-exclamation-circle" title="Alterar para diferente de 'Institucional' criará estorno"></i>
                             </span>
                         </label>
-                        <select class="form-select" id="id_centro" name="id_centro" data-original="{{ deposito.ID_CENTRO }}">
+                        <select class="form-select" id="id_centro" name="id_centro" data-original="{{ deposito.ID_CENTRO }}" required>
                             <option value="">Selecione uma carteira...</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}"
@@ -251,19 +252,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectCentro = document.getElementById('id_centro');
     const valorOriginal = selectCentro.getAttribute('data-original');
 
+    // Obter informações sobre carteiras institucionais
+    const carteiraOriginalOption = selectCentro.querySelector(`option[value="${valorOriginal}"]`);
+    const ehInstitucionalOriginal = carteiraOriginalOption &&
+        (carteiraOriginalOption.getAttribute('data-nome') === 'Institucional' || valorOriginal === '6');
+
     document.getElementById('formEdicao').addEventListener('submit', function(e) {
         e.preventDefault();
 
         const novoValor = selectCentro.value;
         const nomeCarteira = selectCentro.options[selectCentro.selectedIndex]?.getAttribute('data-nome');
+        const ehInstitucionalNovo = nomeCarteira === 'Institucional' || novoValor === '6';
 
-        // Verificar se mudou a carteira e não é Institucional
-        if (novoValor !== valorOriginal && nomeCarteira && nomeCarteira !== 'Institucional') {
+        // Verificar se mudou a carteira e AMBAS não são Institucional
+        if (novoValor !== valorOriginal && !ehInstitucionalNovo && !ehInstitucionalOriginal) {
             const confirmacao = confirm(
                 'ATENÇÃO: Você está alterando a carteira para "' + nomeCarteira + '".\n\n' +
                 'Isso criará automaticamente:\n' +
                 '1. Uma linha de ESTORNO com valor negativo\n' +
-                '2. O registro será atualizado com a nova carteira\n\n' +
+                '2. Uma nova linha com as alterações\n\n' +
+                'O registro original NÃO será alterado.\n\n' +
                 'Deseja continuar?'
             );
 
@@ -273,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Validar campos obrigatórios
-        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio'];
+        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
         let valido = true;
 
         camposObrigatorios.forEach(campo => {

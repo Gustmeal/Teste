@@ -13,7 +13,7 @@
 
     <!-- Cards de ações -->
     <div class="row g-4 mt-4">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card shadow h-100">
                 <div class="card-body text-center p-5">
                     <div class="mb-4">
@@ -30,7 +30,7 @@
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card shadow h-100">
                 <div class="card-body text-center p-5">
                     <div class="mb-4">
@@ -43,6 +43,23 @@
                     <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-warning">
                         <i class="fas fa-arrow-right me-2"></i> Acessar Edição
                     </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow h-100">
+                <div class="card-body text-center p-5">
+                    <div class="mb-4">
+                        <i class="fas fa-sync-alt fa-4x text-success"></i>
+                    </div>
+                    <h3 class="card-title">Atualizar Relatórios</h3>
+                    <p class="text-muted mb-4">
+                        Executar scripts para atualizar relatórios e comparativos SISCOR
+                    </p>
+                    <button id="btnExecutarScripts" class="btn btn-success" onclick="executarScripts()">
+                        <i class="fas fa-play me-2"></i> Executar Scripts
+                    </button>
                 </div>
             </div>
         </div>
@@ -70,6 +87,21 @@
     </div>
 </div>
 
+<!-- Modal de Loading -->
+<div class="modal fade" id="loadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-5">
+                <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+                <h5>Executando Scripts de Relatório</h5>
+                <p class="text-muted mb-0">Por favor, aguarde enquanto os scripts são processados...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 <style>
     .card {
         transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -85,4 +117,69 @@
         font-weight: 600;
     }
 </style>
+
+<script>
+function executarScripts() {
+    if (!confirm('Deseja executar os scripts de atualização de relatórios?\n\nEste processo pode demorar alguns minutos.')) {
+        return;
+    }
+
+    // Mostrar modal de loading
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+
+    // Desabilitar botão
+    const btnExecutar = document.getElementById('btnExecutarScripts');
+    btnExecutar.disabled = true;
+
+    // Fazer a requisição
+    fetch('{{ url_for("depositos_judiciais.executar_scripts_relatorio") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrf_token') // Se estiver usando CSRF
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        loadingModal.hide();
+
+        if (data.success) {
+            // Sucesso
+            alert('Scripts executados com sucesso!\n\n' +
+                  'Tabelas atualizadas:\n' +
+                  '- DPJ_TB007_DJ_RELATORIO\n' +
+                  '- DPJ_TB008_COMPARATIVO_SISCOR\n' +
+                  '- DPJ_TB009_ALERTAS_SUFIN\n\n' +
+                  'Tempo de execução: ' + data.tempo_execucao + ' segundos');
+        } else {
+            // Erro
+            alert('Erro ao executar scripts:\n\n' + data.erro);
+        }
+    })
+    .catch(error => {
+        loadingModal.hide();
+        alert('Erro ao comunicar com o servidor:\n\n' + error.message);
+    })
+    .finally(() => {
+        btnExecutar.disabled = false;
+    });
+}
+
+// Função para pegar cookie CSRF se necessário
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
 {% endblock %}
