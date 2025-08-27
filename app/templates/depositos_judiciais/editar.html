@@ -37,17 +37,10 @@
                     <div class="col-md-4">
                         <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
                         <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
-                               required value="{{ '{:.2f}'.format(deposito.VR_RATEIO).replace('.', ',') if deposito.VR_RATEIO else '' }}">
+                               required value="{{ '{:,.2f}'.format(deposito.VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') if deposito.VR_RATEIO else '' }}">
                     </div>
 
-                    <!-- Segunda Linha com NR_PROCESSO -->
-                    <div class="col-md-4">
-                        <label for="nr_processo" class="form-label">Número do Processo</label>
-                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
-                               maxlength="100" value="{{ nr_processo or '' }}"
-                               placeholder="Ex: 0000000-00.0000.0.00.0000">
-                    </div>
-
+                    <!-- Segunda Linha -->
                     <div class="col-md-4">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
@@ -58,20 +51,20 @@
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo"
                                value="{{ deposito.DT_MEMO.strftime('%Y-%m-%d') if deposito.DT_MEMO else '' }}">
-                        <small class="text-muted">Se preenchido, marca como identificado</small>
+                        <small class="text-muted">Se preenchida, marca como identificado</small>
                     </div>
 
-                    <!-- Terceira Linha -->
                     <div class="col-md-4">
                         <label for="dt_identificacao" class="form-label">Data Identificação</label>
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
                                value="{{ deposito.DT_IDENTIFICACAO.strftime('%Y-%m-%d') if deposito.DT_IDENTIFICACAO else '' }}">
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="id_area" class="form-label">Área <span class="text-danger">*</span></label>
-                        <select class="form-select" id="id_area" name="id_area" required>
-                            <option value="">Selecione uma área</option>
+                    <!-- Terceira Linha -->
+                    <div class="col-md-6">
+                        <label for="id_area" class="form-label">Área</label>
+                        <select class="form-select" id="id_area" name="id_area">
+                            <option value="">Selecione uma área...</option>
                             {% for area in areas %}
                             <option value="{{ area.ID_AREA }}"
                                     {% if deposito.ID_AREA == area.ID_AREA %}selected{% endif %}>
@@ -81,13 +74,19 @@
                         </select>
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="id_centro" class="form-label">Carteira <span class="text-danger">*</span></label>
-                        <select class="form-select" id="id_centro" name="id_centro" required>
-                            <option value="">Selecione uma carteira</option>
+                    <div class="col-md-6">
+                        <label for="id_centro" class="form-label">
+                            Centro de Resultado (Carteira)
+                            <span class="text-warning">
+                                <i class="fas fa-exclamation-circle" title="Alterar para diferente de 'Institucional' criará estorno"></i>
+                            </span>
+                        </label>
+                        <select class="form-select" id="id_centro" name="id_centro" data-original="{{ deposito.ID_CENTRO }}">
+                            <option value="">Selecione uma carteira...</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}"
-                                    {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}>
+                                    {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}
+                                    data-nome="{{ centro.NO_CARTEIRA }}">
                                 {{ centro.NO_CARTEIRA }}
                             </option>
                             {% endfor %}
@@ -103,21 +102,8 @@
 
                     <div class="col-md-4">
                         <label for="nu_contrato" class="form-label">Número Contrato</label>
-                        <input type="number" class="form-control" id="nu_contrato" name="nu_contrato"
-                               value="{{ deposito.NU_CONTRATO or '' }}">
-                    </div>
-
-                    <div class="col-md-4">
-                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
-                        <input type="number" class="form-control" id="evento_contabil_anterior"
-                               name="evento_contabil_anterior" value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
-                    </div>
-
-                    <!-- Quinta Linha -->
-                    <div class="col-md-4">
-                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
-                        <input type="number" class="form-control" id="evento_contabil_atual"
-                               name="evento_contabil_atual" value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
+                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
+                               maxlength="19" value="{{ deposito.NU_CONTRATO or '' }}">
                     </div>
 
                     <div class="col-md-4">
@@ -126,209 +112,179 @@
                                value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
                     </div>
 
+                    <!-- Quinta Linha -->
                     <div class="col-md-4">
-                        <!-- Espaço vazio para alinhamento -->
+                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
+                        <input type="number" class="form-control" id="evento_contabil_anterior"
+                               name="evento_contabil_anterior" value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
                     </div>
 
-                    <!-- Observação -->
-                    <div class="col-md-12">
-                        <label for="obs" class="form-label">Observação</label>
-                        <textarea class="form-control" id="obs" name="obs" rows="3"
-                                  maxlength="70">{{ deposito.OBS or '' }}</textarea>
+                    <div class="col-md-4">
+                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
+                        <input type="number" class="form-control" id="evento_contabil_atual"
+                               name="evento_contabil_atual" value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
                     </div>
-                </div>
 
-                <!-- Botões -->
-                <div class="mt-4">
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save me-2"></i> Salvar Alterações
-                    </button>
-                    <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
-                        <i class="fas fa-times me-2"></i> Cancelar
-                    </a>
+                    <div class="col-md-4">
+                        <label for="obs" class="form-label">Observações</label>
+                        <input type="text" class="form-control" id="obs" name="obs"
+                               maxlength="70" value="{{ deposito.OBS or '' }}">
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="col-12 mt-4">
+                        <hr>
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
+                                <i class="fas fa-times me-2"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i> Salvar Alterações
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+<style>
+    .form-label {
+        font-weight: 600;
+        color: var(--text-color);
+    }
+
+    .text-danger {
+        color: #dc3545 !important;
+    }
+
+    .text-warning {
+        color: #ffc107 !important;
+    }
+
+    .card {
+        margin-top: 1rem;
+    }
+
+    .money {
+        text-align: right;
+    }
+</style>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Máscara monetária corrigida para o campo valor rateio
+    const moneyInput = document.getElementById('vr_rateio');
+
     // Função para formatar valor monetário
-    function formatarMoeda(valor) {
-        // Remove tudo que não é número
+    function formatarValorMonetario(valor) {
+        // Remove tudo que não for número
         valor = valor.replace(/\D/g, '');
 
+        // Se não tiver valor, retorna 0,00
+        if (valor === '') return '0,00';
+
         // Converte para número e divide por 100
-        valor = (parseInt(valor) / 100).toFixed(2);
+        let numero = parseInt(valor) / 100;
 
-        // Separa parte inteira e decimal
-        let partes = valor.split('.');
-
-        // Adiciona pontos como separador de milhar
-        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
-        // Junta com vírgula como separador decimal
-        return partes.join(',');
+        // Formata com 2 casas decimais e troca ponto por vírgula
+        return numero.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
 
-    // Função para limpar formatação e deixar só números
-    function limparFormatacao(valor) {
-        // Remove pontos e troca vírgula por ponto
-        return valor.replace(/\./g, '').replace(',', '.');
+    // Formatar valor inicial se existir
+    if (moneyInput.value) {
+        // Converte o valor atual para o formato correto
+        let valorAtual = moneyInput.value.replace(/\./g, '').replace(',', '.');
+        let valorNumerico = parseFloat(valorAtual) * 100;
+        moneyInput.value = formatarValorMonetario(valorNumerico.toString());
     }
 
-    // Aplica máscara nos campos monetários
-    const moneyInputs = document.querySelectorAll('.money');
-    moneyInputs.forEach(input => {
-        // Formata valor inicial se existir
-        if (input.value) {
-            // Limpa formatação atual e reformata
-            let valorLimpo = input.value.replace(/\./g, '').replace(',', '');
-            if (valorLimpo) {
-                input.value = formatarMoeda(valorLimpo);
-            }
-        }
+    // Evento de input para aplicar a máscara
+    moneyInput.addEventListener('input', function(e) {
+        let valor = e.target.value;
 
-        // Adiciona evento de formatação
-        input.addEventListener('input', function(e) {
-            let position = e.target.selectionStart;
-            let valor = e.target.value;
+        // Salva a posição do cursor
+        let cursorPos = e.target.selectionStart;
+        let valorAnterior = e.target.value;
 
-            // Formata o valor
-            e.target.value = formatarMoeda(valor);
+        // Formata o valor
+        let valorFormatado = formatarValorMonetario(valor);
 
-            // Tenta manter a posição do cursor
-            e.target.setSelectionRange(position, position);
-        });
+        // Atualiza o campo
+        e.target.value = valorFormatado;
 
-        // Adiciona evento para quando o campo perde o foco
-        input.addEventListener('blur', function(e) {
-            // Se o campo estiver vazio, coloca 0,00
-            if (!e.target.value) {
-                e.target.value = '0,00';
-            }
-        });
+        // Ajusta a posição do cursor
+        let diff = valorFormatado.length - valorAnterior.length;
+        e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
     });
 
-    // Validação do formulário - SEM POPUP DE CONFIRMAÇÃO
-    document.getElementById('formEdicao').addEventListener('submit', function(e) {
-        const vrRateio = document.getElementById('vr_rateio').value;
+    // Evento de paste (colar) para formatar valores colados
+    moneyInput.addEventListener('paste', function(e) {
+        e.preventDefault();
 
-        // Verifica se tem valor
-        if (!vrRateio) {
-            e.preventDefault();
-            alert('Por favor, informe um valor de rateio.');
-            return false;
+        // Pega o texto colado
+        let textoColado = (e.clipboardData || window.clipboardData).getData('text');
+
+        // Remove caracteres não numéricos e formata
+        let valorFormatado = formatarValorMonetario(textoColado);
+
+        // Insere o valor formatado
+        e.target.value = valorFormatado;
+    });
+
+    // Evento de focus para selecionar todo o texto
+    moneyInput.addEventListener('focus', function(e) {
+        if (e.target.value === '0,00') {
+            e.target.select();
+        }
+    });
+
+    // Validação e aviso sobre mudança de carteira
+    const selectCentro = document.getElementById('id_centro');
+    const valorOriginal = selectCentro.getAttribute('data-original');
+
+    document.getElementById('formEdicao').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const novoValor = selectCentro.value;
+        const nomeCarteira = selectCentro.options[selectCentro.selectedIndex]?.getAttribute('data-nome');
+
+        // Verificar se mudou a carteira e não é Institucional
+        if (novoValor !== valorOriginal && nomeCarteira && nomeCarteira !== 'Institucional') {
+            const confirmacao = confirm(
+                'ATENÇÃO: Você está alterando a carteira para "' + nomeCarteira + '".\n\n' +
+                'Isso criará automaticamente:\n' +
+                '1. Uma linha de ESTORNO com valor negativo\n' +
+                '2. O registro será atualizado com a nova carteira\n\n' +
+                'Deseja continuar?'
+            );
+
+            if (!confirmacao) {
+                return false;
+            }
         }
 
-        // Converte para número para validar
-        const valorNumerico = parseFloat(limparFormatacao(vrRateio));
-        if (isNaN(valorNumerico) || valorNumerico <= 0) {
-            e.preventDefault();
-            alert('Por favor, informe um valor de rateio válido.');
-            return false;
+        // Validar campos obrigatórios
+        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio'];
+        let valido = true;
+
+        camposObrigatorios.forEach(campo => {
+            const input = document.getElementById(campo);
+            if (!input.value || (campo === 'vr_rateio' && input.value === '0,00')) {
+                input.classList.add('is-invalid');
+                valido = false;
+            } else {
+                input.classList.remove('is-invalid');
+            }
+        });
+
+        if (valido) {
+            this.submit();
+        } else {
+            alert('Por favor, preencha todos os campos obrigatórios.');
         }
     });
 });
 </script>
-
-<style>
-.btn-back {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    text-decoration: none;
-    color: #495057;
-    transition: color 0.3s;
-}
-
-.btn-back:hover {
-    color: #007bff;
-}
-
-.page-title-bar {
-    margin-bottom: 2rem;
-}
-
-.page-title-bar h1 {
-    color: #333;
-    font-weight: 300;
-    margin-bottom: 0.5rem;
-}
-
-.form-label {
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-}
-
-.text-danger {
-    color: #dc3545 !important;
-}
-
-.text-muted {
-    font-size: 0.875rem;
-}
-
-.card {
-    border: none;
-    border-radius: 0.5rem;
-}
-
-.card-body {
-    padding: 2rem;
-}
-
-.btn {
-    padding: 0.5rem 1.5rem;
-    font-weight: 500;
-    border-radius: 0.375rem;
-    transition: all 0.3s;
-}
-
-.btn-primary {
-    background-color: #007bff;
-    border-color: #007bff;
-}
-
-.btn-primary:hover {
-    background-color: #0056b3;
-    border-color: #004085;
-}
-
-.btn-secondary {
-    background-color: #6c757d;
-    border-color: #6c757d;
-}
-
-.btn-secondary:hover {
-    background-color: #5a6268;
-    border-color: #545b62;
-}
-
-.form-control:focus,
-.form-select:focus {
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
-}
-
-textarea.form-control {
-    resize: vertical;
-}
-
-.alert {
-    border: none;
-    border-radius: 0.5rem;
-}
-
-.alert-warning {
-    background-color: #fff3cd;
-    color: #856404;
-}
-
-.alert i {
-    font-size: 1.2rem;
-}
-</style>
 {% endblock %}
