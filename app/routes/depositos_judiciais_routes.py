@@ -804,3 +804,88 @@ def executar_scripts_relatorio():
             'success': False,
             'erro': str(e)
         }), 500
+
+
+@depositos_judiciais_bp.route('/verificar-contratos-invalidos', methods=['POST'])
+@login_required
+def verificar_contratos_invalidos():
+    """Verifica contratos que não existem na tabela de contratos CPF"""
+    try:
+        # Subquery para verificar contratos que existem em AUX_VW001_CONTRATOS_CPF
+        from sqlalchemy import exists
+
+        # Query usando ORM
+        query = db.session.query(
+            DepositosSufin.NU_LINHA,
+            DepositosSufin.NU_CONTRATO,
+            DepositosSufin.ID_CENTRO,
+            DepositosSufin.OBS,
+            CentroResultado.NO_CARTEIRA
+        ).outerjoin(
+            CentroResultado,
+            DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
+        ).filter(
+            DepositosSufin.NU_CONTRATO.isnot(None),
+            DepositosSufin.NU_CONTRATO > 0,
+            DepositosSufin.OBS.is_(None)
+        ).order_by(
+            DepositosSufin.NU_LINHA.desc()
+        )
+
+        # Executar query
+        resultados = query.all()
+
+        # Filtrar apenas os que não existem em AUX_VW001_CONTRATOS_CPF
+        contratos_invalidos = []
+        for resultado in resultados:
+            # Verificar se existe na tabela de contratos
+            sql_check = text("""
+                SELECT COUNT(*) 
+                FROM BDG.AUX_VW001_CONTRATOS_CPF 
+                WHERE NR_CONTRATO = :contrato
+            """)
+
+            count = db.session.execute(sql_check, {'contrato': resultado.NU_CONTRATO}).scalar()
+
+            if count == 0:  # Não existe na tabela de contratos
+                contratos_invalidos.append({
+                    'nu_linha': resultado.NU_LINHA,
+                    'nu_contrato': resultado.NU_CONTRATO,
+                    'id_centro': resultado.ID_CENTRO,
+                    'obs': resultado.OBS,
+                    'no_carteira': resultado.NO_CARTEIRA
+                })
+
+        # Registrar log
+        registrar_log(
+            'depositos_judiciais',
+            'verify_contracts',
+            f'Verificação de contratos executada - {len(contratos_invalidos)} contratos não encontrados',
+            {'total': len(contratos_invalidos)}
+        )
+
+        return jsonify({
+            'success': True,
+            'contratos': contratos_invalidos,
+            'total': len(contratos_invalidos)
+        })
+
+    except Exception as e:
+        # Registrar erro no log
+        registrar_log(
+            'depositos_judiciais',
+            'verify_contracts_error',
+            f'Erro ao verificar contratos: {str(e)}',
+            {}
+        )
+
+        return jsonify({
+            'success': False,
+            'erro': str(e)
+        }), 500
+
+@depositos_judiciais_bp.route('/contratos-invalidos')
+@login_required
+def contratos_invalidos():
+    """Página para visualizar contratos inválidos"""
+    return render_template('depositos_judiciais/contratos_invalidos.html')

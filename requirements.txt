@@ -21,3 +21,8 @@ xlsxwriter==3.1.2
 numpy==1.24.3
 cryptography
 APScheduler
+reportlab==4.0.7
+xlsxwriter==3.1.9
+python-docx==1.1.0
+pandas==2.1.4
+openpyxl==3.1.2

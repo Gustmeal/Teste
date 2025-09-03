@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('depositos_judiciais.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Verificação de Contratos</h1>
+        <p class="text-muted">Contratos não encontrados na base de dados AUX_VW001_CONTRATOS_CPF</p>
+    </div>
+
+    <!-- Card de Estatísticas -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-exclamation-circle fa-3x text-danger"></i>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Total de Contratos</h6>
+                            <h3 class="mb-0" id="totalContratos">-</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-filter fa-3x text-info"></i>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Filtro Aplicado</h6>
+                            <p class="mb-0 small">OBS = NULL</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-body">
+                    <h6 class="text-muted mb-2">Ações Disponíveis</h6>
+                    <button class="btn btn-primary btn-sm me-2" onclick="verificarContratos()">
+                        <i class="fas fa-sync me-1"></i> Atualizar
+                    </button>
+                    <button class="btn btn-success btn-sm me-2" onclick="baixarRelatorio()">
+                        <i class="fas fa-download me-1"></i> Baixar CSV
+                    </button>
+                    <button class="btn btn-info btn-sm" onclick="mostrarEstatisticas()">
+                        <i class="fas fa-chart-pie me-1"></i> Estatísticas
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabela de Resultados -->
+    <div class="card shadow">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-list me-2"></i> Contratos Não Encontrados
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                <table class="table table-bordered table-hover table-sm mb-0" id="tabelaContratos">
+                    <thead class="sticky-top bg-light">
+                        <tr>
+                            <th width="10%">Nº Linha</th>
+                            <th width="20%">Nº Contrato</th>
+                            <th width="10%">Centro ID</th>
+                            <th width="25%">Carteira</th>
+                            <th width="20%">Observações</th>
+                            <th width="15%">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyContratos">
+                        <tr>
+                            <td colspan="6" class="text-center p-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Carregando...</span>
+                                </div>
+                                <p class="mt-3 mb-0">Carregando contratos...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Estatísticas -->
+<div class="modal fade" id="modalEstatisticas" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Estatísticas dos Contratos Inválidos</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="conteudoEstatisticas"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .table-responsive {
+        position: relative;
+    }
+
+    thead th {
+        position: sticky;
+        top: 0;
+        background-color: #f8f9fa;
+        z-index: 10;
+    }
+
+    .btn-group-sm > .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .badge {
+        font-size: 0.875rem;
+    }
+</style>
+
+<script>
+let contratosData = [];
+
+// Carregar contratos ao carregar a página
+document.addEventListener('DOMContentLoaded', function() {
+    verificarContratos();
+});
+
+function verificarContratos() {
+    const tbody = document.getElementById('tbodyContratos');
+    tbody.innerHTML = `
+        <tr>
+            <td colspan="6" class="text-center p-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+                <p class="mt-3 mb-0">Verificando contratos...</p>
+            </td>
+        </tr>
+    `;
+
+    fetch('{{ url_for("depositos_judiciais.verificar_contratos_invalidos") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            contratosData = data.contratos;
+            document.getElementById('totalContratos').textContent = data.total;
+
+            if (data.contratos.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center p-5 text-success">
+                            <i class="fas fa-check-circle fa-3x mb-3"></i>
+                            <h5>Todos os contratos estão válidos!</h5>
+                            <p class="mb-0">Nenhum contrato sem correspondência foi encontrado.</p>
+                        </td>
+                    </tr>
+                `;
+            } else {
+                let html = '';
+                data.contratos.forEach(contrato => {
+                    // Construir a URL de edição corretamente
+                    const urlEditar = `/depositos-judiciais/editar/${contrato.nu_linha}`;
+
+                    html += `
+                        <tr>
+                            <td class="text-center">${contrato.nu_linha}</td>
+                            <td class="text-center">
+                                <span class="badge bg-danger">${contrato.nu_contrato}</span>
+                            </td>
+                            <td class="text-center">${contrato.id_centro || '-'}</td>
+                            <td>${contrato.no_carteira || '<span class="text-muted">Não informada</span>'}</td>
+                            <td class="text-center">
+                                ${contrato.obs ? `<span class="text-muted">${contrato.obs}</span>` : '<span class="badge bg-secondary">NULL</span>'}
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="${urlEditar}"
+                                       class="btn btn-primary" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button class="btn btn-info" onclick="verDetalhes(${contrato.nu_linha})" title="Ver detalhes">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+                tbody.innerHTML = html;
+            }
+        } else {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center p-5 text-danger">
+                        <i class="fas fa-times-circle fa-3x mb-3"></i>
+                        <h5>Erro ao verificar contratos</h5>
+                        <p class="mb-0">${data.erro}</p>
+                        <button class="btn btn-primary mt-3" onclick="verificarContratos()">
+                            <i class="fas fa-redo me-2"></i> Tentar Novamente
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+    })
+    .catch(error => {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center p-5 text-danger">
+                    <i class="fas fa-times-circle fa-3x mb-3"></i>
+                    <h5>Erro de comunicação</h5>
+                    <p class="mb-0">${error.message}</p>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function baixarRelatorio() {
+    if (contratosData.length === 0) {
+        alert('Não há contratos para exportar.');
+        return;
+    }
+
+    // Criar CSV
+    let csv = 'Nº Linha,Nº Contrato,Centro ID,Carteira,Observações\n';
+    contratosData.forEach(contrato => {
+        csv += `${contrato.nu_linha},${contrato.nu_contrato},${contrato.id_centro || ''},${contrato.no_carteira || ''},${contrato.obs || 'NULL'}\n`;
+    });
+
+    // Criar blob e download
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'contratos_invalidos_' + new Date().toISOString().split('T')[0] + '.csv');
+    link.style.visibility = 'hidden';
+
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function mostrarEstatisticas() {
+    if (contratosData.length === 0) {
+        alert('Não há dados para mostrar estatísticas.');
+        return;
+    }
+
+    // Agrupar por carteira
+    const porCarteira = {};
+    contratosData.forEach(contrato => {
+        const carteira = contrato.no_carteira || 'Não informada';
+        porCarteira[carteira] = (porCarteira[carteira] || 0) + 1;
+    });
+
+    // Criar HTML das estatísticas
+    let html = `
+        <h6 class="mb-3">Distribuição por Carteira</h6>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Carteira</th>
+                        <th>Quantidade</th>
+                        <th>Percentual</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+
+    const total = contratosData.length;
+    Object.entries(porCarteira)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([carteira, qtd]) => {
+            const percentual = ((qtd / total) * 100).toFixed(1);
+            html += `
+                <tr>
+                    <td>${carteira}</td>
+                    <td>${qtd}</td>
+                    <td>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar" role="progressbar"
+                                 style="width: ${percentual}%">
+                                ${percentual}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        });
+
+    html += `
+                </tbody>
+            </table>
+        </div>
+        <hr>
+        <div class="text-center">
+            <p class="mb-1"><strong>Total de contratos inválidos:</strong> ${total}</p>
+            <p class="mb-0 text-muted">Todos com OBS = NULL</p>
+        </div>
+    `;
+
+    document.getElementById('conteudoEstatisticas').innerHTML = html;
+    const modal = new bootstrap.Modal(document.getElementById('modalEstatisticas'));
+    modal.show();
+}
+
+function verDetalhes(nuLinha) {
+    const contrato = contratosData.find(c => c.nu_linha === nuLinha);
+    if (!contrato) return;
+
+    alert(`Detalhes do Contrato:
+
+Nº Linha: ${contrato.nu_linha}
+Nº Contrato: ${contrato.nu_contrato}
+Centro ID: ${contrato.id_centro || 'Não informado'}
+Carteira: ${contrato.no_carteira || 'Não informada'}
+Observações: ${contrato.obs || 'NULL'}
+
+Este contrato não foi encontrado na tabela AUX_VW001_CONTRATOS_CPF`);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">
+        <i class="fas fa-file-alt me-2"></i> Gerador de Relatórios
+    </h1>
+
+    <!-- Botão novo relatório -->
+    <div class="mb-4">
+        <a href="{{ url_for('relatorio.novo') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i> Criar Novo Relatório
+        </a>
+    </div>
+
+    <!-- Meus Templates -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-folder me-2"></i> Meus Templates
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if meus_templates %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Descrição</th>
+                            <th>Criado em</th>
+                            <th>Público</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for template in meus_templates %}
+                        <tr>
+                            <td>
+                                <i class="fas fa-file-alt text-primary me-2"></i>
+                                {{ template.NOME }}
+                            </td>
+                            <td>{{ template.DESCRICAO or '-' }}</td>
+                            <td>{{ template.CREATED_AT.strftime('%d/%m/%Y') }}</td>
+                            <td>
+                                {% if template.PUBLICO %}
+                                <span class="badge bg-success">Sim</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Não</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-info" onclick="abrirModalGerar({{ template.ID }}, '{{ template.NOME }}')">
+                                    <i class="fas fa-play"></i> Gerar
+                                </button>
+                                <a href="{{ url_for('relatorio.editar', id=template.ID) }}" class="btn btn-sm btn-warning">
+                                    <i class="fas fa-edit"></i> Editar
+                                </a>
+                                <button class="btn btn-sm btn-danger" onclick="confirmarExclusao({{ template.ID }})">
+                                    <i class="fas fa-trash"></i> Excluir
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">
+                <i class="fas fa-info-circle me-2"></i>
+                Você ainda não criou nenhum template de relatório.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Templates Públicos -->
+    {% if templates_publicos %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-globe me-2"></i> Templates Públicos
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Descrição</th>
+                            <th>Criado por</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for template in templates_publicos %}
+                        <tr>
+                            <td>
+                                <i class="fas fa-file-alt text-success me-2"></i>
+                                {{ template.NOME }}
+                            </td>
+                            <td>{{ template.DESCRICAO or '-' }}</td>
+                            <td>{{ template.usuario.NOME if template.usuario else '-' }}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-info" onclick="abrirModalGerar({{ template.ID }}, '{{ template.NOME }}')">
+                                    <i class="fas fa-play"></i> Gerar
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Histórico Recente -->
+    {% if historico %}
+    <div class="card shadow">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-history me-2"></i> Relatórios Gerados Recentemente
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Template</th>
+                            <th>Formato</th>
+                            <th>Arquivo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for gerado, template in historico %}
+                        <tr>
+                            <td>{{ gerado.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                            <td>{{ template.NOME }}</td>
+                            <td>
+                                {% if gerado.FORMATO == 'pdf' %}
+                                <i class="fas fa-file-pdf text-danger"></i> PDF
+                                {% elif gerado.FORMATO == 'excel' %}
+                                <i class="fas fa-file-excel text-success"></i> Excel
+                                {% else %}
+                                <i class="fas fa-file-word text-primary"></i> Word
+                                {% endif %}
+                            </td>
+                            <td>{{ gerado.NOME_ARQUIVO }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal Gerar Relatório -->
+<div class="modal fade" id="modalGerar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="formGerar" method="POST">
+                <div class="modal-header">
+                    <h5 class="modal-title">Gerar Relatório</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Template</label>
+                        <input type="text" class="form-control" id="templateNome" readonly>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Formato de Saída</label>
+                        <select name="formato" class="form-select" required>
+                            <option value="pdf">PDF</option>
+                            <option value="excel">Excel</option>
+                            <option value="word">Word</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Filtros Adicionais (JSON)</label>
+                        <textarea name="filtros" class="form-control" rows="3">{}</textarea>
+                        <small class="text-muted">
+                            Exemplo: {"periodo_id": 1, "empresa_id": 123}
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-download me-2"></i> Gerar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirModalGerar(templateId, templateNome) {
+    document.getElementById('templateNome').value = templateNome;
+    document.getElementById('formGerar').action = `/relatorios/gerar/${templateId}`;
+    new bootstrap.Modal(document.getElementById('modalGerar')).show();
+}
+
+function confirmarExclusao(id) {
+    if (confirm('Tem certeza que deseja excluir este template?')) {
+        // Criar form temporário para POST
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/relatorios/excluir/${id}`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

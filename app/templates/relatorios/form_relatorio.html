@@ -1,0 +1,568 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <a href="{{ url_for('relatorio.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="mb-4">
+        <i class="fas fa-file-alt me-2"></i>
+        {% if template %}Editar Relatório{% else %}Novo Relatório{% endif %}
+    </h1>
+
+    <div class="row">
+        <!-- Painel de Configuração -->
+        <div class="col-md-4">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Configuração</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Informações básicas -->
+                    <div class="mb-3">
+                        <label class="form-label">Nome do Relatório</label>
+                        <input type="text" id="nomeRelatorio" class="form-control"
+                               value="{{ template.NOME if template else '' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Descrição</label>
+                        <textarea id="descricaoRelatorio" class="form-control" rows="2">{{ template.DESCRICAO if template else '' }}</textarea>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input type="checkbox" id="publicoRelatorio" class="form-check-input"
+                               {% if template and template.PUBLICO %}checked{% endif %}>
+                        <label class="form-check-label">
+                            Tornar público para outros usuários
+                        </label>
+                    </div>
+
+                    <hr>
+
+                    <!-- Adicionar componentes -->
+                    <h6>Adicionar Componente</h6>
+
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="adicionarComponente('tabela')">
+                            <i class="fas fa-table me-2"></i> Tabela
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" onclick="adicionarComponente('grafico')">
+                            <i class="fas fa-chart-bar me-2"></i> Gráfico
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="adicionarComponente('resumo')">
+                            <i class="fas fa-th-large me-2"></i> Cards de Resumo
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="adicionarComponente('texto')">
+                            <i class="fas fa-paragraph me-2"></i> Texto
+                        </button>
+                    </div>
+
+                    <hr>
+
+                    <!-- Ações -->
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="salvarTemplate()">
+                            <i class="fas fa-save me-2"></i> Salvar Template
+                        </button>
+                        <button class="btn btn-info" onclick="visualizarPreview()">
+                            <i class="fas fa-eye me-2"></i> Preview
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fontes de dados disponíveis -->
+            <div class="card shadow mt-3">
+                <div class="card-header bg-secondary text-white">
+                    <h6 class="mb-0">Fontes de Dados</h6>
+                </div>
+                <div class="card-body">
+                    <div id="fontesDisponiveis">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Área de Design -->
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">Estrutura do Relatório</h5>
+                </div>
+                <div class="card-body">
+                    <div id="areaDesign" class="area-design">
+                        <!-- Componentes serão adicionados aqui -->
+                        <div class="text-center text-muted p-5" id="mensagemVazia">
+                            <i class="fas fa-plus-circle fa-3x mb-3"></i>
+                            <p>Adicione componentes usando os botões à esquerda</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preview -->
+            <div class="card shadow mt-3" id="cardPreview" style="display: none;">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Preview do Relatório</h5>
+                </div>
+                <div class="card-body">
+                    <div id="areaPreview"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Configurar Tabela -->
+<div class="modal fade" id="modalTabela" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Configurar Tabela</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Título da Tabela</label>
+                    <input type="text" id="tituloTabela" class="form-control">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Fonte de Dados</label>
+                    <select id="fonteTabela" class="form-select" onchange="carregarCampos()">
+                        <option value="">Selecione...</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Campos</label>
+                    <div id="camposTabela" class="campos-selecao">
+                        <!-- Checkboxes dos campos serão adicionados aqui -->
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Limite de Registros</label>
+                    <input type="number" id="limiteTabela" class="form-control" value="1000" min="1" max="10000">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="salvarConfigTabela()">Adicionar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.area-design {
+    min-height: 400px;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.componente-relatorio {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+    position: relative;
+}
+
+.componente-relatorio:hover {
+    background: #e9ecef;
+}
+
+.btn-remover {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.campos-selecao {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.preview-tabela {
+    max-height: 300px;
+    overflow: auto;
+}
+</style>
+
+<script>
+// Configuração inicial
+let componentes = [];
+let fontesDisponiveis = {};
+let componenteAtual = null;
+
+// Carregar configuração existente se estiver editando
+{% if template and config %}
+componentes = {{ config|safe }}.secoes || [];
+renderizarComponentes();
+{% endif %}
+
+// Carregar fontes de dados
+window.onload = function() {
+    carregarFontes();
+};
+
+function carregarFontes() {
+    fetch('/relatorios/api/fontes-dados')
+        .then(r => r.json())
+        .then(data => {
+            fontesDisponiveis = data;
+            renderizarFontesDisponiveis();
+        });
+}
+
+function renderizarFontesDisponiveis() {
+    let html = '<ul class="list-unstyled mb-0">';
+    for (let key in fontesDisponiveis) {
+        let fonte = fontesDisponiveis[key];
+        html += `<li class="mb-1">
+            <i class="fas fa-database text-primary me-2"></i>
+            <small>${fonte.nome}</small>
+        </li>`;
+    }
+    html += '</ul>';
+    document.getElementById('fontesDisponiveis').innerHTML = html;
+}
+
+function adicionarComponente(tipo) {
+    if (tipo === 'tabela') {
+        // Resetar modal
+        document.getElementById('tituloTabela').value = '';
+        document.getElementById('fonteTabela').value = '';
+        document.getElementById('camposTabela').innerHTML = '';
+        document.getElementById('limiteTabela').value = '1000';
+
+        // Preencher select de fontes
+        let select = document.getElementById('fonteTabela');
+        select.innerHTML = '<option value="">Selecione...</option>';
+        for (let key in fontesDisponiveis) {
+            select.innerHTML += `<option value="${key}">${fontesDisponiveis[key].nome}</option>`;
+        }
+
+        new bootstrap.Modal(document.getElementById('modalTabela')).show();
+    } else if (tipo === 'texto') {
+        // Adicionar componente de texto simples
+        const texto = prompt('Digite o texto:');
+        if (texto) {
+            componentes.push({
+                tipo: 'texto',
+                conteudo: texto
+            });
+            renderizarComponentes();
+        }
+    } else if (tipo === 'resumo') {
+        // Por simplicidade, vamos criar um resumo básico
+        componentes.push({
+            tipo: 'resumo',
+            titulo: 'Resumo Executivo',
+            metricas: [
+                {
+                    titulo: 'Total de Contratos',
+                    query: 'SELECT COUNT(*) FROM BDG.DCA_TB005_DISTRIBUICAO WHERE DELETED_AT IS NULL',
+                    tipo_valor: 'numero',
+                    icone: 'fa-file-contract',
+                    cor: 'primary'
+                },
+                {
+                    titulo: 'Empresas Ativas',
+                    query: "SELECT COUNT(*) FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES WHERE DS_CONDICAO = 'PERMANECE' AND DELETED_AT IS NULL",
+                    tipo_valor: 'numero',
+                    icone: 'fa-building',
+                    cor: 'success'
+                }
+            ]
+        });
+        renderizarComponentes();
+    } else if (tipo === 'grafico') {
+        alert('Configuração de gráficos será implementada em breve!');
+    }
+}
+
+function carregarCampos() {
+    const fonte = document.getElementById('fonteTabela').value;
+    if (!fonte) return;
+
+    const campos = fontesDisponiveis[fonte].campos;
+    let html = '';
+
+    campos.forEach(campo => {
+        html += `
+        <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="campo_${campo.id}" value="${campo.id}" data-nome="${campo.nome}" data-tipo="${campo.tipo}">
+            <label class="form-check-label" for="campo_${campo.id}">
+                ${campo.nome} <small class="text-muted">(${campo.tipo})</small>
+            </label>
+        </div>`;
+    });
+
+    document.getElementById('camposTabela').innerHTML = html;
+}
+
+function salvarConfigTabela() {
+    const titulo = document.getElementById('tituloTabela').value;
+    const fonte = document.getElementById('fonteTabela').value;
+    const limite = parseInt(document.getElementById('limiteTabela').value);
+
+    // Coletar campos selecionados
+    const campos = [];
+    document.querySelectorAll('#camposTabela input:checked').forEach(cb => {
+        campos.push({
+            id: cb.value,
+            nome: cb.dataset.nome,
+            tipo: cb.dataset.tipo
+        });
+    });
+
+    if (!fonte || campos.length === 0) {
+        alert('Selecione a fonte de dados e pelo menos um campo!');
+        return;
+    }
+
+    // Adicionar componente
+    componentes.push({
+        tipo: 'tabela',
+        titulo: titulo,
+        fonte: fonte,
+        campos: campos,
+        limite: limite,
+        filtros: [],
+        ordenacao: {}
+    });
+
+    // Fechar modal e atualizar
+    bootstrap.Modal.getInstance(document.getElementById('modalTabela')).hide();
+    renderizarComponentes();
+}
+
+function renderizarComponentes() {
+    const area = document.getElementById('areaDesign');
+
+    if (componentes.length === 0) {
+        area.innerHTML = `
+        <div class="text-center text-muted p-5" id="mensagemVazia">
+            <i class="fas fa-plus-circle fa-3x mb-3"></i>
+            <p>Adicione componentes usando os botões à esquerda</p>
+        </div>`;
+        return;
+    }
+
+    let html = '';
+    componentes.forEach((comp, index) => {
+        html += `
+        <div class="componente-relatorio">
+            <button class="btn btn-sm btn-danger btn-remover" onclick="removerComponente(${index})">
+                <i class="fas fa-times"></i>
+            </button>`;
+
+        if (comp.tipo === 'tabela') {
+            html += `
+            <h6><i class="fas fa-table me-2"></i>${comp.titulo || 'Tabela'}</h6>
+            <p class="mb-1"><small>Fonte: ${fontesDisponiveis[comp.fonte].nome}</small></p>
+            <p class="mb-0"><small>${comp.campos.length} campos selecionados</small></p>`;
+        } else if (comp.tipo === 'texto') {
+            html += `
+            <h6><i class="fas fa-paragraph me-2"></i>Texto</h6>
+            <p class="mb-0">${comp.conteudo}</p>`;
+        } else if (comp.tipo === 'resumo') {
+            html += `
+            <h6><i class="fas fa-th-large me-2"></i>${comp.titulo}</h6>
+            <p class="mb-0"><small>${comp.metricas.length} métricas</small></p>`;
+        }
+
+        html += '</div>';
+    });
+
+    area.innerHTML = html;
+}
+
+function removerComponente(index) {
+    if (confirm('Remover este componente?')) {
+        componentes.splice(index, 1);
+        renderizarComponentes();
+    }
+}
+
+function salvarTemplate() {
+    const nome = document.getElementById('nomeRelatorio').value;
+    const descricao = document.getElementById('descricaoRelatorio').value;
+    const publico = document.getElementById('publicoRelatorio').checked;
+
+    if (!nome) {
+        alert('Digite um nome para o relatório!');
+        return;
+    }
+
+    if (componentes.length === 0) {
+        alert('Adicione pelo menos um componente ao relatório!');
+        return;
+    }
+
+    const dados = {
+        id: {% if template %}{{ template.ID }}{% else %}null{% endif %},
+        nome: nome,
+        descricao: descricao,
+        publico: publico,
+        configuracao: {
+            titulo: nome,
+            secoes: componentes
+        }
+    };
+
+    // Mostrar loading
+    showToast('Salvando template...', 'info');
+
+    fetch('/relatorios/api/salvar-template', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(dados)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.sucesso) {
+            showToast(data.mensagem, 'success');
+            setTimeout(() => {
+                window.location.href = '/relatorios';
+            }, 1500);
+        } else {
+            showToast(data.erro || 'Erro ao salvar', 'error');
+        }
+    })
+    .catch(err => {
+        showToast('Erro ao salvar template', 'error');
+        console.error(err);
+    });
+}
+
+function visualizarPreview() {
+    if (componentes.length === 0) {
+        alert('Adicione componentes ao relatório primeiro!');
+        return;
+    }
+
+    const config = {
+        titulo: document.getElementById('nomeRelatorio').value || 'Preview',
+        secoes: componentes
+    };
+
+    // Mostrar loading
+    document.getElementById('areaPreview').innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+        </div>`;
+    document.getElementById('cardPreview').style.display = 'block';
+
+    // Buscar preview
+    fetch('/relatorios/api/preview', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.sucesso) {
+            renderizarPreview(data.dados);
+        } else {
+            document.getElementById('areaPreview').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    Erro ao gerar preview: ${data.erro}
+                </div>`;
+        }
+    });
+}
+
+function renderizarPreview(dados) {
+    let html = `<h4>${dados.titulo}</h4><hr>`;
+
+    dados.secoes.forEach(secao => {
+        if (secao.tipo === 'tabela') {
+            html += `
+            <div class="mb-4">
+                <h5>${secao.titulo || 'Tabela'}</h5>
+                <p class="text-muted">Total de registros: ${secao.total}</p>
+                <div class="preview-tabela table-responsive">
+                    <table class="table table-sm table-striped">
+                        <thead>
+                            <tr>`;
+
+            secao.colunas.forEach(col => {
+                html += `<th>${col}</th>`;
+            });
+
+            html += `</tr></thead><tbody>`;
+
+            // Mostrar apenas primeiros 10 registros no preview
+            secao.registros.slice(0, 10).forEach(reg => {
+                html += '<tr>';
+                secao.colunas.forEach(col => {
+                    // Encontrar valor correspondente
+                    let valor = '';
+                    for (let key in reg) {
+                        if (col.toLowerCase().includes(key.toLowerCase())) {
+                            valor = reg[key];
+                            break;
+                        }
+                    }
+                    html += `<td>${valor}</td>`;
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+
+            if (secao.registros.length > 10) {
+                html += `<p class="text-muted small">... e mais ${secao.registros.length - 10} registros</p>`;
+            }
+
+            html += '</div>';
+        } else if (secao.tipo === 'texto') {
+            html += `<p>${secao.conteudo}</p>`;
+        } else if (secao.tipo === 'resumo') {
+            html += '<div class="row mb-4">';
+            secao.metricas.forEach(metrica => {
+                html += `
+                <div class="col-md-4 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas ${metrica.icone} fa-2x text-${metrica.cor} mb-2"></i>
+                            <h6>${metrica.titulo}</h6>
+                            <h3>${metrica.valor}</h3>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            html += '</div>';
+        }
+    });
+
+    document.getElementById('areaPreview').innerHTML = html;
+}
+
+// Função auxiliar para mostrar notificações
+function showToast(message, type = 'info') {
+    // Implementar sistema de toast/notificação
+    console.log(`[${type}] ${message}`);
+}
+</script>
+{% endblock %}

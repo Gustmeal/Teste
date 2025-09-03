@@ -121,6 +121,9 @@ def create_app():
     from app.routes.depositos_judiciais_routes import depositos_judiciais_bp
     app.register_blueprint(depositos_judiciais_bp)
 
+    from app.routes.relatorio_routes import relatorio_bp
+    app.register_blueprint(relatorio_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
