@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.evidencias_lista') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-plus-circle text-success me-2"></i> Nova Evidência
+        </h1>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('sumov.evidencias_nova') }}">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="nr_contrato" class="form-label">
+                            Número do Contrato
+                        </label>
+                        <input type="text" class="form-control" id="nr_contrato"
+                               name="nr_contrato" maxlength="23"
+                               placeholder="Digite o número do contrato (opcional)"
+                               onkeypress="return event.charCode >= 48 && event.charCode <= 57">
+                        <small class="text-muted">Campo opcional - apenas números (até 23 dígitos)</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="mesano" class="form-label">
+                            Mês/Ano <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="mesano"
+                               name="mesano" required maxlength="7"
+                               placeholder="MM/YYYY" pattern="\d{2}/\d{4}">
+                        <small class="text-muted">Formato: MM/YYYY</small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="valor" class="form-label">
+                            Valor <span class="text-danger">*</span>
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text">R$</span>
+                            <input type="text" class="form-control" id="valor"
+                                   name="valor" required
+                                   placeholder="0,00"
+                                   onkeyup="formatarMoeda(this)">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <label for="descricao" class="form-label">
+                            Descrição <span class="text-danger">*</span>
+                        </label>
+                        <textarea class="form-control" id="descricao"
+                                  name="descricao" rows="4" required
+                                  maxlength="150"
+                                  placeholder="Digite a descrição da evidência"></textarea>
+                        <small class="text-muted">
+                            <span id="contador">0</span>/150 caracteres
+                        </small>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> Salvar Evidência
+                        </button>
+                        <a href="{{ url_for('sumov.evidencias_lista') }}" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancelar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Formatar campo de valor monetário
+function formatarMoeda(campo) {
+    let valor = campo.value;
+
+    // Remove tudo que não é número
+    valor = valor.replace(/\D/g, '');
+
+    // Se estiver vazio, não faz nada
+    if (!valor) {
+        campo.value = '';
+        return;
+    }
+
+    // Converte para número e divide por 100 para considerar centavos
+    valor = parseInt(valor);
+    valor = (valor / 100).toFixed(2);
+
+    // Substitui ponto por vírgula
+    valor = valor.replace('.', ',');
+
+    // Adiciona pontos como separadores de milhar
+    let partes = valor.split(',');
+    partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+    campo.value = partes.join(',');
+}
+
+// Contador de caracteres
+document.getElementById('descricao').addEventListener('input', function() {
+    document.getElementById('contador').textContent = this.value.length;
+});
+
+// Máscara para mês/ano
+document.getElementById('mesano').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length >= 2) {
+        value = value.substring(0, 2) + '/' + value.substring(2, 6);
+    }
+    e.target.value = value;
+});
+
+// Limitar campo de contrato a apenas números
+document.getElementById('nr_contrato').addEventListener('input', function(e) {
+    this.value = this.value.replace(/\D/g, '');
+});
+</script>
+{% endblock %}

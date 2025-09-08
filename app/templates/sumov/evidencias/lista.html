@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.evidencias_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-list text-primary me-2"></i> Lista de Justificativas
+        </h1>
+        <a href="{{ url_for('sumov.evidencias_nova') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Nova Justificativa
+        </a>
+    </div>
+
+    <!-- Barra de pesquisa -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <input type="text" id="searchInput" class="form-control"
+                           placeholder="Pesquisar por contrato, descrição...">
+                </div>
+                <div class="col-md-3">
+                    <input type="text" id="mesAnoFilter" class="form-control"
+                           placeholder="Filtrar por mês/ano (MM/YYYY)">
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="filtrarTabela()">
+                        <i class="fas fa-search"></i> Filtrar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabela de evidências -->
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tabelaEvidencias">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Nº Contrato</th>
+                            <th>Mês/Ano</th>
+                            <th>Valor</th>
+                            <th>Descrição</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for evidencia in evidencias %}
+                        <tr>
+                            <td>{{ evidencia.ID }}</td>
+                            <td>{{ evidencia.get_nr_contrato_formatado() or '-' }}</td>
+                            <td>{{ evidencia.formatar_mesano() }}</td>
+                            <td>{{ evidencia.VALOR|br_currency }}</td>
+                            <td title="{{ evidencia.DESCRICAO }}">
+                                {{ evidencia.DESCRICAO[:100] }}{% if evidencia.DESCRICAO|length > 100 %}...{% endif %}
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('sumov.evidencias_editar', id=evidencia.ID) }}"
+                                   class="btn btn-sm btn-outline-primary me-1" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <a href="javascript:void(0);"
+                                   onclick="confirmarExclusao({{ evidencia.ID }}, '{{ evidencia.MESANO }}');"
+                                   class="btn btn-sm btn-outline-danger" title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">
+                                <i class="fas fa-inbox fa-2x mb-3"></i>
+                                <p>Nenhuma evidência cadastrada</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação -->
+<div class="modal fade" id="modalExclusao" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir esta evidência?</p>
+                <p class="text-danger"><i class="fas fa-exclamation-triangle"></i> Esta ação não pode ser desfeita!</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Excluir
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmarExclusao(id, mesano) {
+    const modal = new bootstrap.Modal(document.getElementById('modalExclusao'));
+    document.getElementById('btnConfirmarExclusao').href = "{{ url_for('sumov.evidencias_excluir', id=0) }}".replace('0', id);
+    modal.show();
+}
+
+function filtrarTabela() {
+    const searchInput = document.getElementById('searchInput').value.toLowerCase();
+    const mesAnoFilter = document.getElementById('mesAnoFilter').value.toLowerCase();
+    const tabela = document.getElementById('tabelaEvidencias');
+    const linhas = tabela.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+    for (let i = 0; i < linhas.length; i++) {
+        const linha = linhas[i];
+        const textoLinha = linha.textContent.toLowerCase();
+        const mesAnoColuna = linha.cells[2].textContent.toLowerCase();
+
+        let mostrar = true;
+
+        if (searchInput && !textoLinha.includes(searchInput)) {
+            mostrar = false;
+        }
+
+        if (mesAnoFilter && !mesAnoColuna.includes(mesAnoFilter)) {
+            mostrar = false;
+        }
+
+        linha.style.display = mostrar ? '' : 'none';
+    }
+}
+
+// Permitir filtrar ao pressionar Enter
+document.getElementById('searchInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') filtrarTabela();
+});
+
+document.getElementById('mesAnoFilter').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') filtrarTabela();
+});
+</script>
+{% endblock %}

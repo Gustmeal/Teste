@@ -7,6 +7,8 @@ from datetime import datetime
 from sqlalchemy import text
 from app.models.despesas_analitico import DespesasAnalitico, OcorrenciasMovItemServico
 from decimal import Decimal
+from app.models.evidencias_sumov import EvidenciasSumov
+from datetime import datetime, date
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
@@ -303,3 +305,267 @@ def nova_despesa():
 
     return render_template('sumov/despesas_pagamentos/nova.html',
                            itens_servico=itens_servico)
+
+
+@sumov_bp.route('/evidencias')
+@login_required
+def evidencias_index():
+    """Dashboard do sistema de Evidências SUMOV"""
+    # Estatísticas diretas do banco
+    total_evidencias = EvidenciasSumov.query.count()
+
+    # Evidências do mês atual - usando DATE
+    from datetime import datetime
+    hoje = datetime.now()
+    primeiro_dia_mes = date(hoje.year, hoje.month, 1)
+
+    evidencias_mes = EvidenciasSumov.query.filter(
+        db.func.year(EvidenciasSumov.MESANO) == hoje.year,
+        db.func.month(EvidenciasSumov.MESANO) == hoje.month
+    ).count()
+
+    # Valor total das evidências
+    valor_total = db.session.query(
+        db.func.sum(EvidenciasSumov.VALOR)
+    ).scalar() or 0
+
+    # Últimas 5 evidências cadastradas (por ID decrescente)
+    ultimas_evidencias = EvidenciasSumov.query.order_by(
+        EvidenciasSumov.ID.desc()
+    ).limit(5).all()
+
+    return render_template('sumov/evidencias/index.html',
+                           total_evidencias=total_evidencias,
+                           evidencias_mes=evidencias_mes,
+                           valor_total=valor_total,
+                           ultimas_evidencias=ultimas_evidencias)
+
+
+@sumov_bp.route('/evidencias/lista')
+@login_required
+def evidencias_lista():
+    """Lista todas as evidências cadastradas no banco"""
+    # Buscar todas as evidências diretamente do banco
+    evidencias = EvidenciasSumov.listar_todas()
+
+    return render_template('sumov/evidencias/lista.html',
+                           evidencias=evidencias)
+
+
+@sumov_bp.route('/evidencias/nova', methods=['GET', 'POST'])
+@login_required
+def evidencias_nova():
+    """Criar nova evidência no banco"""
+    if request.method == 'POST':
+        try:
+            # Captura dados do formulário
+            nr_contrato = request.form.get('nr_contrato', '').strip()
+            mesano = request.form.get('mesano', '').strip()
+            valor_str = request.form.get('valor', '0').strip()
+            descricao = request.form.get('descricao', '').strip()
+
+            # Validações dos campos obrigatórios
+            if not mesano:
+                flash('Por favor, informe o mês/ano de referência.', 'danger')
+                return redirect(url_for('sumov.evidencias_nova'))
+
+            if not descricao:
+                flash('Por favor, informe a descrição.', 'danger')
+                return redirect(url_for('sumov.evidencias_nova'))
+
+            # Converter valor - remover formatação brasileira
+            try:
+                # Remove pontos de milhar e troca vírgula por ponto
+                valor_str = valor_str.replace('.', '').replace(',', '.')
+                valor = Decimal(valor_str) if valor_str else Decimal('0')
+
+                if valor <= 0:
+                    flash('Por favor, informe um valor válido maior que zero.', 'danger')
+                    return redirect(url_for('sumov.evidencias_nova'))
+            except:
+                flash('Valor inválido. Use o formato: 1.234,56', 'danger')
+                return redirect(url_for('sumov.evidencias_nova'))
+
+            # Converter MESANO de MM/YYYY para date
+            data_mesano = None
+            if '/' in mesano:
+                partes = mesano.split('/')
+                if len(partes) == 2:
+                    try:
+                        mes = int(partes[0])
+                        ano = int(partes[1])
+                        # Criar data com primeiro dia do mês
+                        data_mesano = date(ano, mes, 1)
+                    except:
+                        flash('Mês/Ano inválido. Use o formato MM/YYYY', 'danger')
+                        return redirect(url_for('sumov.evidencias_nova'))
+
+            # Converter NR_CONTRATO para Decimal ou None
+            nr_contrato_decimal = None
+            if nr_contrato and nr_contrato.replace(' ', '').isdigit():
+                nr_contrato_decimal = Decimal(nr_contrato.replace(' ', ''))
+
+            # Criar nova evidência diretamente no banco
+            nova_evidencia = EvidenciasSumov(
+                NR_CONTRATO=nr_contrato_decimal,
+                MESANO=data_mesano,
+                VALOR=valor,
+                DESCRICAO=descricao[:150]  # Limitar a 150 caracteres
+            )
+
+            db.session.add(nova_evidencia)
+            db.session.commit()
+
+            # Registrar log de auditoria
+            registrar_log(
+                acao='criar',
+                entidade='evidencia_sumov',
+                entidade_id=nova_evidencia.ID,
+                descricao=f'Nova evidência criada: {mesano} - Valor R$ {valor}'
+            )
+
+            flash('Evidência cadastrada com sucesso!', 'success')
+            return redirect(url_for('sumov.evidencias_lista'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao cadastrar evidência: {str(e)}', 'danger')
+            return redirect(url_for('sumov.evidencias_nova'))
+
+    # GET - Exibe o formulário
+    return render_template('sumov/evidencias/nova.html')
+
+
+@sumov_bp.route('/evidencias/editar/<int:id>', methods=['GET', 'POST'])
+@login_required
+def evidencias_editar(id):
+    """Editar evidência existente no banco"""
+    # Buscar evidência diretamente do banco
+    evidencia = EvidenciasSumov.buscar_por_id(id)
+    if not evidencia:
+        flash('Evidência não encontrada.', 'danger')
+        return redirect(url_for('sumov.evidencias_lista'))
+
+    if request.method == 'POST':
+        try:
+            # Capturar dados antigos para auditoria
+            dados_antigos = {
+                'nr_contrato': str(int(evidencia.NR_CONTRATO)) if evidencia.NR_CONTRATO else None,
+                'mesano': evidencia.formatar_mesano(),
+                'valor': float(evidencia.VALOR) if evidencia.VALOR else 0,
+                'descricao': evidencia.DESCRICAO
+            }
+
+            # Capturar novos dados
+            nr_contrato = request.form.get('nr_contrato', '').strip()
+            mesano = request.form.get('mesano', '').strip()
+            valor_str = request.form.get('valor', '0').strip()
+            descricao_nova = request.form.get('descricao', '').strip()
+
+            # Validações
+            if not mesano:
+                flash('Por favor, informe o mês/ano de referência.', 'danger')
+                return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+            if not descricao_nova:
+                flash('Por favor, informe a descrição.', 'danger')
+                return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+            # Converter valor - remover formatação brasileira
+            try:
+                # Remove pontos de milhar e troca vírgula por ponto
+                valor_str = valor_str.replace('.', '').replace(',', '.')
+                valor_novo = Decimal(valor_str) if valor_str else Decimal('0')
+
+                if valor_novo <= 0:
+                    flash('Por favor, informe um valor válido maior que zero.', 'danger')
+                    return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+            except:
+                flash('Valor inválido. Use o formato: 1.234,56', 'danger')
+                return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+            # Converter MESANO de MM/YYYY para date
+            if '/' in mesano:
+                partes = mesano.split('/')
+                if len(partes) == 2:
+                    try:
+                        mes = int(partes[0])
+                        ano = int(partes[1])
+                        evidencia.MESANO = date(ano, mes, 1)
+                    except:
+                        flash('Mês/Ano inválido. Use o formato MM/YYYY', 'danger')
+                        return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+            # Converter NR_CONTRATO para Decimal ou None
+            if nr_contrato and nr_contrato.replace(' ', '').isdigit():
+                evidencia.NR_CONTRATO = Decimal(nr_contrato.replace(' ', ''))
+            else:
+                evidencia.NR_CONTRATO = None
+
+            # Atualizar outros campos
+            evidencia.VALOR = valor_novo
+            evidencia.DESCRICAO = descricao_nova[:150]  # Limitar a 150 caracteres
+
+            # Salvar alterações no banco
+            db.session.commit()
+
+            # Registrar log de auditoria
+            dados_novos = {
+                'nr_contrato': str(int(evidencia.NR_CONTRATO)) if evidencia.NR_CONTRATO else None,
+                'mesano': evidencia.formatar_mesano(),
+                'valor': float(evidencia.VALOR) if evidencia.VALOR else 0,
+                'descricao': evidencia.DESCRICAO
+            }
+
+            registrar_log(
+                acao='editar',
+                entidade='evidencia_sumov',
+                entidade_id=evidencia.ID,
+                descricao=f'Evidência editada: ID {evidencia.ID}',
+                dados_antigos=dados_antigos,
+                dados_novos=dados_novos
+            )
+
+            flash('Evidência atualizada com sucesso!', 'success')
+            return redirect(url_for('sumov.evidencias_lista'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar evidência: {str(e)}', 'danger')
+            return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+    return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
+
+@sumov_bp.route('/evidencias/excluir/<int:id>')
+@login_required
+def evidencias_excluir(id):
+    """Excluir evidência do banco (delete real)"""
+    try:
+        # Buscar evidência no banco
+        evidencia = EvidenciasSumov.buscar_por_id(id)
+        if not evidencia:
+            flash('Evidência não encontrada.', 'danger')
+            return redirect(url_for('sumov.evidencias_lista'))
+
+        # Guardar informações para o log antes de deletar
+        info_evidencia = f"ID {evidencia.ID} - {evidencia.formatar_mesano()} - R$ {evidencia.VALOR}"
+
+        # Deletar do banco (delete real)
+        db.session.delete(evidencia)
+        db.session.commit()
+
+        # Registrar log
+        registrar_log(
+            acao='excluir',
+            entidade='evidencia_sumov',
+            entidade_id=id,
+            descricao=f'Evidência excluída: {info_evidencia}'
+        )
+
+        flash('Evidência excluída com sucesso!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao excluir evidência: {str(e)}', 'danger')
+
+    return redirect(url_for('sumov.evidencias_lista'))
