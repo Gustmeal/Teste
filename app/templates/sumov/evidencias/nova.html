@@ -16,18 +16,28 @@
         <div class="card-body">
             <form method="POST" action="{{ url_for('sumov.evidencias_nova') }}">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label for="nr_contrato" class="form-label">
                             Número do Contrato
                         </label>
                         <input type="text" class="form-control" id="nr_contrato"
                                name="nr_contrato" maxlength="23"
-                               placeholder="Digite o número do contrato (opcional)"
+                               placeholder="Digite o número do contrato"
                                onkeypress="return event.charCode >= 48 && event.charCode <= 57">
-                        <small class="text-muted">Campo opcional - apenas números (até 23 dígitos)</small>
+                        <small class="text-muted">Opcional - apenas números</small>
                     </div>
 
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label for="id_item" class="form-label">
+                            Item
+                        </label>
+                        <input type="number" class="form-control" id="id_item"
+                               name="id_item"
+                               placeholder="Digite o código do item">
+                        <small class="text-muted">Opcional - apenas números</small>
+                    </div>
+
+                    <div class="col-md-4 mb-3">
                         <label for="mesano" class="form-label">
                             Mês/Ano <span class="text-danger">*</span>
                         </label>

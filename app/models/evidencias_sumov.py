@@ -13,6 +13,7 @@ class EvidenciasSumov(db.Model):
     MESANO = Column(Date, nullable=True)
     VALOR = Column(Numeric(18, 2), nullable=True)
     DESCRICAO = Column(String(150), nullable=True)
+    ID_ITEM = Column(Integer, nullable=True)  # Nova coluna
 
     def __repr__(self):
         return f'<EvidenciasSumov {self.ID} - {self.NR_CONTRATO}>'

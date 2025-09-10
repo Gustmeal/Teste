@@ -363,6 +363,7 @@ def evidencias_nova():
             mesano = request.form.get('mesano', '').strip()
             valor_str = request.form.get('valor', '0').strip()
             descricao = request.form.get('descricao', '').strip()
+            id_item = request.form.get('id_item', '').strip()
 
             # Validações dos campos obrigatórios
             if not mesano:
@@ -405,12 +406,18 @@ def evidencias_nova():
             if nr_contrato and nr_contrato.replace(' ', '').isdigit():
                 nr_contrato_decimal = Decimal(nr_contrato.replace(' ', ''))
 
+            # Converter ID_ITEM para int ou None
+            id_item_int = None
+            if id_item and id_item.isdigit():
+                id_item_int = int(id_item)
+
             # Criar nova evidência diretamente no banco
             nova_evidencia = EvidenciasSumov(
                 NR_CONTRATO=nr_contrato_decimal,
                 MESANO=data_mesano,
                 VALOR=valor,
-                DESCRICAO=descricao[:150]  # Limitar a 150 caracteres
+                DESCRICAO=descricao[:150],  # Limitar a 150 caracteres
+                ID_ITEM=id_item_int
             )
 
             db.session.add(nova_evidencia)
@@ -453,7 +460,8 @@ def evidencias_editar(id):
                 'nr_contrato': str(int(evidencia.NR_CONTRATO)) if evidencia.NR_CONTRATO else None,
                 'mesano': evidencia.formatar_mesano(),
                 'valor': float(evidencia.VALOR) if evidencia.VALOR else 0,
-                'descricao': evidencia.DESCRICAO
+                'descricao': evidencia.DESCRICAO,
+                'id_item': evidencia.ID_ITEM
             }
 
             # Capturar novos dados
@@ -461,6 +469,7 @@ def evidencias_editar(id):
             mesano = request.form.get('mesano', '').strip()
             valor_str = request.form.get('valor', '0').strip()
             descricao_nova = request.form.get('descricao', '').strip()
+            id_item = request.form.get('id_item', '').strip()
 
             # Validações
             if not mesano:
@@ -502,6 +511,12 @@ def evidencias_editar(id):
             else:
                 evidencia.NR_CONTRATO = None
 
+            # Converter ID_ITEM para int ou None
+            if id_item and id_item.isdigit():
+                evidencia.ID_ITEM = int(id_item)
+            else:
+                evidencia.ID_ITEM = None
+
             # Atualizar outros campos
             evidencia.VALOR = valor_novo
             evidencia.DESCRICAO = descricao_nova[:150]  # Limitar a 150 caracteres
@@ -514,7 +529,8 @@ def evidencias_editar(id):
                 'nr_contrato': str(int(evidencia.NR_CONTRATO)) if evidencia.NR_CONTRATO else None,
                 'mesano': evidencia.formatar_mesano(),
                 'valor': float(evidencia.VALOR) if evidencia.VALOR else 0,
-                'descricao': evidencia.DESCRICAO
+                'descricao': evidencia.DESCRICAO,
+                'id_item': evidencia.ID_ITEM
             }
 
             registrar_log(
