@@ -64,6 +64,7 @@
                                    placeholder="0,00"
                                    onkeyup="formatarMoeda(this)">
                         </div>
+                        <small class="text-muted">Valores positivos ou negativos são aceitos</small>
                     </div>
                 </div>
 
@@ -98,16 +99,19 @@
 </div>
 
 <script>
-// Formatar campo de valor monetário
+// Formatar campo de valor monetário (aceita valores negativos)
 function formatarMoeda(campo) {
     let valor = campo.value;
+
+    // Verificar se é negativo
+    let isNegativo = valor.charAt(0) === '-';
 
     // Remove tudo que não é número
     valor = valor.replace(/\D/g, '');
 
     // Se estiver vazio, não faz nada
     if (!valor) {
-        campo.value = '';
+        campo.value = isNegativo ? '-' : '';
         return;
     }
 
@@ -122,7 +126,8 @@ function formatarMoeda(campo) {
     let partes = valor.split(',');
     partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-    campo.value = partes.join(',');
+    // Adiciona sinal negativo se necessário
+    campo.value = (isNegativo ? '-' : '') + partes.join(',');
 }
 
 // Contador de caracteres
@@ -142,6 +147,18 @@ document.getElementById('mesano').addEventListener('input', function(e) {
 // Limitar campo de contrato a apenas números
 document.getElementById('nr_contrato').addEventListener('input', function(e) {
     this.value = this.value.replace(/\D/g, '');
+});
+
+// Permitir sinal negativo no campo valor
+document.getElementById('valor').addEventListener('keydown', function(e) {
+    // Permitir tecla de menos (-) apenas no início
+    if (e.key === '-' && this.selectionStart === 0 && this.value.charAt(0) !== '-') {
+        return true;
+    }
+    // Bloquear outros sinais que não sejam números, backspace, delete, etc.
+    if (e.key === '-' && (this.selectionStart !== 0 || this.value.charAt(0) === '-')) {
+        e.preventDefault();
+    }
 });
 </script>
 {% endblock %}

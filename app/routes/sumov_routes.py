@@ -380,8 +380,9 @@ def evidencias_nova():
                 valor_str = valor_str.replace('.', '').replace(',', '.')
                 valor = Decimal(valor_str) if valor_str else Decimal('0')
 
-                if valor <= 0:
-                    flash('Por favor, informe um valor válido maior que zero.', 'danger')
+                # MODIFICAÇÃO: Aceita valores negativos, apenas impede zero
+                if valor == 0:
+                    flash('Por favor, informe um valor diferente de zero.', 'danger')
                     return redirect(url_for('sumov.evidencias_nova'))
             except:
                 flash('Valor inválido. Use o formato: 1.234,56', 'danger')
@@ -486,8 +487,9 @@ def evidencias_editar(id):
                 valor_str = valor_str.replace('.', '').replace(',', '.')
                 valor_novo = Decimal(valor_str) if valor_str else Decimal('0')
 
-                if valor_novo <= 0:
-                    flash('Por favor, informe um valor válido maior que zero.', 'danger')
+                # MODIFICAÇÃO: Aceita valores negativos, apenas impede zero
+                if valor_novo == 0:
+                    flash('Por favor, informe um valor diferente de zero.', 'danger')
                     return render_template('sumov/evidencias/editar.html', evidencia=evidencia)
             except:
                 flash('Valor inválido. Use o formato: 1.234,56', 'danger')
