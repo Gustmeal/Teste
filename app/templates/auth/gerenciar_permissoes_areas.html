@@ -1,151 +1,133 @@
+<!-- Arquivo: app/templates/auth/gerenciar_permissoes_areas.html -->
 {% extends "base.html" %}
 
 {% block content %}
 <div class="editais-container">
-    <a href="{{ url_for('auth.gerenciar_permissoes_areas') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
     <div class="page-title-bar">
-        <h1>Editar Permissões da Área: {{ area }}</h1>
-        <p class="text-muted">
-            Tipo: {{ tipo_area|capitalize }} |
-            {{ usuarios_area|length }} usuários afetados
-        </p>
+        <h1><i class="fas fa-shield-alt me-2"></i>Gerenciamento de Permissões por Área</h1>
+        <p class="text-muted">Configure os acessos aos sistemas para áreas inteiras</p>
     </div>
 
-    <!-- Aviso -->
-    <div class="alert alert-warning mb-4">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Atenção:</strong> As alterações afetarão todos os usuários desta área,
-        exceto aqueles com permissões individuais configuradas.
-    </div>
-
-    <div class="row">
-        <!-- Formulário de Permissões -->
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Sistemas Disponíveis</h5>
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <input type="text" id="filtroArea" class="form-control"
+                           placeholder="🔍 Filtrar por nome da área...">
                 </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <!-- Ações em Massa -->
-                        <div class="d-flex justify-content-end mb-3">
-                            <button type="button" class="btn btn-sm btn-success me-2"
-                                    onclick="marcarTodos(true)">
-                                <i class="fas fa-check-square"></i> Marcar Todos
-                            </button>
-                            <button type="button" class="btn btn-sm btn-danger"
-                                    onclick="marcarTodos(false)">
-                                <i class="fas fa-square"></i> Desmarcar Todos
-                            </button>
-                        </div>
-
-                        <!-- Sistemas agrupados por categoria -->
-                        {% set categorias = {} %}
-                        {% for sistema_key, sistema_info in sistemas.items() %}
-                            {% set categoria = sistema_info.get('categoria', 'Outros') %}
-                            {% if categoria not in categorias %}
-                                {% set _ = categorias.update({categoria: []}) %}
-                            {% endif %}
-                            {% set _ = categorias[categoria].append((sistema_key, sistema_info)) %}
-                        {% endfor %}
-
-                        {% for categoria, sistemas_cat in categorias.items() %}
-                        <div class="categoria-sistemas mb-4">
-                            <h6 class="text-muted mb-3">
-                                <i class="fas fa-folder me-2"></i>{{ categoria }}
-                            </h6>
-                            <div class="row">
-                                {% for sistema_key, sistema_info in sistemas_cat %}
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check sistema-check p-3 border rounded
-                                                {% if permissoes.get(sistema_key, True) %}border-success bg-light{% endif %}">
-                                        <input class="form-check-input"
-                                               type="checkbox"
-                                               id="sistema_{{ sistema_key }}"
-                                               name="sistema_{{ sistema_key }}"
-                                               {% if permissoes.get(sistema_key, True) %}checked{% endif %}
-                                               onchange="toggleSistema(this, '{{ sistema_key }}')">
-                                        <label class="form-check-label" for="sistema_{{ sistema_key }}">
-                                            <i class="fas {{ sistema_info.icone }} me-2 text-primary"></i>
-                                            <strong>{{ sistema_info.nome }}</strong>
-                                            <br>
-                                            <small class="text-muted">{{ sistema_info.descricao }}</small>
-                                        </label>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endfor %}
-
-                        <hr>
-                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                            <a href="{{ url_for('auth.gerenciar_permissoes_areas') }}"
-                               class="btn btn-secondary">
-                                Cancelar
-                            </a>
-                            <button type="submit" class="btn btn-success">
-                                <i class="fas fa-save me-2"></i>Salvar Permissões
-                            </button>
-                        </div>
-                    </form>
+                <div class="col-md-3">
+                    <select id="filtroTipo" class="form-select">
+                        <option value="">Todos os tipos</option>
+                        <option value="setor">Setores</option>
+                        <option value="superintendencia">Superintendências</option>
+                        <option value="diretoria">Diretorias</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-primary w-100" onclick="aplicarFiltros()">
+                        <i class="fas fa-filter me-2"></i>Filtrar
+                    </button>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Lista de Usuários Afetados -->
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0">Usuários Afetados</h5>
-                </div>
-                <div class="card-body" style="max-height: 600px; overflow-y: auto;">
-                    {% if usuarios_area %}
-                        <ul class="list-group list-group-flush">
-                            {% for usuario in usuarios_area %}
-                            <li class="list-group-item">
-                                <div>
-                                    <strong>{{ usuario.nome }}</strong><br>
-                                    <small class="text-muted">
-                                        {{ usuario.email }}<br>
-                                        {{ usuario.cargo or 'Cargo não informado' }}
-                                    </small>
-                                </div>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <p class="text-muted">Nenhum usuário vinculado a esta área.</p>
-                    {% endif %}
-                </div>
+    <!-- Tabela de Áreas -->
+    <div class="card">
+        <div class="card-body">
+            {% if areas %}
+            <div class="table-responsive">
+                <table class="table table-hover" id="tabelaAreas">
+                    <thead>
+                        <tr>
+                            <th>Área</th>
+                            <th>Tipo</th>
+                            <th>Usuários</th>
+                            <th>Sistemas Permitidos</th>
+                            <th width="150">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for area in areas %}
+                        <tr class="area-row"
+                            data-area="{{ area.area }}"
+                            data-tipo="{{ area.tipo_area }}">
+                            <td>
+                                <strong>{{ area.area }}</strong>
+                            </td>
+                            <td>
+                                {% if area.tipo_area == 'setor' %}
+                                    <span class="badge bg-info">Setor</span>
+                                {% elif area.tipo_area == 'superintendencia' %}
+                                    <span class="badge bg-warning">Superintendência</span>
+                                {% else %}
+                                    <span class="badge bg-success">Diretoria</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary">{{ area.qtd_usuarios }} usuários</span>
+                            </td>
+                            <td>
+                                {% if area.permissoes is defined %}
+                                    {% set sistemas_permitidos = 0 %}
+                                    {% for sistema, tem_acesso in area.permissoes.items() %}
+                                        {% if tem_acesso %}
+                                            {% set sistemas_permitidos = sistemas_permitidos + 1 %}
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    <div class="progress" style="height: 25px;">
+                                        {% set percentual = (sistemas_permitidos / sistemas|length * 100)|round if sistemas else 0 %}
+                                        <div class="progress-bar {% if percentual == 100 %}bg-success{% elif percentual > 50 %}bg-info{% else %}bg-warning{% endif %}"
+                                             role="progressbar"
+                                             style="width: {{ percentual }}%">
+                                            {{ sistemas_permitidos }} de {{ sistemas|length }}
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">Não configurado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('auth.editar_permissoes_area', tipo_area=area.tipo_area, area=area.area) }}"
+                                   class="btn btn-sm btn-primary">
+                                    <i class="fas fa-edit"></i> Editar
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
+            {% else %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Nenhuma área encontrada. Verifique se existem empregados cadastrados com áreas definidas.
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>
 
 <script>
-function marcarTodos(marcar) {
-    document.querySelectorAll('.form-check-input').forEach(checkbox => {
-        checkbox.checked = marcar;
-        const sistemaDiv = checkbox.closest('.sistema-check');
-        if (marcar) {
-            sistemaDiv.classList.add('border-success', 'bg-light');
-        } else {
-            sistemaDiv.classList.remove('border-success', 'bg-light');
-        }
+function aplicarFiltros() {
+    const filtroArea = document.getElementById('filtroArea').value.toLowerCase();
+    const filtroTipo = document.getElementById('filtroTipo').value;
+    const linhas = document.querySelectorAll('.area-row');
+
+    linhas.forEach(linha => {
+        const area = linha.dataset.area.toLowerCase();
+        const tipo = linha.dataset.tipo;
+
+        const matchArea = !filtroArea || area.includes(filtroArea);
+        const matchTipo = !filtroTipo || tipo === filtroTipo;
+
+        linha.style.display = matchArea && matchTipo ? '' : 'none';
     });
 }
 
-function toggleSistema(checkbox, sistema) {
-    const sistemaDiv = checkbox.closest('.sistema-check');
-    if (checkbox.checked) {
-        sistemaDiv.classList.add('border-success', 'bg-light');
-    } else {
-        sistemaDiv.classList.remove('border-success', 'bg-light');
-    }
-}
+// Filtro em tempo real
+document.getElementById('filtroArea').addEventListener('keyup', aplicarFiltros);
 </script>
 {% endblock %}

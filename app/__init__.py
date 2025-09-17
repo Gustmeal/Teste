@@ -125,7 +125,8 @@ def create_app():
     from app.routes.relatorio_routes import relatorio_bp
     app.register_blueprint(relatorio_bp)
 
-
+    from app.routes.manual_routes import manual_bp
+    app.register_blueprint(manual_bp)
 
 
     # Definir rota raiz para redirecionar para o portal GEINC

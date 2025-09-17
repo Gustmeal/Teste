@@ -8,6 +8,10 @@ from app.utils.audit import registrar_log
 from datetime import datetime
 from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
 from app.models.usuario import Usuario, Empregado
+from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
+from app.models.usuario import Usuario, Empregado
+from app.utils.audit import registrar_log
+
 
 
 auth_bp = Blueprint('auth', __name__)
@@ -348,7 +352,6 @@ def gerenciar_permissoes_areas():
         # Buscar todas as áreas únicas dos empregados
         areas = []
 
-        # Usar ORM ao invés de SQL direto para evitar problemas
         # Buscar setores únicos
         setores = db.session.query(
             Empregado.sgSetor.label('area'),
@@ -391,28 +394,31 @@ def gerenciar_permissoes_areas():
         # Para cada área, buscar suas permissões atuais
         areas_com_permissoes = []
         for area in todas_areas:
-            permissoes = {}
+            # Inicializar dicionário de permissões
+            area_permissoes = {}
 
-            # Buscar permissões existentes
-            perms = PermissaoArea.query.filter_by(
+            # Buscar permissões existentes no banco
+            perms_db = PermissaoArea.query.filter_by(
                 AREA=area.area,
                 TIPO_AREA=area.tipo_area,
                 DELETED_AT=None
             ).all()
 
-            for perm in perms:
-                permissoes[perm.SISTEMA] = perm.TEM_ACESSO
+            # Se tem permissões no banco, usar elas
+            if perms_db:
+                for perm in perms_db:
+                    area_permissoes[perm.SISTEMA] = perm.TEM_ACESSO
+            else:
+                # Se não tem permissões definidas, todos os sistemas são permitidos por padrão
+                for sistema_key in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+                    area_permissoes[sistema_key] = True
 
-            # Se não tem permissões definidas, todos os sistemas são permitidos
-            if not permissoes:
-                for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
-                    permissoes[sistema] = True
-
+            # Adicionar à lista com estrutura correta
             areas_com_permissoes.append({
                 'area': area.area,
                 'tipo_area': area.tipo_area,
                 'qtd_usuarios': area.qtd_usuarios,
-                'permissoes': permissoes
+                'permissoes': area_permissoes  # IMPORTANTE: garantir que isso existe
             })
 
         # Ordenar por tipo e nome
@@ -423,6 +429,8 @@ def gerenciar_permissoes_areas():
                                sistemas=PermissaoSistema.SISTEMAS_DISPONIVEIS)
 
     except Exception as e:
+        import traceback
+        print(f"Erro detalhado: {traceback.format_exc()}")
         flash(f'Erro ao carregar áreas: {str(e)}', 'danger')
         return redirect(url_for('auth.lista_usuarios'))
 
