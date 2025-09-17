@@ -39,6 +39,7 @@ def create_app():
         from app.models.audit_log import AuditLog
         from app.models.feedback import Feedback
         from app.models.mensagem import Mensagem
+        from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
 
         db.create_all()
 
@@ -123,6 +124,9 @@ def create_app():
 
     from app.routes.relatorio_routes import relatorio_bp
     app.register_blueprint(relatorio_bp)
+
+
+
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

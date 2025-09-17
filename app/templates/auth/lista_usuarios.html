@@ -1,32 +1,38 @@
+
 {% extends "base.html" %}
 
 {% block content %}
 <div class="editais-container">
-    <a href="{{ url_for('edital.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
-    <div class="page-title-bar">
-        <h1>Usuários do Sistema</h1>
-        <!-- Removido o botão de novo usuário - agora é via primeiro acesso -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-users me-2"></i>Gerenciamento de Usuários</h1>
+        <div>
+            <a href="{{ url_for('auth.gerenciar_permissoes_areas') }}"
+               class="btn btn-info me-2">
+                <i class="fas fa-building me-2"></i>Permissões por Área
+            </a>
+            <a href="{{ url_for('auth.cadastrar_usuario') }}" class="btn btn-success">
+                <i class="fas fa-plus me-2"></i>Novo Usuário
+            </a>
+        </div>
     </div>
 
-    <!-- Alerta informativo -->
-    <div class="alert alert-info mb-4">
-        <i class="fas fa-info-circle"></i>
-        <strong>Importante:</strong> Novos usuários devem ser criados através do <strong>Primeiro Acesso</strong> na tela de login.
-        Apenas funcionários cadastrados no RH podem criar conta.
+    <!-- Card de Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="search-container">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text"
+                       id="usuariosSearch"
+                       class="form-control search-input"
+                       placeholder="Pesquisar por nome, email, área ou cargo...">
+            </div>
+        </div>
     </div>
 
-    <!-- Barra de pesquisa -->
-    <div class="search-container mb-4">
-        <input type="text" id="usuariosSearch" class="form-control search-input" placeholder="Pesquisar usuários">
-        <i class="fas fa-search search-icon"></i>
-    </div>
-
+    <!-- Tabela de Usuários -->
     <div class="card shadow">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="usuariosTable">
+            <table class="table table-hover mb-0" id="usuariosTable">
                 <thead>
                     <tr>
                         <th>Nome</th>
@@ -41,25 +47,35 @@
                 <tbody>
                     {% for usuario in usuarios %}
                     <tr>
-                        <td class="fw-bold">{{ usuario.NOME }}</td>
+                        <td>
+                            <strong>{{ usuario.NOME }}</strong>
+                            {% if usuario.empregado %}
+                            <br>
+                            <small class="text-muted">Matrícula: {{ usuario.empregado.dsLogon or 'N/I' }}</small>
+                            {% endif %}
+                        </td>
                         <td>{{ usuario.EMAIL }}</td>
                         <td>
                             {% if usuario.empregado %}
-                                {{ usuario.empregado.sgSuperintendencia or '-' }}
+                                {{ usuario.empregado.sgSetor or 'Não informada' }}
+                                {% if usuario.empregado.sgSuperintendencia %}
+                                    <br>
+                                    <small class="text-muted">{{ usuario.empregado.sgSuperintendencia }}</small>
+                                {% endif %}
                             {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-muted">Não informada</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if usuario.empregado %}
-                                {{ usuario.empregado.dsCargo or '-' }}
+                                {{ usuario.empregado.dsCargo or 'Não informado' }}
                             {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-muted">Não informado</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if usuario.PERFIL == 'admin' %}
-                            <span class="badge bg-primary">Administrador</span>
+                            <span class="badge bg-danger">Administrador</span>
                             {% elif usuario.PERFIL == 'moderador' %}
                             <span class="badge bg-success">Moderador</span>
                             {% else %}
@@ -75,25 +91,35 @@
                         </td>
                         <td class="text-center">
                             <div class="btn-group" role="group">
+                                <!-- Botão Editar -->
                                 <a href="{{ url_for('auth.editar_usuario', id=usuario.ID) }}"
                                    class="btn btn-sm btn-primary"
-                                   title="Editar">
+                                   title="Editar usuário">
                                     <i class="fas fa-edit"></i>
                                 </a>
 
+                                <!-- Botão Permissões Individuais (apenas para usuários comuns) -->
                                 {% if usuario.PERFIL == 'usuario' %}
                                 <a href="{{ url_for('auth.gerenciar_permissoes', id=usuario.ID) }}"
                                    class="btn btn-sm btn-info"
-                                   title="Gerenciar Acessos aos Sistemas">
+                                   title="Gerenciar permissões individuais">
                                     <i class="fas fa-key"></i>
                                 </a>
                                 {% endif %}
 
+                                <!-- Botão Excluir -->
+                                {% if usuario.ID != current_user.id %}
                                 <button class="btn btn-sm btn-danger"
                                         onclick="confirmarExclusao({{ usuario.ID }}, '{{ usuario.NOME }}')"
-                                        title="Excluir">
+                                        title="Excluir usuário">
                                     <i class="fas fa-trash"></i>
                                 </button>
+                                {% else %}
+                                <button class="btn btn-sm btn-secondary" disabled
+                                        title="Você não pode excluir sua própria conta">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
@@ -102,16 +128,65 @@
             </table>
         </div>
     </div>
+
+    <!-- Card de Estatísticas -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-primary">{{ usuarios|length }}</h3>
+                    <p class="text-muted mb-0">Total de Usuários</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-success">
+                        {{ usuarios|selectattr('ATIVO')|list|length }}
+                    </h3>
+                    <p class="text-muted mb-0">Usuários Ativos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-danger">
+                        {{ usuarios|selectattr('PERFIL', 'equalto', 'admin')|list|length }}
+                    </h3>
+                    <p class="text-muted mb-0">Administradores</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-info">
+                        {{ usuarios|selectattr('PERFIL', 'equalto', 'moderador')|list|length }}
+                    </h3>
+                    <p class="text-muted mb-0">Moderadores</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
     .search-container {
         position: relative;
-        max-width: 400px;
+        max-width: 100%;
     }
 
     .search-input {
         padding-left: 40px;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+
+    .search-input:focus {
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+        border-color: #80bdff;
     }
 
     .search-icon {
@@ -120,6 +195,102 @@
         top: 50%;
         transform: translateY(-50%);
         color: #6c757d;
+    }
+
+    .table thead th {
+        background-color: #f8f9fa;
+        border-bottom: 2px solid #dee2e6;
+        font-weight: 600;
+        color: #495057;
+        padding: 12px;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f8f9fa;
+        transition: background-color 0.2s;
+    }
+
+    .btn-group .btn {
+        border-radius: 4px;
+        margin: 0 2px;
+    }
+
+    .badge {
+        padding: 5px 10px;
+        font-weight: 500;
+    }
+
+    .card {
+        border: 1px solid rgba(0,0,0,.125);
+        border-radius: 8px;
+    }
+
+    .editais-container h1 {
+        color: #333;
+        font-weight: 600;
+    }
+
+    /* Responsividade para telas menores */
+    @media (max-width: 768px) {
+        .d-flex.justify-content-between {
+            flex-direction: column;
+            align-items: stretch !important;
+        }
+
+        .d-flex.justify-content-between > div {
+            margin-top: 10px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .btn-group .btn {
+            margin: 2px 0;
+            border-radius: 4px !important;
+        }
+
+        .table {
+            font-size: 0.9rem;
+        }
+    }
+
+    /* Animação suave ao aparecer */
+    .editais-container {
+        animation: fadeIn 0.5s ease-in;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Tooltip personalizado */
+    .btn[title]:hover::after {
+        content: attr(title);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #333;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        white-space: nowrap;
+        font-size: 12px;
+        z-index: 1000;
+        margin-bottom: 5px;
+    }
+
+    .btn[title] {
+        position: relative;
     }
 </style>
 
@@ -135,21 +306,148 @@
             var email = rows[i].getElementsByTagName('td')[1].textContent.toLowerCase();
             var area = rows[i].getElementsByTagName('td')[2].textContent.toLowerCase();
             var cargo = rows[i].getElementsByTagName('td')[3].textContent.toLowerCase();
+            var perfil = rows[i].getElementsByTagName('td')[4].textContent.toLowerCase();
 
-            if (nome.indexOf(input) > -1 || email.indexOf(input) > -1 ||
-                area.indexOf(input) > -1 || cargo.indexOf(input) > -1) {
+            if (nome.indexOf(input) > -1 ||
+                email.indexOf(input) > -1 ||
+                area.indexOf(input) > -1 ||
+                cargo.indexOf(input) > -1 ||
+                perfil.indexOf(input) > -1) {
                 rows[i].style.display = "";
+                // Adiciona animação ao mostrar
+                rows[i].style.animation = "fadeIn 0.3s ease-in";
             } else {
                 rows[i].style.display = "none";
             }
         }
+
+        // Atualizar contador de resultados
+        var visibleRows = Array.from(rows).filter(row => row.style.display !== "none").length;
+        updateResultsCount(visibleRows, rows.length);
     });
+
+    // Função para atualizar contador de resultados
+    function updateResultsCount(visible, total) {
+        var existingCounter = document.getElementById('resultsCounter');
+        if (existingCounter) {
+            existingCounter.remove();
+        }
+
+        if (visible < total) {
+            var counter = document.createElement('div');
+            counter.id = 'resultsCounter';
+            counter.className = 'alert alert-info mt-3';
+            counter.innerHTML = `<i class="fas fa-info-circle me-2"></i>Mostrando ${visible} de ${total} usuários`;
+
+            var tableCard = document.querySelector('.card.shadow');
+            tableCard.parentNode.insertBefore(counter, tableCard.nextSibling);
+        }
+    }
 
     // Função para confirmar exclusão
     function confirmarExclusao(id, nome) {
-        if (confirm(`Tem certeza que deseja excluir o usuário ${nome}?`)) {
-            window.location.href = `/usuarios/excluir/${id}`;
+        // Usar SweetAlert2 se disponível, senão usar confirm padrão
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Confirmar Exclusão',
+                text: `Tem certeza que deseja excluir o usuário ${nome}?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sim, excluir!',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = `/usuarios/excluir/${id}`;
+                }
+            });
+        } else {
+            if (confirm(`Tem certeza que deseja excluir o usuário ${nome}?\n\nEsta ação não pode ser desfeita.`)) {
+                window.location.href = `/usuarios/excluir/${id}`;
+            }
         }
     }
+
+    // Adicionar funcionalidade de ordenação nas colunas
+    document.addEventListener('DOMContentLoaded', function() {
+        const table = document.getElementById('usuariosTable');
+        const headers = table.querySelectorAll('thead th');
+
+        headers.forEach((header, index) => {
+            if (index < 6) { // Não ordenar a coluna de ações
+                header.style.cursor = 'pointer';
+                header.addEventListener('click', () => sortTable(index));
+
+                // Adicionar ícone de ordenação
+                const icon = document.createElement('i');
+                icon.className = 'fas fa-sort ms-2';
+                icon.style.fontSize = '0.8em';
+                icon.style.opacity = '0.5';
+                header.appendChild(icon);
+            }
+        });
+    });
+
+    // Função para ordenar tabela
+    function sortTable(columnIndex) {
+        const table = document.getElementById('usuariosTable');
+        const tbody = table.querySelector('tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+
+        // Determinar direção da ordenação
+        const isAscending = table.dataset.sortColumn == columnIndex &&
+                           table.dataset.sortDirection === 'asc';
+
+        // Ordenar linhas
+        rows.sort((a, b) => {
+            const aText = a.cells[columnIndex].textContent.trim();
+            const bText = b.cells[columnIndex].textContent.trim();
+
+            if (isAscending) {
+                return bText.localeCompare(aText, 'pt-BR', {numeric: true});
+            } else {
+                return aText.localeCompare(bText, 'pt-BR', {numeric: true});
+            }
+        });
+
+        // Reordenar DOM
+        rows.forEach(row => tbody.appendChild(row));
+
+        // Atualizar estado
+        table.dataset.sortColumn = columnIndex;
+        table.dataset.sortDirection = isAscending ? 'desc' : 'asc';
+
+        // Atualizar ícones
+        const headers = table.querySelectorAll('thead th');
+        headers.forEach((header, index) => {
+            const icon = header.querySelector('i.fa-sort, i.fa-sort-up, i.fa-sort-down');
+            if (icon) {
+                if (index === columnIndex) {
+                    icon.className = isAscending ? 'fas fa-sort-down ms-2' : 'fas fa-sort-up ms-2';
+                    icon.style.opacity = '1';
+                } else {
+                    icon.className = 'fas fa-sort ms-2';
+                    icon.style.opacity = '0.5';
+                }
+            }
+        });
+    }
+
+    // Adicionar dica visual ao passar o mouse sobre linhas
+    document.querySelectorAll('#usuariosTable tbody tr').forEach(row => {
+        row.addEventListener('mouseenter', function() {
+            this.style.transform = 'scale(1.01)';
+            this.style.transition = 'transform 0.2s';
+        });
+
+        row.addEventListener('mouseleave', function() {
+            this.style.transform = 'scale(1)';
+        });
+    });
 </script>
+
+<!-- Incluir SweetAlert2 para melhores diálogos (opcional) -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 {% endblock %}

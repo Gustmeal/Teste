@@ -1,140 +1,136 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container fade-in">
-    <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
-    <div class="page-title-bar">
-        <h1>Editar Depósito Judicial</h1>
-        <p class="text-muted">Nº Linha: {{ deposito.NU_LINHA }} | Processo: {{ nr_processo or 'Não informado' }}</p>
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="header-with-back">
+            <i class="fas fa-edit me-2"></i>Editar Depósito Judicial
+        </h1>
     </div>
 
-    <div class="alert alert-warning" role="alert">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Atenção:</strong> Ao alterar a carteira para uma opção diferente de "Institucional",
-        será criada automaticamente uma linha de estorno com valor negativo. Se a carteira atual ou nova for "Institucional",
-        a edição será feita diretamente na linha.
-    </div>
-
-    <div class="card shadow">
+    <div class="card">
         <div class="card-body">
-            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
-                <div class="row g-3">
-                    <!-- Primeira Linha -->
-                    <div class="col-md-3">
-                        <label for="nr_processo" class="form-label">Número do Processo</label>
-                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
-                               maxlength="100" value="{{ nr_processo or '' }}"
-                               placeholder="Ex: 1234567-89.2023.8.26.0100">
+            <form id="formEdicao" method="POST" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+                <div class="row">
+                    <!-- Informações do Depósito -->
+                    <div class="col-12 mb-3">
+                        <div class="alert alert-info">
+                            <strong>Nu Linha:</strong> {{ deposito.NU_LINHA }} |
+                            <strong>ID Rateio:</strong> {{ deposito.ID_RATEIO or '-' }}
+                        </div>
                     </div>
 
-                    <div class="col-md-3">
-                        <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
+                    <!-- Lançamento RM -->
+                    <div class="col-md-4 mb-3">
+                        <label for="lancamento_rm" class="form-label">
+                            Lançamento RM <span class="text-danger">*</span>
+                        </label>
                         <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
-                               maxlength="15" required value="{{ deposito.LANCAMENTO_RM or '' }}">
+                               value="{{ deposito.LANCAMENTO_RM }}" required maxlength="15">
                     </div>
 
-                    <div class="col-md-3">
-                        <label for="dt_lancamento_dj" class="form-label">Data Lançamento DJ <span class="text-danger">*</span></label>
+                    <!-- Data Lançamento DJ -->
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_lancamento_dj" class="form-label">
+                            Data Lançamento DJ <span class="text-danger">*</span>
+                        </label>
                         <input type="date" class="form-control" id="dt_lancamento_dj" name="dt_lancamento_dj"
-                               required value="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y-%m-%d') if deposito.DT_LANCAMENTO_DJ else '' }}">
+                               value="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y-%m-%d') if deposito.DT_LANCAMENTO_DJ else '' }}"
+                               required>
                     </div>
 
-                    <div class="col-md-3">
-                        <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
+                    <!-- Valor Rateio -->
+                    <div class="col-md-4 mb-3">
+                        <label for="vr_rateio" class="form-label">
+                            Valor Rateio <span class="text-danger">*</span>
+                        </label>
                         <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
-                               required value="{{ '{:,.2f}'.format(deposito.VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') if deposito.VR_RATEIO else '' }}">
+                               value="{{ deposito.VR_RATEIO }}" required>
                     </div>
 
-                    <!-- Segunda Linha -->
-                    <div class="col-md-4">
+                    <!-- Memo SUFIN -->
+                    <div class="col-md-4 mb-3">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
-                               maxlength="15" value="{{ deposito.MEMO_SUFIN or '' }}">
+                               value="{{ deposito.MEMO_SUFIN or '' }}" maxlength="50">
                     </div>
 
-                    <div class="col-md-4">
+                    <!-- Data Memo -->
+                    <div class="col-md-4 mb-3">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo"
                                value="{{ deposito.DT_MEMO.strftime('%Y-%m-%d') if deposito.DT_MEMO else '' }}">
-                        <small class="text-muted">Se preenchida, marca como identificado</small>
                     </div>
 
-                    <div class="col-md-4">
+                    <!-- Data Identificação -->
+                    <div class="col-md-4 mb-3">
                         <label for="dt_identificacao" class="form-label">Data Identificação</label>
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
                                value="{{ deposito.DT_IDENTIFICACAO.strftime('%Y-%m-%d') if deposito.DT_IDENTIFICACAO else '' }}">
                     </div>
 
-                    <!-- Terceira Linha -->
-                    <div class="col-md-6">
+                    <!-- Área -->
+                    <div class="col-md-4 mb-3">
                         <label for="id_area" class="form-label">Área</label>
                         <select class="form-select" id="id_area" name="id_area">
-                            <option value="">Selecione uma área...</option>
-                            {% for area in areas %}
-                            <option value="{{ area.ID_AREA }}"
-                                    {% if deposito.ID_AREA == area.ID_AREA %}selected{% endif %}>
-                                {{ area.NO_AREA }}
-                            </option>
-                            {% endfor %}
+                            <option value="">Selecione...</option>
+                            <option value="1" {% if deposito.ID_AREA == 1 %}selected{% endif %}>Habitacional</option>
+                            <option value="2" {% if deposito.ID_AREA == 2 %}selected{% endif %}>Imobiliário</option>
                         </select>
                     </div>
 
-                    <div class="col-md-6">
+                    <!-- Centro/Carteira -->
+                    <div class="col-md-4 mb-3">
                         <label for="id_centro" class="form-label">
-                            Centro de Resultado (Carteira) <span class="text-danger">*</span>
-                            <span class="text-warning">
-                                <i class="fas fa-exclamation-circle" title="Alterar para diferente de 'Institucional' criará estorno"></i>
-                            </span>
+                            Centro/Carteira <span class="text-danger">*</span>
+                            {% if deposito.ID_CENTRO != 6 %}
+                            <span class="text-warning"><i class="fas fa-exclamation-triangle"></i> Mudança criará estorno</span>
+                            {% endif %}
                         </label>
-                        <select class="form-select" id="id_centro" name="id_centro" data-original="{{ deposito.ID_CENTRO }}" required>
-                            <option value="">Selecione uma carteira...</option>
+                        <select class="form-select" id="id_centro" name="id_centro"
+                                data-original="{{ deposito.ID_CENTRO }}" required>
+                            <option value="">Selecione...</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}"
-                                    {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}
-                                    data-nome="{{ centro.NO_CARTEIRA }}">
+                                    data-nome="{{ centro.NO_CARTEIRA }}"
+                                    {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}>
                                 {{ centro.NO_CARTEIRA }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
 
-                    <!-- Quarta Linha -->
-                    <div class="col-md-4">
+                    <!-- Data Ajuste RM -->
+                    <div class="col-md-4 mb-3">
                         <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
                         <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm"
                                value="{{ deposito.DT_AJUSTE_RM.strftime('%Y-%m-%d') if deposito.DT_AJUSTE_RM else '' }}">
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="nu_contrato" class="form-label">Número Contrato</label>
-                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
-                               maxlength="19" value="{{ deposito.NU_CONTRATO or '' }}">
-                    </div>
-
-                    <div class="col-md-4">
+                    <!-- Data SISCOR -->
+                    <div class="col-md-4 mb-3">
                         <label for="dt_siscor" class="form-label">Data SISCOR</label>
                         <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
                                value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
                     </div>
 
-                    <!-- Quinta Linha -->
-                    <div class="col-md-4">
-                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
-                        <input type="number" class="form-control" id="evento_contabil_anterior"
-                               name="evento_contabil_anterior" value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
+                    <!-- Contrato -->
+                    <div class="col-md-4 mb-3">
+                        <label for="nu_contrato" class="form-label">Contrato</label>
+                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
+                               value="{{ deposito.NU_CONTRATO or '' }}" maxlength="20">
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
-                        <input type="number" class="form-control" id="evento_contabil_atual"
-                               name="evento_contabil_atual" value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
+                    <!-- Nr Processo -->
+                    <div class="col-md-4 mb-3">
+                        <label for="nr_processo" class="form-label">Número Processo</label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               value="{{ nr_processo or '' }}" maxlength="50">
                     </div>
 
-                    <div class="col-md-4">
-                        <label for="obs" class="form-label">Observações</label>
+                    <!-- Observação -->
+                    <div class="col-12 mb-3">
+                        <label for="obs" class="form-label">Observação</label>
                         <input type="text" class="form-control" id="obs" name="obs"
                                maxlength="70" value="{{ deposito.OBS or '' }}">
                     </div>
@@ -200,12 +196,22 @@ document.addEventListener('DOMContentLoaded', function() {
         return numero.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
 
-    // Formatar valor inicial se existir
+    // ✅ CORREÇÃO: Formatar valor inicial se existir
     if (moneyInput.value) {
-        // Converte o valor atual para o formato correto
-        let valorAtual = moneyInput.value.replace(/\./g, '').replace(',', '.');
-        let valorNumerico = parseFloat(valorAtual) * 100;
-        moneyInput.value = formatarValorMonetario(valorNumerico.toString());
+        // O valor vem do banco no formato 257.10 (ponto como separador decimal)
+        let valorOriginal = moneyInput.value.toString();
+
+        // Remove espaços e converte para número
+        let valorNumerico = parseFloat(valorOriginal.replace(',', '.'));
+
+        // Se for um número válido, formata corretamente
+        if (!isNaN(valorNumerico)) {
+            // Converte para centavos (multiplica por 100) para usar na função formatarValorMonetario
+            let valorEmCentavos = Math.round(valorNumerico * 100).toString();
+            moneyInput.value = formatarValorMonetario(valorEmCentavos);
+        } else {
+            moneyInput.value = '0,00';
+        }
     }
 
     // Evento de input para aplicar a máscara
@@ -270,8 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'ATENÇÃO: Você está alterando a carteira para "' + nomeCarteira + '".\n\n' +
                 'Isso criará automaticamente:\n' +
                 '1. Uma linha de ESTORNO com valor negativo\n' +
-                '2. Uma nova linha com as alterações\n\n' +
-                'O registro original NÃO será alterado.\n\n' +
+                '2. Uma nova linha com o valor positivo na nova carteira\n\n' +
                 'Deseja continuar?'
             );
 

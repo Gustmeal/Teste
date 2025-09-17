@@ -6,6 +6,9 @@ from app.models.permissao_sistema import PermissaoSistema
 from app.auth.utils import UserLogin, admin_required, admin_or_moderador_required
 from app.utils.audit import registrar_log
 from datetime import datetime
+from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
+from app.models.usuario import Usuario, Empregado
+
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -334,3 +337,228 @@ def perfil():
             flash(f'Erro: {str(e)}', 'danger')
 
     return render_template('auth/perfil.html', usuario=usuario)
+
+
+@auth_bp.route('/permissoes/areas')
+@login_required
+@admin_or_moderador_required
+def gerenciar_permissoes_areas():
+    """Lista todas as áreas para gerenciamento de permissões"""
+    try:
+        # Buscar todas as áreas únicas dos empregados
+        areas = []
+
+        # Usar ORM ao invés de SQL direto para evitar problemas
+        # Buscar setores únicos
+        setores = db.session.query(
+            Empregado.sgSetor.label('area'),
+            db.literal('setor').label('tipo_area'),
+            db.func.count(Empregado.pkPessoa).label('qtd_usuarios')
+        ).filter(
+            Empregado.sgSetor.isnot(None),
+            Empregado.sgSetor != ''
+        ).group_by(
+            Empregado.sgSetor
+        ).all()
+
+        # Buscar superintendências únicas
+        superintendencias = db.session.query(
+            Empregado.sgSuperintendencia.label('area'),
+            db.literal('superintendencia').label('tipo_area'),
+            db.func.count(Empregado.pkPessoa).label('qtd_usuarios')
+        ).filter(
+            Empregado.sgSuperintendencia.isnot(None),
+            Empregado.sgSuperintendencia != ''
+        ).group_by(
+            Empregado.sgSuperintendencia
+        ).all()
+
+        # Buscar diretorias únicas
+        diretorias = db.session.query(
+            Empregado.sgDiretoria.label('area'),
+            db.literal('diretoria').label('tipo_area'),
+            db.func.count(Empregado.pkPessoa).label('qtd_usuarios')
+        ).filter(
+            Empregado.sgDiretoria.isnot(None),
+            Empregado.sgDiretoria != ''
+        ).group_by(
+            Empregado.sgDiretoria
+        ).all()
+
+        # Combinar todas as áreas
+        todas_areas = list(setores) + list(superintendencias) + list(diretorias)
+
+        # Para cada área, buscar suas permissões atuais
+        areas_com_permissoes = []
+        for area in todas_areas:
+            permissoes = {}
+
+            # Buscar permissões existentes
+            perms = PermissaoArea.query.filter_by(
+                AREA=area.area,
+                TIPO_AREA=area.tipo_area,
+                DELETED_AT=None
+            ).all()
+
+            for perm in perms:
+                permissoes[perm.SISTEMA] = perm.TEM_ACESSO
+
+            # Se não tem permissões definidas, todos os sistemas são permitidos
+            if not permissoes:
+                for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+                    permissoes[sistema] = True
+
+            areas_com_permissoes.append({
+                'area': area.area,
+                'tipo_area': area.tipo_area,
+                'qtd_usuarios': area.qtd_usuarios,
+                'permissoes': permissoes
+            })
+
+        # Ordenar por tipo e nome
+        areas_com_permissoes.sort(key=lambda x: (x['tipo_area'], x['area']))
+
+        return render_template('auth/gerenciar_permissoes_areas.html',
+                               areas=areas_com_permissoes,
+                               sistemas=PermissaoSistema.SISTEMAS_DISPONIVEIS)
+
+    except Exception as e:
+        flash(f'Erro ao carregar áreas: {str(e)}', 'danger')
+        return redirect(url_for('auth.lista_usuarios'))
+
+
+@auth_bp.route('/permissoes/areas/<tipo_area>/<area>', methods=['GET', 'POST'])
+@login_required
+@admin_or_moderador_required
+def editar_permissoes_area(tipo_area, area):
+    """Edita as permissões de uma área específica"""
+    try:
+        if request.method == 'POST':
+            # Coletar sistemas permitidos
+            sistemas_permitidos = []
+            for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+                if request.form.get(f'sistema_{sistema}') == 'on':
+                    sistemas_permitidos.append(sistema)
+
+            # Atualizar permissões
+            if PermissaoArea.atualizar_permissoes_area(area, tipo_area, sistemas_permitidos):
+                # Registrar log
+                registrar_log(
+                    acao='atualizar',
+                    entidade='permissoes_area',
+                    entidade_id=0,
+                    descricao=f'Permissões da área {area} ({tipo_area}) atualizadas'
+                )
+
+                flash(f'Permissões da área {area} atualizadas com sucesso!', 'success')
+            else:
+                flash('Erro ao atualizar permissões da área.', 'danger')
+
+            return redirect(url_for('auth.gerenciar_permissoes_areas'))
+
+        # GET - Buscar permissões atuais
+        permissoes = {}
+        perms = PermissaoArea.query.filter_by(
+            AREA=area,
+            TIPO_AREA=tipo_area,
+            DELETED_AT=None
+        ).all()
+
+        for perm in perms:
+            permissoes[perm.SISTEMA] = perm.TEM_ACESSO
+
+        # Se não tem permissões definidas, todos são permitidos
+        if not permissoes:
+            for sistema in PermissaoSistema.SISTEMAS_DISPONIVEIS.keys():
+                permissoes[sistema] = True
+
+        # Buscar usuários da área
+        if tipo_area == 'setor':
+            empregados = Empregado.query.filter_by(sgSetor=area).all()
+        elif tipo_area == 'superintendencia':
+            empregados = Empregado.query.filter_by(sgSuperintendencia=area).all()
+        else:
+            empregados = Empregado.query.filter_by(sgDiretoria=area).all()
+
+        usuarios_area = []
+        for emp in empregados:
+            usuario = Usuario.query.filter_by(FK_PESSOA=emp.pkPessoa).first()
+            if usuario:
+                usuarios_area.append({
+                    'nome': usuario.NOME,
+                    'email': usuario.EMAIL,
+                    'cargo': emp.dsCargo or 'Não informado'
+                })
+
+        return render_template('auth/editar_permissoes_area.html',
+                               area=area,
+                               tipo_area=tipo_area,
+                               permissoes=permissoes,
+                               sistemas=PermissaoSistema.SISTEMAS_DISPONIVEIS,
+                               usuarios_area=usuarios_area)
+
+    except Exception as e:
+        flash(f'Erro ao editar permissões: {str(e)}', 'danger')
+        return redirect(url_for('auth.gerenciar_permissoes_areas'))
+
+
+# Arquivo: app/auth/routes.py
+
+@auth_bp.route('/usuarios/novo', methods=['GET', 'POST'])
+@login_required
+@admin_or_moderador_required
+def cadastrar_usuario():
+    """Cadastrar novo usuário"""
+    if request.method == 'POST':
+        try:
+            nome = request.form['nome']
+            email = request.form['email']
+            senha = request.form['senha']
+            perfil = request.form['perfil']
+
+            # Validar email
+            valido, mensagem = Usuario.validar_email(email)
+            if not valido:
+                flash(mensagem, 'danger')
+                return render_template('auth/form_usuario.html')
+
+            # Verificar se é email de empregado
+            valido_emp, empregado = Usuario.validar_email_empregado(email)
+
+            # Criar novo usuário
+            novo_usuario = Usuario(
+                NOME=nome,
+                EMAIL=email,
+                PERFIL=perfil,
+                ATIVO=True
+            )
+
+            # Se encontrou empregado, vincular
+            if isinstance(empregado, Empregado):
+                novo_usuario.FK_PESSOA = empregado.pkPessoa
+
+            # Definir senha
+            novo_usuario.set_senha(senha)
+
+            db.session.add(novo_usuario)
+            db.session.commit()
+
+            # Criar permissões padrão
+            PermissaoSistema.criar_permissoes_padrao(novo_usuario.ID)
+
+            # Registrar log
+            registrar_log(
+                acao='criar',
+                entidade='usuario',
+                entidade_id=novo_usuario.ID,
+                descricao=f'Novo usuário cadastrado: {email}'
+            )
+
+            flash('Usuário cadastrado com sucesso!', 'success')
+            return redirect(url_for('auth.lista_usuarios'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao cadastrar usuário: {str(e)}', 'danger')
+
+    return render_template('auth/form_usuario.html', usuario=None)
