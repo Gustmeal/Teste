@@ -181,89 +181,115 @@ def api_centros():
 @depositos_judiciais_bp.route('/edicao')
 @login_required
 def edicao():
-    """Listagem de depósitos para edição com filtros"""
-    # Pegar filtros da query string
-    filtro_contrato = request.args.get('nu_contrato', '').strip()
-    filtro_carteira = request.args.get('id_centro', '')
-    filtro_valor = request.args.get('vr_rateio', '').strip()
-    filtro_dt_identificacao = request.args.get('dt_identificacao', '')
-    filtro_dt_siscor = request.args.get('dt_siscor', '')
-    filtro_dt_siscor_status = request.args.get('dt_siscor_status', '')
+    """Página de edição de depósitos judiciais com filtros"""
+    try:
+        # Capturar filtros da query string
+        filtros = {
+            'nu_contrato': request.args.get('nu_contrato', '').strip(),
+            'id_centro': request.args.get('id_centro', ''),
+            'vr_rateio': request.args.get('vr_rateio', ''),
+            'dt_identificacao': request.args.get('dt_identificacao', ''),
+            'mes_identificacao': request.args.get('mes_identificacao', ''),
+            'ano_identificacao': request.args.get('ano_identificacao', ''),
+            'dt_siscor': request.args.get('dt_siscor', ''),
+            'dt_siscor_status': request.args.get('dt_siscor_status', '')
+        }
 
-    # Query base com JOIN
-    query = db.session.query(
-        DepositosSufin,
-        ProcessosJudiciais.NR_PROCESSO,
-        Area.NO_AREA,
-        CentroResultado.NO_CARTEIRA
-    ).outerjoin(
-        ProcessosJudiciais,
-        DepositosSufin.NU_LINHA == ProcessosJudiciais.NU_LINHA
-    ).outerjoin(
-        Area,
-        DepositosSufin.ID_AREA == Area.ID_AREA
-    ).outerjoin(
-        CentroResultado,
-        DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
-    ).filter(
-        or_(DepositosSufin.ID_CENTRO != 8, DepositosSufin.ID_CENTRO.is_(None))
-    )  # EXCLUIR REGISTROS COM ID_CENTRO = 8
+        # Query base usando os modelos corretos
+        query = db.session.query(
+            DepositosSufin,
+            ProcessosJudiciais.NR_PROCESSO,
+            Area.NO_AREA,
+            CentroResultado.NO_CARTEIRA
+        ).outerjoin(
+            ProcessosJudiciais,
+            DepositosSufin.NU_LINHA == ProcessosJudiciais.NU_LINHA
+        ).outerjoin(
+            CentroResultado,
+            DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
+        ).outerjoin(
+            Area,
+            DepositosSufin.ID_AREA == Area.ID_AREA
+        )
 
-    # Aplicar filtros
-    if filtro_contrato:
-        query = query.filter(DepositosSufin.NU_CONTRATO == int(filtro_contrato))
+        # Aplicar filtros
+        if filtros['nu_contrato']:
+            query = query.filter(DepositosSufin.NU_CONTRATO.like(f"%{filtros['nu_contrato']}%"))
 
-    if filtro_carteira:
-        query = query.filter(DepositosSufin.ID_CENTRO == int(filtro_carteira))
+        if filtros['id_centro']:
+            query = query.filter(DepositosSufin.ID_CENTRO == filtros['id_centro'])
 
-    if filtro_valor:
-        try:
-            # Remove pontos de milhar e substitui vírgula por ponto
-            valor_limpo = filtro_valor.replace('.', '').replace(',', '.')
-            valor_decimal = Decimal(valor_limpo)
-            query = query.filter(DepositosSufin.VR_RATEIO == valor_decimal)
-        except:
-            pass
+        if filtros['vr_rateio']:
+            try:
+                valor = float(filtros['vr_rateio'].replace(',', '.'))
+                query = query.filter(DepositosSufin.VR_RATEIO == valor)
+            except ValueError:
+                pass
 
-    if filtro_dt_identificacao:
-        try:
-            data_filtro = datetime.strptime(filtro_dt_identificacao, '%Y-%m-%d')
-            query = query.filter(DepositosSufin.DT_IDENTIFICACAO == data_filtro)
-        except:
-            pass
+        if filtros['dt_identificacao']:
+            try:
+                data = datetime.strptime(filtros['dt_identificacao'], '%Y-%m-%d').date()
+                query = query.filter(DepositosSufin.DT_IDENTIFICACAO == data)
+            except ValueError:
+                pass
 
-    # Filtro de DT_SISCOR por data específica
-    if filtro_dt_siscor:
-        try:
-            data_siscor = datetime.strptime(filtro_dt_siscor, '%Y-%m-%d')
-            query = query.filter(DepositosSufin.DT_SISCOR == data_siscor)
-        except:
-            pass
+        # FILTROS DE MÊS E ANO - IMPLEMENTAÇÃO CORRIGIDA
+        if filtros['mes_identificacao'] or filtros['ano_identificacao']:
+            condicoes_data = []
 
-    # Filtro de DT_SISCOR por status (preenchido ou nulo)
-    if filtro_dt_siscor_status == 'nulo':
-        query = query.filter(DepositosSufin.DT_SISCOR.is_(None))
-    elif filtro_dt_siscor_status == 'preenchido':
-        query = query.filter(DepositosSufin.DT_SISCOR.isnot(None))
+            if filtros['mes_identificacao']:
+                try:
+                    mes = int(filtros['mes_identificacao'])
+                    if 1 <= mes <= 12:
+                        # Usar func.extract do SQLAlchemy
+                        condicoes_data.append(
+                            func.extract('month', DepositosSufin.DT_IDENTIFICACAO) == mes
+                        )
+                except ValueError:
+                    pass
 
-    # Executar query
-    depositos = query.order_by(DepositosSufin.NU_LINHA.desc()).all()
+            if filtros['ano_identificacao']:
+                try:
+                    ano = int(filtros['ano_identificacao'])
+                    if 2000 <= ano <= 2099:
+                        # Usar func.extract do SQLAlchemy
+                        condicoes_data.append(
+                            func.extract('year', DepositosSufin.DT_IDENTIFICACAO) == ano
+                        )
+                except ValueError:
+                    pass
 
-    # Buscar centros para o filtro
-    centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
+            if condicoes_data:
+                query = query.filter(and_(*condicoes_data))
 
-    return render_template('depositos_judiciais/edicao.html',
-                           depositos=depositos,
-                           centros=centros,
-                           filtros={
-                               'nu_contrato': filtro_contrato,
-                               'id_centro': filtro_carteira,
-                               'vr_rateio': filtro_valor,
-                               'dt_identificacao': filtro_dt_identificacao,
-                               'dt_siscor': filtro_dt_siscor,
-                               'dt_siscor_status': filtro_dt_siscor_status
-                           })
+        if filtros['dt_siscor']:
+            try:
+                data = datetime.strptime(filtros['dt_siscor'], '%Y-%m-%d').date()
+                query = query.filter(DepositosSufin.DT_SISCOR == data)
+            except ValueError:
+                pass
 
+        if filtros['dt_siscor_status'] == 'nulo':
+            query = query.filter(DepositosSufin.DT_SISCOR.is_(None))
+        elif filtros['dt_siscor_status'] == 'preenchido':
+            query = query.filter(DepositosSufin.DT_SISCOR.isnot(None))
+
+        # Executar query
+        depositos = query.order_by(DepositosSufin.NU_LINHA.desc()).all()
+
+        # Buscar centros para o select
+        centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
+
+        return render_template(
+            'depositos_judiciais/edicao.html',
+            depositos=depositos,
+            centros=centros,
+            filtros=filtros
+        )
+
+    except Exception as e:
+        flash(f'Erro ao consultar depósitos: {str(e)}', 'danger')
+        return redirect(url_for('depositos_judiciais.index'))
 
 @depositos_judiciais_bp.route('/editar/<int:nu_linha>', methods=['GET', 'POST'])
 @login_required

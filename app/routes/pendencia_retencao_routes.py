@@ -470,3 +470,4 @@ def excluir_vinculacao():
             'success': False,
             'message': f'Erro ao excluir vinculação: {str(e)}'
         }), 500
+

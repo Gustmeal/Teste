@@ -52,8 +52,22 @@
                                value="{{ filtros.dt_identificacao }}">
                     </div>
 
-                    <!-- Nova linha para DT_SISCOR -->
-                    <div class="col-md-3">
+                    <!-- NOVOS FILTROS DE MÊS E ANO -->
+                    <div class="col-md-2">
+                        <label for="mes_identificacao" class="form-label">Mês Identificação</label>
+                        <input type="number" class="form-control" id="mes_identificacao" name="mes_identificacao"
+                               value="{{ filtros.mes_identificacao }}" min="1" max="12"
+                               placeholder="1-12">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label for="ano_identificacao" class="form-label">Ano Identificação</label>
+                        <input type="number" class="form-control" id="ano_identificacao" name="ano_identificacao"
+                               value="{{ filtros.ano_identificacao }}" min="2000" max="2099"
+                               placeholder="Ex: 2024">
+                    </div>
+
+                    <div class="col-md-2">
                         <label for="dt_siscor" class="form-label">Data SISCOR</label>
                         <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
                                value="{{ filtros.dt_siscor }}">
@@ -63,17 +77,17 @@
                         <label for="dt_siscor_status" class="form-label">Status Data SISCOR</label>
                         <select class="form-select" id="dt_siscor_status" name="dt_siscor_status">
                             <option value="">Todos</option>
-                            <option value="preenchido" {% if filtros.dt_siscor_status == 'preenchido' %}selected{% endif %}>
-                                Com Data SISCOR
-                            </option>
                             <option value="nulo" {% if filtros.dt_siscor_status == 'nulo' %}selected{% endif %}>
-                                Sem Data SISCOR (Vazio)
+                                Vazio
+                            </option>
+                            <option value="preenchido" {% if filtros.dt_siscor_status == 'preenchido' %}selected{% endif %}>
+                                Preenchido
                             </option>
                         </select>
                     </div>
 
-                    <div class="col-12 mt-3">
-                        <button type="submit" class="btn btn-primary">
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
                             <i class="fas fa-search me-2"></i> Pesquisar
                         </button>
                         <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
@@ -82,6 +96,36 @@
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Card de Totalizador -->
+    <div class="card shadow mb-4 bg-light" id="cardTotalizador">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-1">
+                        <i class="fas fa-calculator me-2"></i> Total dos Valores Filtrados
+                    </h6>
+                    <h3 class="mb-0" id="valorTotal">R$ 0,00</h3>
+                </div>
+                <div class="col-md-6 text-end">
+                    <div class="d-flex justify-content-end align-items-center">
+                        <div class="me-4">
+                            <small class="text-muted d-block">Total de Registros</small>
+                            <span class="fs-5" id="totalRegistros">0</span>
+                        </div>
+                        <div class="me-4">
+                            <small class="text-muted d-block">Valores Positivos</small>
+                            <span class="fs-5 text-success" id="totalPositivos">R$ 0,00</span>
+                        </div>
+                        <div>
+                            <small class="text-muted d-block">Valores Negativos</small>
+                            <span class="fs-5 text-danger" id="totalNegativos">R$ 0,00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -124,7 +168,7 @@
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="4">
+                            <th class="sortable text-end" data-column="4">
                                 Valor Rateio
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
@@ -143,7 +187,7 @@
                                 </span>
                             </th>
                             <th class="sortable" data-column="7">
-                                Contrato
+                                Nº Contrato
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
@@ -163,15 +207,20 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for deposito, nr_processo, no_area, no_carteira in depositos %}
-                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+                        {% for item in depositos %}
+                        {% set deposito = item[0] %}
+                        {% set nr_processo = item[1] %}
+                        {% set no_area = item[2] %}
+                        {% set no_carteira = item[3] %}
+                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}"
+                            data-valor="{{ deposito.VR_RATEIO or 0 }}">
                             <td>{{ deposito.NU_LINHA }}</td>
                             <td>{{ nr_processo or '-' }}</td>
                             <td>{{ deposito.LANCAMENTO_RM or '-' }}</td>
                             <td data-sort="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y%m%d') if deposito.DT_LANCAMENTO_DJ else '0' }}">
                                 {{ deposito.DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if deposito.DT_LANCAMENTO_DJ else '-' }}
                             </td>
-                            <td class="text-end" data-sort="{{ deposito.VR_RATEIO or 0 }}">
+                            <td class="text-end valor-rateio" data-sort="{{ deposito.VR_RATEIO or 0 }}">
                                 {% if deposito.VR_RATEIO %}
                                     {% if deposito.VR_RATEIO < 0 %}
                                         <span class="text-danger">{{ deposito.VR_RATEIO|br_currency }}</span>
@@ -253,10 +302,87 @@
         transform: translateY(-50%);
         color: #6c757d;
     }
+
+    /* Estilo para o card totalizador */
+    #cardTotalizador {
+        border-left: 4px solid #007bff;
+    }
+
+    #valorTotal {
+        color: #007bff;
+        font-weight: bold;
+    }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Função para calcular e exibir os totais
+    function calcularTotais() {
+        let totalGeral = 0;
+        let totalPositivos = 0;
+        let totalNegativos = 0;
+        let totalRegistros = 0;
+
+        // Percorrer todas as linhas da tabela
+        document.querySelectorAll('.linha-clicavel').forEach(row => {
+            const valorAttr = row.getAttribute('data-valor');
+            if (valorAttr) {
+                const valor = parseFloat(valorAttr.replace(',', '.'));
+                if (!isNaN(valor)) {
+                    totalGeral += valor;
+                    totalRegistros++;
+
+                    if (valor > 0) {
+                        totalPositivos += valor;
+                    } else if (valor < 0) {
+                        totalNegativos += valor;
+                    }
+                }
+            }
+        });
+
+        // Função para formatar valores em moeda brasileira
+        function formatarMoeda(valor) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(valor);
+        }
+
+        // Atualizar os elementos na página
+        document.getElementById('valorTotal').textContent = formatarMoeda(totalGeral);
+        document.getElementById('totalRegistros').textContent = totalRegistros;
+        document.getElementById('totalPositivos').textContent = formatarMoeda(totalPositivos);
+        document.getElementById('totalNegativos').textContent = formatarMoeda(Math.abs(totalNegativos));
+    }
+
+    // Calcular totais ao carregar a página
+    calcularTotais();
+
+    // Validação SOMENTE ao sair do campo (blur) para mês
+    const mesInput = document.getElementById('mes_identificacao');
+    if (mesInput) {
+        mesInput.addEventListener('blur', function(e) {
+            let value = parseInt(e.target.value);
+            if (value && (value < 1 || value > 12)) {
+                if (value < 1) e.target.value = 1;
+                if (value > 12) e.target.value = 12;
+            }
+        });
+    }
+
+    // Validação SOMENTE ao sair do campo (blur) para ano
+    const anoInput = document.getElementById('ano_identificacao');
+    if (anoInput) {
+        anoInput.addEventListener('blur', function(e) {
+            let value = parseInt(e.target.value);
+            if (value && (value < 2000 || value > 2099)) {
+                if (value < 2000) e.target.value = 2000;
+                if (value > 2099) e.target.value = 2099;
+            }
+        });
+    }
+
     // Máscara para valor monetário no filtro
     const vrRateioInput = document.getElementById('vr_rateio');
     if (vrRateioInput) {
@@ -307,9 +433,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return 0;
             });
 
-            // Reordenar no DOM
-            rows.forEach(row => tbody.appendChild(row));
-
             // Atualizar ícones
             document.querySelectorAll('.sort-icon i').forEach(icon => {
                 icon.className = 'fas fa-sort';
@@ -317,6 +440,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const icon = this.querySelector('.sort-icon i');
             icon.className = currentSort.ascending ? 'fas fa-sort-up' : 'fas fa-sort-down';
+
+            // Reordenar linhas na tabela
+            rows.forEach(row => tbody.appendChild(row));
         });
     });
 });

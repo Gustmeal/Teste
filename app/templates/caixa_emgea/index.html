@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-money-check-alt me-2"></i>Caixa EMGEA
+        </h1>
+        <a href="{{ url_for('caixa_emgea.novo') }}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Novo Registro
+        </a>
+    </div>
+
+    {% if registros %}
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Registros Cadastrados</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nº Ofício</th>
+                            <th>Nº Contrato</th>
+                            <th>Ocorrência</th>
+                            <th>Status</th>
+                            <th>Valor</th>
+                            <th>Valor Real</th>
+                            <th>Carteira</th>
+                            <th>Usuário</th>
+                            <th width="120">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for registro in registros %}
+                        <tr>
+                            <td>{{ registro.ID }}</td>
+                            <td>{{ registro.NU_OFICIO or '-' }}</td>
+                            <td>{{ registro.NU_CONTRATO or '-' }}</td>
+                            <td>
+                                {% if registro.ID_OCORRENCIA %}
+                                    {{ ocorrencias.get(registro.ID_OCORRENCIA, 'N/A') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.ID_STATUS %}
+                                    <span class="badge bg-info">
+                                        {{ status_list.get(registro.ID_STATUS, 'N/A') }}
+                                    </span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.VALOR %}
+                                    R$ {{ "{:,.2f}".format(registro.VALOR).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.VR_REAL %}
+                                    R$ {{ "{:,.2f}".format(registro.VR_REAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.ID_CARTEIRA %}
+                                    {{ carteiras.get(registro.ID_CARTEIRA, 'N/A') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {{ registro.USUARIO_CRIACAO or '-' }}
+                                </small>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('caixa_emgea.editar', id=registro.ID) }}"
+                                   class="btn btn-sm btn-warning" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao({{ registro.ID }})" title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        Nenhum registro encontrado.
+        <a href="{{ url_for('caixa_emgea.novo') }}">Clique aqui</a> para adicionar o primeiro registro.
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="modalExclusao" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir este registro?</p>
+                <p class="text-muted">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="formExclusao" method="POST" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Confirmar Exclusão</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmarExclusao(id) {
+    const form = document.getElementById('formExclusao');
+    form.action = `/caixa-emgea/excluir/${id}`;
+    const modal = new bootstrap.Modal(document.getElementById('modalExclusao'));
+    modal.show();
+}
+</script>
+{% endblock %}

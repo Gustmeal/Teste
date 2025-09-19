@@ -128,6 +128,9 @@ def create_app():
     from app.routes.manual_routes import manual_bp
     app.register_blueprint(manual_bp)
 
+    from app.routes.caixa_emgea_routes import caixa_emgea_bp
+    app.register_blueprint(caixa_emgea_bp)
+
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

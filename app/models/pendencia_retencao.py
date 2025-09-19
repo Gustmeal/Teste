@@ -163,3 +163,18 @@ class PenOficios(db.Model):
 
     def __repr__(self):
         return f'<PenOficios {self.NU_OFICIO} - {self.DT_OFICIO}>'
+
+# ADICIONAR APENAS ESTA CLASSE NO FINAL DO ARQUIVO pendencia_retencao.py existente:
+
+class PenObservacoes(db.Model):
+    """Modelo para a tabela PEN_TB005_OBSERVACOES"""
+    __tablename__ = 'PEN_TB005_OBSERVACOES'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID_OBSERVACAO = db.Column(db.Integer, primary_key=True)
+    ID_DETALHAMENTO = db.Column(db.Integer, nullable=True)
+    DSC_OBSERVACAO = db.Column(db.String(255), nullable=True)
+    ULTIMA_ATUALIZACAO = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f'<PenObservacoes {self.ID_OBSERVACAO} - {self.DSC_OBSERVACAO}>'

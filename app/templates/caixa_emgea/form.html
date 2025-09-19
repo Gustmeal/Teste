@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container fade-in">
+    <a href="{{ url_for('caixa_emgea.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">
+                {% if registro %}
+                    <i class="fas fa-edit me-2"></i>Editar Registro
+                {% else %}
+                    <i class="fas fa-plus me-2"></i>Novo Registro
+                {% endif %}
+            </h4>
+        </div>
+        <div class="card-body">
+            {% if duplicidade %}
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Atenção:</strong> Já existe um registro com este Número de Contrato e Valor.
+                <div class="form-check mt-2">
+                    <input type="checkbox" class="form-check-input" id="confirmar_duplicidade"
+                           name="confirmar_duplicidade" value="1">
+                    <label class="form-check-label" for="confirmar_duplicidade">
+                        Confirmo que desejo incluir mesmo assim
+                    </label>
+                </div>
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="row">
+                    <!-- Primeira coluna -->
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Ocorrência</label>
+                            <select name="id_ocorrencia" class="form-select">
+                                <option value="">Selecione (Opcional)</option>
+                                {% for ocorrencia in ocorrencias %}
+                                <option value="{{ ocorrencia.ID_OCORRENCIA }}"
+                                    {% if registro and registro.ID_OCORRENCIA == ocorrencia.ID_OCORRENCIA %}selected{% endif %}
+                                    {% if dados and dados.get('id_ocorrencia') == ocorrencia.ID_OCORRENCIA|string %}selected{% endif %}>
+                                    {{ ocorrencia.DSC_OCORRENCIA }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Número do Ofício</label>
+                            <input type="number" name="nu_oficio" class="form-control"
+                                   value="{{ registro.NU_OFICIO if registro else dados.get('nu_oficio', '') if dados else '' }}"
+                                   placeholder="Opcional">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Data do Ofício (YYYYMMDD)</label>
+                            <input type="number" name="dt_oficio" class="form-control"
+                                   value="{{ registro.DT_OFICIO if registro else dados.get('dt_oficio', '') if dados else '' }}"
+                                   placeholder="Ex: 20240115 (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Emitente</label>
+                            <input type="text" name="emitente" class="form-control" maxlength="5"
+                                   value="{{ registro.EMITENTE if registro else dados.get('emitente', '') if dados else '' }}"
+                                   placeholder="Até 5 caracteres (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <select name="id_status" class="form-select">
+                                <option value="">Selecione (Opcional)</option>
+                                {% for status in status_list %}
+                                <option value="{{ status.ID_STATUS }}"
+                                    {% if registro and registro.ID_STATUS == status.ID_STATUS %}selected{% endif %}
+                                    {% if dados and dados.get('id_status') == status.ID_STATUS|string %}selected{% endif %}>
+                                    {{ status.DSC_STATUS }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Número do Contrato</label>
+                            <input type="text" name="nu_contrato" class="form-control"
+                                   value="{{ registro.NU_CONTRATO if registro else dados.get('nu_contrato', '') if dados else '' }}"
+                                   placeholder="Opcional">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Número do Processo</label>
+                            <textarea name="nu_processo" class="form-control" rows="2"
+                                      placeholder="Opcional">{{ registro.NU_PROCESSO if registro else dados.get('nu_processo', '') if dados else '' }}</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Número do Ticket</label>
+                            <input type="number" name="nr_ticket" class="form-control"
+                                   value="{{ registro.NR_TICKET if registro else dados.get('nr_ticket', '') if dados else '' }}"
+                                   placeholder="Opcional">
+                        </div>
+                    </div>
+
+                    <!-- Segunda coluna -->
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Valor</label>
+                            <input type="number" name="valor" class="form-control" step="0.01"
+                                   value="{{ registro.VALOR if registro else dados.get('valor', '') if dados else '' }}"
+                                   placeholder="0.00 (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Valor Real</label>
+                            <input type="number" name="vr_real" class="form-control" step="0.01"
+                                   value="{{ registro.VR_REAL if registro else dados.get('vr_real', '') if dados else '' }}"
+                                   placeholder="0.00 (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Valor ISS</label>
+                            <input type="number" name="vr_iss" class="form-control" step="0.01"
+                                   value="{{ registro.VR_ISS if registro else dados.get('vr_iss', '') if dados else '' }}"
+                                   placeholder="0.00 (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Data de Pagamento</label>
+                            <input type="date" name="dt_pagto" class="form-control"
+                                   value="{{ registro.DT_PAGTO.strftime('%Y-%m-%d') if registro and registro.DT_PAGTO else dados.get('dt_pagto', '') if dados else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Observação</label>
+                            <select name="id_observacao" class="form-select">
+                                <option value="">Selecione (Opcional)</option>
+                                {% for obs in observacoes %}
+                                <option value="{{ obs.ID_OBSERVACAO }}"
+                                    {% if registro and registro.ID_OBSERVACAO == obs.ID_OBSERVACAO %}selected{% endif %}
+                                    {% if dados and dados.get('id_observacao') == obs.ID_OBSERVACAO|string %}selected{% endif %}>
+                                    {{ obs.DSC_OBSERVACAO }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Especificação</label>
+                            <input type="number" name="id_especificacao" class="form-control"
+                                   value="{{ registro.ID_ESPECIFICACAO if registro else dados.get('id_especificacao', '') if dados else '' }}"
+                                   placeholder="ID da Especificação (Opcional)">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Carteira</label>
+                            <select name="id_carteira" class="form-select">
+                                <option value="">Selecione (Opcional)</option>
+                                {% for carteira in carteiras %}
+                                <option value="{{ carteira.ID_CARTEIRA }}"
+                                    {% if registro and registro.ID_CARTEIRA == carteira.ID_CARTEIRA %}selected{% endif %}
+                                    {% if dados and dados.get('id_carteira') == carteira.ID_CARTEIRA|string %}selected{% endif %}>
+                                    {{ carteira.DSC_CARTEIRA }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Descrição do Documento</label>
+                            <input type="text" name="dsc_documento" class="form-control" maxlength="100"
+                                   value="{{ registro.DSC_DOCUMENTO if registro else dados.get('dsc_documento', '') if dados else '' }}"
+                                   placeholder="Até 100 caracteres (Opcional)">
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>
+                        {% if registro %}Atualizar{% else %}Salvar{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Script para formatar data do ofício enquanto digita
+document.addEventListener('DOMContentLoaded', function() {
+    const dtOficioInput = document.querySelector('input[name="dt_oficio"]');
+    if (dtOficioInput) {
+        dtOficioInput.addEventListener('input', function(e) {
+            // Remove caracteres não numéricos
+            this.value = this.value.replace(/\D/g, '');
+            // Limita a 8 dígitos
+            if (this.value.length > 8) {
+                this.value = this.value.substring(0, 8);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

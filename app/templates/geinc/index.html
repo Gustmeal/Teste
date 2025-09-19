@@ -165,6 +165,23 @@
                     </div>
                 </div>
             </div>
+            <!-- Adicione este card junto com os outros cards do sistema -->
+            <div class="col-md-4 system-item" data-name="sumov imóveis">
+                <div class="system-card">
+                    <div class="card-icon gradient-pink">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <h4>Caixa EMGEA</h4>
+                    <p class="text-muted">Gerenciamento de caixas EMGEA com pendências e retenções</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Ativo</span>
+                        <a href="#" onclick="verificarAcesso('sumov', '{{ url_for('caixa_emgea.index') }}'); return false;"
+                           class="btn-system">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -263,6 +280,20 @@
                         <span class="badge bg-success">Novo</span>
                         <a href="{{ url_for('relatorio.index') }}" class="btn-system">
                             Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Adicione este card junto com os outros sistemas -->
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-book fa-3x text-primary mb-3"></i>
+                        <h5 class="card-title">Manuais Padronizados</h5>
+                        <p class="card-text">Sistema de criação e gestão de manuais</p>
+                        <a href="{{ url_for('manual.listar_manuais') }}" class="btn btn-primary">
+                            Acessar
                         </a>
                     </div>
                 </div>
