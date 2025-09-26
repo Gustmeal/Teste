@@ -196,69 +196,67 @@ class FaturaCaixa(db.Model):
         }
 
 
-@staticmethod
-def obter_referencias_arquivo_final():
-    """Obtém as referências disponíveis na view SEG_TB001_ARQUIVO_FINAL_TI"""
-    sql = text("""
-        SELECT DISTINCT REFERENCIA
-        FROM BDG.SEG_TB001_ARQUIVO_FINAL_TI
-        WHERE REFERENCIA IS NOT NULL
-        ORDER BY REFERENCIA DESC
-    """)
+    @staticmethod
+    def obter_referencias_arquivo_final():
+        """Obtém as referências disponíveis na view SEG_TB001_ARQUIVO_FINAL_TI"""
+        sql = text("""
+            SELECT DISTINCT REFERENCIA
+            FROM BDG.SEG_TB001_ARQUIVO_FINAL_TI
+            WHERE REFERENCIA IS NOT NULL
+            ORDER BY REFERENCIA DESC
+        """)
 
-    resultado = db.session.execute(sql).fetchall()
-    return [r[0] for r in resultado]
-
-
-@staticmethod
-def obter_dados_arquivo_final(referencia):
-    """Obtém os dados da view filtrados por referência"""
-    sql = text("""
-        SELECT 
-            COD_SUBEST,
-            COD_PRODUTO,
-            NR_CONTRATO,
-            NOME_TITULAR,
-            PREMIO_MIP,
-            IOF_MIP,
-            PRM_MIP_ATRASO,
-            IOF_MIP_ATRASO,
-            PREMIO_DFI,
-            IOF_DFI,
-            PRM_DFI_ATRASO,
-            IOF_DFI_ATRASO,
-            REMUNER_MES,
-            REFERENCIA,
-            OBS,
-            MIP_DIF
-        FROM BDG.SEG_TB001_ARQUIVO_FINAL_TI
-        WHERE REFERENCIA = :referencia
-        ORDER BY NR_CONTRATO
-    """)
-
-    resultado = db.session.execute(sql, {'referencia': referencia}).fetchall()
-
-    dados = []
-    for row in resultado:
-        dados.append({
-            'COD_SUBEST': row[0],
-            'COD_PRODUTO': row[1],
-            'NR_CONTRATO': row[2],
-            'NOME_TITULAR': row[3],
-            'PREMIO_MIP': float(row[4]) if row[4] else 0,
-            'IOF_MIP': float(row[5]) if row[5] else 0,
-            'PRM_MIP_ATRASO': float(row[6]) if row[6] else 0,
-            'IOF_MIP_ATRASO': float(row[7]) if row[7] else 0,
-            'PREMIO_DFI': float(row[8]) if row[8] else 0,
-            'IOF_DFI': float(row[9]) if row[9] else 0,
-            'PRM_DFI_ATRASO': float(row[10]) if row[10] else 0,
-            'IOF_DFI_ATRASO': float(row[11]) if row[11] else 0,
-            'REMUNER_MES': float(row[12]) if row[12] else 0,
-            'REFERENCIA': row[13],
-            'OBS': row[14],
-            'MIP_DIF': row[15]
-        })
-
-    return dados
+        resultado = db.session.execute(sql).fetchall()
+        return [r[0] for r in resultado]
 
 
+    @staticmethod
+    def obter_dados_arquivo_final(referencia):
+        """Obtém os dados da view filtrados por referência"""
+        sql = text("""
+            SELECT 
+                COD_SUBEST,
+                COD_PRODUTO,
+                NR_CONTRATO,
+                NOME_TITULAR,
+                PREMIO_MIP,
+                IOF_MIP,
+                PRM_MIP_ATRASO,
+                IOF_MIP_ATRASO,
+                PREMIO_DFI,
+                IOF_DFI,
+                PRM_DFI_ATRASO,
+                IOF_DFI_ATRASO,
+                REMUNER_MES,
+                REFERENCIA,
+                OBS,
+                MIP_DIF
+            FROM BDG.SEG_TB001_ARQUIVO_FINAL_TI
+            WHERE REFERENCIA = :referencia
+            ORDER BY NR_CONTRATO
+        """)
+
+        resultado = db.session.execute(sql, {'referencia': referencia}).fetchall()
+
+        dados = []
+        for row in resultado:
+            dados.append({
+                'COD_SUBEST': row[0],
+                'COD_PRODUTO': row[1],
+                'NR_CONTRATO': row[2],
+                'NOME_TITULAR': row[3],
+                'PREMIO_MIP': float(row[4]) if row[4] else 0,
+                'IOF_MIP': float(row[5]) if row[5] else 0,
+                'PRM_MIP_ATRASO': float(row[6]) if row[6] else 0,
+                'IOF_MIP_ATRASO': float(row[7]) if row[7] else 0,
+                'PREMIO_DFI': float(row[8]) if row[8] else 0,
+                'IOF_DFI': float(row[9]) if row[9] else 0,
+                'PRM_DFI_ATRASO': float(row[10]) if row[10] else 0,
+                'IOF_DFI_ATRASO': float(row[11]) if row[11] else 0,
+                'REMUNER_MES': float(row[12]) if row[12] else 0,
+                'REFERENCIA': row[13],
+                'OBS': row[14],
+                'MIP_DIF': row[15]
+            })
+
+        return dados
