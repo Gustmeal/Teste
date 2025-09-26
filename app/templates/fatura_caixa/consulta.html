@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="consulta-container fade-in">
+    <a href="{{ url_for('fatura_caixa.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Consulta de Dados - Fatura Caixa</h1>
+        <p class="text-muted">Visualize e filtre os registros importados</p>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filtros de Pesquisa
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('fatura_caixa.consulta') }}">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label for="nr_contrato" class="form-label">Número do Contrato</label>
+                        <input type="text" class="form-control" id="nr_contrato" name="nr_contrato"
+                               value="{{ filtros.nr_contrato }}" placeholder="Digite o número">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="arquivo_origem" class="form-label">Arquivo de Origem</label>
+                        <select class="form-select" id="arquivo_origem" name="arquivo_origem">
+                            <option value="">Todos os arquivos</option>
+                            {% for arquivo in arquivos_distintos %}
+                            <option value="{{ arquivo }}" {% if filtros.arquivo_origem == arquivo %}selected{% endif %}>
+                                {{ arquivo }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <label for="data_inicio" class="form-label">Data Inicial</label>
+                        <input type="date" class="form-control" id="data_inicio" name="data_inicio"
+                               value="{{ filtros.data_inicio }}">
+                    </div>
+
+                    <div class="col-md-2">
+                        <label for="data_fim" class="form-label">Data Final</label>
+                        <input type="date" class="form-control" id="data_fim" name="data_fim"
+                               value="{{ filtros.data_fim }}">
+                    </div>
+
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Pesquisar
+                        </button>
+                        <a href="{{ url_for('fatura_caixa.consulta') }}" class="btn btn-secondary">
+                            <i class="fas fa-eraser me-2"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela de Resultados -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                Registros Encontrados
+                <span class="badge bg-secondary ms-2">{{ registros.total }}</span>
+            </h5>
+            <a href="{{ url_for('fatura_caixa.exportar') }}" class="btn btn-success btn-sm">
+                <i class="fas fa-file-excel me-2"></i>Exportar Excel
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Contrato Terc.</th>
+                            <th>Nº Contrato</th>
+                            <th>Seq. Prêmio</th>
+                            <th>Produto</th>
+                            <th>Subest</th>
+                            <th>MIP/DIF</th>
+                            <th>Tipo</th>
+                            <th>Últ. Movto</th>
+                            <th>Início Ref.</th>
+                            <th>Fim Ref.</th>
+                            <th>Valor Prêmio</th>
+                            <th>IOF</th>
+                            <th>Evento</th>
+                            <th>Endosso</th>
+                            <th>Arquivo Origem</th>
+                            <th>Data Carga</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for registro in registros.items %}
+                        <tr>
+                            <td>{{ registro.NUM_CONTRATO_TERC|default('-') }}</td>
+                            <td><strong>{{ registro.NR_CONTRATO|default('-') }}</strong></td>
+                            <td>{{ registro.SEQ_PREMIO|default('-') }}</td>
+                            <td>{{ registro.COD_PRODUTO|default('-') }}</td>
+                            <td>{{ registro.COD_SUBEST|default('-') }}</td>
+                            <td>
+                                {% if registro.MIP_DIF == 1 %}
+                                    <span class="badge bg-info">MIP</span>
+                                {% elif registro.MIP_DIF == 2 %}
+                                    <span class="badge bg-warning">DIF</span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ registro.IND_TP_PREMIO|default('-') }}</td>
+                            <td>{{ registro.DTA_ULT_MOVTO.strftime('%d/%m/%Y') if registro.DTA_ULT_MOVTO else '-' }}</td>
+                            <td>{{ registro.DTA_INI_REFERENCIA.strftime('%d/%m/%Y') if registro.DTA_INI_REFERENCIA else '-' }}</td>
+                            <td>{{ registro.DTA_FIM_REFERENCIA.strftime('%d/%m/%Y') if registro.DTA_FIM_REFERENCIA else '-' }}</td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(registro.VR_PREMIO|float).replace(',', 'X').replace('.', ',').replace('X', '.') if registro.VR_PREMIO else '0,00' }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(registro.IOF_MIP_DIF|float).replace(',', 'X').replace('.', ',').replace('X', '.') if registro.IOF_MIP_DIF else '0,00' }}
+                            </td>
+                            <td>{{ registro.COD_EVENTO|default('-') }}</td>
+                            <td>{{ registro.NUM_ENDOSSO|default('-') }}</td>
+                            <td>
+                                <small class="text-muted">{{ registro.ARQUIVO_ORIGEM|default('-') }}</small>
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {{ registro.DTA_CARGA.strftime('%d/%m/%Y %H:%M') if registro.DTA_CARGA else '-' }}
+                                </small>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="16" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-2x mb-2"></i><br>
+                                Nenhum registro encontrado
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paginação -->
+            {% if registros.pages > 1 %}
+            <nav aria-label="Paginação">
+                <ul class="pagination justify-content-center">
+                    {% if registros.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('fatura_caixa.consulta', page=registros.prev_num, **filtros) }}">
+                            <i class="fas fa-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+
+                    {% for page_num in registros.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=3) %}
+                        {% if page_num %}
+                            {% if page_num != registros.page %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('fatura_caixa.consulta', page=page_num, **filtros) }}">{{ page_num }}</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ page_num }}</span>
+                                </li>
+                            {% endif %}
+                        {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">...</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if registros.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('fatura_caixa.consulta', page=registros.next_num, **filtros) }}">
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.consulta-container {
+    padding: 20px;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.btn-back {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #6c757d;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.btn-back:hover {
+    color: #007bff;
+}
+
+.page-title-bar {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.table-responsive {
+    font-size: 13px;
+}
+
+.badge {
+    font-size: 11px;
+}
+</style>
+{% endblock %}

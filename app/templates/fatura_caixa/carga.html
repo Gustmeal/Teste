@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="carga-container fade-in">
+    <a href="{{ url_for('fatura_caixa.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Carga de Dados - Fatura Caixa</h1>
+        <p class="text-muted">Importação automática de arquivos TXT da Caixa Seguradora</p>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-import me-2"></i>Informações da Carga
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Caminho de busca:</strong><br>
+                        <code>\\Compartilhadas\UNIDADES\SUCRE\GEINC\AUTORIZAR_VALIDAR\Contrato Imobiliário\Seguro\FORA SFH\Caixa Seguradora\2025_CAIXA\092025</code>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6>Padrão do arquivo:</h6>
+                        <p>O sistema buscará automaticamente o arquivo mais recente com o padrão:</p>
+                        <code>CNT.GEA.MZ.BFC2.PREMIOS.EMGEA.D[DATA]</code>
+                    </div>
+
+                    <div class="mb-4">
+                        <h6>Formato esperado:</h6>
+                        <p>Arquivo TXT com dados separados por ponto e vírgula (;)</p>
+                    </div>
+
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Importante:</strong> Os dados são acumulados. Registros anteriores são preservados e novos dados são adicionados à tabela.
+                    </div>
+
+                    <!-- Histórico de cargas -->
+                    {% if historico %}
+                    <div class="mb-4">
+                        <h6>Últimas cargas realizadas:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Arquivo</th>
+                                        <th>Data</th>
+                                        <th>Usuário</th>
+                                        <th>Registros</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in historico %}
+                                    <tr>
+                                        <td><small>{{ item.ARQUIVO_ORIGEM }}</small></td>
+                                        <td><small>{{ item.DTA_CARGA.strftime('%d/%m/%Y %H:%M') }}</small></td>
+                                        <td><small>{{ item.USUARIO_CARGA }}</small></td>
+                                        <td><small>{{ item.total_registros }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center">
+                        <button id="btnProcessarCarga" class="btn btn-primary btn-lg">
+                            <i class="fas fa-upload me-2"></i>Processar Carga
+                        </button>
+                    </div>
+
+                    <!-- Área de resultado -->
+                    <div id="resultadoCarga" class="mt-4" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.carga-container {
+    padding: 20px;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.btn-back {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #6c757d;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.btn-back:hover {
+    color: #007bff;
+}
+
+.page-title-bar {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+code {
+    background-color: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 14px;
+}
+</style>
+
+<script>
+document.getElementById('btnProcessarCarga').addEventListener('click', function() {
+    const btn = this;
+    const resultadoDiv = document.getElementById('resultadoCarga');
+
+    // Desabilitar botão e mostrar loading
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processando...';
+
+    // Limpar resultado anterior
+    resultadoDiv.style.display = 'none';
+    resultadoDiv.innerHTML = '';
+
+    // Fazer requisição
+    fetch('{{ url_for("fatura_caixa.processar_carga") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Reabilitar botão
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-upload me-2"></i>Processar Carga';
+
+        // Mostrar resultado
+        resultadoDiv.style.display = 'block';
+
+        if (data.success) {
+            resultadoDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Sucesso!</strong><br>
+                    ${data.message}<br>
+                    <small class="text-muted">Arquivo: ${data.arquivo}</small><br>
+                    <small class="text-muted">Novos registros: ${data.registros_novos}</small><br>
+                    <small class="text-muted">Total acumulado: ${data.total_acumulado}</small>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('fatura_caixa.consulta') }}" class="btn btn-info">
+                        <i class="fas fa-table me-2"></i>Visualizar Dados
+                    </a>
+                </div>
+            `;
+            // Recarregar a página após 3 segundos para atualizar o histórico
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            let alertClass = 'alert-danger';
+            let iconClass = 'times-circle';
+
+            if (data.tipo === 'warning') {
+                alertClass = 'alert-warning';
+                iconClass = 'exclamation-triangle';
+            } else if (data.tipo === 'info') {
+                alertClass = 'alert-info';
+                iconClass = 'info-circle';
+            }
+
+            resultadoDiv.innerHTML = `
+                <div class="alert ${alertClass}">
+                    <i class="fas fa-${iconClass} me-2"></i>
+                    <strong>Atenção!</strong><br>
+                    ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        // Reabilitar botão
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-upload me-2"></i>Processar Carga';
+
+        // Mostrar erro
+        resultadoDiv.style.display = 'block';
+        resultadoDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-times-circle me-2"></i>
+                <strong>Erro de conexão!</strong><br>
+                Não foi possível processar a requisição. Tente novamente.
+            </div>
+        `;
+    });
+});
+</script>
+{% endblock %}

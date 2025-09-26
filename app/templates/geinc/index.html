@@ -121,6 +121,23 @@
                     </div>
                 </div>
             </div>
+
+
+            <div class="col-md-4 system-item" data-name="fatura caixa">
+                <div class="system-card">
+                    <div class="card-icon gradient-cyan">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <h4>Fatura Caixa</h4>
+                    <p class="text-muted">Gestão de faturas da Caixa Seguradora</p>
+                    <div class="card-footer">
+                        <span class="badge bg-success">Novo</span>
+                        <a href="{{ url_for('fatura_caixa.index') }}" class="btn-back">
+                            Acessar <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -285,19 +302,6 @@
                 </div>
             </div>
 
-            <!-- Adicione este card junto com os outros sistemas -->
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="fas fa-book fa-3x text-primary mb-3"></i>
-                        <h5 class="card-title">Manuais Padronizados</h5>
-                        <p class="card-text">Sistema de criação e gestão de manuais</p>
-                        <a href="{{ url_for('manual.listar_manuais') }}" class="btn btn-primary">
-                            Acessar
-                        </a>
-                    </div>
-                </div>
-            </div>
 
             <!-- Em breve -->
             <div class="col-md-4 system-item" data-name="em breve">
