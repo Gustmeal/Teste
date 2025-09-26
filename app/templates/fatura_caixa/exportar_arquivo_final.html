@@ -53,24 +53,12 @@
                             <label class="form-check-label" for="abrirChamado">
                                 Abrir chamado automaticamente no SISADE
                                 <br>
-                                <small class="text-warning">
-                                    <i class="fas fa-exclamation-triangle me-1"></i>
-                                    Requer Chrome instalado e Selenium configurado
+                                <small class="text-info">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    A automação baixará o driver necessário automaticamente
                                 </small>
                             </label>
                         </div>
-                    </div>
-
-                    <!-- Informações do Processo -->
-                    <div class="alert alert-info">
-                        <h6>Processo do Chamado (quando ativado):</h6>
-                        <ol class="mb-0">
-                            <li>Área: <strong>Tecnologia</strong></li>
-                            <li>Tipo Nível 1: <strong>Sistemas</strong></li>
-                            <li>Tipo Nível 2: <strong>Extração/Importação de Dados</strong></li>
-                            <li>Descrição: <strong>"Prezados, importar para o SISSEG arquivo da Caixa Seguradora."</strong></li>
-                            <li>Anexo: <strong>Arquivo Excel gerado</strong></li>
-                        </ol>
                     </div>
 
                     <!-- Botões de Ação -->
@@ -78,14 +66,25 @@
                         <button id="btnGerarArquivo" class="btn btn-primary btn-lg" disabled>
                             <i class="fas fa-file-excel me-2"></i>Gerar Arquivo
                         </button>
-
-                        <button id="btnDownload" class="btn btn-success btn-lg ms-2" style="display: none;">
-                            <i class="fas fa-download me-2"></i>Baixar Arquivo
-                        </button>
                     </div>
 
                     <!-- Área de Resultado -->
                     <div id="resultadoExportacao" class="mt-4" style="display: none;">
+                    </div>
+
+                    <!-- Instruções Manuais (aparece quando automação falha) -->
+                    <div id="instrucoesManual" class="alert alert-warning mt-4" style="display: none;">
+                        <h6><i class="fas fa-hand-point-right me-2"></i>Instruções para abrir o chamado manualmente:</h6>
+                        <ol class="mb-0">
+                            <li>O arquivo foi salvo em: <code id="caminhoArquivo"></code></li>
+                            <li>Acesse: <a href="http://intranet/sistemas/sisade/view/chamadoins.aspx" target="_blank" class="alert-link">Sistema SISADE (clique aqui)</a></li>
+                            <li>Área: <strong>Tecnologia</strong></li>
+                            <li>Tipo Nível 1: <strong>Sistemas</strong></li>
+                            <li>Tipo Nível 2: <strong>Extração/Importação de Dados</strong></li>
+                            <li>Descrição: <strong>"Prezados, importar para o SISSEG arquivo da Caixa Seguradora."</strong></li>
+                            <li>Clique em "Escolher arquivo" e selecione o arquivo salvo</li>
+                            <li>Clique em "Adicionar" e depois em "Salvar"</li>
+                        </ol>
                     </div>
                 </div>
             </div>
@@ -127,6 +126,7 @@ code {
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 12px;
+    word-break: break-all;
 }
 </style>
 
@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const divAbrirChamado = document.getElementById('divAbrirChamado');
     const checkAbrirChamado = document.getElementById('abrirChamado');
     const resultadoDiv = document.getElementById('resultadoExportacao');
+    const instrucoesManual = document.getElementById('instrucoesManual');
 
     // Habilitar botão quando referência for selecionada
     selectReferencia.addEventListener('change', function() {
@@ -165,15 +166,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Desabilitar botão e mostrar loading
         btnGerar.disabled = true;
-        btnGerar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Gerando...';
+        btnGerar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processando...';
 
-        // Limpar resultado anterior
+        // Limpar resultados anteriores
         resultadoDiv.style.display = 'none';
         resultadoDiv.innerHTML = '';
+        instrucoesManual.style.display = 'none';
 
         // Se não for salvar automaticamente, fazer download direto
         if (!checkSalvar.checked) {
-            // Download direto via formulário
+            // Criar formulário para download
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '{{ url_for("fatura_caixa.gerar_arquivo_final") }}';
@@ -206,12 +208,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Requisição AJAX para salvar automaticamente
+        // Requisição AJAX para salvar e possivelmente abrir chamado
         const dados = {
             referencia: referencia,
             salvar_automatico: checkSalvar.checked,
             abrir_chamado: checkAbrirChamado.checked
         };
+
+        // Mostrar mensagem de processamento se automação estiver ativa
+        if (checkAbrirChamado.checked) {
+            resultadoDiv.style.display = 'block';
+            resultadoDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    Gerando arquivo e abrindo chamado... Isso pode levar alguns segundos.
+                </div>
+            `;
+        }
 
         fetch('{{ url_for("fatura_caixa.gerar_arquivo_final") }}', {
             method: 'POST',
@@ -230,24 +243,43 @@ document.addEventListener('DOMContentLoaded', function() {
             resultadoDiv.style.display = 'block';
 
             if (data.success) {
-                let mensagem = `
-                    <div class="alert alert-success">
-                        <i class="fas fa-check-circle me-2"></i>
-                        <strong>Sucesso!</strong><br>
-                        ${data.message}<br>
-                        <small class="text-muted">Arquivo: ${data.arquivo}</small><br>
-                `;
+                if (data.automacao_completa) {
+                    // Automação funcionou completamente
+                    resultadoDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Processo concluído com sucesso!</strong><br>
+                            ${data.message}<br>
+                            <small class="text-muted">Arquivo: ${data.arquivo}</small><br>
+                            <small class="text-muted">Chamado: ${data.numero_chamado}</small>
+                        </div>
+                    `;
+                } else if (data.instrucoes_manuais) {
+                    // Arquivo salvo mas automação falhou
+                    resultadoDiv.innerHTML = `
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Arquivo salvo!</strong><br>
+                            A automação do chamado falhou. Siga as instruções abaixo para abrir manualmente.<br>
+                            <small class="text-muted">Arquivo: ${data.arquivo}</small>
+                        </div>
+                    `;
 
-                if (data.caminho) {
-                    mensagem += `<small class="text-muted">Caminho: ${data.caminho}</small><br>`;
+                    // Mostrar instruções manuais
+                    document.getElementById('caminhoArquivo').textContent = data.caminho;
+                    instrucoesManual.style.display = 'block';
+                } else {
+                    // Apenas salvou o arquivo
+                    resultadoDiv.innerHTML = `
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Arquivo salvo com sucesso!</strong><br>
+                            ${data.message}<br>
+                            <small class="text-muted">Arquivo: ${data.arquivo}</small><br>
+                            <small class="text-muted">Caminho: ${data.caminho}</small>
+                        </div>
+                    `;
                 }
-
-                if (data.numero_chamado) {
-                    mensagem += `<small class="text-success">Chamado: ${data.numero_chamado}</small><br>`;
-                }
-
-                mensagem += '</div>';
-                resultadoDiv.innerHTML = mensagem;
             } else {
                 resultadoDiv.innerHTML = `
                     <div class="alert alert-danger">
@@ -269,7 +301,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="alert alert-danger">
                     <i class="fas fa-times-circle me-2"></i>
                     <strong>Erro de conexão!</strong><br>
-                    ${error}
+                    Não foi possível processar a requisição.
                 </div>
             `;
         });

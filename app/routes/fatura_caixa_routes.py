@@ -380,60 +380,63 @@ def gerar_arquivo_final():
             # Caminho de destino
             caminho_destino = r'A:\Supec\Geinc\Public_Geinc\Portal-GEINC\Seguros_Norrana'
 
-            # Verificar se o caminho existe
+            # Verificar/criar diretório
             if not os.path.exists(caminho_destino):
-                # Tentar criar o diretório
-                try:
-                    os.makedirs(caminho_destino, exist_ok=True)
-                except:
-                    return jsonify({
-                        'success': False,
-                        'message': f'Não foi possível acessar o caminho: {caminho_destino}'
-                    }), 500
+                os.makedirs(caminho_destino, exist_ok=True)
 
             # Salvar arquivo
             caminho_completo = os.path.join(caminho_destino, nome_arquivo)
             with open(caminho_completo, 'wb') as f:
                 f.write(output.read())
 
-            output.seek(0)  # Resetar posição para possível download
+            output.seek(0)
 
             # Se deve abrir chamado automaticamente
             if abrir_chamado:
                 try:
                     resultado_chamado = abrir_chamado_automatico(caminho_completo)
+
                     if resultado_chamado['success']:
                         return jsonify({
                             'success': True,
-                            'message': f'Arquivo salvo e chamado aberto com sucesso! Número: {resultado_chamado["numero_chamado"]}',
+                            'message': f'Arquivo salvo e chamado aberto com sucesso!',
                             'arquivo': nome_arquivo,
                             'caminho': caminho_completo,
-                            'numero_chamado': resultado_chamado['numero_chamado']
+                            'numero_chamado': resultado_chamado['numero_chamado'],
+                            'automacao_completa': True
                         })
                     else:
+                        # Automação falhou, mas arquivo foi salvo
                         return jsonify({
                             'success': True,
-                            'message': f'Arquivo salvo, mas erro ao abrir chamado: {resultado_chamado["error"]}',
+                            'message': f'Arquivo salvo! Erro na automação: {resultado_chamado["error"]}. Abra o chamado manualmente.',
                             'arquivo': nome_arquivo,
-                            'caminho': caminho_completo
+                            'caminho': caminho_completo,
+                            'automacao_completa': False,
+                            'instrucoes_manuais': True
                         })
                 except Exception as e:
+                    # Erro na automação, mas arquivo foi salvo
                     return jsonify({
                         'success': True,
-                        'message': f'Arquivo salvo, mas erro ao abrir chamado: {str(e)}',
+                        'message': f'Arquivo salvo! Erro na automação. Abra o chamado manualmente.',
                         'arquivo': nome_arquivo,
-                        'caminho': caminho_completo
+                        'caminho': caminho_completo,
+                        'automacao_completa': False,
+                        'instrucoes_manuais': True,
+                        'erro_tecnico': str(e)
                     })
 
+            # Apenas salvar sem automação
             return jsonify({
                 'success': True,
-                'message': f'Arquivo salvo com sucesso em: {caminho_completo}',
+                'message': f'Arquivo salvo com sucesso!',
                 'arquivo': nome_arquivo,
                 'caminho': caminho_completo
             })
 
         else:
-            # Apenas retornar o arquivo para download
+            # Retornar para download
             return send_file(
                 output,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -447,99 +450,201 @@ def gerar_arquivo_final():
             'message': f'Erro ao gerar arquivo: {str(e)}'
         }), 500
 
-
 def abrir_chamado_automatico(caminho_arquivo):
-    """Abre chamado automaticamente no sistema SISADE"""
+    """Abre chamado automaticamente no sistema SISADE - COM DRIVER TEMPORÁRIO"""
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import Select, WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        import time
+        import os
+        import tempfile
+        import requests
+        import zipfile
+        import shutil
+
+        # Função auxiliar para baixar o ChromeDriver
+        def baixar_chromedriver_temporario():
+            """Baixa o ChromeDriver temporariamente"""
+            # Criar diretório temporário
+            temp_dir = tempfile.mkdtemp()
+            driver_path = os.path.join(temp_dir, 'chromedriver.exe')
+
+            try:
+                # Tentar obter versão do Chrome instalado (versão simplificada)
+                # Usar versão estável conhecida se não conseguir detectar
+                versao_chrome = "120"  # Versão padrão estável
+
+                # URL do ChromeDriver
+                # Primeiro, obter a versão exata disponível
+                try:
+                    response = requests.get(
+                        f"https://chromedriver.storage.googleapis.com/LATEST_RELEASE_{versao_chrome}",
+                        timeout=10
+                    )
+                    versao_completa = response.text.strip()
+                except:
+                    # Usar versão conhecida estável se falhar
+                    versao_completa = "120.0.6099.109"
+
+                # Baixar o ChromeDriver
+                url_download = f"https://chromedriver.storage.googleapis.com/{versao_completa}/chromedriver_win32.zip"
+
+                print(f"Baixando ChromeDriver versão {versao_completa}...")
+                response = requests.get(url_download, timeout=30)
+
+                # Salvar e extrair
+                zip_path = os.path.join(temp_dir, 'chromedriver.zip')
+                with open(zip_path, 'wb') as f:
+                    f.write(response.content)
+
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+
+                # Verificar se existe chromedriver.exe
+                if os.path.exists(driver_path):
+                    return driver_path, temp_dir
+
+                # Às vezes o arquivo está em subpasta
+                chromedriver_path = os.path.join(temp_dir, 'chromedriver-win32', 'chromedriver.exe')
+                if os.path.exists(chromedriver_path):
+                    shutil.move(chromedriver_path, driver_path)
+                    return driver_path, temp_dir
+
+                return None, temp_dir
+
+            except Exception as e:
+                print(f"Erro ao baixar ChromeDriver: {e}")
+                return None, temp_dir
 
         # Configurar Chrome
         chrome_options = Options()
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--ignore-certificate-errors')
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
         # chrome_options.add_argument('--headless')  # Descomente para rodar sem interface
 
-        # O webdriver-manager baixa automaticamente o driver correto
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver = None
+        temp_dir = None
 
         try:
+            # Primeiro, tentar usar ChromeDriver se já existir no sistema
+            try:
+                driver = webdriver.Chrome(options=chrome_options)
+            except:
+                # Se não encontrou, baixar temporariamente
+                print("ChromeDriver não encontrado. Baixando temporariamente...")
+                driver_path, temp_dir = baixar_chromedriver_temporario()
+
+                if driver_path and os.path.exists(driver_path):
+                    service = Service(driver_path)
+                    driver = webdriver.Chrome(service=service, options=chrome_options)
+                else:
+                    return {
+                        'success': False,
+                        'error': 'Não foi possível configurar o ChromeDriver. Verifique a conexão com a internet.'
+                    }
+
+            # === INÍCIO DA AUTOMAÇÃO ===
+
             # Acessar a página
             driver.get('http://intranet/sistemas/sisade/view/chamadoins.aspx')
 
             # Aguardar página carregar
-            WebDriverWait(driver, 10).until(
+            WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlAreaNegocial"))
             )
 
-            # Selecionar Área: Tecnologia
-            select_area = Select(
-                driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlAreaNegocial"))
-            select_area.select_by_value("1")  # 1 = Tecnologia
+            time.sleep(2)
 
-            time.sleep(2)  # Aguardar carregamento do dropdown dependente
-
-            # Selecionar Tipo de Chamado Nível 1: Sistemas
-            WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel1"))
-            )
-            select_nivel1 = Select(
-                driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel1"))
-            select_nivel1.select_by_value("552")  # 552 = Sistemas
-
-            time.sleep(2)  # Aguardar carregamento do dropdown dependente
-
-            # Selecionar Tipo de Chamado Nível 2: Extração/Importação de Dados
-            WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel2"))
-            )
-            select_nivel2 = Select(
-                driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel2"))
-            select_nivel2.select_by_value("555")  # 555 = Extração/Importação de Dados
-
-            time.sleep(1)
-
-            # Preencher descrição
-            descricao = driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_txbDsChamado")
-            descricao.clear()
-            descricao.send_keys("Prezados, importar para o SISSEG arquivo da Caixa Seguradora.")
-
-            # Adicionar arquivo
-            input_arquivo = driver.find_element(By.ID,
-                                                "ctl00_cphMasterPage_WcChamado1_dtvChamado_wcUploadArquivo2_frmUploadArquivo_AnexosReaberturaChamado_IpFile")
-            input_arquivo.send_keys(caminho_arquivo)
-
-            # Clicar no botão Adicionar
-            btn_adicionar = driver.find_element(By.ID,
-                                                "ctl00_cphMasterPage_WcChamado1_dtvChamado_wcUploadArquivo2_frmUploadArquivo_AnexosReaberturaChamado_btnAdd")
-            driver.execute_script("arguments[0].click();", btn_adicionar)
-
-            time.sleep(2)  # Aguardar arquivo ser adicionado
-
-            # Clicar em Salvar
-            btn_salvar = driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_btnChamadoINS")
-            driver.execute_script("arguments[0].click();", btn_salvar)
-
-            time.sleep(5)  # Aguardar processamento
-
-            # Tentar capturar o número do chamado (se disponível)
+            # 1. Selecionar Área: Tecnologia
             try:
-                # Verificar se há mensagem de sucesso ou número do chamado
-                # A página pode redirecionar ou mostrar uma mensagem
-                numero_chamado = "Chamado aberto com sucesso"
+                select_area = Select(
+                    driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlAreaNegocial"))
+                select_area.select_by_value("1")  # 1 = Tecnologia
+                time.sleep(3)  # Aguardar carregar próximo dropdown
+            except Exception as e:
+                raise Exception(f"Erro ao selecionar área: {str(e)}")
 
-                # Tentar capturar URL ou texto com número do chamado
-                if "chamadocon" in driver.current_url.lower():
-                    # Se redirecionou para página de confirmação
-                    numero_chamado = f"Chamado aberto - Verifique no SISADE"
+            # 2. Selecionar Tipo de Chamado Nível 1: Sistemas
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel1"))
+                )
+                select_nivel1 = Select(
+                    driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel1"))
+                select_nivel1.select_by_value("552")  # 552 = Sistemas
+                time.sleep(3)  # Aguardar carregar próximo dropdown
+            except Exception as e:
+                raise Exception(f"Erro ao selecionar Tipo Nível 1: {str(e)}")
+
+            # 3. Selecionar Tipo de Chamado Nível 2: Extração/Importação de Dados
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located(
+                        (By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel2"))
+                )
+                select_nivel2 = Select(
+                    driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_ddlTipoChamadoNivel2"))
+                select_nivel2.select_by_value("555")  # 555 = Extração/Importação de Dados
+                time.sleep(2)
+            except Exception as e:
+                raise Exception(f"Erro ao selecionar Tipo Nível 2: {str(e)}")
+
+            # 4. Preencher descrição
+            try:
+                descricao = driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_txbDsChamado")
+                descricao.clear()
+                descricao.send_keys("Prezados, importar para o SISSEG arquivo da Caixa Seguradora.")
+            except Exception as e:
+                raise Exception(f"Erro ao preencher descrição: {str(e)}")
+
+            # 5. Adicionar arquivo
+            try:
+                input_arquivo = driver.find_element(By.ID,
+                                                    "ctl00_cphMasterPage_WcChamado1_dtvChamado_wcUploadArquivo2_frmUploadArquivo_AnexosReaberturaChamado_IpFile")
+                input_arquivo.send_keys(caminho_arquivo)
+                time.sleep(2)
+
+                # Clicar no botão Adicionar
+                btn_adicionar = driver.find_element(By.ID,
+                                                    "ctl00_cphMasterPage_WcChamado1_dtvChamado_wcUploadArquivo2_frmUploadArquivo_AnexosReaberturaChamado_btnAdd")
+                driver.execute_script("arguments[0].click();", btn_adicionar)
+                time.sleep(3)
+            except Exception as e:
+                raise Exception(f"Erro ao anexar arquivo: {str(e)}")
+
+            # 6. Salvar chamado
+            try:
+                btn_salvar = driver.find_element(By.ID, "ctl00_cphMasterPage_WcChamado1_dtvChamado_btnChamadoINS")
+                driver.execute_script("arguments[0].click();", btn_salvar)
+                time.sleep(5)
+            except Exception as e:
+                raise Exception(f"Erro ao salvar chamado: {str(e)}")
+
+            # Verificar sucesso
+            numero_chamado = "Chamado criado com sucesso"
+            try:
+                if "sucesso" in driver.page_source.lower() or "chamadocon" in driver.current_url.lower():
+                    numero_chamado = "Chamado criado com sucesso - Verifique no SISADE"
             except:
-                numero_chamado = "Chamado aberto"
+                pass
 
             driver.quit()
+
+            # Limpar diretório temporário se foi criado
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass  # Não é crítico se falhar a limpeza
 
             return {
                 'success': True,
@@ -547,19 +652,28 @@ def abrir_chamado_automatico(caminho_arquivo):
             }
 
         except Exception as e:
-            driver.quit()
+            if driver:
+                driver.quit()
+
+            # Limpar diretório temporário
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except:
+                    pass
+
             return {
                 'success': False,
-                'error': str(e)
+                'error': f'Erro durante automação: {str(e)}'
             }
 
     except ImportError as e:
         return {
             'success': False,
-            'error': 'Selenium ou webdriver-manager não instalado. Execute: pip install selenium webdriver-manager'
+            'error': 'Selenium não instalado. Execute: pip install selenium requests'
         }
     except Exception as e:
         return {
             'success': False,
-            'error': f'Erro ao inicializar navegador: {str(e)}'
+            'error': f'Erro geral: {str(e)}'
         }
