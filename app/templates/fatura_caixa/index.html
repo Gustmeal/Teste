@@ -109,6 +109,22 @@
             </div>
         </div>
 
+        <!-- Adicionar este card junto aos outros na página index -->
+        <div class="col-md-6 mb-4">
+            <div class="card action-card h-100">
+                <div class="card-body text-center">
+                    <div class="action-icon mb-3">
+                        <i class="fas fa-file-export fa-3x text-success"></i>
+                    </div>
+                    <h4>Exportar Arquivo Final TI</h4>
+                    <p class="text-muted">Gerar arquivo para importação no SISSEG com abertura automática de chamado</p>
+                    <a href="{{ url_for('fatura_caixa.exportar_arquivo_final') }}" class="btn btn-success">
+                        <i class="fas fa-file-excel me-2"></i>Exportar Arquivo
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="col-md-6 mb-4">
             <div class="card action-card h-100">
                 <div class="card-body text-center">

@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="exportar-container fade-in">
+    <a href="{{ url_for('fatura_caixa.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Exportar Arquivo Final TI</h1>
+        <p class="text-muted">Gerar arquivo Excel para importação no SISSEG</p>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-export me-2"></i>Configurações de Exportação
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <!-- Seleção de Referência -->
+                    <div class="mb-4">
+                        <label for="referencia" class="form-label fw-bold">
+                            <i class="fas fa-calendar me-2"></i>Selecione a Referência:
+                        </label>
+                        <select class="form-select" id="referencia">
+                            <option value="">-- Selecione uma referência --</option>
+                            {% for ref in referencias %}
+                            <option value="{{ ref }}">{{ ref }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Opções de Exportação -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">Opções de Exportação:</h6>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="salvarAutomatico">
+                            <label class="form-check-label" for="salvarAutomatico">
+                                Salvar automaticamente no diretório padrão
+                                <br>
+                                <small class="text-muted">
+                                    <code>A:\Supec\Geinc\Public_Geinc\Portal-GEINC\Seguros_Norrana</code>
+                                </small>
+                            </label>
+                        </div>
+
+                        <div class="form-check mb-2 ms-4" id="divAbrirChamado" style="display: none;">
+                            <input class="form-check-input" type="checkbox" id="abrirChamado">
+                            <label class="form-check-label" for="abrirChamado">
+                                Abrir chamado automaticamente no SISADE
+                                <br>
+                                <small class="text-warning">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    Requer Chrome instalado e Selenium configurado
+                                </small>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Informações do Processo -->
+                    <div class="alert alert-info">
+                        <h6>Processo do Chamado (quando ativado):</h6>
+                        <ol class="mb-0">
+                            <li>Área: <strong>Tecnologia</strong></li>
+                            <li>Tipo Nível 1: <strong>Sistemas</strong></li>
+                            <li>Tipo Nível 2: <strong>Extração/Importação de Dados</strong></li>
+                            <li>Descrição: <strong>"Prezados, importar para o SISSEG arquivo da Caixa Seguradora."</strong></li>
+                            <li>Anexo: <strong>Arquivo Excel gerado</strong></li>
+                        </ol>
+                    </div>
+
+                    <!-- Botões de Ação -->
+                    <div class="text-center mt-4">
+                        <button id="btnGerarArquivo" class="btn btn-primary btn-lg" disabled>
+                            <i class="fas fa-file-excel me-2"></i>Gerar Arquivo
+                        </button>
+
+                        <button id="btnDownload" class="btn btn-success btn-lg ms-2" style="display: none;">
+                            <i class="fas fa-download me-2"></i>Baixar Arquivo
+                        </button>
+                    </div>
+
+                    <!-- Área de Resultado -->
+                    <div id="resultadoExportacao" class="mt-4" style="display: none;">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.exportar-container {
+    padding: 20px;
+}
+
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.btn-back {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: #6c757d;
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+.btn-back:hover {
+    color: #007bff;
+}
+
+.page-title-bar {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #e9ecef;
+}
+
+code {
+    background-color: #f4f4f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const selectReferencia = document.getElementById('referencia');
+    const btnGerar = document.getElementById('btnGerarArquivo');
+    const checkSalvar = document.getElementById('salvarAutomatico');
+    const divAbrirChamado = document.getElementById('divAbrirChamado');
+    const checkAbrirChamado = document.getElementById('abrirChamado');
+    const resultadoDiv = document.getElementById('resultadoExportacao');
+
+    // Habilitar botão quando referência for selecionada
+    selectReferencia.addEventListener('change', function() {
+        btnGerar.disabled = !this.value;
+    });
+
+    // Mostrar/ocultar opção de abrir chamado
+    checkSalvar.addEventListener('change', function() {
+        if (this.checked) {
+            divAbrirChamado.style.display = 'block';
+        } else {
+            divAbrirChamado.style.display = 'none';
+            checkAbrirChamado.checked = false;
+        }
+    });
+
+    // Processar geração do arquivo
+    btnGerar.addEventListener('click', function() {
+        const referencia = selectReferencia.value;
+
+        if (!referencia) {
+            alert('Por favor, selecione uma referência');
+            return;
+        }
+
+        // Desabilitar botão e mostrar loading
+        btnGerar.disabled = true;
+        btnGerar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Gerando...';
+
+        // Limpar resultado anterior
+        resultadoDiv.style.display = 'none';
+        resultadoDiv.innerHTML = '';
+
+        // Se não for salvar automaticamente, fazer download direto
+        if (!checkSalvar.checked) {
+            // Download direto via formulário
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("fatura_caixa.gerar_arquivo_final") }}';
+
+            const inputRef = document.createElement('input');
+            inputRef.type = 'hidden';
+            inputRef.name = 'referencia';
+            inputRef.value = referencia;
+
+            form.appendChild(inputRef);
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+
+            // Reabilitar botão
+            setTimeout(() => {
+                btnGerar.disabled = false;
+                btnGerar.innerHTML = '<i class="fas fa-file-excel me-2"></i>Gerar Arquivo';
+
+                resultadoDiv.style.display = 'block';
+                resultadoDiv.innerHTML = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Arquivo gerado com sucesso!</strong><br>
+                        O download deve iniciar automaticamente.
+                    </div>
+                `;
+            }, 1000);
+
+            return;
+        }
+
+        // Requisição AJAX para salvar automaticamente
+        const dados = {
+            referencia: referencia,
+            salvar_automatico: checkSalvar.checked,
+            abrir_chamado: checkAbrirChamado.checked
+        };
+
+        fetch('{{ url_for("fatura_caixa.gerar_arquivo_final") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(dados)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Reabilitar botão
+            btnGerar.disabled = false;
+            btnGerar.innerHTML = '<i class="fas fa-file-excel me-2"></i>Gerar Arquivo';
+
+            // Mostrar resultado
+            resultadoDiv.style.display = 'block';
+
+            if (data.success) {
+                let mensagem = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong><br>
+                        ${data.message}<br>
+                        <small class="text-muted">Arquivo: ${data.arquivo}</small><br>
+                `;
+
+                if (data.caminho) {
+                    mensagem += `<small class="text-muted">Caminho: ${data.caminho}</small><br>`;
+                }
+
+                if (data.numero_chamado) {
+                    mensagem += `<small class="text-success">Chamado: ${data.numero_chamado}</small><br>`;
+                }
+
+                mensagem += '</div>';
+                resultadoDiv.innerHTML = mensagem;
+            } else {
+                resultadoDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong><br>
+                        ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            // Reabilitar botão
+            btnGerar.disabled = false;
+            btnGerar.innerHTML = '<i class="fas fa-file-excel me-2"></i>Gerar Arquivo';
+
+            // Mostrar erro
+            resultadoDiv.style.display = 'block';
+            resultadoDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão!</strong><br>
+                    ${error}
+                </div>
+            `;
+        });
+    });
+});
+</script>
+{% endblock %}
