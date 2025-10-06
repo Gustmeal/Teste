@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}{% if demanda %}Editar{% else %}Nova{% endif %} Demanda - GEINC{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <i class="fas fa-{% if demanda %}edit{% else %}plus{% endif %} text-primary me-2"></i>
+                {% if demanda %}Editar{% else %}Nova{% endif %} Demanda
+            </h1>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data">
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="mb-3">
+                            <label class="form-label">Título *</label>
+                            <input type="text" name="titulo" class="form-control"
+                                   value="{{ demanda.TITULO if demanda else '' }}" required>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">Prioridade *</label>
+                            <select name="prioridade" class="form-select" required>
+                                <option value="BAIXA" {% if demanda and demanda.PRIORIDADE == 'BAIXA' %}selected{% endif %}>
+                                    Baixa
+                                </option>
+                                <option value="MEDIA" {% if not demanda or demanda.PRIORIDADE == 'MEDIA' %}selected{% endif %}>
+                                    Média
+                                </option>
+                                <option value="ALTA" {% if demanda and demanda.PRIORIDADE == 'ALTA' %}selected{% endif %}>
+                                    Alta
+                                </option>
+                                <option value="URGENTE" {% if demanda and demanda.PRIORIDADE == 'URGENTE' %}selected{% endif %}>
+                                    Urgente
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Descrição</label>
+                    <textarea name="descricao" class="form-control" rows="4">{{ demanda.DESCRICAO if demanda else '' }}</textarea>
+                </div>
+
+                <!-- Seção de Atribuição -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-users me-2"></i>Atribuição
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Área</label>
+                                    <select name="area" id="area" class="form-select">
+                                        <option value="">Selecione uma área...</option>
+                                        {% for area in areas %}
+                                        <option value="{{ area }}"
+                                                {% if demanda and demanda.AREA == area %}selected{% endif %}>
+                                            {{ area }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox"
+                                           name="visibilidade_area" id="visibilidade_area"
+                                           {% if demanda and demanda.VISIBILIDADE_AREA %}checked{% endif %}>
+                                    <label class="form-check-label" for="visibilidade_area">
+                                        <i class="fas fa-eye me-1"></i>
+                                        Permitir que todos da área visualizem
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">Responsável Específico</label>
+                                    <select name="responsavel_id" id="responsavel_id" class="form-select">
+                                        <option value="">Selecione um responsável...</option>
+                                        {% for usuario in usuarios %}
+                                        <option value="{{ usuario.ID }}"
+                                                {% if demanda and demanda.RESPONSAVEL_ID == usuario.ID %}selected{% endif %}>
+                                            {{ usuario.NOME }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i>
+                                    Selecione uma área OU um responsável específico
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        {% if not demanda %}
+                        <div class="mb-3">
+                            <label class="form-label">Prazo (em dias) *</label>
+                            <input type="number" name="prazo_dias" class="form-control"
+                                   value="7" min="1" required>
+                            <small class="text-muted">Número de dias a partir de hoje</small>
+                        </div>
+                        {% else %}
+                        <div class="mb-3">
+                            <label class="form-label">Data de Prazo</label>
+                            <input type="date" name="dt_prazo" class="form-control"
+                                   value="{{ demanda.DT_PRAZO.strftime('%Y-%m-%d') if demanda.DT_PRAZO else '' }}">
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">Horas Estimadas</label>
+                            <input type="number" name="horas_estimadas" class="form-control" step="0.5"
+                                   value="{{ demanda.HORAS_ESTIMADAS if demanda else '' }}">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label">Tipo de Demanda</label>
+                            <select name="tipo_demanda" class="form-select">
+                                <option value="">Selecione...</option>
+                                <option value="DESENVOLVIMENTO" {% if demanda and demanda.TIPO_DEMANDA == 'DESENVOLVIMENTO' %}selected{% endif %}>
+                                    Desenvolvimento
+                                </option>
+                                <option value="CORREÇÃO" {% if demanda and demanda.TIPO_DEMANDA == 'CORREÇÃO' %}selected{% endif %}>
+                                    Correção
+                                </option>
+                                <option value="ANÁLISE" {% if demanda and demanda.TIPO_DEMANDA == 'ANÁLISE' %}selected{% endif %}>
+                                    Análise
+                                </option>
+                                <option value="RELATÓRIO" {% if demanda and demanda.TIPO_DEMANDA == 'RELATÓRIO' %}selected{% endif %}>
+                                    Relatório
+                                </option>
+                                <option value="OUTROS" {% if demanda and demanda.TIPO_DEMANDA == 'OUTROS' %}selected{% endif %}>
+                                    Outros
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Sistema Relacionado</label>
+                    <input type="text" name="sistema_relacionado" class="form-control"
+                           value="{{ demanda.SISTEMA_RELACIONADO if demanda else '' }}"
+                           placeholder="Ex: Credenciamento, SUMOV, etc">
+                </div>
+
+                <!-- Seção de Anexos -->
+                <div class="card mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0">
+                            <i class="fas fa-paperclip me-2"></i>Anexos
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Arquivo Principal</label>
+                            <input type="file" name="arquivo" class="form-control"
+                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip,.rar">
+                            <small class="text-muted">
+                                Formatos aceitos: PDF, Word, Excel, Imagens, ZIP/RAR (Máx: 10MB)
+                            </small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Arquivos Adicionais</label>
+                            <input type="file" name="arquivos_adicionais" class="form-control"
+                                   multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip,.rar">
+                            <small class="text-muted">
+                                Você pode selecionar múltiplos arquivos
+                            </small>
+                        </div>
+
+                        {% if demanda and demanda.anexos %}
+                        <div class="alert alert-info">
+                            <strong>Arquivos já anexados:</strong>
+                            <ul class="mb-0">
+                                {% for anexo in demanda.anexos %}
+                                <li>
+                                    <i class="fas {{ anexo.icone }}"></i>
+                                    {{ anexo.NOME_ARQUIVO }} ({{ anexo.tamanho_formatado }})
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('demandas.listar') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Voltar
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Salvar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Script para controlar seleção de área ou responsável
+document.getElementById('area').addEventListener('change', function() {
+    if (this.value) {
+        // Se selecionou área, limpar responsável
+        document.getElementById('responsavel_id').value = '';
+        // Habilitar checkbox de visibilidade
+        document.getElementById('visibilidade_area').disabled = false;
+    } else {
+        // Se não tem área, desabilitar checkbox
+        document.getElementById('visibilidade_area').disabled = true;
+        document.getElementById('visibilidade_area').checked = false;
+    }
+});
+
+document.getElementById('responsavel_id').addEventListener('change', function() {
+    if (this.value) {
+        // Se selecionou responsável específico, limpar área
+        document.getElementById('area').value = '';
+        document.getElementById('visibilidade_area').checked = false;
+        document.getElementById('visibilidade_area').disabled = true;
+    }
+});
+</script>
+{% endblock %}

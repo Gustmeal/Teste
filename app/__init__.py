@@ -132,6 +132,9 @@ def create_app():
     from app.routes.fatura_caixa_routes import fatura_caixa_bp
     app.register_blueprint(fatura_caixa_bp)
 
+    from app.routes.demandas_routes import demandas_bp
+    app.register_blueprint(demandas_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

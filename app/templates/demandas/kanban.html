@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Kanban de Demandas - GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Cabeçalho -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <i class="fas fa-columns text-info me-2"></i>
+                Kanban de Demandas
+            </h1>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('demandas.nova') }}" class="btn btn-success">
+                <i class="fas fa-plus me-2"></i>Nova Demanda
+            </a>
+            <a href="{{ url_for('demandas.listar') }}" class="btn btn-primary">
+                <i class="fas fa-list me-2"></i>Visualização Lista
+            </a>
+        </div>
+    </div>
+
+    <!-- Kanban Board -->
+    <div class="row">
+        <!-- Coluna Pendente -->
+        <div class="col-md">
+            <div class="card bg-light">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clock me-2"></i>Pendente
+                        <span class="badge bg-dark float-end">{{ kanban['PENDENTE']|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body kanban-column" style="min-height: 500px; max-height: 700px; overflow-y: auto;">
+                    {% for demanda in kanban['PENDENTE'] %}
+                    <div class="card mb-2">
+                        <div class="card-body p-2">
+                            <h6 class="card-title mb-1">
+                                <a href="{{ url_for('demandas.visualizar', id=demanda.ID) }}">
+                                    #{{ demanda.ID }} - {{ demanda.TITULO[:30] }}{% if demanda.TITULO|length > 30 %}...{% endif %}
+                                </a>
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="badge bg-{{ demanda.cor_prioridade }}">
+                                    {{ demanda.PRIORIDADE }}
+                                </span>
+                                <small class="text-muted">{{ demanda.responsavel.NOME.split()[0] }}</small>
+                            </div>
+                            <small class="text-muted">
+                                <i class="fas fa-calendar"></i> {{ demanda.DT_PRAZO.strftime('%d/%m') }}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Em Andamento -->
+        <div class="col-md">
+            <div class="card bg-light">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-spinner fa-spin me-2"></i>Em Andamento
+                        <span class="badge bg-dark float-end">{{ kanban['EM_ANDAMENTO']|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body kanban-column" style="min-height: 500px; max-height: 700px; overflow-y: auto;">
+                    {% for demanda in kanban['EM_ANDAMENTO'] %}
+                    <div class="card mb-2">
+                        <div class="card-body p-2">
+                            <h6 class="card-title mb-1">
+                                <a href="{{ url_for('demandas.visualizar', id=demanda.ID) }}">
+                                    #{{ demanda.ID }} - {{ demanda.TITULO[:30] }}{% if demanda.TITULO|length > 30 %}...{% endif %}
+                                </a>
+                            </h6>
+                            <div class="progress mb-1" style="height: 15px;">
+                                <div class="progress-bar" style="width: {{ demanda.PERCENTUAL_CONCLUSAO }}%">
+                                    {{ demanda.PERCENTUAL_CONCLUSAO }}%
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="badge bg-{{ demanda.cor_prioridade }}">
+                                    {{ demanda.PRIORIDADE }}
+                                </span>
+                                <small class="text-muted">{{ demanda.responsavel.NOME.split()[0] }}</small>
+                            </div>
+                            <small class="text-muted">
+                                <i class="fas fa-calendar"></i> {{ demanda.DT_PRAZO.strftime('%d/%m') }}
+                                {% if demanda.esta_atrasada %}
+                                <span class="text-danger">
+                                    <i class="fas fa-exclamation-triangle"></i>
+                                </span>
+                                {% endif %}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Pausada -->
+        <div class="col-md">
+            <div class="card bg-light">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">
+                        <i class="fas fa-pause me-2"></i>Pausada
+                        <span class="badge bg-dark float-end">{{ kanban['PAUSADA']|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body kanban-column" style="min-height: 500px; max-height: 700px; overflow-y: auto;">
+                    {% for demanda in kanban['PAUSADA'] %}
+                    <div class="card mb-2">
+                        <div class="card-body p-2">
+                            <h6 class="card-title mb-1">
+                                <a href="{{ url_for('demandas.visualizar', id=demanda.ID) }}">
+                                    #{{ demanda.ID }} - {{ demanda.TITULO[:30] }}{% if demanda.TITULO|length > 30 %}...{% endif %}
+                                </a>
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="badge bg-{{ demanda.cor_prioridade }}">
+                                    {{ demanda.PRIORIDADE }}
+                                </span>
+                                <small class="text-muted">{{ demanda.responsavel.NOME.split()[0] }}</small>
+                            </div>
+                            <small class="text-muted">
+                                <i class="fas fa-calendar"></i> {{ demanda.DT_PRAZO.strftime('%d/%m') }}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Concluída -->
+        <div class="col-md">
+            <div class="card bg-light">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle me-2"></i>Concluída
+                        <span class="badge bg-dark float-end">{{ kanban['CONCLUIDA']|length }}</span>
+                    </h5>
+                </div>
+                <div class="card-body kanban-column" style="min-height: 500px; max-height: 700px; overflow-y: auto;">
+                    {% for demanda in kanban['CONCLUIDA'] %}
+                    <div class="card mb-2">
+                        <div class="card-body p-2">
+                            <h6 class="card-title mb-1">
+                                <a href="{{ url_for('demandas.visualizar', id=demanda.ID) }}">
+                                    #{{ demanda.ID }} - {{ demanda.TITULO[:30] }}{% if demanda.TITULO|length > 30 %}...{% endif %}
+                                </a>
+                            </h6>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">{{ demanda.responsavel.NOME.split()[0] }}</small>
+                            </div>
+                            <small class="text-success">
+                                <i class="fas fa-check"></i> {{ demanda.DT_CONCLUSAO.strftime('%d/%m') if demanda.DT_CONCLUSAO else '' }}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

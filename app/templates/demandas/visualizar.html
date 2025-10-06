@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+
+{% block title %}Demanda #{{ demanda.ID }} - GEINC{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Cabeçalho -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <i class="fas fa-tasks text-primary me-2"></i>
+                Demanda #{{ demanda.ID }}
+            </h1>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('demandas.listar') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+            {% if current_user.id == demanda.RESPONSAVEL_ID or current_user.id == demanda.SOLICITANTE_ID or current_user.perfil == 'admin' %}
+            <a href="{{ url_for('demandas.editar', id=demanda.ID) }}" class="btn btn-warning">
+                <i class="fas fa-edit me-2"></i>Editar
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Informações Principais -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">{{ demanda.TITULO }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Status:</strong><br>
+                    <span class="badge bg-secondary">
+                        <i class="fas {{ demanda.icone_status }} me-1"></i>
+                        {{ demanda.STATUS.replace('_', ' ') }}
+                    </span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Prioridade:</strong><br>
+                    <span class="badge bg-{{ demanda.cor_prioridade }}">
+                        {{ demanda.PRIORIDADE }}
+                    </span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Responsável:</strong><br>
+                    {{ demanda.responsavel.NOME }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Solicitante:</strong><br>
+                    {{ demanda.solicitante.NOME }}
+                </div>
+            </div>
+
+            {% if demanda.DESCRICAO %}
+            <hr>
+            <div class="row">
+                <div class="col">
+                    <strong>Descrição:</strong><br>
+                    <p>{{ demanda.DESCRICAO }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <hr>
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Criada em:</strong><br>
+                    {{ demanda.DT_CRIACAO.strftime('%d/%m/%Y %H:%M') }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Prazo:</strong><br>
+                    {{ demanda.DT_PRAZO.strftime('%d/%m/%Y') }}
+                    {% if demanda.esta_atrasada %}
+                    <span class="text-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Atrasada
+                    </span>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <strong>Tempo Restante:</strong><br>
+                    {% if demanda.tempo_restante %}
+                        {% set dias = demanda.tempo_restante.days %}
+                        {% if dias == 0 %}
+                            <span class="text-warning">Hoje</span>
+                        {% elif dias == 1 %}
+                            <span class="text-warning">1 dia</span>
+                        {% elif dias > 0 %}
+                            <span>{{ dias }} dias</span>
+                        {% else %}
+                            <span class="text-danger">Atrasada</span>
+                        {% endif %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    {% if demanda.DT_CONCLUSAO %}
+                    <strong>Concluída em:</strong><br>
+                    {{ demanda.DT_CONCLUSAO.strftime('%d/%m/%Y %H:%M') }}
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if demanda.TIPO_DEMANDA or demanda.SISTEMA_RELACIONADO %}
+            <hr>
+            <div class="row">
+                {% if demanda.TIPO_DEMANDA %}
+                <div class="col-md-6">
+                    <strong>Tipo:</strong> {{ demanda.TIPO_DEMANDA }}
+                </div>
+                {% endif %}
+                {% if demanda.SISTEMA_RELACIONADO %}
+                <div class="col-md-6">
+                    <strong>Sistema:</strong> {{ demanda.SISTEMA_RELACIONADO }}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Progresso -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Progresso</h5>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col">
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar bg-success" role="progressbar"
+                             style="width: {{ demanda.PERCENTUAL_CONCLUSAO }}%">
+                            {{ demanda.PERCENTUAL_CONCLUSAO }}%
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Horas Estimadas:</strong> {{ demanda.HORAS_ESTIMADAS or 'Não definido' }}
+                </div>
+                <div class="col-md-4">
+                    <strong>Horas Trabalhadas:</strong> {{ demanda.HORAS_TRABALHADAS }}
+                </div>
+                <div class="col-md-4">
+                    {% if demanda.HORAS_ESTIMADAS %}
+                    <strong>Eficiência:</strong>
+                    {% set eficiencia = (demanda.HORAS_TRABALHADAS / demanda.HORAS_ESTIMADAS * 100) if demanda.HORAS_ESTIMADAS > 0 else 0 %}
+                    <span class="{% if eficiencia > 100 %}text-danger{% else %}text-success{% endif %}">
+                        {{ "%.1f"|format(eficiencia) }}%
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if current_user.id == demanda.RESPONSAVEL_ID and demanda.STATUS not in ['CONCLUIDA', 'CANCELADA'] %}
+            <hr>
+            <form method="POST" action="{{ url_for('demandas.atualizar_progresso', id=demanda.ID) }}" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Percentual Concluído</label>
+                    <input type="number" name="percentual" class="form-control"
+                           value="{{ demanda.PERCENTUAL_CONCLUSAO }}" min="0" max="100">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Horas Trabalhadas</label>
+                    <input type="number" name="horas_trabalhadas" class="form-control"
+                           value="{{ demanda.HORAS_TRABALHADAS }}" step="0.5" min="0">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-save me-2"></i>Atualizar Progresso
+                    </button>
+                </div>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Ações Rápidas -->
+    {% if current_user.id == demanda.RESPONSAVEL_ID or current_user.id == demanda.SOLICITANTE_ID or current_user.perfil == 'admin' %}
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Ações Rápidas</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('demandas.atualizar_status', id=demanda.ID) }}">
+                <div class="row">
+                    <div class="col-md-8">
+                        <select name="status" class="form-select">
+                            <option value="PENDENTE" {% if demanda.STATUS == 'PENDENTE' %}selected{% endif %}>
+                                Pendente
+                            </option>
+                            <option value="EM_ANDAMENTO" {% if demanda.STATUS == 'EM_ANDAMENTO' %}selected{% endif %}>
+                                Em Andamento
+                            </option>
+                            <option value="PAUSADA" {% if demanda.STATUS == 'PAUSADA' %}selected{% endif %}>
+                                Pausada
+                            </option>
+                            <option value="CONCLUIDA" {% if demanda.STATUS == 'CONCLUIDA' %}selected{% endif %}>
+                                Concluída
+                            </option>
+                            <option value="CANCELADA" {% if demanda.STATUS == 'CANCELADA' %}selected{% endif %}>
+                                Cancelada
+                            </option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-sync me-2"></i>Alterar Status
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Comentários -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">Comentários e Histórico</h5>
+        </div>
+        <div class="card-body">
+            <!-- Formulário para adicionar comentário -->
+            <form method="POST" action="{{ url_for('demandas.adicionar_comentario', id=demanda.ID) }}" class="mb-4">
+                <div class="input-group">
+                    <input type="text" name="comentario" class="form-control"
+                           placeholder="Adicionar comentário..." required>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Lista de histórico -->
+            <div class="timeline">
+                {% for item in historico %}
+                <div class="timeline-item mb-3">
+                    <div class="d-flex">
+                        <div class="me-3">
+                            {% if item.ACAO == 'CRIACAO' %}
+                                <i class="fas fa-plus-circle text-success"></i>
+                            {% elif item.ACAO == 'ATUALIZACAO_STATUS' %}
+                                <i class="fas fa-sync text-info"></i>
+                            {% elif item.ACAO == 'ATUALIZACAO_PERCENTUAL' %}
+                                <i class="fas fa-chart-line text-warning"></i>
+                            {% elif item.ACAO == 'COMENTARIO' %}
+                                <i class="fas fa-comment text-primary"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ item.usuario.NOME }}</strong>
+                                <small class="text-muted">
+                                    {{ item.DATA_HORA.strftime('%d/%m/%Y %H:%M') }}
+                                </small>
+                            </div>
+                            <p class="mb-0">{{ item.DESCRICAO }}</p>
+                            {% if item.VALOR_ANTERIOR and item.VALOR_NOVO %}
+                            <small class="text-muted">
+                                {{ item.VALOR_ANTERIOR }} → {{ item.VALOR_NOVO }}
+                            </small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Botão de Excluir (apenas para admin ou solicitante) -->
+    {% if current_user.id == demanda.SOLICITANTE_ID or current_user.perfil == 'admin' %}
+    <div class="text-end mb-4">
+        <form method="POST" action="{{ url_for('demandas.excluir', id=demanda.ID) }}"
+              onsubmit="return confirm('Tem certeza que deseja excluir esta demanda?');" style="display: inline;">
+            <button type="submit" class="btn btn-danger">
+                <i class="fas fa-trash me-2"></i>Excluir Demanda
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,246 +1,180 @@
 {% extends "base.html" %}
 
+{% block title %}Lista de Vinculações - GEINC{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="h3 mb-0">
-            <i class="fas fa-link me-2"></i> Vinculações SISCOR
-        </h1>
-        <a href="{{ url_for('vinculacao.nova_vinculacao') }}" class="btn btn-primary">
-            <i class="fas fa-plus me-2"></i> Nova Vinculação
-        </a>
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <a href="{{ url_for('codigo_contabil.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Lista de Vinculações SISCOR
+            </h1>
+        </div>
     </div>
 
     <!-- Filtros -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" action="{{ url_for('vinculacao.lista_vinculacoes') }}">
-                <div class="row">
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Ano</label>
-                        <select name="ano" id="ano" class="form-select">
-                            <option value="">Todos os anos</option>
-                            {% for ano in anos_disponiveis %}
-                                <option value="{{ ano }}" {% if ano == ano_filtro %}selected{% endif %}>
-                                    {{ ano }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Código</label>
-                        <select name="codigo" id="codigo" class="form-select">
-                            <option value="">Todos os códigos</option>
-                            {% for codigo in codigos_disponiveis %}
-                                <option value="{{ codigo }}" {% if codigo == codigo_filtro %}selected{% endif %}>
-                                    {{ codigo }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Arquivo</label>
-                        <select name="arquivo" id="arquivo" class="form-select">
-                            <option value="">Todos os arquivos</option>
-                            {% for arquivo in arquivos_disponiveis %}
-                                <option value="{{ arquivo }}" {% if arquivo == arquivo_filtro %}selected{% endif %}>
-                                    {{ arquivo }}
-                                </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary me-2">
-                            <i class="fas fa-filter"></i> Filtrar
-                        </button>
-                        <a href="{{ url_for('vinculacao.lista_vinculacoes') }}" class="btn btn-secondary">
-                            <i class="fas fa-times"></i> Limpar
-                        </a>
-                    </div>
+    <div class="row mb-4">
+        <div class="col">
+            <div class="card shadow">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Ano</label>
+                            <select name="ano" class="form-select">
+                                <option value="">Todos</option>
+                                {% for ano in anos_disponiveis %}
+                                    <option value="{{ ano }}" {% if ano == ano_filtro %}selected{% endif %}>
+                                        {{ ano }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Código</label>
+                            <select name="codigo" class="form-select">
+                                <option value="">Todos</option>
+                                {% for codigo in codigos_disponiveis %}
+                                    <option value="{{ codigo }}" {% if codigo == codigo_filtro %}selected{% endif %}>
+                                        {{ codigo }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Arquivo</label>
+                            <select name="arquivo" class="form-select">
+                                <option value="">Todos</option>
+                                {% for arquivo in arquivos_disponiveis %}
+                                    <option value="{{ arquivo }}" {% if arquivo == arquivo_filtro %}selected{% endif %}>
+                                        {{ arquivo }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-filter me-2"></i>Filtrar
+                            </button>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 
-    <!-- Barra de pesquisa -->
-    <div class="search-container mb-4">
-        <input type="text" id="vinculacoesSearch" class="form-control search-input" placeholder="Pesquisar vinculações">
-        <i class="fas fa-search search-icon"></i>
-    </div>
-
-    <div class="card shadow">
-        <div class="table-responsive" data-loading="true">
-            <table class="table table-hover align-middle mb-0" id="vinculacoesTable">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Item SISCOR</th>
-                        <th>Código</th>
-                        <th>Arquivo</th>
-                        <th class="text-center">Ano</th>
-                        <th class="text-center">ARQUIVO7</th>
-                        <th class="text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for vinculacao in vinculacoes %}
-                    <tr data-id="{{ vinculacao.ID_ITEM }}-{{ vinculacao.CODIGO }}-{{ vinculacao.ANO }}">
-                        <td class="fw-bold">{{ vinculacao.ID_ITEM }}</td>
-                        <td>{{ vinculacao.dsc_item_orcamento }}</td>
-                        <td>{{ vinculacao.CODIGO }}</td>
-                        <td>{{ vinculacao.DSC_ARQUIVO or '-' }}</td>
-                        <td class="text-center">{{ vinculacao.ANO }}</td>
-                        <td class="text-center">
-                            {% if vinculacao.ARQUIVO7 == 1 %}
-                                <span class="badge bg-success">1</span>
-                            {% else %}
-                                <span class="badge bg-secondary">-</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">
-                            <a href="{{ url_for('vinculacao.editar_vinculacao', id_item=vinculacao.ID_ITEM, codigo=vinculacao.CODIGO, ano=vinculacao.ANO) }}"
-                               class="btn btn-sm btn-outline-primary me-1" title="Editar">
-                                <i class="fas fa-edit"></i>
+    <!-- Lista de Vinculações -->
+    <div class="row">
+        <div class="col">
+            <div class="card shadow">
+                <div class="card-header bg-light">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-link me-2"></i>
+                                Vinculações Cadastradas
+                            </h5>
+                        </div>
+                        <div class="col-auto">
+                            <a href="{{ url_for('vinculacao.nova_vinculacao') }}" class="btn btn-success btn-sm">
+                                <i class="fas fa-plus me-2"></i>Nova Vinculação
                             </a>
-                            <a href="javascript:void(0);"
-                               onclick="confirmarExclusao({{ vinculacao.ID_ITEM }}, '{{ vinculacao.CODIGO }}', {{ vinculacao.ANO }});"
-                               class="btn btn-sm btn-outline-warning" title="Remover Vinculação">
-                                <i class="fas fa-unlink"></i>
-                            </a>
-                        </td>
-                    </tr>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if vinculacoes %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>ID Item</th>
+                                        <th>Descrição Item SISCOR</th>
+                                        <th>Código Contábil</th>
+                                        <th>Ano</th>
+                                        <th>Arquivo</th>
+                                        <th>Arquivo 7</th>
+                                        <th width="120">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for vinc in vinculacoes %}
+                                    <tr>
+                                        <td>{{ vinc.ID_ITEM }}</td>
+                                        <td>{{ vinc.dsc_item_orcamento }}</td>
+                                        <td>
+                                            <strong class="text-primary">{{ vinc.CODIGO }}</strong>
+                                        </td>
+                                        <td>{{ vinc.ANO }}</td>
+                                        <td>{{ vinc.DSC_ARQUIVO or '-' }}</td>
+                                        <td>
+                                            {% if vinc.ARQUIVO7 == 1 %}
+                                                <span class="badge bg-success">Sim</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Não</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('vinculacao.editar_vinculacao', id_item=vinc.ID_ITEM, codigo=vinc.CODIGO, ano=vinc.ANO) }}"
+                                               class="btn btn-sm btn-warning" title="Editar">
+                                                <i class="fas fa-edit"></i>
+                                            </a>
+                                            <button onclick="excluirVinculacao({{ vinc.ID_ITEM }}, '{{ vinc.CODIGO }}', {{ vinc.ANO }})"
+                                                    class="btn btn-sm btn-danger" title="Excluir">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     {% else %}
-                    <tr>
-                        <td colspan="7" class="text-center py-4 text-muted">
-                            <i class="fas fa-inbox fa-2x mb-3"></i>
-                            <p class="mb-0">Nenhuma vinculação cadastrada</p>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- Modal de confirmação para exclusão -->
-<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">Confirmar Remoção de Vinculação</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>Tem certeza que deseja remover a vinculação <span id="vinculacaoInfo" class="fw-bold"></span>?</p>
-                <p class="text-muted mb-0">Esta ação removerá a vinculação entre o item SISCOR e o código contábil.</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" id="btnConfirmarExclusao" class="btn btn-warning">
-                    <span class="btn-text">Sim, Remover</span>
-                    <span class="spinner d-none">
-                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                    </span>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-{{ super() }}
-<script>
-    let idParaExcluir = null;
-    let codigoParaExcluir = null;
-    let anoParaExcluir = null;
-
-    document.getElementById('vinculacoesSearch').addEventListener('keyup', function(e) {
-        const searchTerm = e.target.value.toLowerCase();
-        const rows = document.querySelectorAll('#vinculacoesTable tbody tr');
-        rows.forEach(row => {
-            if (row.querySelector('.text-muted')) return;
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(searchTerm) ? '' : 'none';
-        });
-    });
-
-    function confirmarExclusao(id_item, codigo, ano) {
-        idParaExcluir = id_item;
-        codigoParaExcluir = codigo;
-        anoParaExcluir = ano;
-        document.getElementById('vinculacaoInfo').textContent = `${codigo} (Item: ${id_item}, Ano: ${ano})`;
-        const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
-        modal.show();
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('btnConfirmarExclusao').addEventListener('click', function() {
-            if (!idParaExcluir || !codigoParaExcluir || !anoParaExcluir) return;
-
-            const modal = bootstrap.Modal.getInstance(document.getElementById('confirmarExclusaoModal'));
-            const btnConfirmar = this;
-            const btnText = btnConfirmar.querySelector('.btn-text');
-            const spinner = btnConfirmar.querySelector('.spinner');
-
-            btnText.classList.add('d-none');
-            spinner.classList.remove('d-none');
-            btnConfirmar.disabled = true;
-
-            const url = `/codigos-contabeis/vinculacao/excluir/${idParaExcluir}/${encodeURIComponent(codigoParaExcluir)}/${anoParaExcluir}`;
-
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                modal.hide();
-                if (data.success) {
-                    const rowId = `${idParaExcluir}-${codigoParaExcluir}-${anoParaExcluir}`;
-                    const row = document.querySelector(`tr[data-id="${rowId}"]`);
-                    if (row) {
-                        row.style.transition = 'all 0.5s';
-                        row.style.opacity = '0';
-                        row.style.transform = 'translateX(20px)';
-                        setTimeout(() => row.remove(), 500);
-                    }
-                    showToast(data.message || 'Vinculação removida com sucesso!', 'success');
-                } else {
-                    showToast(data.message || 'Erro ao remover vinculação', 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('Erro:', error);
-                showToast('Erro ao processar solicitação', 'danger');
-            })
-            .finally(() => {
-                btnText.classList.remove('d-none');
-                spinner.classList.add('d-none');
-                btnConfirmar.disabled = false;
-            });
-        });
-    });
-
-    function showToast(message, type = 'success') {
-        const toastContainer = document.createElement('div');
-        toastContainer.className = 'toast-container position-fixed bottom-0 end-0 p-3';
-        toastContainer.innerHTML = `
-            <div class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="d-flex">
-                    <div class="toast-body">${message}</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                        <div class="alert alert-info mb-0 m-4">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Nenhuma vinculação encontrada com os filtros aplicados.
+                        </div>
+                    {% endif %}
                 </div>
             </div>
-        `;
-        document.body.appendChild(toastContainer);
-        const toast = new bootstrap.Toast(toastContainer.querySelector('.toast'));
-        toast.show();
-        toastContainer.addEventListener('hidden.bs.toast', () => toastContainer.remove());
+        </div>
+    </div>
+</div>
+
+<script>
+async function excluirVinculacao(idItem, codigo, ano) {
+    // Confirmação antes de excluir
+    if (!confirm('Tem certeza que deseja excluir esta vinculação?\n\nItem: ' + idItem + '\nCódigo: ' + codigo + '\nAno: ' + ano)) {
+        return;
     }
+
+    try {
+        // Fazer requisição AJAX para excluir a vinculação
+        const response = await fetch(`/codigos-contabeis/vinculacao/excluir/${idItem}/${encodeURIComponent(codigo)}/${ano}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest' // Importante para o backend identificar que é uma requisição AJAX
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Exibir mensagem de sucesso
+            alert(data.message);
+            // Recarregar a página para atualizar a lista
+            window.location.reload();
+        } else {
+            // Exibir mensagem de erro
+            alert('Erro: ' + data.message);
+        }
+    } catch (error) {
+        console.error('Erro ao excluir vinculação:', error);
+        alert('Erro ao excluir vinculação. Verifique o console para mais detalhes.');
+    }
+}
 </script>
 {% endblock %}

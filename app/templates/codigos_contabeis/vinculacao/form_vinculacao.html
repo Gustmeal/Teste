@@ -36,18 +36,21 @@
                             <label class="form-label">Rubrica Orçamentária <span class="text-danger">*</span></label>
                             <select name="codigo" id="codigo" class="form-select searchable" required {% if edit_mode %}disabled{% endif %}>
                                 <option value="">Selecione uma rubrica orçamentária</option>
+                                {% set codigos_unicos = [] %}
                                 {% for codigo_item in codigos_contabeis %}
-                                    <option value="{{ codigo_item.CODIGO }}"
-                                            {% if vinculacao and vinculacao.CODIGO == codigo_item.CODIGO %}selected{% endif %}>
-                                        {{ codigo_item.CODIGO }} - {{ codigo_item.DSC_CODIGO }}
-                                    </option>
+                                    {% if codigo_item.CODIGO not in codigos_unicos %}
+                                        {% set _ = codigos_unicos.append(codigo_item.CODIGO) %}
+                                        <option value="{{ codigo_item.CODIGO }}"
+                                                {% if vinculacao and vinculacao.CODIGO == codigo_item.CODIGO %}selected{% endif %}>
+                                            {{ codigo_item.CODIGO }} - {{ codigo_item.DSC_CODIGO }}
+                                        </option>
+                                    {% endif %}
                                 {% endfor %}
                             </select>
                             <div class="form-text">
                                 Selecione a rubrica orçamentária para vincular
                             </div>
                         </div>
-                    </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">

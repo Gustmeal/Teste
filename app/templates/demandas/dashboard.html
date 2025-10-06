@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard de Demandas - GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Cabeçalho -->
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="h2">
+                <i class="fas fa-chart-line text-success me-2"></i>
+                Dashboard de Demandas
+            </h1>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('demandas.index') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+        </div>
+    </div>
+
+    <!-- Cards de Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total de Demandas</h5>
+                    <h2 class="text-primary">{{ total_demandas }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Demandas Abertas</h5>
+                    <h2 class="text-warning">{{ demandas_abertas }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">Demandas por Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartStatus"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Demandas por Prioridade</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="chartPrioridade"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Responsáveis -->
+    <div class="card">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">Top 5 Responsáveis com Mais Demandas Abertas</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Responsável</th>
+                            <th>Demandas Abertas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for responsavel in top_responsaveis %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ responsavel[0] }}</td>
+                            <td>
+                                <span class="badge bg-primary">{{ responsavel.total }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Gráfico de Status
+const ctxStatus = document.getElementById('chartStatus').getContext('2d');
+new Chart(ctxStatus, {
+    type: 'doughnut',
+    data: {
+        labels: [{% for item in demandas_por_status %}'{{ item[0] }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            data: [{% for item in demandas_por_status %}{{ item[1] }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: [
+                '#6c757d', // PENDENTE - cinza
+                '#0d6efd', // EM_ANDAMENTO - azul
+                '#ffc107', // PAUSADA - amarelo
+                '#198754', // CONCLUIDA - verde
+                '#dc3545'  // CANCELADA - vermelho
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+// Gráfico de Prioridade
+const ctxPrioridade = document.getElementById('chartPrioridade').getContext('2d');
+new Chart(ctxPrioridade, {
+    type: 'bar',
+    data: {
+        labels: [{% for item in demandas_por_prioridade %}'{{ item[0] }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Demandas',
+            data: [{% for item in demandas_por_prioridade %}{{ item[1] }}{% if not loop.last %},{% endif %}{% endfor %}],
+            backgroundColor: [
+                '#198754', // BAIXA - verde
+                '#ffc107', // MEDIA - amarelo
+                '#dc3545', // ALTA - vermelho
+                '#212529'  // URGENTE - preto
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        },
+        plugins: {
+            legend: {
+                display: false
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
