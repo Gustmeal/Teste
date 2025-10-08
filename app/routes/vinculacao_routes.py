@@ -53,6 +53,7 @@ def lista_vinculacoes():
     ano_filtro = request.args.get('ano', type=int)
     codigo_filtro = request.args.get('codigo', '')
     arquivo_filtro = request.args.get('arquivo', '')
+    id_item_filtro = request.args.get('id_item', '')
 
     query = db.session.query(
         ItemContaSucor,
@@ -67,6 +68,8 @@ def lista_vinculacoes():
         query = query.filter(ItemContaSucor.CODIGO == codigo_filtro)
     if arquivo_filtro:
         query = query.filter(ItemContaSucor.DSC_ARQUIVO == arquivo_filtro)
+    if id_item_filtro:
+        query = query.filter(ItemContaSucor.ID_ITEM == int(id_item_filtro))
 
     resultados = query.order_by(ItemContaSucor.ANO.desc(), ItemContaSucor.ID_ITEM.desc()).all()
 
@@ -89,7 +92,8 @@ def lista_vinculacoes():
                            arquivos_disponiveis=arquivos_disponiveis,
                            ano_filtro=ano_filtro,
                            codigo_filtro=codigo_filtro,
-                           arquivo_filtro=arquivo_filtro)
+                           arquivo_filtro=arquivo_filtro,
+                           id_item_filtro=id_item_filtro)
 
 
 @vinculacao_bp.route('/vinculacao/nova', methods=['GET', 'POST'])
