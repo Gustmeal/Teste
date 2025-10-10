@@ -2,12 +2,17 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db
 from app.models.pendencia_retencao import (
-    PenDetalhamento, AexAnalitico, PenRelacionaVlrRepassado,
-    PenCarteiras, PenOcorrencias, PenStatusOcorrencia, PenOficios
+    PenDetalhamento,
+    PenCarteiras,
+    PenOcorrencias,
+    PenStatusOcorrencia,
+    PenOficios,
+    AexAnalitico,
+    PenRelacionaVlrRepassado
 )
+from sqlalchemy import text, or_  # ⚠️ IMPORTANTE: Adicionar o 'or_'
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy import text
 from app.utils.audit import registrar_log
 
 cobrado_repassado_bp = Blueprint('cobrado_repassado', __name__, url_prefix='/cobrado-repassado')
@@ -20,10 +25,10 @@ def index():
     return render_template('cobrado_repassado/index.html')
 
 
-@cobrado_repassado_bp.route('/consultar', methods=['GET', 'POST'])
+@cobrado_repassado_bp.route('/cobrado-repassado/consultar', methods=['GET', 'POST'])
 @login_required
 def consultar():
-    """Consultar pendências e analíticos por número de contrato"""
+    """Consultar valores cobrados e repassados por contrato"""
     if request.method == 'POST':
         nu_contrato = request.form.get('nu_contrato', '').strip()
 
@@ -39,9 +44,8 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('cobrado_repassado.consultar'))
 
-            # Buscar pendências na nova tabela PEN_TB013
-            # MUDANÇA: Removido filtro VR_REAL_FALHA > 0 pois não existe mais
-            # MUDANÇA: Usando VR_FALHA > 0 para filtrar pendências com valores cobrados da Caixa
+            # CORREÇÃO: Buscar pendências com VR_FALHA > 0 (valores cobrados da Caixa)
+            # Usar VR_FALHA em vez de VR_REAL_FALHA
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -62,19 +66,69 @@ def consultar():
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
                 PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
-                PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA ao invés de VR_REAL_FALHA
+                PenDetalhamento.VR_FALHA > 0  # ✅ CORRIGIDO: Usar VR_FALHA
             ).all()
 
-            # Para buscar na tabela analítico, usar o número como string
-            nu_contrato_str = str(int(nu_contrato_decimal))
+            # Criar múltiplas variações do número do contrato para buscar na tabela analítica
+            nu_contrato_int = int(nu_contrato_decimal)
+            variações_contrato = [
+                str(nu_contrato_int),  # Sem zeros: "123456"
+                nu_contrato,  # Original digitado pelo usuário
+                nu_contrato.zfill(10),  # Com 10 dígitos: "0000123456"
+                nu_contrato.zfill(15),  # Com 15 dígitos: "000000000123456"
+                f"{nu_contrato_int:010d}",  # Formato com zeros à esquerda (10 dígitos)
+                f"{nu_contrato_int:015d}",  # Formato com zeros à esquerda (15 dígitos)
+                str(nu_contrato_decimal),  # Versão decimal como string
+            ]
 
-            # Buscar registros analíticos com VALOR > 0
+            # Remover duplicatas mantendo a ordem
+            variações_contrato = list(dict.fromkeys(variações_contrato))
+
+            # Log para debug
+            print(f"🔍 COBRADO VS REPASSADO - Buscando contrato: {nu_contrato}")
+            print(f"   Decimal: {nu_contrato_decimal}")
+            print(f"   Variações geradas: {variações_contrato}")
+            print(f"   Pendências encontradas: {len(pendencias)}")
+
+            # Buscar registros analíticos com VALOR > 0 (valores repassados)
+            # Tentando todas as variações do número de contrato
             analiticos = AexAnalitico.query.filter(
-                AexAnalitico.NU_CONTRATO == nu_contrato_str,
+                or_(*[AexAnalitico.NU_CONTRATO == var for var in variações_contrato]),
                 AexAnalitico.VALOR > 0
             ).all()
 
-            # Buscar todas as vinculações existentes
+            print(f"✅ Encontrados {len(analiticos)} valores repassados (primeira tentativa)")
+
+            # Se não encontrou nenhum, tentar busca com LIKE (mais abrangente)
+            if not analiticos:
+                print(f"⚠️ Nenhum analítico encontrado, tentando busca com LIKE...")
+                analiticos = AexAnalitico.query.filter(
+                    AexAnalitico.NU_CONTRATO.like(f'%{nu_contrato_int}%'),
+                    AexAnalitico.VALOR > 0
+                ).all()
+                print(f"📊 Encontrados {len(analiticos)} valores repassados com LIKE")
+
+            # Se ainda não encontrou, mostrar alguns exemplos do banco para debug
+            if not analiticos:
+                print(f"❌ NENHUM VALOR REPASSADO ENCONTRADO!")
+                print(f"   Buscando exemplos de contratos na tabela AEX_TB002_ANALITICO...")
+
+                # Buscar exemplos de contratos que começam com os mesmos dígitos
+                exemplos = db.session.query(
+                    AexAnalitico.NU_CONTRATO,
+                    AexAnalitico.VALOR
+                ).filter(
+                    AexAnalitico.VALOR > 0
+                ).limit(10).all()
+
+                if exemplos:
+                    print(f"   Exemplos de contratos no banco:")
+                    for ex in exemplos:
+                        print(f"     - '{ex[0]}' (tipo: {type(ex[0]).__name__}, tamanho: {len(str(ex[0]))})")
+                else:
+                    print(f"   ⚠️ Nenhum registro com VALOR > 0 encontrado na tabela AEX_TB002_ANALITICO")
+
+            # Buscar todas as vinculações existentes para as pendências encontradas
             ids_pendencias = [p.PenDetalhamento.ID_DETALHAMENTO for p in pendencias]
 
             vinculacoes_por_pendencia = {}
@@ -91,6 +145,19 @@ def consultar():
                     vinculacoes_por_pendencia[v.ID_PENDENCIA].append(v.ID_ARREC_EXT_SISTEMA)
                     pendencias_com_vinculacao.add(v.ID_PENDENCIA)
 
+            # Registrar log de auditoria
+            registrar_log(
+                acao='consultar',
+                entidade='cobrado_repassado',
+                entidade_id=str(nu_contrato),
+                descricao=f'Consulta de valores cobrados e repassados - Contrato: {nu_contrato}',
+                dados_novos={
+                    'nu_contrato': str(nu_contrato),
+                    'pendencias_encontradas': len(pendencias),
+                    'analiticos_encontrados': len(analiticos)
+                }
+            )
+
             return render_template(
                 'cobrado_repassado/resultado_consulta.html',
                 pendencias=pendencias,
@@ -101,6 +168,9 @@ def consultar():
             )
 
         except Exception as e:
+            print(f"❌ ERRO ao consultar: {str(e)}")
+            import traceback
+            traceback.print_exc()
             flash(f'Erro ao consultar dados: {str(e)}', 'danger')
             return redirect(url_for('cobrado_repassado.consultar'))
 

@@ -2,28 +2,33 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db
 from app.models.pendencia_retencao import (
-    PenDetalhamento, AexAnalitico, PenRelacionaVlrRetido,
-    PenCarteiras, PenOcorrencias, PenStatusOcorrencia, PenOficios
+    PenDetalhamento,
+    PenCarteiras,
+    PenOcorrencias,
+    PenStatusOcorrencia,
+    PenOficios,
+    AexAnalitico,
+    PenRelacionaVlrRetido
 )
+from sqlalchemy import text, or_, cast, String
 from decimal import Decimal
 from datetime import datetime
-from sqlalchemy import text
 from app.utils.audit import registrar_log
 
-pendencia_retencao_bp = Blueprint('pendencia_retencao', __name__, url_prefix='/pendencia-retencao')
+pendencia_retencao_bp = Blueprint('pendencia_retencao', __name__)
 
 
-@pendencia_retencao_bp.route('/')
+@pendencia_retencao_bp.route('/pendencia-retencao')
 @login_required
 def index():
-    """Página inicial do módulo Pendência e Retenção"""
+    """Página inicial do módulo Pendência vs Retenção"""
     return render_template('pendencia_retencao/index.html')
 
 
-@pendencia_retencao_bp.route('/consultar', methods=['GET', 'POST'])
+@pendencia_retencao_bp.route('/pendencia-retencao/consultar', methods=['GET', 'POST'])
 @login_required
 def consultar():
-    """Consultar pendências e analíticos por número de contrato"""
+    """Consultar pendências e retenções por contrato"""
     if request.method == 'POST':
         nu_contrato = request.form.get('nu_contrato', '').strip()
 
@@ -39,9 +44,7 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('pendencia_retencao.consultar'))
 
-            # Buscar pendências na tabela PEN_TB013 onde a CAIXA é a devedora
-            # LÓGICA: Filtramos apenas por DEVEDOR = 'CAIXA' porque este sistema
-            # trata de valores que a Caixa reteve e deve à EMGEA
+            # Buscar TODAS as pendências do contrato
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -61,22 +64,66 @@ def consultar():
                 PenOficios,
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
-                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
-                PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO: apenas quando Caixa é devedora
+                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal
             ).all()
 
-            # Para buscar na tabela analítico, usar o número como string
-            nu_contrato_str = str(int(nu_contrato_decimal))
+            # Criar múltiplas variações do número do contrato
+            nu_contrato_int = int(nu_contrato_decimal)
+            variações_contrato = [
+                str(nu_contrato_int),  # Sem zeros: "123456"
+                nu_contrato,  # Original digitado
+                nu_contrato.zfill(10),  # Com 10 dígitos: "0000123456"
+                nu_contrato.zfill(15),  # Com 15 dígitos
+                f"{nu_contrato_int:010d}",  # Formato com zeros à esquerda
+                f"{nu_contrato_int:015d}",
+                str(nu_contrato_decimal),  # Versão decimal como string
+            ]
 
-            # Buscar registros analíticos (valores retidos pela Caixa)
+            # Remover duplicatas
+            variações_contrato = list(dict.fromkeys(variações_contrato))
+
+            print(f"🔍 COBRADOS VS RETIDOS - Buscando contrato: {nu_contrato}")
+            print(f"   Variações geradas: {variações_contrato}")
+
+            # ✅ CORREÇÃO: Buscar registros analíticos com VALOR < 0 (valores NEGATIVOS/RETIDOS)
             analiticos = AexAnalitico.query.filter(
-                AexAnalitico.NU_CONTRATO == nu_contrato_str
+                or_(*[AexAnalitico.NU_CONTRATO == var for var in variações_contrato]),
+                AexAnalitico.VALOR < 0  # ✅ VALORES NEGATIVOS (RETIDOS)
             ).all()
 
-            # Buscar todas as vinculações existentes para todas as pendências encontradas
+            print(f"✅ Encontrados {len(analiticos)} valores retidos (NEGATIVOS)")
+
+            # Se não encontrou, tentar busca com LIKE
+            if not analiticos:
+                print(f"⚠️ Nenhum analítico encontrado, tentando busca com LIKE...")
+                analiticos = AexAnalitico.query.filter(
+                    AexAnalitico.NU_CONTRATO.like(f'%{nu_contrato_int}%'),
+                    AexAnalitico.VALOR < 0  # ✅ VALORES NEGATIVOS (RETIDOS)
+                ).all()
+                print(f"📊 Encontrados {len(analiticos)} valores retidos com LIKE")
+
+            # Se ainda não encontrou, mostrar exemplos do banco
+            if not analiticos:
+                print(f"❌ NENHUM VALOR RETIDO ENCONTRADO!")
+                print(f"   Buscando exemplos de contratos com valores negativos...")
+
+                exemplos = db.session.query(
+                    AexAnalitico.NU_CONTRATO,
+                    AexAnalitico.VALOR
+                ).filter(
+                    AexAnalitico.VALOR < 0
+                ).limit(10).all()
+
+                if exemplos:
+                    print(f"   Exemplos de contratos com valores negativos no banco:")
+                    for ex in exemplos:
+                        print(f"     - '{ex[0]}' = R$ {ex[1]} (tipo: {type(ex[0]).__name__})")
+                else:
+                    print(f"   ⚠️ Nenhum registro com VALOR < 0 encontrado na tabela AEX_TB002_ANALITICO")
+
+            # Buscar todas as vinculações existentes
             ids_pendencias = [p.PenDetalhamento.ID_DETALHAMENTO for p in pendencias]
 
-            # Inicializar o dicionário vazio
             vinculacoes_por_pendencia = {}
             pendencias_com_vinculacao = set()
 
@@ -91,6 +138,19 @@ def consultar():
                     vinculacoes_por_pendencia[v.ID_PENDENCIA].append(v.ID_ARREC_EXT_SISTEMA)
                     pendencias_com_vinculacao.add(v.ID_PENDENCIA)
 
+            # Registrar log
+            registrar_log(
+                acao='consultar',
+                entidade='pendencia_retencao',
+                entidade_id=str(nu_contrato),
+                descricao=f'Consulta de valores cobrados e retidos - Contrato: {nu_contrato}',
+                dados_novos={
+                    'nu_contrato': str(nu_contrato),
+                    'pendencias_encontradas': len(pendencias),
+                    'analiticos_encontrados': len(analiticos)
+                }
+            )
+
             return render_template(
                 'pendencia_retencao/resultado_consulta.html',
                 pendencias=pendencias,
@@ -101,6 +161,9 @@ def consultar():
             )
 
         except Exception as e:
+            print(f"❌ ERRO: {str(e)}")
+            import traceback
+            traceback.print_exc()
             flash(f'Erro ao consultar dados: {str(e)}', 'danger')
             return redirect(url_for('pendencia_retencao.consultar'))
 
