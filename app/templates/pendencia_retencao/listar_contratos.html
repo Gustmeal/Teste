@@ -1,133 +1,79 @@
 {% extends "base.html" %}
 
-{% block title %}Lista de Contratos - GEINC{% endblock %}
-
-{% block head %}
-<style>
-    .table-container {
-        overflow-x: auto;
-        overflow-y: visible;
-        max-width: 100%;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .table-container::-webkit-scrollbar {
-        height: 10px;
-    }
-
-    .table-container::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 5px;
-    }
-
-    .table-container::-webkit-scrollbar-thumb {
-        background: #888;
-        border-radius: 5px;
-    }
-
-    .table-container::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-
-    .table {
-        min-width: 1200px;
-        margin-bottom: 0;
-    }
-
-    .clickable-row {
-        cursor: pointer;
-    }
-
-    .clickable-row:hover {
-        background-color: #f5f5f5;
-    }
-
-    .contrato-vinculado {
-        background-color: #d4edda !important;
-    }
-
-    .contrato-vinculado:hover {
-        background-color: #c3e6cb !important;
-    }
-</style>
-{% endblock %}
+{% block title %}Lista de Contratos - Cobrados Vs Retidos - GEINC{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <h1 class="h2">
-                <a href="{{ url_for('pendencia_retencao.index') }}" class="text-decoration-none">
-                    <i class="fas fa-arrow-left text-secondary me-2"></i>
-                </a>
-                Lista de contratos com valores cobrados pela caixa
-            </h1>
-            <p class="text-muted">Contratos com valor real de falha negativo</p>
-        </div>
-        <div class="col-auto">
-            <a href="{{ url_for('pendencia_retencao.consultar') }}" class="btn btn-primary">
-                <i class="fas fa-search me-2"></i>
-                Buscar por Número
+            <a href="{{ url_for('pendencia_retencao.index') }}" class="btn btn-outline-secondary mb-3">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
             </a>
+            <h1 class="h2">
+                <i class="fas fa-list-alt text-primary me-2"></i>
+                Lista de Contratos com Pendências
+            </h1>
+            <p class="text-muted">Visualize e selecione contratos para consulta detalhada</p>
         </div>
     </div>
 
-    <!-- Filtro de Carteira -->
-    <div class="row mb-3">
-        <div class="col-md-4">
+    <!-- Filtro por carteira -->
+    <div class="row mb-4">
+        <div class="col-md-6">
             <div class="card">
                 <div class="card-body">
                     <form method="GET" action="{{ url_for('pendencia_retencao.listar_contratos') }}">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <i class="fas fa-filter"></i>
-                            </span>
-                            <select class="form-select" name="carteira" onchange="this.form.submit()">
-                                <option value="">Todas as Carteiras</option>
-                                {% for carteira in carteiras_unicas %}
-                                    <option value="{{ carteira }}" {% if carteira == carteira_selecionada %}selected{% endif %}>
-                                        {{ carteira }}
-                                    </option>
-                                {% endfor %}
-                            </select>
+                        <div class="row g-2">
+                            <div class="col-md-8">
+                                <label for="carteira" class="form-label">Filtrar por Carteira:</label>
+                                <select class="form-select" id="carteira" name="carteira" onchange="this.form.submit()">
+                                    <option value="">Todas as Carteiras</option>
+                                    {% for carteira in carteiras_unicas %}
+                                        <option value="{{ carteira }}"
+                                                {% if carteira == carteira_selecionada %}selected{% endif %}>
+                                            {{ carteira }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                {% if carteira_selecionada %}
+                                    <a href="{{ url_for('pendencia_retencao.listar_contratos') }}"
+                                       class="btn btn-secondary w-100">
+                                        <i class="fas fa-times me-2"></i>Limpar Filtro
+                                    </a>
+                                {% endif %}
+                            </div>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
-        <div class="col-md-8">
-            <div class="alert alert-info mb-0">
-                <i class="fas fa-info-circle me-2"></i>
-                <strong>Legenda:</strong>
-                <span class="badge bg-success me-2">Verde</span> Contrato com vinculações realizadas
-            </div>
-        </div>
     </div>
 
+    <!-- Tabela de contratos -->
     <div class="row">
-        <div class="col">
+        <div class="col-12">
             <div class="card shadow">
-                <div class="card-header bg-light">
+                <div class="card-header bg-primary text-white">
                     <div class="row align-items-center">
                         <div class="col">
                             <h5 class="mb-0">
-                                <i class="fas fa-list me-2"></i>
-                                Contratos Disponíveis
-                                {% if carteira_selecionada %}
-                                    <small class="text-muted">- Filtrado por: {{ carteira_selecionada }}</small>
-                                {% endif %}
+                                <i class="fas fa-file-contract me-2"></i>
+                                Contratos com Pendências
                             </h5>
                         </div>
                         <div class="col-auto">
-                            <span class="badge bg-primary">{{ contratos|length }} contratos</span>
+                            <span class="badge bg-light text-dark">{{ contratos|length }} contratos</span>
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     {% if contratos %}
-                        <div class="table-container">
+                        <!-- Esta div cria a área com scroll horizontal e vertical -->
+                        <div class="table-container-scroll">
                             <table class="table table-hover mb-0">
-                                <thead>
+                                <thead class="table-light thead-sticky">
                                     <tr>
                                         <th width="30"></th>
                                         <th>ID</th>
@@ -138,7 +84,7 @@
                                         <th>Status</th>
                                         <th>Ofício</th>
                                         <th>Data Ofício</th>
-                                        <th>Valor Real Falha</th>
+                                        <th>Valor Falha</th>
                                         <th>Data Pagamento</th>
                                         <th width="100">Ação</th>
                                     </tr>
@@ -146,9 +92,8 @@
                                 <tbody>
                                     {% for contrato in contratos %}
                                     {% set is_vinculado = contrato.PenDetalhamento.NU_CONTRATO in contratos_com_vinculacao %}
-                                    <tr class="clickable-row {% if is_vinculado %}contrato-vinculado{% endif %}"
-                                        data-href="{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO) }}">
-                                        <td>
+                                    <tr class="{% if is_vinculado %}table-success{% endif %}">
+                                        <td class="text-center">
                                             {% if is_vinculado %}
                                                 <i class="fas fa-check-circle text-success" title="Contrato com vinculações"></i>
                                             {% endif %}
@@ -157,7 +102,7 @@
                                         <td><strong>{{ contrato.PenDetalhamento.NU_CONTRATO }}</strong></td>
                                         <td>{{ contrato.DSC_CARTEIRA or 'N/A' }}</td>
                                         <td>{{ contrato.DSC_OCORRENCIA or 'N/A' }}</td>
-                                        <td>{{ contrato.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
+                                        <td>{{ contrato.PenDetalhamento.NR_PROCESSO or 'N/A' }}</td>
                                         <td>
                                             <span class="badge bg-info">{{ contrato.DSC_STATUS or 'N/A' }}</span>
                                         </td>
@@ -173,15 +118,21 @@
                                                 N/A
                                             {% endif %}
                                         </td>
-                                        <td class="text-danger">
-                                            R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                        <td class="text-danger fw-bold">
+                                            R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                         </td>
-                                        <td>{{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if contrato.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
                                         <td>
-                                            <a href="{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO) }}"
-                                               class="btn btn-sm btn-primary">
-                                                <i class="fas fa-search"></i>
-                                                Consultar
+                                            {% if contrato.PenDetalhamento.DT_PAGTO %}
+                                                {{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') }}
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO|int) }}"
+                                               class="btn btn-sm btn-primary"
+                                               title="Consultar contrato">
+                                                <i class="fas fa-eye"></i>
                                             </a>
                                         </td>
                                     </tr>
@@ -192,28 +143,97 @@
                     {% else %}
                         <div class="text-center py-5">
                             <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">Nenhum contrato com pendências encontrado.</p>
+                            <p class="text-muted">Nenhum contrato encontrado com os filtros aplicados.</p>
                         </div>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Legenda -->
+    <div class="row mt-3">
+        <div class="col">
+            <div class="alert alert-info">
+                <strong><i class="fas fa-info-circle me-2"></i>Legenda:</strong>
+                <ul class="mb-0">
+                    <li><i class="fas fa-check-circle text-success"></i> Contrato já possui vinculações cadastradas</li>
+                    <li>Clique no botão <i class="fas fa-eye"></i> para consultar detalhes e realizar vinculações</li>
+                    <li><i class="fas fa-arrows-alt-h text-primary"></i> Use a barra de rolagem horizontal para ver todas as colunas</li>
+                </ul>
+            </div>
+        </div>
+    </div>
 </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Tornar as linhas clicáveis
-    const clickableRows = document.querySelectorAll('.clickable-row');
-    clickableRows.forEach(row => {
-        row.addEventListener('click', function(e) {
-            // Não redirecionar se clicar no botão
-            if (e.target.closest('.btn')) {
-                return;
-            }
-            window.location.href = this.dataset.href;
-        });
-    });
-});
-</script>
+<style>
+/* Contêiner com scroll horizontal e vertical */
+.table-container-scroll {
+    /* Scroll horizontal: aparece quando a tabela é mais larga que o contêiner */
+    overflow-x: auto;
+    /* Scroll vertical: limita a altura máxima para não ocupar toda a tela */
+    overflow-y: auto;
+    /* Altura máxima: 70% da altura da viewport (tela visível) */
+    max-height: 70vh;
+    /* Borda sutil para delimitar a área de scroll */
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+}
+
+/* Cabeçalho fixo: permanece visível ao rolar verticalmente */
+.table-container-scroll .thead-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f8f9fa;
+    /* Sombra para destacar o cabeçalho fixo */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Efeito hover nas linhas da tabela */
+.table-container-scroll .table tbody tr:hover {
+    background-color: rgba(108, 99, 255, 0.1);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+/* Destaque para contratos já vinculados */
+.table-success {
+    background-color: rgba(40, 167, 69, 0.1) !important;
+}
+
+/* Garante que a tabela não quebre o layout */
+.table-container-scroll table {
+    margin-bottom: 0;
+    /* Largura mínima para garantir que todas as colunas sejam visíveis */
+    min-width: 1200px;
+}
+
+/* Personalização da barra de rolagem no Chrome/Edge/Safari */
+.table-container-scroll::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+.table-container-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.table-container-scroll::-webkit-scrollbar-thumb {
+    background: #6c63ff;
+    border-radius: 10px;
+}
+
+.table-container-scroll::-webkit-scrollbar-thumb:hover {
+    background: #5a52d5;
+}
+
+/* Melhora a legibilidade das células */
+.table-container-scroll td,
+.table-container-scroll th {
+    white-space: nowrap;
+    padding: 12px 15px;
+}
+</style>
 {% endblock %}

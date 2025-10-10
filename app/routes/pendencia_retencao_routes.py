@@ -1,37 +1,29 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.models.pendencia_retencao import (
     PenDetalhamento, AexAnalitico, PenRelacionaVlrRetido,
-    PenCarteiras, PenOcorrencias, AexConsolidado, PenStatusOcorrencia, PenOficios
+    PenCarteiras, PenOcorrencias, PenStatusOcorrencia, PenOficios
 )
-from app.utils.audit import registrar_log
-from datetime import datetime
-from sqlalchemy import or_, and_, text, func
 from decimal import Decimal
+from datetime import datetime
+from sqlalchemy import text
+from app.utils.audit import registrar_log
 
 pendencia_retencao_bp = Blueprint('pendencia_retencao', __name__, url_prefix='/pendencia-retencao')
-
-
-@pendencia_retencao_bp.context_processor
-def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
 
 
 @pendencia_retencao_bp.route('/')
 @login_required
 def index():
-    """Página inicial do sistema Pendência Vs Retenção"""
+    """Página inicial do módulo Pendência e Retenção"""
     return render_template('pendencia_retencao/index.html')
 
 
 @pendencia_retencao_bp.route('/consultar', methods=['GET', 'POST'])
 @login_required
 def consultar():
-    """Consulta de pendências e retenções por contrato"""
-    # Verificar se veio número de contrato por GET
-    nu_contrato_param = request.args.get('nu_contrato', '')
-
+    """Consultar pendências e analíticos por número de contrato"""
     if request.method == 'POST':
         nu_contrato = request.form.get('nu_contrato', '').strip()
 
@@ -47,7 +39,9 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('pendencia_retencao.consultar'))
 
-            # Buscar TODAS as pendências do contrato (mudado de first() para all())
+            # Buscar pendências na tabela PEN_TB013 onde a CAIXA é a devedora
+            # LÓGICA: Filtramos apenas por DEVEDOR = 'CAIXA' porque este sistema
+            # trata de valores que a Caixa reteve e deve à EMGEA
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -67,13 +61,14 @@ def consultar():
                 PenOficios,
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
-                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal
+                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
+                PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO: apenas quando Caixa é devedora
             ).all()
 
             # Para buscar na tabela analítico, usar o número como string
             nu_contrato_str = str(int(nu_contrato_decimal))
 
-            # Buscar registros analíticos
+            # Buscar registros analíticos (valores retidos pela Caixa)
             analiticos = AexAnalitico.query.filter(
                 AexAnalitico.NU_CONTRATO == nu_contrato_str
             ).all()
@@ -83,20 +78,17 @@ def consultar():
 
             # Inicializar o dicionário vazio
             vinculacoes_por_pendencia = {}
-            pendencias_com_vinculacao = set()  # Novo: set para pendências que já têm vinculação
+            pendencias_com_vinculacao = set()
 
-            if ids_pendencias:  # Só buscar se houver pendências
+            if ids_pendencias:
                 vinculacoes_existentes = PenRelacionaVlrRetido.query.filter(
                     PenRelacionaVlrRetido.ID_PENDENCIA.in_(ids_pendencias)
                 ).all()
 
-                # Criar dicionário de vinculações por pendência
                 for v in vinculacoes_existentes:
                     if v.ID_PENDENCIA not in vinculacoes_por_pendencia:
                         vinculacoes_por_pendencia[v.ID_PENDENCIA] = []
                     vinculacoes_por_pendencia[v.ID_PENDENCIA].append(v.ID_ARREC_EXT_SISTEMA)
-
-                    # Adicionar ao set de pendências com vinculação
                     pendencias_com_vinculacao.add(v.ID_PENDENCIA)
 
             return render_template(
@@ -104,7 +96,7 @@ def consultar():
                 pendencias=pendencias,
                 analiticos=analiticos,
                 vinculacoes_por_pendencia=vinculacoes_por_pendencia,
-                pendencias_com_vinculacao=pendencias_com_vinculacao,  # Novo parâmetro
+                pendencias_com_vinculacao=pendencias_com_vinculacao,
                 nu_contrato=nu_contrato
             )
 
@@ -123,7 +115,10 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # Query base
+        # Query base na tabela PEN_TB013
+        # LÓGICA: Filtramos apenas por DEVEDOR = 'CAIXA' porque queremos ver
+        # apenas os contratos onde a Caixa deve valores à EMGEA (valores retidos)
+        # Se quiséssemos ver contratos onde EMGEA deve à Caixa, usaríamos DEVEDOR = 'EMGEA'
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
@@ -143,11 +138,10 @@ def listar_contratos():
             PenOficios,
             PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
         ).filter(
-            PenDetalhamento.VR_REAL_FALHA < 0,
-            PenDetalhamento.IC_EXCLUIR == None
+            PenDetalhamento.VR_FALHA > 0,  # Contratos com valor de falha
+            PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO: apenas quando Caixa é devedora
         )
 
-        # Aplicar filtro de carteira se fornecido
         if carteira_filtro:
             query = query.filter(PenCarteiras.DSC_CARTEIRA.like(f'%{carteira_filtro}%'))
 
@@ -155,20 +149,20 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO.desc()
         ).all()
 
-        # Buscar lista de carteiras únicas para o filtro
+        # Buscar lista de carteiras únicas (também filtrando por DEVEDOR = 'CAIXA')
         carteiras_unicas = db.session.query(
             PenCarteiras.DSC_CARTEIRA
         ).join(
             PenDetalhamento,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
-            PenDetalhamento.VR_REAL_FALHA < 0,
-            PenDetalhamento.IC_EXCLUIR == None
+            PenDetalhamento.VR_FALHA > 0,
+            PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO
         ).distinct().order_by(
             PenCarteiras.DSC_CARTEIRA
         ).all()
 
-        # Buscar contratos com vinculações (código anterior)
+        # Buscar contratos com vinculações
         contratos_com_vinculacao = []
 
         vinculacoes = db.session.query(
@@ -217,7 +211,7 @@ def consultar_contrato_direto(nu_contrato):
 @pendencia_retencao_bp.route('/salvar-vinculacao', methods=['POST'])
 @login_required
 def salvar_vinculacao():
-    """Salvar vinculação entre pendências e retenções"""
+    """Salvar vinculação entre valores cobrados e retidos"""
     try:
         data = request.get_json()
 
@@ -231,7 +225,6 @@ def salvar_vinculacao():
         # Se for apenas observação (sem analíticos disponíveis)
         if apenas_observacao:
             if ids_pendencias:
-                # Se há pendências selecionadas, salvar cada uma com ID_ARREC_EXT_SISTEMA = NULL
                 for id_pendencia in ids_pendencias:
                     sql_insert = text("""
                         INSERT INTO BDG.PEN_TB010_RELACIONA_VLR_RETIDO 
@@ -247,7 +240,6 @@ def salvar_vinculacao():
                     })
                     contador += 1
             else:
-                # Se não há pendências nem analíticos, salvar apenas observação
                 sql_insert = text("""
                     INSERT INTO BDG.PEN_TB010_RELACIONA_VLR_RETIDO 
                     (ID_PENDENCIA, ID_ARREC_EXT_SISTEMA, OBS, NO_RSPONSAVEL, DT_ANALISE)
@@ -346,8 +338,8 @@ def salvar_vinculacao():
         registrar_log(
             acao='criar',
             entidade='pendencia_retencao',
-            entidade_id=f"{','.join(map(str, ids_pendencias)) if ids_pendencias else 'SEM_PENDENCIA'}",
-            descricao=f'Vinculação de {contador} registros',
+            entidade_id=f"{','.join(map(str, ids_pendencias)) if ids_pendencias else 'SEM_PENDENCIAS'}",
+            descricao=f'Vinculação de valores cobrados e retidos - {contador} registros',
             dados_novos={
                 'ids_pendencias': ids_pendencias,
                 'ids_analiticos': ids_analiticos,
@@ -357,7 +349,7 @@ def salvar_vinculacao():
 
         return jsonify({
             'success': True,
-            'message': f'{contador} vinculações salvas com sucesso!'
+            'message': f'{contador} vinculação(ões) salva(s) com sucesso!'
         })
 
     except Exception as e:
@@ -374,14 +366,18 @@ def listar_vinculacoes():
     """Listar todas as vinculações realizadas"""
     try:
         # Buscar todas as vinculações com informações relacionadas
+        # LÓGICA: Aqui também filtramos por DEVEDOR = 'CAIXA' para mostrar apenas
+        # vinculações de contratos onde a Caixa é a devedora
         vinculacoes = db.session.query(
             PenRelacionaVlrRetido,
             PenDetalhamento,
             AexAnalitico,
             PenCarteiras.DSC_CARTEIRA,
             PenOcorrencias.DSC_OCORRENCIA,
-            PenStatusOcorrencia.DSC_STATUS
-        ).outerjoin(  # Mudado para outerjoin para pegar vinculações sem pendência
+            PenStatusOcorrencia.DSC_STATUS,
+            PenOficios.NU_OFICIO,
+            PenOficios.DT_OFICIO
+        ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRetido.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO
         ).join(
@@ -396,6 +392,11 @@ def listar_vinculacoes():
         ).outerjoin(
             PenStatusOcorrencia,
             PenDetalhamento.ID_STATUS == PenStatusOcorrencia.ID_STATUS
+        ).outerjoin(
+            PenOficios,
+            PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
+        ).filter(
+            (PenDetalhamento.DEVEDOR == 'CAIXA') | (PenDetalhamento.DEVEDOR == None)  # Filtro: Caixa devedora ou NULL
         ).order_by(
             PenRelacionaVlrRetido.DT_ANALISE.desc()
         ).all()
@@ -443,21 +444,15 @@ def excluir_vinculacao():
                 'message': 'Vinculação não encontrada.'
             }), 404
 
+        db.session.delete(vinculacao)
+        db.session.commit()
+
         registrar_log(
             acao='excluir',
             entidade='pendencia_retencao',
-            entidade_id=f"{id_pendencia or 'NULL'}-{id_arrec_ext_sistema}",
-            descricao='Exclusão de vinculação',
-            dados_antigos={
-                'id_pendencia': id_pendencia,
-                'id_arrec_ext_sistema': id_arrec_ext_sistema,
-                'observacao': vinculacao.OBS,
-                'responsavel': vinculacao.NO_RSPONSAVEL
-            }
+            entidade_id=f"{id_pendencia}_{id_arrec_ext_sistema}",
+            descricao=f'Exclusão de vinculação entre pendência {id_pendencia} e analítico {id_arrec_ext_sistema}'
         )
-
-        db.session.delete(vinculacao)
-        db.session.commit()
 
         return jsonify({
             'success': True,
@@ -470,4 +465,3 @@ def excluir_vinculacao():
             'success': False,
             'message': f'Erro ao excluir vinculação: {str(e)}'
         }), 500
-

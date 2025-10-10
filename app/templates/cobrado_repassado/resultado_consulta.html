@@ -139,7 +139,7 @@
                                             <td>{{ pendencia.PenDetalhamento.NU_PROCESSO or 'N/A' }}</td>
                                             <td>{{ pendencia.DSC_CARTEIRA or 'N/A' }}</td>
                                             <td>{{ pendencia.DSC_OCORRENCIA or 'N/A' }}</td>
-                                            <td class="text-success fw-bold">R$ {{ '{:,.2f}'.format(pendencia.PenDetalhamento.VR_REAL_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                                            <td class="text-success fw-bold">R$ {{ '{:,.2f}'.format(pendencia.PenDetalhamento.VR_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                                             <td>{{ pendencia.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if pendencia.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
                                             <td>{{ pendencia.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
                                             <td>

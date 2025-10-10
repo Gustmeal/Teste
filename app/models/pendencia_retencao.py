@@ -4,27 +4,37 @@ from sqlalchemy import BigInteger, Integer, Numeric, String, Date, DateTime, Tex
 
 
 class PenDetalhamento(db.Model):
-    """Modelo para a tabela PEN_TB004_DETALHAMENTO"""
-    __tablename__ = 'PEN_TB004_DETALHAMENTO'
+    """Modelo para a tabela PEN_TB013_TABELA_PRINCIPAL"""
+    __tablename__ = 'PEN_TB013_TABELA_PRINCIPAL'
     __table_args__ = {'schema': 'BDG'}
 
+    # Campos que permanecem iguais
     ID_DETALHAMENTO = db.Column(db.Integer, primary_key=True)
-    NU_CONTRATO = db.Column(db.Numeric(23, 0), nullable=False, index=True)  # CORRIGIDO: decimal
+    NU_CONTRATO = db.Column(db.Numeric(23, 0), nullable=False, index=True)
     ID_CARTEIRA = db.Column(db.Integer, nullable=True)
     ID_OCORRENCIA = db.Column(db.Integer, nullable=True)
-    NU_PROCESSO = db.Column(db.Text, nullable=True)
     VR_FALHA = db.Column(db.Numeric(18, 2), nullable=True)
     ID_STATUS = db.Column(db.Integer, nullable=True)
     NU_OFICIO = db.Column(db.Integer, nullable=True)
     IC_CONDENACAO = db.Column(db.Boolean, nullable=True)
-    IC_INDICIO_DUPLIC = db.Column(db.Boolean, nullable=True)
-    IC_EXCLUIR = db.Column(db.Boolean, nullable=True)
-    VR_REAL_FALHA = db.Column(db.Numeric(18, 2), nullable=True)
     DT_PAGTO = db.Column(db.Date, nullable=True)
-    DT_ACERTO_PENDENCIA = db.Column(db.Date, nullable=True)
-    Data_Ultima_Atualizacao = db.Column(db.Date, nullable=True)
-    OBSERVACAO_DT_PGTO = db.Column(db.String(300), nullable=True)
     DT_INICIO_ATUALIZACAO = db.Column(db.Date, nullable=True)
+
+    # Campos que mudaram de nome
+    INDICIO_DUPLIC = db.Column(db.Boolean, nullable=True)  # Era IC_INDICIO_DUPLIC
+    NR_PROCESSO = db.Column(db.Text, nullable=True)  # Era NU_PROCESSO
+    DT_ATUALIZACAO = db.Column(db.Date, nullable=True)  # Era Data_Ultima_Atualizacao
+
+    # Campos novos da TB013
+    ID_ACAO = db.Column(db.Integer, nullable=True)
+    DT_DOCUMENTO = db.Column(db.Date, nullable=True)
+    DEVEDOR = db.Column(db.String(50), nullable=True)  # CAIXA ou EMGEA
+
+    # Campos que NÃO existem mais na TB013 (removidos):
+    # IC_EXCLUIR - removido
+    # VR_REAL_FALHA - removido (usar VR_FALHA no lugar)
+    # DT_ACERTO_PENDENCIA - removido
+    # OBSERVACAO_DT_PGTO - removido
 
     def __repr__(self):
         return f'<PenDetalhamento {self.ID_DETALHAMENTO} - Contrato: {self.NU_CONTRATO}>'
@@ -164,7 +174,6 @@ class PenOficios(db.Model):
     def __repr__(self):
         return f'<PenOficios {self.NU_OFICIO} - {self.DT_OFICIO}>'
 
-# ADICIONAR APENAS ESTA CLASSE NO FINAL DO ARQUIVO pendencia_retencao.py existente:
 
 class PenObservacoes(db.Model):
     """Modelo para a tabela PEN_TB005_OBSERVACOES"""
@@ -178,3 +187,17 @@ class PenObservacoes(db.Model):
 
     def __repr__(self):
         return f'<PenObservacoes {self.ID_OBSERVACAO} - {self.DSC_OBSERVACAO}>'
+
+class PenRelacionaVlrRepassado(db.Model):
+    """Modelo para a tabela PEN_TB011_RELACIONA_VLR_REPASSADO"""
+    __tablename__ = 'PEN_TB011_RELACIONA_VLR_REPASSADO'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID_PENDENCIA = db.Column(db.Integer, primary_key=True, nullable=True)  # Permitir NULL
+    ID_ARREC_EXT_SISTEMA = db.Column(db.BigInteger, nullable=True)
+    OBS = db.Column(db.Text, nullable=True)
+    NO_RSPONSAVEL = db.Column(db.String(100), nullable=True)
+    DT_ANALISE = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f'<PenRelacionaVlrRepassado Pendencia: {self.ID_PENDENCIA} - Arrec: {self.ID_ARREC_EXT_SISTEMA}>'

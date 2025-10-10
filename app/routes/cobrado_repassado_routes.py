@@ -1,37 +1,29 @@
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
 from app.models.pendencia_retencao import (
-    PenDetalhamento, AexAnalitico, PenCarteiras, PenOcorrencias,
-    AexConsolidado, PenStatusOcorrencia, PenOficios
+    PenDetalhamento, AexAnalitico, PenRelacionaVlrRepassado,
+    PenCarteiras, PenOcorrencias, PenStatusOcorrencia, PenOficios
 )
-from app.models.cobrado_repassado import PenRelacionaVlrRepassado
-from app.utils.audit import registrar_log
-from datetime import datetime
-from sqlalchemy import or_, and_, text, func
 from decimal import Decimal
+from datetime import datetime
+from sqlalchemy import text
+from app.utils.audit import registrar_log
 
 cobrado_repassado_bp = Blueprint('cobrado_repassado', __name__, url_prefix='/cobrado-repassado')
-
-
-@cobrado_repassado_bp.context_processor
-def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
 
 
 @cobrado_repassado_bp.route('/')
 @login_required
 def index():
-    """Página inicial do sistema Cobrado vs Repassado"""
+    """Página inicial do módulo Cobrado vs Repassado"""
     return render_template('cobrado_repassado/index.html')
 
 
 @cobrado_repassado_bp.route('/consultar', methods=['GET', 'POST'])
 @login_required
 def consultar():
-    """Consulta de valores cobrados e repassados por contrato"""
-    nu_contrato_param = request.args.get('nu_contrato', '')
-
+    """Consultar pendências e analíticos por número de contrato"""
     if request.method == 'POST':
         nu_contrato = request.form.get('nu_contrato', '').strip()
 
@@ -47,7 +39,9 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('cobrado_repassado.consultar'))
 
-            # Buscar pendências com VR_REAL_FALHA > 0 (valores cobrados da Caixa)
+            # Buscar pendências na nova tabela PEN_TB013
+            # MUDANÇA: Removido filtro VR_REAL_FALHA > 0 pois não existe mais
+            # MUDANÇA: Usando VR_FALHA > 0 para filtrar pendências com valores cobrados da Caixa
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -68,7 +62,7 @@ def consultar():
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
                 PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
-                PenDetalhamento.VR_REAL_FALHA > 0  # Mudança aqui: > 0
+                PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA ao invés de VR_REAL_FALHA
             ).all()
 
             # Para buscar na tabela analítico, usar o número como string
@@ -77,7 +71,7 @@ def consultar():
             # Buscar registros analíticos com VALOR > 0
             analiticos = AexAnalitico.query.filter(
                 AexAnalitico.NU_CONTRATO == nu_contrato_str,
-                AexAnalitico.VALOR > 0  # Mudança aqui: > 0
+                AexAnalitico.VALOR > 0
             ).all()
 
             # Buscar todas as vinculações existentes
@@ -121,7 +115,9 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # Query base - agora com VR_REAL_FALHA > 0
+        # Query base na nova tabela PEN_TB013
+        # MUDANÇA: Removido filtro VR_REAL_FALHA > 0 e IC_EXCLUIR == None
+        # Agora usa VR_FALHA > 0 para pegar contratos com pendências
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
@@ -141,8 +137,7 @@ def listar_contratos():
             PenOficios,
             PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
         ).filter(
-            PenDetalhamento.VR_REAL_FALHA > 0,  # Mudança aqui: > 0
-            PenDetalhamento.IC_EXCLUIR == None
+            PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA
         )
 
         if carteira_filtro:
@@ -159,8 +154,7 @@ def listar_contratos():
             PenDetalhamento,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
-            PenDetalhamento.VR_REAL_FALHA > 0,
-            PenDetalhamento.IC_EXCLUIR == None
+            PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA
         ).distinct().order_by(
             PenCarteiras.DSC_CARTEIRA
         ).all()
@@ -282,8 +276,10 @@ def salvar_vinculacao():
             }), 400
 
         if ids_pendencias:
+            # Se houver pendências, criar vinculação normal
             for id_pendencia in ids_pendencias:
                 for id_analitico in ids_analiticos:
+                    # Verificar se já existe
                     sql_check = text("""
                         SELECT COUNT(*) FROM BDG.PEN_TB011_RELACIONA_VLR_REPASSADO 
                         WHERE ID_PENDENCIA = :id_pend AND ID_ARREC_EXT_SISTEMA = :id_arrec
@@ -310,6 +306,7 @@ def salvar_vinculacao():
                         })
                         contador += 1
         else:
+            # Se não houver pendências, criar vinculação com ID_PENDENCIA = NULL
             for id_analitico in ids_analiticos:
                 sql_check = text("""
                     SELECT COUNT(*) FROM BDG.PEN_TB011_RELACIONA_VLR_REPASSADO 
@@ -338,8 +335,8 @@ def salvar_vinculacao():
         registrar_log(
             acao='criar',
             entidade='cobrado_repassado',
-            entidade_id=f"{','.join(map(str, ids_pendencias)) if ids_pendencias else 'SEM_PENDENCIA'}",
-            descricao=f'Vinculação de {contador} registros',
+            entidade_id=f"{','.join(map(str, ids_pendencias)) if ids_pendencias else 'SEM_PENDENCIAS'}",
+            descricao=f'Vinculação de valores cobrados e repassados - {contador} registros',
             dados_novos={
                 'ids_pendencias': ids_pendencias,
                 'ids_analiticos': ids_analiticos,
@@ -349,7 +346,7 @@ def salvar_vinculacao():
 
         return jsonify({
             'success': True,
-            'message': f'{contador} vinculações salvas com sucesso!'
+            'message': f'{contador} vinculação(ões) salva(s) com sucesso!'
         })
 
     except Exception as e:
@@ -440,21 +437,15 @@ def excluir_vinculacao():
                 'message': 'Vinculação não encontrada.'
             }), 404
 
+        db.session.delete(vinculacao)
+        db.session.commit()
+
         registrar_log(
             acao='excluir',
             entidade='cobrado_repassado',
-            entidade_id=f"{id_pendencia or 'NULL'}-{id_arrec_ext_sistema}",
-            descricao='Exclusão de vinculação',
-            dados_antigos={
-                'id_pendencia': id_pendencia,
-                'id_arrec_ext_sistema': id_arrec_ext_sistema,
-                'observacao': vinculacao.OBS,
-                'responsavel': vinculacao.NO_RSPONSAVEL
-            }
+            entidade_id=f"{id_pendencia}_{id_arrec_ext_sistema}",
+            descricao=f'Exclusão de vinculação entre pendência {id_pendencia} e analítico {id_arrec_ext_sistema}'
         )
-
-        db.session.delete(vinculacao)
-        db.session.commit()
 
         return jsonify({
             'success': True,
