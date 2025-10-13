@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-eye me-2"></i>
+            Visualização Geral - {{ nome_mes }}
+        </h1>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Período:</label>
+                        <select name="mes_ref" class="form-select">
+                            {% for periodo in periodos %}
+                            <option value="{{ periodo.mes_ref }}" {% if periodo.mes_ref == mes_ref %}selected{% endif %}>
+                                {{ periodo.nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area" class="form-select">
+                            <option value="">Todas</option>
+                            {% for area in areas %}
+                            <option value="{{ area.area }}" {% if area.area == area_filtro %}selected{% endif %}>
+                                {{ area.area }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card shadow text-center">
+                <div class="card-body">
+                    <i class="fas fa-calendar-check fa-2x text-primary mb-2"></i>
+                    <h3 class="text-primary">{{ total_dias }}</h3>
+                    <p class="text-muted mb-0">Total de Dias Solicitados</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card shadow text-center">
+                <div class="card-body">
+                    <i class="fas fa-users fa-2x text-success mb-2"></i>
+                    <h3 class="text-success">{{ total_pessoas }}</h3>
+                    <p class="text-muted mb-0">Pessoas Diferentes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de Dias -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Dias do Mês</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 100px;">Data</th>
+                            <th style="width: 120px;">Dia Semana</th>
+                            <th style="width: 100px;">Status</th>
+                            <th>Pessoas em Teletrabalho</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for data_str, info in dias_organizados.items() | sort %}
+                        <tr class="{% if not info.eh_util %}table-secondary{% endif %}">
+                            <td>
+                                <strong>{{ info.data.strftime('%d/%m/%Y') }}</strong>
+                            </td>
+                            <td>
+                                <span class="badge bg-info">{{ info.dia_semana }}</span>
+                            </td>
+                            <td>
+                                {% if info.feriado %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-flag me-1"></i>{{ info.feriado[:15] }}
+                                </span>
+                                {% elif not info.eh_util %}
+                                <span class="badge bg-secondary">Não útil</span>
+                                {% else %}
+                                <span class="badge bg-success">Dia útil</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if info.pessoas %}
+                                <div class="d-flex flex-wrap gap-2">
+                                    {% for pessoa in info.pessoas %}
+                                    <div class="badge bg-primary p-2">
+                                        <i class="fas fa-user me-1"></i>{{ pessoa.nome }}
+                                        {% if pessoa.tipo_periodo %}
+                                        <small class="ms-1">({{ pessoa.tipo_periodo }})</small>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <small class="text-muted">{{ info.pessoas|length }} pessoa(s)</small>
+                                {% else %}
+                                <span class="text-muted">Nenhuma pessoa</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

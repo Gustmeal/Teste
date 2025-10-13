@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-home-lg-alt me-2"></i>
+            Calendário de Teletrabalho
+        </h1>
+        <div>
+            <!-- Botões para Gestores (Admin, Moderador, Gerente) -->
+            {% if eh_gestor %}
+            <a href="{{ url_for('teletrabalho.config_area') }}" class="btn btn-primary">
+                <i class="fas fa-cog me-2"></i>Configurar Área
+            </a>
+            <a href="{{ url_for('teletrabalho.admin_cadastrar') }}" class="btn btn-success">
+                <i class="fas fa-user-plus me-2"></i>Cadastrar para Usuário
+            </a>
+            <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info">
+                <i class="fas fa-eye me-2"></i>Visualização Geral
+            </a>
+            {% endif %}
+
+            <!-- Relatório apenas para Admin -->
+            {% if current_user.perfil == 'admin' %}
+            <a href="{{ url_for('teletrabalho.relatorio') }}" class="btn btn-warning">
+                <i class="fas fa-chart-bar me-2"></i>Relatório
+            </a>
+            <a href="{{ url_for('teletrabalho.config_listar') }}" class="btn btn-secondary">
+                <i class="fas fa-list me-2"></i>Todas Configurações
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Informações da Área -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Informações da Área</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Área:</strong>
+                    <p class="mb-0 text-primary fw-bold">{{ area }}</p>
+                </div>
+                <div class="col-md-3">
+                    <strong>Total de Pessoas:</strong>
+                    <p class="mb-0">{{ total_pessoas }}</p>
+                </div>
+                <div class="col-md-3">
+                    <strong>Limite Diário (30%):</strong>
+                    <p class="mb-0 text-success fw-bold">{{ limite }} pessoas</p>
+                </div>
+                <div class="col-md-3">
+                    <strong>Máximo por Mês:</strong>
+                    <p class="mb-0">5 dias</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seleção de Área (Admin/Gerente) -->
+    {% if eh_gestor and areas %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Visualizar Outra Área</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" id="formAreaAdmin">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area_selecionada" id="areaSelect" class="form-select">
+                            <option value="">{{ area }} (Atual)</option>
+                            {% for a in areas %}
+                            <option value="{{ a.area }}" data-tipo="{{ a.tipo }}">
+                                {{ a.area }} ({{ a.qtd_pessoas }} pessoas)
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Mês:</label>
+                        <select name="mes_admin" id="mesSelect" class="form-select">
+                            {% for mes in meses_disponiveis %}
+                            <option value="{{ mes.mes_ref }}">{{ mes.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="button" class="btn btn-primary w-100" onclick="visualizarAreaAdmin()">
+                            <i class="fas fa-search me-2"></i>Visualizar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Seleção de Período (Grid de Cards) -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-calendar-alt me-2"></i>Selecione o Período</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                {% for mes in meses_disponiveis %}
+                <div class="col-md-3">
+                    <a href="{{ url_for('teletrabalho.calendario', mes_referencia=mes.mes_ref) }}"
+                       class="btn btn-outline-primary w-100 btn-lg periodo-card">
+                        <i class="fas fa-calendar me-2"></i>
+                        <div class="d-block mt-2">
+                            <strong>{{ mes.nome }}</strong>
+                        </div>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Instruções e Regras -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i>Como Funciona</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-primary mb-3">
+                        <i class="fas fa-check-circle me-2"></i>Regras Gerais
+                    </h6>
+                    <ul class="mb-0">
+                        <li><strong>Máximo:</strong> 5 dias por mês por pessoa</li>
+                        <li><strong>Limite Diário:</strong> {{ limite }} pessoas simultaneamente (30% da área)</li>
+                        <li><strong>Dias Úteis:</strong> Apenas dias úteis podem ser selecionados</li>
+                        <li><strong>Aprovação:</strong> Automática após seleção</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-primary mb-3">
+                        <i class="fas fa-calendar-check me-2"></i>Tipos de Período
+                    </h6>
+                    <ul class="mb-0">
+                        <li>
+                            <strong>Dias Alternados:</strong> Até 5 dias no mês com intervalo mínimo de 1 dia entre eles
+                            <small class="text-muted d-block">Ex: Seg, Qua, Sex</small>
+                        </li>
+                        <li>
+                            <strong>5 Dias Corridos:</strong> 5 dias úteis consecutivos uma única vez no mês
+                            <small class="text-muted d-block">Ex: Seg a Sex da mesma semana</small>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Atalhos para Gestores -->
+    {% if eh_gestor %}
+    <div class="card shadow">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0"><i class="fas fa-star me-2"></i>Ações de Gestor</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="card border-primary h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-cog fa-3x text-primary mb-3"></i>
+                            <h6>Configurar Área</h6>
+                            <p class="small text-muted">Definir quantidade de pessoas elegíveis</p>
+                            <a href="{{ url_for('teletrabalho.config_area') }}" class="btn btn-primary btn-sm">
+                                Acessar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-success h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-user-plus fa-3x text-success mb-3"></i>
+                            <h6>Cadastrar</h6>
+                            <p class="small text-muted">Marcar dias para outros usuários</p>
+                            <a href="{{ url_for('teletrabalho.admin_cadastrar') }}" class="btn btn-success btn-sm">
+                                Acessar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-info h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-eye fa-3x text-info mb-3"></i>
+                            <h6>Visualização Geral</h6>
+                            <p class="small text-muted">Ver todos os dias e pessoas</p>
+                            <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info btn-sm">
+                                Acessar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% if current_user.perfil == 'admin' %}
+                <div class="col-md-3">
+                    <div class="card border-warning h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-chart-bar fa-3x text-warning mb-3"></i>
+                            <h6>Relatório</h6>
+                            <p class="small text-muted">Estatísticas e análises</p>
+                            <a href="{{ url_for('teletrabalho.relatorio') }}" class="btn btn-warning btn-sm">
+                                Acessar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.periodo-card {
+    transition: all 0.3s ease;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.periodo-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,123,255,0.3);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white !important;
+    border-color: #667eea !important;
+}
+
+.card {
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+</style>
+
+<script>
+/**
+ * Navega para calendário da área selecionada
+ */
+function visualizarAreaAdmin() {
+    const areaSelect = document.getElementById('areaSelect');
+    const mesSelect = document.getElementById('mesSelect');
+    const selectedOption = areaSelect.options[areaSelect.selectedIndex];
+
+    if (!areaSelect.value) {
+        alert('⚠️ Selecione uma área!');
+        return;
+    }
+
+    const area = selectedOption.value;
+    const tipo = selectedOption.getAttribute('data-tipo');
+    const mes = mesSelect.value;
+
+    // Redireciona para calendário com filtros
+    window.location.href = `/teletrabalho/calendario/${mes}?area=${encodeURIComponent(area)}&tipo_area=${tipo}`;
+}
+
+// Adiciona efeito de loading nos cards de período
+document.querySelectorAll('.periodo-card').forEach(card => {
+    card.addEventListener('click', function(e) {
+        // Adiciona spinner temporário
+        const icon = this.querySelector('i');
+        const originalClass = icon.className;
+        icon.className = 'fas fa-spinner fa-spin me-2';
+
+        // Restaura após 500ms caso navegação falhe
+        setTimeout(() => {
+            icon.className = originalClass;
+        }, 500);
+    });
+});
+</script>
+{% endblock %}

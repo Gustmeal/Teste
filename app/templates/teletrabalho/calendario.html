@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-calendar-alt me-2"></i>
+            {{ nome_mes }}
+        </h1>
+        <div class="text-end">
+            <span class="badge bg-info fs-6">{{ area }}</span>
+            <span class="badge bg-success fs-6">{{ limite }} vagas/dia</span>
+        </div>
+    </div>
+
+    <!-- Seletor de Período -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Mudar Período:</label>
+                    <select id="selectPeriodo" class="form-select" onchange="mudarPeriodo()">
+                        {% for periodo in periodos_disponiveis %}
+                        <option value="{{ periodo.mes_ref }}" {% if periodo.mes_ref == mes_referencia %}selected{% endif %}>
+                            {{ periodo.nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8 text-end">
+                    <a href="{{ url_for('teletrabalho.visualizacao_geral', mes_ref=mes_referencia, area=area) }}"
+                       class="btn btn-info">
+                        <i class="fas fa-eye me-2"></i>Visualização Geral
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="alert alert-info d-flex justify-content-between align-items-center">
+                <div>
+                    <strong><i class="fas fa-users me-2"></i>Total de pessoas na área:</strong> {{ total_pessoas }}
+                    <span class="mx-3">|</span>
+                    <strong><i class="fas fa-percentage me-2"></i>Limite diário (30%):</strong> {{ limite }} pessoas
+                </div>
+                <div>
+                    <strong><i class="fas fa-check-circle me-2"></i>Seus dias marcados:</strong>
+                    <span class="badge bg-success fs-6">{{ meus_dias|length }} / 5</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulário -->
+    {% if pode_solicitar %}
+    <form method="POST" action="{{ url_for('teletrabalho.solicitar') }}" id="formTeletrabalho">
+    {% else %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Visualização admin. Apenas usuários vinculados podem solicitar.
+    </div>
+    <div style="pointer-events: none; opacity: 0.6;">
+    {% endif %}
+
+        <input type="hidden" name="mes_referencia" value="{{ mes_referencia }}">
+
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <h5 class="mb-0">Selecione os Dias</h5>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <span id="contadorDias" class="badge bg-light text-dark fs-6">0 dias selecionados</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="p-3 bg-light border-bottom">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Tipo de Período: <span class="text-danger">*</span></label>
+                            <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
+                                <option value="">Selecione...</option>
+                                <option value="ALTERNADO">Dias Alternados (com intervalo)</option>
+                                <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Observação (opcional):</label>
+                            <input type="text" name="observacao" class="form-control"
+                                   placeholder="Ex: Projeto específico">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calendário -->
+                <div class="calendario-container p-4">
+                    <div class="calendario-grid">
+                        <!-- Cabeçalhos -->
+                        <div class="dia-semana-header">DOM</div>
+                        <div class="dia-semana-header">SEG</div>
+                        <div class="dia-semana-header">TER</div>
+                        <div class="dia-semana-header">QUA</div>
+                        <div class="dia-semana-header">QUI</div>
+                        <div class="dia-semana-header">SEX</div>
+                        <div class="dia-semana-header">SÁB</div>
+
+                        <!-- Células vazias iniciais -->
+                        {% for i in range(primeiro_dia_grid) %}
+                        <div class="dia-cell vazio"></div>
+                        {% endfor %}
+
+                        <!-- Dias do mês -->
+                        {% for dia in dias %}
+                        <div class="dia-cell
+                                    {% if not dia.eh_util %}nao-util{% endif %}
+                                    {% if dia.lotado %}lotado{% endif %}
+                                    {% if dia.data in meus_dias %}meu-dia{% endif %}"
+                             data-date="{{ dia.data }}">
+
+                            <div class="dia-numero">{{ dia.dia }}</div>
+
+                            {% if dia.feriado %}
+                            <div class="dia-feriado">
+                                <i class="fas fa-flag"></i> {{ dia.feriado[:15] }}
+                            </div>
+                            {% elif not dia.eh_util %}
+                            <div class="dia-info text-danger">
+                                <small>Não útil</small>
+                            </div>
+                            {% else %}
+                            <div class="dia-info">
+                                <small class="{% if dia.lotado %}text-danger{% else %}text-muted{% endif %}">
+                                    {{ dia.qtd_pessoas }}/{{ dia.limite }}
+                                </small>
+                            </div>
+                            {% endif %}
+
+                            {% if dia.eh_util and not dia.lotado and dia.data not in meus_dias %}
+                            <div class="dia-checkbox-container">
+                                <input class="form-check-input dia-checkbox"
+                                       type="checkbox"
+                                       name="datas[]"
+                                       value="{{ dia.data }}">
+                            </div>
+                            {% endif %}
+
+                            {% if dia.data in meus_dias %}
+                            <div class="dia-badge">
+                                <span class="badge bg-success w-100">SEU DIA</span>
+                            </div>
+                            {% elif dia.lotado %}
+                            <div class="dia-badge">
+                                <span class="badge bg-danger w-100">LOTADO</span>
+                            </div>
+                            {% endif %}
+
+                            {% if dia.pessoas %}
+                            <button type="button" class="btn-pessoas"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#modalPessoas{{ loop.index }}">
+                                <i class="fas fa-users"></i> {{ dia.qtd_pessoas }}
+                            </button>
+
+                            <div class="modal fade" id="modalPessoas{{ loop.index }}" tabindex="-1">
+                                <div class="modal-dialog modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header bg-primary text-white">
+                                            <h5 class="modal-title">
+                                                Teletrabalho em {{ dia.dia }}/{{ mes_referencia[4:6] }}
+                                            </h5>
+                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body">
+                                            <p class="text-muted mb-3">
+                                                <strong>{{ dia.qtd_pessoas }}</strong> pessoa(s):
+                                            </p>
+                                            <div class="list-group">
+                                                {% for pessoa in dia.pessoas %}
+                                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <i class="fas fa-user me-2 text-primary"></i>
+                                                        {{ pessoa.usuario }}
+                                                    </div>
+                                                    {% if pessoa.usuario_id == current_user.id %}
+                                                    <form method="POST" action="{{ url_for('teletrabalho.cancelar', id=pessoa.id) }}"
+                                                          onsubmit="return confirm('Cancelar?');" style="margin:0;">
+                                                        <button type="submit" class="btn btn-sm btn-danger">
+                                                            <i class="fas fa-times"></i> Cancelar
+                                                        </button>
+                                                    </form>
+                                                    {% endif %}
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-light">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <div class="legenda-container">
+                            <span class="legenda-item">
+                                <span class="legenda-box bg-success"></span> Seu dia
+                            </span>
+                            <span class="legenda-item">
+                                <span class="legenda-box bg-danger"></span> Lotado
+                            </span>
+                            <span class="legenda-item">
+                                <span class="legenda-box bg-secondary"></span> Não útil
+                            </span>
+                            <span class="legenda-item">
+                                <span class="legenda-box bg-primary"></span> Disponível
+                            </span>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="submit" class="btn btn-success btn-lg" id="btnSolicitar" disabled>
+                            <i class="fas fa-check me-2"></i>Solicitar Teletrabalho
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    {% if pode_solicitar %}
+    </form>
+    {% else %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.calendario-container { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+.calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.dia-semana-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 15px; font-weight: bold; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.dia-cell { background: white; border-radius: 12px; padding: 15px; min-height: 140px; position: relative; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+.dia-cell.vazio { background: transparent; box-shadow: none; cursor: default; }
+.dia-cell:not(.nao-util):not(.lotado):not(.meu-dia):not(.vazio):hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(108, 99, 255, 0.3); background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); }
+.dia-cell.nao-util { background: #f5f5f5; cursor: not-allowed; opacity: 0.6; }
+.dia-cell.lotado { background: linear-gradient(135deg, #ffe6e6 0%, #ffcccc 100%); cursor: not-allowed; }
+.dia-cell.meu-dia { background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 3px solid #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); }
+.dia-numero { font-size: 1.8rem; font-weight: bold; color: #333; margin-bottom: 8px; }
+.dia-cell.nao-util .dia-numero { color: #999; }
+.dia-info { font-size: 0.85rem; margin-bottom: 8px; }
+.dia-feriado { font-size: 0.75rem; color: #dc3545; font-weight: 600; margin-bottom: 8px; text-align: center; }
+.dia-checkbox-container { margin-top: auto; text-align: center; }
+.dia-checkbox { width: 25px; height: 25px; cursor: pointer; border: 2px solid #667eea; }
+.dia-checkbox:checked { background-color: #667eea; border-color: #667eea; }
+.dia-badge { margin-top: auto; }
+.dia-badge .badge { font-size: 0.7rem; padding: 5px; }
+.btn-pessoas { position: absolute; bottom: 10px; left: 10px; background: rgba(108, 99, 255, 0.9); color: white; border: none; border-radius: 20px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.3s ease; }
+.btn-pessoas:hover { background: rgba(108, 99, 255, 1); transform: scale(1.05); }
+.legenda-container { display: flex; gap: 15px; flex-wrap: wrap; }
+.legenda-item { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; }
+.legenda-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; }
+#contadorDias { padding: 8px 15px; font-weight: 600; }
+@media (max-width: 768px) {
+    .calendario-grid { gap: 5px; }
+    .dia-cell { min-height: 100px; padding: 10px; }
+    .dia-numero { font-size: 1.4rem; }
+    .dia-semana-header { padding: 10px; font-size: 0.8rem; }
+}
+</style>
+
+<script>
+function mudarPeriodo() {
+    const mesRef = document.getElementById('selectPeriodo').value;
+    const area = '{{ area }}';
+    const tipoArea = '{{ tipo_area }}';
+    window.location.href = `/teletrabalho/calendario/${mesRef}?area=${area}&tipo_area=${tipoArea}`;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = document.querySelectorAll('.dia-checkbox');
+    const btnSolicitar = document.getElementById('btnSolicitar');
+    const contadorDias = document.getElementById('contadorDias');
+    const tipoPeriodo = document.getElementById('tipoPeriodo');
+
+    function atualizarContador() {
+        const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
+        contadorDias.textContent = `${selecionados} dia(s) selecionado(s)`;
+
+        contadorDias.classList.remove('bg-light', 'bg-warning', 'bg-success', 'text-dark');
+        if (selecionados === 0) {
+            contadorDias.classList.add('bg-light', 'text-dark');
+        } else if (selecionados < 5) {
+            contadorDias.classList.add('bg-warning');
+        } else {
+            contadorDias.classList.add('bg-success');
+        }
+
+        if (selecionados > 0 && tipoPeriodo.value) {
+            btnSolicitar.disabled = false;
+        } else {
+            btnSolicitar.disabled = true;
+        }
+
+        if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
+            contadorDias.textContent = `${selecionados} dia(s) - Selecione exatamente 5`;
+            btnSolicitar.disabled = true;
+        }
+    }
+
+    checkboxes.forEach(cb => {
+        cb.addEventListener('change', function() {
+            const cell = this.closest('.dia-cell');
+            if (this.checked) {
+                cell.style.background = 'linear-gradient(135deg, #e3f2fd 0%, #90caf9 100%)';
+                cell.style.border = '2px solid #2196F3';
+            } else {
+                cell.style.background = 'white';
+                cell.style.border = 'none';
+            }
+            atualizarContador();
+        });
+    });
+
+    tipoPeriodo.addEventListener('change', atualizarContador);
+
+    const form = document.getElementById('formTeletrabalho');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
+
+            if (selecionados === 0) {
+                e.preventDefault();
+                alert('⚠️ Selecione pelo menos um dia!');
+                return false;
+            }
+
+            if (!tipoPeriodo.value) {
+                e.preventDefault();
+                alert('⚠️ Selecione o tipo de período!');
+                return false;
+            }
+
+            if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
+                e.preventDefault();
+                alert('⚠️ Selecione exatamente 5 dias consecutivos!');
+                return false;
+            }
+
+            return confirm(`Confirmar ${selecionados} dia(s)?`);
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -135,6 +135,9 @@ def create_app():
     from app.routes.demandas_routes import demandas_bp
     app.register_blueprint(demandas_bp)
 
+    from app.routes.teletrabalho_routes import teletrabalho_bp
+    app.register_blueprint(teletrabalho_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

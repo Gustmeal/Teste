@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-chart-bar me-2"></i>
+            Relatório de Teletrabalho
+        </h1>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card shadow text-center" style="border-left: 4px solid #667eea;">
+                <div class="card-body">
+                    <i class="fas fa-clipboard-list fa-2x text-primary mb-2"></i>
+                    <h3 class="text-primary mb-0">{{ total_solicitacoes }}</h3>
+                    <p class="text-muted mb-0">Total de Solicitações</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow text-center" style="border-left: 4px solid #28a745;">
+                <div class="card-body">
+                    <i class="fas fa-check-circle fa-2x text-success mb-2"></i>
+                    <h3 class="text-success mb-0">{{ total_aprovadas }}</h3>
+                    <p class="text-muted mb-0">Aprovadas</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow text-center" style="border-left: 4px solid #ffc107;">
+                <div class="card-body">
+                    <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                    <h3 class="text-warning mb-0">{{ total_solicitacoes - total_aprovadas }}</h3>
+                    <p class="text-muted mb-0">Outras</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Mês (YYYYMM):</label>
+                        <input type="text" name="mes_ref" class="form-control"
+                               placeholder="Ex: 202501"
+                               value="{{ mes_ref if mes_ref else '' }}"
+                               maxlength="6">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area" class="form-select">
+                            <option value="">Todas as Áreas</option>
+                            {% for area in areas %}
+                            <option value="{{ area.area }}" {% if area_filtro == area.area %}selected{% endif %}>
+                                {{ area.area }} ({{ area.qtd_pessoas }} pessoas)
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('teletrabalho.relatorio') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Todas as Solicitações</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Usuário</th>
+                        <th>Data</th>
+                        <th>Mês</th>
+                        <th>Área</th>
+                        <th>Tipo</th>
+                        <th>Status</th>
+                        <th>Solicitado em</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if resultados %}
+                        {% for tele, usuario in resultados %}
+                        <tr>
+                            <td><strong>#{{ tele.ID }}</strong></td>
+                            <td>
+                                <i class="fas fa-user me-2 text-primary"></i>
+                                {{ usuario.NOME }}
+                            </td>
+                            <td>{{ tele.DATA_TELETRABALHO.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ tele.MES_REFERENCIA }}</td>
+                            <td><span class="badge bg-info">{{ tele.AREA }}</span></td>
+                            <td>
+                                {% if tele.TIPO_PERIODO == 'ALTERNADO' %}
+                                <span class="badge bg-primary">Alternado</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">5 Corridos</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if tele.STATUS == 'APROVADO' %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check-circle me-1"></i>Aprovado
+                                </span>
+                                {% elif tele.STATUS == 'PENDENTE' %}
+                                <span class="badge bg-warning text-dark">
+                                    <i class="fas fa-clock me-1"></i>Pendente
+                                </span>
+                                {% else %}
+                                <span class="badge bg-danger">
+                                    <i class="fas fa-times-circle me-1"></i>Cancelado
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small>{{ tele.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</small>
+                            </td>
+                            <td class="text-center">
+                                <form method="POST" action="{{ url_for('teletrabalho.cancelar', id=tele.ID) }}"
+                                      style="display: inline;"
+                                      onsubmit="return confirm('⚠️ Deseja realmente cancelar este teletrabalho?');">
+                                    <button type="submit" class="btn btn-sm btn-danger"
+                                            {% if tele.STATUS != 'APROVADO' %}disabled{% endif %}
+                                            title="Cancelar">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted py-4">
+                                <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                                Nenhuma solicitação encontrada
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

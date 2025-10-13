@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-list me-2"></i>
+            Configurações de Áreas
+        </h1>
+        <a href="{{ url_for('teletrabalho.config_area') }}" class="btn btn-success">
+            <i class="fas fa-plus me-2"></i>Nova Configuração
+        </a>
+    </div>
+
+    <!-- Áreas Configuradas -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Áreas Configuradas</h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Área</th>
+                        <th>Tipo</th>
+                        <th>Elegíveis</th>
+                        <th>Percentual</th>
+                        <th>Limite/Dia</th>
+                        <th>Última Atualização</th>
+                        <th class="text-center">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for config in configs %}
+                    <tr>
+                        <td><strong>{{ config.AREA }}</strong></td>
+                        <td><span class="badge bg-info">{{ config.TIPO_AREA }}</span></td>
+                        <td>{{ config.QTD_TOTAL_PESSOAS }} pessoas</td>
+                        <td>{{ config.PERCENTUAL_LIMITE }}%</td>
+                        <td><strong class="text-success">{{ config.limite_pessoas_dia }}</strong></td>
+                        <td>
+                            {% if config.UPDATED_AT %}
+                            {{ config.UPDATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                            {% else %}
+                            {{ config.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <a href="{{ url_for('teletrabalho.config_area', area=config.AREA, tipo_area=config.TIPO_AREA) }}"
+                               class="btn btn-sm btn-warning">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('teletrabalho.config_excluir', id=config.ID) }}"
+                                  style="display:inline;"
+                                  onsubmit="return confirm('Excluir configuração?');">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Áreas Sem Configuração -->
+    {% if areas_sem_config %}
+    <div class="card shadow">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Áreas Sem Configuração (usando contagem automática)</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for area in areas_sem_config %}
+                <div class="col-md-4 mb-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6>{{ area.area }}</h6>
+                            <p class="text-muted mb-2">{{ area.qtd }} pessoas (total real)</p>
+                            <a href="{{ url_for('teletrabalho.config_area', area=area.area, tipo_area='superintendencia') }}"
+                               class="btn btn-sm btn-primary">
+                                <i class="fas fa-cog me-1"></i>Configurar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-user-cog me-2"></i>
+            Cadastrar Teletrabalho (Admin)
+        </h1>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Modo Administrador:</strong> Cadastre dias de teletrabalho em nome de qualquer usuário.
+    </div>
+
+    <!-- Seleção Usuário -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-user-check me-2"></i>Selecione o Usuário</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Usuário: <span class="text-danger">*</span></label>
+                    <select id="selectUsuario" class="form-select form-select-lg">
+                        <option value="">Selecione...</option>
+                        {% for usuario in usuarios %}
+                        <option value="{{ usuario.id }}"
+                                data-area="{{ usuario.area }}"
+                                data-cargo="{{ usuario.cargo }}">
+                            {{ usuario.nome }} - {{ usuario.area }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Mês: <span class="text-danger">*</span></label>
+                    <select id="selectMes" class="form-select form-select-lg">
+                        {% for mes in meses_disponiveis %}
+                        <option value="{{ mes.mes_ref }}">{{ mes.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-primary btn-lg w-100" onclick="carregarCalendario()">
+                        <i class="fas fa-calendar-alt me-2"></i>Carregar
+                    </button>
+                </div>
+            </div>
+
+            <div id="infoUsuario" class="mt-3" style="display: none;">
+                <div class="alert alert-success">
+                    <strong>Área:</strong> <span id="infoArea"></span> |
+                    <strong>Cargo:</strong> <span id="infoCargo"></span> |
+                    <strong>Dias marcados:</strong> <span id="infoDiasMarcados" class="badge bg-warning">0/5</span> |
+                    <strong>Limite diário:</strong> <span id="infoLimite"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendário -->
+    <div id="containerCalendario" style="display: none;">
+        <form method="POST" action="{{ url_for('teletrabalho.admin_cadastrar_post') }}" id="formCadastro">
+            <input type="hidden" name="usuario_id" id="inputUsuarioId">
+            <input type="hidden" name="mes_referencia" id="inputMesRef">
+
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <h5 class="mb-0">Selecione os Dias</h5>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <span id="contadorDias" class="badge bg-light text-dark fs-6">0 dias</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="p-3 bg-light border-bottom">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Tipo: <span class="text-danger">*</span></label>
+                                <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="ALTERNADO">Dias Alternados</option>
+                                    <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Observação:</label>
+                                <input type="text" name="observacao" class="form-control"
+                                       placeholder="Ex: Aprovado pelo gestor">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="calendario-container p-4">
+                        <div class="calendario-grid" id="calendarioGrid">
+                            <!-- Preenchido via JS -->
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-light">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="legenda-container">
+                                <span class="legenda-item">
+                                    <span class="legenda-box bg-warning"></span> Já marcado
+                                </span>
+                                <span class="legenda-item">
+                                    <span class="legenda-box bg-danger"></span> Lotado
+                                </span>
+                                <span class="legenda-item">
+                                    <span class="legenda-box bg-secondary"></span> Não útil
+                                </span>
+                                <span class="legenda-item">
+                                    <span class="legenda-box bg-primary"></span> Disponível
+                                </span>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <button type="submit" class="btn btn-success btn-lg" id="btnCadastrar" disabled>
+                                <i class="fas fa-check me-2"></i>Cadastrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.calendario-container { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+.calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.dia-semana-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 15px; font-weight: bold; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.dia-cell { background: white; border-radius: 12px; padding: 15px; min-height: 140px; position: relative; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+.dia-cell.vazio { background: transparent; box-shadow: none; cursor: default; }
+.dia-cell:not(.nao-util):not(.lotado):not(.ja-marcado):not(.vazio):hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(108, 99, 255, 0.3); background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); }
+.dia-cell.nao-util { background: #f5f5f5; cursor: not-allowed; opacity: 0.6; }
+.dia-cell.lotado { background: linear-gradient(135deg, #ffe6e6 0%, #ffcccc 100%); cursor: not-allowed; }
+.dia-cell.ja-marcado { background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border: 3px solid #ffc107; }
+.dia-numero { font-size: 1.8rem; font-weight: bold; color: #333; margin-bottom: 8px; }
+.dia-info { font-size: 0.85rem; margin-bottom: 8px; }
+.dia-feriado { font-size: 0.75rem; color: #dc3545; font-weight: 600; margin-bottom: 8px; }
+.dia-checkbox-container { margin-top: auto; text-align: center; }
+.dia-checkbox { width: 25px; height: 25px; cursor: pointer; border: 2px solid #667eea; }
+.dia-checkbox:checked { background-color: #667eea; border-color: #667eea; }
+.dia-badge { margin-top: auto; }
+.legenda-container { display: flex; gap: 15px; flex-wrap: wrap; }
+.legenda-item { display: flex; align-items: center; gap: 5px; font-size: 0.9rem; }
+.legenda-box { width: 20px; height: 20px; border-radius: 4px; display: inline-block; }
+</style>
+
+<script>
+let dadosCalendario = null;
+
+function carregarCalendario() {
+    const usuarioId = document.getElementById('selectUsuario').value;
+    const mesRef = document.getElementById('selectMes').value;
+
+    if (!usuarioId) {
+        alert('Selecione um usuário!');
+        return;
+    }
+
+    document.getElementById('calendarioGrid').innerHTML = '<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-3x"></i></div>';
+    document.getElementById('containerCalendario').style.display = 'block';
+
+    fetch(`/teletrabalho/admin/obter_calendario/${usuarioId}/${mesRef}`)
+        .then(response => response.json())
+        .then(data => {
+            dadosCalendario = data;
+            renderizarCalendario(data);
+
+            document.getElementById('inputUsuarioId').value = usuarioId;
+            document.getElementById('inputMesRef').value = mesRef;
+            document.getElementById('infoArea').textContent = data.area;
+            const selectUsuario = document.getElementById('selectUsuario');
+            const cargo = selectUsuario.options[selectUsuario.selectedIndex].getAttribute('data-cargo');
+            document.getElementById('infoCargo').textContent = cargo;
+            document.getElementById('infoDiasMarcados').textContent = `${data.dias_marcados}/5`;
+            document.getElementById('infoLimite').textContent = `${data.limite} pessoas`;
+            document.getElementById('infoUsuario').style.display = 'block';
+        })
+        .catch(error => {
+            alert('Erro ao carregar: ' + error);
+            document.getElementById('containerCalendario').style.display = 'none';
+        });
+}
+
+function renderizarCalendario(data) {
+    const grid = document.getElementById('calendarioGrid');
+    let html = '';
+
+    // Cabeçalho
+    const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+    diasSemana.forEach(dia => {
+        html += `<div class="dia-semana-header">${dia}</div>`;
+    });
+
+    // CORREÇÃO CRÍTICA: Dias vazios no início usando primeiro_dia_grid
+    console.log('Primeiro dia grid:', data.primeiro_dia_grid);
+    for (let i = 0; i < data.primeiro_dia_grid; i++) {
+        html += '<div class="dia-cell vazio"></div>';
+    }
+
+    // Dias do mês
+    data.dias.forEach(dia => {
+        let classes = 'dia-cell';
+        if (!dia.eh_util) classes += ' nao-util';
+        if (dia.lotado) classes += ' lotado';
+        if (dia.ja_marcado) classes += ' ja-marcado';
+
+        html += `<div class="${classes}" data-date="${dia.data}">`;
+        html += `<div class="dia-numero">${dia.dia}</div>`;
+
+        if (dia.feriado) {
+            html += `<div class="dia-feriado"><i class="fas fa-flag"></i> ${dia.feriado.substring(0, 15)}</div>`;
+        } else if (!dia.eh_util) {
+            html += `<div class="dia-info text-danger"><small>Não útil</small></div>`;
+        } else {
+            html += `<div class="dia-info"><small class="${dia.lotado ? 'text-danger' : 'text-muted'}">${dia.qtd_pessoas}/${dia.limite}</small></div>`;
+        }
+
+        if (dia.eh_util && !dia.lotado && !dia.ja_marcado) {
+            html += `<div class="dia-checkbox-container">
+                        <input class="form-check-input dia-checkbox" type="checkbox"
+                               name="datas[]" value="${dia.data}">
+                     </div>`;
+        }
+
+        if (dia.ja_marcado) {
+            html += `<div class="dia-badge"><span class="badge bg-warning w-100 text-dark">JÁ MARCADO</span></div>`;
+        } else if (dia.lotado) {
+            html += `<div class="dia-badge"><span class="badge bg-danger w-100">LOTADO</span></div>`;
+        }
+
+        html += '</div>';
+    });
+
+    grid.innerHTML = html;
+
+    document.querySelectorAll('.dia-checkbox').forEach(cb => {
+        cb.addEventListener('change', atualizarContador);
+    });
+}
+
+function atualizarContador() {
+    const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
+    const contador = document.getElementById('contadorDias');
+    const btnCadastrar = document.getElementById('btnCadastrar');
+    const tipoPeriodo = document.getElementById('tipoPeriodo');
+
+    contador.textContent = `${selecionados} dia(s)`;
+
+    contador.classList.remove('bg-light', 'bg-warning', 'bg-success', 'text-dark');
+    if (selecionados === 0) {
+        contador.classList.add('bg-light', 'text-dark');
+    } else if (selecionados < 5) {
+        contador.classList.add('bg-warning');
+    } else {
+        contador.classList.add('bg-success');
+    }
+
+    btnCadastrar.disabled = !(selecionados > 0 && tipoPeriodo.value);
+
+    if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
+        contador.textContent = `${selecionados} - Selecione 5`;
+        btnCadastrar.disabled = true;
+    }
+
+    document.querySelectorAll('.dia-checkbox').forEach(cb => {
+        const cell = cb.closest('.dia-cell');
+        if (cb.checked) {
+            cell.style.background = 'linear-gradient(135deg, #e3f2fd 0%, #90caf9 100%)';
+            cell.style.border = '2px solid #2196F3';
+        } else if (!cell.classList.contains('ja-marcado') && !cell.classList.contains('lotado') && !cell.classList.contains('nao-util')) {
+            cell.style.background = 'white';
+            cell.style.border = 'none';
+        }
+    });
+}
+
+document.getElementById('tipoPeriodo')?.addEventListener('change', atualizarContador);
+
+document.getElementById('formCadastro')?.addEventListener('submit', function(e) {
+    const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
+    const tipoPeriodo = document.getElementById('tipoPeriodo').value;
+
+    if (selecionados === 0) {
+        e.preventDefault();
+        alert('Selecione pelo menos um dia!');
+        return false;
+    }
+
+    if (!tipoPeriodo) {
+        e.preventDefault();
+        alert('Selecione o tipo!');
+        return false;
+    }
+
+    if (tipoPeriodo === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
+        e.preventDefault();
+        alert('Selecione exatamente 5 dias consecutivos!');
+        return false;
+    }
+
+    const usuario = document.getElementById('selectUsuario').options[document.getElementById('selectUsuario').selectedIndex].text;
+    return confirm(`Confirmar cadastro de ${selecionados} dia(s) para ${usuario}?`);
+});
+</script>
+{% endblock %}

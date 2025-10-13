@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-cog me-2"></i>
+            Configurar Área
+        </h1>
+        {% if current_user.perfil == 'admin' %}
+        <a href="{{ url_for('teletrabalho.config_listar') }}" class="btn btn-info">
+            <i class="fas fa-list me-2"></i>Listar Todas
+        </a>
+        {% endif %}
+    </div>
+
+    {% if mostrar_seletor %}
+    <!-- Seletor de Área (Admin sem empregado) -->
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Selecione a Área</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET">
+                <div class="row">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area" class="form-select" required>
+                            <option value="">Selecione...</option>
+                            {% for a in areas_disponiveis %}
+                            <option value="{{ a.area }}" data-tipo="{{ a.tipo }}">
+                                {{ a.area }} ({{ a.qtd_pessoas }} pessoas)
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="tipo_area" value="superintendencia">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-arrow-right me-2"></i>Configurar
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <!-- Formulário de Configuração -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Configuração - {{ area }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info mb-4">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Importante:</strong> A quantidade configurada deve incluir apenas pessoas <strong>elegíveis</strong>
+                para teletrabalho. Exclua equipe essencial, cargos que não podem trabalhar remotamente, etc.
+            </div>
+
+            <form method="POST">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Área:</label>
+                            <input type="text" class="form-control" value="{{ area }}" disabled>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Tipo:</label>
+                            <input type="text" class="form-control" value="{{ tipo_area }}" disabled>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                Total Real na Área:
+                            </label>
+                            <input type="text" class="form-control bg-light"
+                                   value="{{ qtd_real }} pessoas" disabled>
+                            <small class="text-muted">Contagem automática do banco</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                Elegíveis para Teletrabalho: <span class="text-danger">*</span>
+                            </label>
+                            <input type="number"
+                                   name="qtd_pessoas"
+                                   class="form-control"
+                                   value="{{ config.QTD_TOTAL_PESSOAS if config else qtd_real }}"
+                                   min="1"
+                                   max="{{ qtd_real }}"
+                                   required>
+                            <small class="text-muted">Apenas quem PODE fazer teletrabalho</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                Percentual Limite (%): <span class="text-danger">*</span>
+                            </label>
+                            <input type="number"
+                                   name="percentual"
+                                   class="form-control"
+                                   value="{{ config.PERCENTUAL_LIMITE if config else 30.00 }}"
+                                   step="0.01"
+                                   min="1"
+                                   max="100"
+                                   required>
+                            <small class="text-muted">Padrão: 30% (arredonda para cima)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simulação -->
+                <div class="card bg-light mb-3">
+                    <div class="card-body">
+                        <h6 class="fw-bold text-primary">
+                            <i class="fas fa-calculator me-2"></i>Simulação
+                        </h6>
+                        <p class="mb-0">
+                            <strong>Exemplo:</strong> Com <span id="simQtd">{{ config.QTD_TOTAL_PESSOAS if config else qtd_real }}</span> pessoas elegíveis
+                            e <span id="simPerc">{{ config.PERCENTUAL_LIMITE if config else 30 }}</span>% de limite:<br>
+                            → <span id="simQtd">{{ config.QTD_TOTAL_PESSOAS if config else qtd_real }}</span> ×
+                            <span id="simPerc">{{ config.PERCENTUAL_LIMITE if config else 30 }}</span>% =
+                            <strong class="text-success" id="simResultado">
+                                {% if config %}
+                                    {{ config.limite_pessoas_dia }}
+                                {% else %}
+                                    {{ ((qtd_real * 30) / 100) | round(0, 'ceil') | int }}
+                                {% endif %}
+                            </strong> pessoas por dia
+                        </p>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-success btn-lg">
+                            <i class="fas fa-save me-2"></i>Salvar Configuração
+                        </button>
+                        {% if config %}
+                        <a href="{{ url_for('teletrabalho.index') }}" class="btn btn-secondary btn-lg">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Informações -->
+    <div class="card shadow">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">Como Funciona</h5>
+        </div>
+        <div class="card-body">
+            <ul>
+                <li><strong>Total Real:</strong> Quantidade de pessoas ativas na área (contagem automática)</li>
+                <li><strong>Elegíveis:</strong> Apenas quem pode fazer teletrabalho (excluir equipe essencial, cargos críticos, etc.)</li>
+                <li><strong>Percentual:</strong> Máximo permitido por dia (padrão 30%)</li>
+                <li><strong>Cálculo:</strong> Elegíveis × Percentual, sempre arredondado para cima</li>
+                <li><strong>Exemplo:</strong> 8 elegíveis × 30% = 2.4 → <strong>3 pessoas/dia</strong></li>
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Simulação em tempo real
+document.querySelectorAll('input[name="qtd_pessoas"], input[name="percentual"]').forEach(input => {
+    input.addEventListener('input', function() {
+        const qtd = parseFloat(document.querySelector('input[name="qtd_pessoas"]').value) || 0;
+        const perc = parseFloat(document.querySelector('input[name="percentual"]').value) || 0;
+        const limite = Math.ceil((qtd * perc) / 100);
+
+        document.getElementById('simQtd').textContent = qtd;
+        document.getElementById('simPerc').textContent = perc.toFixed(2);
+        document.getElementById('simResultado').textContent = limite;
+    });
+});
+</script>
+{% endblock %}
