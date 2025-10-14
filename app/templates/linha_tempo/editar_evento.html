@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container fade-in">
+    <a href="{{ url_for('linha_tempo.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header">
+            <h1><i class="fas fa-edit me-2"></i>Editar Evento - Linha do Tempo</h1>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('linha_tempo.editar_evento', ano=evento.ANO, item=evento.ITEM) }}" id="formEditarEvento">
+                <!-- Informações fixas (não editáveis) -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-calendar me-1"></i>Ano
+                        </label>
+                        <input type="text" class="form-control" value="{{ evento.ANO }}" disabled>
+                        <small class="form-text text-muted">O ano não pode ser alterado</small>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-list-ol me-1"></i>Item
+                        </label>
+                        <input type="text" class="form-control" value="{{ evento.ITEM }}" disabled>
+                        <small class="form-text text-muted">O item não pode ser alterado</small>
+                    </div>
+                </div>
+
+                <!-- Campo DESCRIÇÃO DO EVENTO (editável) -->
+                <div class="mb-4">
+                    <label for="descricao" class="form-label fw-bold">
+                        <i class="fas fa-align-left me-1"></i>Descrição do Evento *
+                    </label>
+                    <textarea class="form-control"
+                              id="descricao"
+                              name="descricao"
+                              rows="4"
+                              maxlength="300"
+                              required
+                              placeholder="Digite a descrição do evento...">{{ evento.DSC_EVENTO }}</textarea>
+                    <small class="form-text text-muted">
+                        <span id="contadorCaracteres">{{ evento.DSC_EVENTO|length }}</span>/300 caracteres
+                    </small>
+                </div>
+
+                <!-- Botões -->
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('linha_tempo.index') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="btnSalvar">
+                        <i class="fas fa-save me-2"></i>Atualizar Evento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Contador de caracteres
+document.getElementById('descricao').addEventListener('input', function() {
+    const contador = document.getElementById('contadorCaracteres');
+    contador.textContent = this.value.length;
+
+    // Mudar cor quando próximo do limite
+    if (this.value.length > 270) {
+        contador.style.color = 'red';
+        contador.style.fontWeight = 'bold';
+    } else {
+        contador.style.color = '';
+        contador.style.fontWeight = '';
+    }
+});
+
+// Validação do formulário
+document.getElementById('formEditarEvento').addEventListener('submit', function(e) {
+    const descricao = document.getElementById('descricao').value.trim();
+
+    if (!descricao) {
+        e.preventDefault();
+        alert('Por favor, preencha a descrição do evento.');
+        return false;
+    }
+
+    if (descricao.length > 300) {
+        e.preventDefault();
+        alert('A descrição deve ter no máximo 300 caracteres.');
+        return false;
+    }
+
+    // Desabilitar botão para evitar duplo clique
+    const btnSalvar = document.getElementById('btnSalvar');
+    btnSalvar.disabled = true;
+    btnSalvar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Atualizando...';
+});
+</script>
+
+<style>
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(108, 99, 255, 0.25);
+}
+
+.form-control:disabled {
+    background-color: #f8f9fa;
+    cursor: not-allowed;
+}
+</style>
+{% endblock %}

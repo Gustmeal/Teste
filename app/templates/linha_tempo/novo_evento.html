@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="form-container fade-in">
+    <a href="{{ url_for('linha_tempo.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="card shadow">
+        <div class="card-header">
+            <h1><i class="fas fa-plus-circle me-2"></i>Novo Evento - Linha do Tempo</h1>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('linha_tempo.novo_evento') }}" id="formNovoEvento">
+                <!-- Campo ANO -->
+                <div class="mb-4">
+                    <label for="ano" class="form-label fw-bold">
+                        <i class="fas fa-calendar me-1"></i>Ano *
+                    </label>
+                    <input type="number"
+                           class="form-control"
+                           id="ano"
+                           name="ano"
+                           value="{{ ano_atual }}"
+                           min="1900"
+                           max="2100"
+                           required
+                           onchange="verificarProximoItem()">
+                    <small class="form-text text-muted">
+                        Informe o ano do evento (entre 1900 e 2100)
+                    </small>
+                </div>
+
+                <!-- Informação sobre o próximo ITEM (calculado automaticamente) -->
+                <div class="alert alert-info" id="infoItem">
+                    <i class="fas fa-info-circle me-2"></i>
+                    O sistema calculará automaticamente o próximo número de item para este ano.
+                    <span id="proximoItemText"></span>
+                </div>
+
+                <!-- Campo DESCRIÇÃO DO EVENTO -->
+                <div class="mb-4">
+                    <label for="descricao" class="form-label fw-bold">
+                        <i class="fas fa-align-left me-1"></i>Descrição do Evento *
+                    </label>
+                    <textarea class="form-control"
+                              id="descricao"
+                              name="descricao"
+                              rows="4"
+                              maxlength="300"
+                              required
+                              placeholder="Digite a descrição do evento..."></textarea>
+                    <small class="form-text text-muted">
+                        <span id="contadorCaracteres">0</span>/300 caracteres
+                    </small>
+                </div>
+
+                <!-- Botões -->
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('linha_tempo.index') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success" id="btnSalvar">
+                        <i class="fas fa-save me-2"></i>Salvar Evento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Verificar próximo item via AJAX
+function verificarProximoItem() {
+    const ano = document.getElementById('ano').value;
+    if (!ano) return;
+
+    fetch(`/analise-controle/linha-tempo/api/proximo-item/${ano}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.sucesso) {
+                const texto = data.proximo_item === 1
+                    ? `<strong>Este será o primeiro evento do ano ${ano}.</strong>`
+                    : `<strong>Próximo item: ${data.proximo_item}</strong>`;
+                document.getElementById('proximoItemText').innerHTML = texto;
+            }
+        })
+        .catch(error => {
+            console.error('Erro ao buscar próximo item:', error);
+        });
+}
+
+// Contador de caracteres
+document.getElementById('descricao').addEventListener('input', function() {
+    const contador = document.getElementById('contadorCaracteres');
+    contador.textContent = this.value.length;
+
+    // Mudar cor quando próximo do limite
+    if (this.value.length > 270) {
+        contador.style.color = 'red';
+        contador.style.fontWeight = 'bold';
+    } else {
+        contador.style.color = '';
+        contador.style.fontWeight = '';
+    }
+});
+
+// Validação do formulário
+document.getElementById('formNovoEvento').addEventListener('submit', function(e) {
+    const ano = document.getElementById('ano').value;
+    const descricao = document.getElementById('descricao').value.trim();
+
+    if (!ano || ano < 1900 || ano > 2100) {
+        e.preventDefault();
+        alert('Por favor, informe um ano válido entre 1900 e 2100.');
+        return false;
+    }
+
+    if (!descricao) {
+        e.preventDefault();
+        alert('Por favor, preencha a descrição do evento.');
+        return false;
+    }
+
+    if (descricao.length > 300) {
+        e.preventDefault();
+        alert('A descrição deve ter no máximo 300 caracteres.');
+        return false;
+    }
+
+    // Desabilitar botão para evitar duplo clique
+    const btnSalvar = document.getElementById('btnSalvar');
+    btnSalvar.disabled = true;
+    btnSalvar.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvando...';
+});
+
+// Carregar próximo item ao carregar a página
+document.addEventListener('DOMContentLoaded', function() {
+    verificarProximoItem();
+});
+</script>
+
+<style>
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(108, 99, 255, 0.25);
+}
+
+.alert-info {
+    background-color: rgba(108, 99, 255, 0.1);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+</style>
+{% endblock %}

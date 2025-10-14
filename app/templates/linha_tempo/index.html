@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Linha do Tempo</h1>
+        <a href="{{ url_for('linha_tempo.novo_evento') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Novo Evento
+        </a>
+    </div>
+
+    <!-- Informação sobre eventos -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <h3 class="text-primary">{{ eventos|length }}</h3>
+                    <p class="text-muted mb-0">Total de Eventos</p>
+                </div>
+                <div class="col-md-4">
+                    <h3 class="text-success">{{ eventos_por_ano|length }}</h3>
+                    <p class="text-muted mb-0">Anos Registrados</p>
+                </div>
+                <div class="col-md-4">
+                    <h3 class="text-info">{{ eventos_por_ano[eventos[0].ANO]|length if eventos else 0 }}</h3>
+                    <p class="text-muted mb-0">Eventos no Último Ano</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timeline de eventos -->
+    {% if eventos_por_ano %}
+    <div class="timeline-container">
+        {% for ano in eventos_por_ano|sort(reverse=True) %}
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-calendar-alt me-2"></i>{{ ano }}
+                    <span class="badge bg-light text-dark float-end">
+                        {{ eventos_por_ano[ano]|length }} evento(s)
+                    </span>
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="list-group">
+                    {% for evento in eventos_por_ano[ano] %}
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center mb-2">
+                                    <span class="badge bg-secondary me-2">Item {{ evento.ITEM }}</span>
+                                    <h5 class="mb-0">Evento {{ evento.ITEM }}</h5>
+                                </div>
+                                <p class="mb-0 text-muted">{{ evento.DSC_EVENTO }}</p>
+                            </div>
+                            <div class="btn-group ms-3">
+                                <a href="{{ url_for('linha_tempo.editar_evento', ano=evento.ANO, item=evento.ITEM) }}"
+                                   class="btn btn-sm btn-outline-primary"
+                                   title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        onclick="confirmarExclusao({{ evento.ANO }}, {{ evento.ITEM }}, '{{ evento.DSC_EVENTO[:30] }}...')"
+                                        title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card shadow">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+            <h4 class="text-muted">Nenhum evento cadastrado</h4>
+            <p class="text-muted mb-4">Comece adicionando o primeiro evento da linha do tempo.</p>
+            <a href="{{ url_for('linha_tempo.novo_evento') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Adicionar Primeiro Evento
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal de confirmação de exclusão -->
+<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir o evento?</p>
+                <p class="mb-0"><strong>Ano:</strong> <span id="eventoAno"></span></p>
+                <p class="mb-0"><strong>Item:</strong> <span id="eventoItem"></span></p>
+                <p class="mb-0"><strong>Descrição:</strong> <span id="eventoDescricao"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <form id="formExcluir" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmarExclusao(ano, item, descricao) {
+    document.getElementById('eventoAno').textContent = ano;
+    document.getElementById('eventoItem').textContent = item;
+    document.getElementById('eventoDescricao').textContent = descricao;
+
+    const form = document.getElementById('formExcluir');
+    form.action = `/analise-controle/linha-tempo/excluir/${ano}/${item}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
+    modal.show();
+}
+
+// Adicionar animação aos cards
+document.addEventListener('DOMContentLoaded', function() {
+    const cards = document.querySelectorAll('.card');
+    cards.forEach((card, index) => {
+        setTimeout(() => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'all 0.5s ease';
+
+            setTimeout(() => {
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, 50);
+        }, index * 100);
+    });
+});
+</script>
+
+<style>
+.timeline-container {
+    position: relative;
+}
+
+.list-group-item {
+    border-left: 4px solid var(--primary-color);
+    transition: all 0.3s ease;
+}
+
+.list-group-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+</style>
+{% endblock %}
