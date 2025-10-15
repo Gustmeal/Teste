@@ -14,17 +14,46 @@ from app.models.teletrabalho import ConfigAreaTeletrabalho
 teletrabalho_bp = Blueprint('teletrabalho', __name__, url_prefix='/teletrabalho')
 
 
-def eh_gestor_ou_admin(usuario):
-    """Verifica se o usuário é gestor, admin ou moderador"""
-    if usuario.PERFIL in ['admin', 'moderador']:
-        return True
+def verificar_nivel_acesso_teletrabalho(usuario):
+    """
+    Determina o nível de acesso do usuário no sistema de teletrabalho
 
+    PRIORIDADE:
+    1. GERENTE (cargo) → retorna 'gerente' (vê apenas sua área)
+    2. ADMIN (perfil) → retorna 'admin' (vê tudo)
+    3. MODERADOR (perfil, não gerente) → retorna 'moderador' (vê tudo)
+    4. USUÁRIO → retorna 'usuario' (vê apenas próprios dados)
+
+    IMPORTANTE: Gerente prevalece sobre moderador!
+    Se alguém é gerente E moderador, será tratado como gerente.
+    """
+    # 1. PRIORIDADE: Verificar se é GERENTE (pelo cargo)
     if usuario.empregado and usuario.empregado.dsCargo:
         if 'GERENTE' in usuario.empregado.dsCargo.upper():
-            return True
+            return 'gerente'
 
-    return False
+    # 2. Se não é gerente, verificar perfil ADMIN
+    if usuario.PERFIL == 'admin':
+        return 'admin'
 
+    # 3. Se não é gerente nem admin, verificar MODERADOR
+    if usuario.PERFIL == 'moderador':
+        return 'moderador'
+
+    # 4. Usuário comum
+    return 'usuario'
+
+
+def eh_gestor_ou_admin(usuario):
+    """Verifica se o usuário é gestor, admin ou moderador"""
+    nivel = verificar_nivel_acesso_teletrabalho(usuario)
+    return nivel in ['gerente', 'admin', 'moderador']
+
+
+def pode_ver_todas_areas(usuario):
+    """Verifica se o usuário pode ver todas as áreas (admin ou moderador não-gerente)"""
+    nivel = verificar_nivel_acesso_teletrabalho(usuario)
+    return nivel in ['admin', 'moderador']
 
 def calcular_limite_area(area, tipo_area, percentual=30.0):
     """
@@ -564,13 +593,13 @@ def admin_cadastrar():
     """Formulário para admin/moderador/gerente cadastrar teletrabalho"""
     usuario = Usuario.query.get(current_user.id)
 
-    # CORREÇÃO: Permitir admin, moderador E gerentes
     if not eh_gestor_ou_admin(usuario):
         flash('Acesso negado. Apenas administradores, moderadores e gerentes.', 'danger')
         return redirect(url_for('teletrabalho.index'))
 
     try:
-        usuarios = db.session.query(
+        # Query base
+        query = db.session.query(
             Usuario.ID,
             Usuario.NOME,
             Usuario.EMAIL,
@@ -583,7 +612,21 @@ def admin_cadastrar():
             Usuario.DELETED_AT.is_(None),
             Empregado.fkStatus == 1,
             Empregado.sgSuperintendencia.isnot(None)
-        ).order_by(Usuario.NOME).all()
+        )
+
+        # CORREÇÃO: Verificar nível de acesso
+        # GERENTE (mesmo se moderador) vê apenas sua área
+        # ADMIN e MODERADOR (não gerente) veem tudo
+        if not pode_ver_todas_areas(usuario):
+            # É gerente (mesmo se for moderador também)
+            empregado_logado = usuario.empregado
+            if empregado_logado and empregado_logado.sgSuperintendencia:
+                query = query.filter(Empregado.sgSuperintendencia == empregado_logado.sgSuperintendencia)
+            else:
+                flash('Você não está vinculado a nenhuma superintendência.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+        usuarios = query.order_by(Usuario.NOME).all()
 
         lista_usuarios = []
         for u in usuarios:
@@ -1000,3 +1043,400 @@ def config_excluir(id):
         flash(f'Erro: {str(e)}', 'danger')
 
     return redirect(url_for('teletrabalho.config_listar'))
+
+
+@teletrabalho_bp.route('/admin/sortear', methods=['GET'])
+@login_required
+def admin_sortear_form():
+    """Formulário para sortear teletrabalho automaticamente"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado. Apenas gestores e admins.', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+    try:
+        # CORREÇÃO: Gerente vê apenas sua área, Admin/Moderador não-gerente veem tudo
+        if pode_ver_todas_areas(usuario):
+            # Admin ou Moderador (não gerente) - vê todas
+            areas = db.session.query(
+                Empregado.sgSuperintendencia,
+                func.count(Empregado.pkPessoa).label('qtd')
+            ).filter(
+                Empregado.sgSuperintendencia.isnot(None),
+                Empregado.fkStatus == 1
+            ).group_by(Empregado.sgSuperintendencia).all()
+        else:
+            # Gerente (mesmo se for moderador também) - vê apenas sua área
+            if usuario.empregado and usuario.empregado.sgSuperintendencia:
+                area = usuario.empregado.sgSuperintendencia
+                qtd = Empregado.query.filter(
+                    Empregado.sgSuperintendencia == area,
+                    Empregado.fkStatus == 1
+                ).count()
+                areas = [(area, qtd)]
+            else:
+                flash('Você não está vinculado a nenhuma área.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+        areas_disponiveis = [{'area': a[0], 'qtd': a[1]} for a in areas]
+        periodos = gerar_opcoes_periodo()
+
+        return render_template('teletrabalho/admin_sortear.html',
+                               areas=areas_disponiveis,
+                               periodos=periodos)
+
+    except Exception as e:
+        flash(f'Erro: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+@teletrabalho_bp.route('/admin/sortear', methods=['POST'])
+@login_required
+def admin_sortear_processar():
+    """Processa o sorteio automático de teletrabalho"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+    try:
+        area = request.form.get('area')
+        mes_referencia = request.form.get('mes_referencia')
+        qtd_dias = int(request.form.get('qtd_dias', 3))
+
+        if not area or not mes_referencia:
+            flash('Preencha todos os campos.', 'warning')
+            return redirect(url_for('teletrabalho.admin_sortear_form'))
+
+        # Executar sorteio
+        resultado = sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias, usuario.ID)
+
+        if resultado['sucesso']:
+            flash(
+                f"✅ Sorteio concluído! {resultado['total_sorteados']} pessoas com {qtd_dias} dias cada. Total: {resultado['total_dias']} dias.",
+                'success')
+
+            registrar_log(
+                acao='criar',
+                entidade='sorteio_teletrabalho',
+                entidade_id=0,
+                descricao=f'Sorteio automático: {area} - {mes_referencia} - {resultado["total_sorteados"]} pessoas'
+            )
+        else:
+            flash(f"❌ Erro no sorteio: {resultado['erro']}", 'danger')
+
+        return redirect(url_for('teletrabalho.admin_sortear_form'))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao processar sorteio: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.admin_sortear_form'))
+
+
+def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, admin_id):
+    """
+    Sorteia teletrabalho com regras específicas por cargo
+
+    REGRAS DEFINITIVAS:
+    - NÃO-GERENTES: 5 dias alternados (SEG-QUA-SEX + TER-QUI em semanas diferentes)
+    - GERENTES: 1-2 dias no mês (1 por semana, semanas diferentes)
+    - NUNCA dias consecutivos
+    - Respeita limite de 30% por dia
+    """
+    import random
+    from datetime import datetime, timedelta
+
+    try:
+        ano = int(mes_referencia[:4])
+        mes = int(mes_referencia[4:])
+
+        # 1. BUSCAR E SEPARAR PESSOAS POR CARGO
+        usuarios_query = db.session.query(
+            Usuario.ID,
+            Usuario.NOME,
+            Empregado.dsCargo
+        ).join(
+            Empregado, Usuario.FK_PESSOA == Empregado.pkPessoa
+        ).filter(
+            Usuario.ATIVO == True,
+            Usuario.DELETED_AT.is_(None),
+            Empregado.fkStatus == 1,
+            Empregado.sgSuperintendencia == area,
+            ~Empregado.dsCargo.ilike('%estagiário%'),
+            ~Empregado.dsCargo.ilike('%estagiaria%'),
+            ~Empregado.dsCargo.ilike('%superintendente%')
+        ).all()
+
+        if not usuarios_query:
+            return {'sucesso': False, 'erro': 'Nenhuma pessoa elegível'}
+
+        # Separar gerentes de não-gerentes
+        gerentes = []
+        nao_gerentes = []
+
+        for u in usuarios_query:
+            if u.dsCargo and 'GERENTE' in u.dsCargo.upper():
+                gerentes.append(u)
+            else:
+                nao_gerentes.append(u)
+
+        # 2. CALCULAR LIMITE DIÁRIO
+        limite_diario, _ = calcular_limite_area(area, 'superintendencia')
+
+        # 3. ORGANIZAR DIAS DO MÊS POR SEMANA
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # Estrutura: {numero_semana: {dia_semana: [datas]}}
+        semanas = {}
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            if Feriado.eh_dia_util(data_atual):
+                # Número da semana no ano
+                num_semana = data_atual.isocalendar()[1]
+                dia_semana = data_atual.weekday()  # 0=SEG, 1=TER, 2=QUA, 3=QUI, 4=SEX
+
+                if num_semana not in semanas:
+                    semanas[num_semana] = {0: [], 1: [], 2: [], 3: [], 4: []}
+
+                semanas[num_semana][dia_semana].append(data_atual)
+
+            data_atual += timedelta(days=1)
+
+        if len(semanas) < 2:
+            return {'sucesso': False, 'erro': 'Mês precisa ter pelo menos 2 semanas com dias úteis'}
+
+        # 4. CONTROLE DE OCUPAÇÃO
+        ocupacao_por_dia = {}
+        data_atual = primeiro_dia
+        while data_atual <= ultimo_dia:
+            if Feriado.eh_dia_util(data_atual):
+                ocupacao_por_dia[data_atual] = 0
+            data_atual += timedelta(days=1)
+
+        dias_por_usuario = {}
+
+        # 5. SORTEAR PARA NÃO-GERENTES (5 dias: 3+2 alternados)
+        random.shuffle(nao_gerentes)
+
+        for usuario in nao_gerentes:
+            dias_sorteados = sortear_5_dias_alternados(
+                semanas,
+                ocupacao_por_dia,
+                limite_diario
+            )
+
+            if len(dias_sorteados) == 5:
+                dias_por_usuario[usuario.ID] = dias_sorteados
+                for dia in dias_sorteados:
+                    ocupacao_por_dia[dia] += 1
+            else:
+                return {
+                    'sucesso': False,
+                    'erro': f'Não conseguiu sortear 5 dias para {usuario.NOME}'
+                }
+
+        # 6. SORTEAR PARA GERENTES (1-2 dias, semanas diferentes)
+        random.shuffle(gerentes)
+
+        for usuario in gerentes:
+            qtd_dias_gerente = 2  # Sempre 2 dias para gerentes
+            dias_sorteados = sortear_dias_gerente(
+                semanas,
+                ocupacao_por_dia,
+                limite_diario,
+                qtd_dias_gerente
+            )
+
+            if len(dias_sorteados) == qtd_dias_gerente:
+                dias_por_usuario[usuario.ID] = dias_sorteados
+                for dia in dias_sorteados:
+                    ocupacao_por_dia[dia] += 1
+            else:
+                return {
+                    'sucesso': False,
+                    'erro': f'Não conseguiu sortear dias para gerente {usuario.NOME}'
+                }
+
+        # 7. SALVAR NO BANCO
+        total_dias_cadastrados = 0
+
+        for usuario_id, dias in dias_por_usuario.items():
+            for dia in dias:
+                teletrabalho = Teletrabalho(
+                    USUARIO_ID=usuario_id,
+                    DATA_TELETRABALHO=dia,
+                    MES_REFERENCIA=mes_referencia,
+                    AREA=area,
+                    TIPO_AREA='superintendencia',
+                    STATUS='APROVADO',
+                    TIPO_PERIODO='ALTERNADO',
+                    OBSERVACAO=f'[SORTEIO AUTO] {datetime.now().strftime("%d/%m/%Y %H:%M")}',
+                    APROVADO_POR=admin_id,
+                    APROVADO_EM=datetime.utcnow()
+                )
+                db.session.add(teletrabalho)
+                total_dias_cadastrados += 1
+
+        db.session.commit()
+
+        return {
+            'sucesso': True,
+            'total_sorteados': len(usuarios_query),
+            'total_dias': total_dias_cadastrados,
+            'gerentes': len(gerentes),
+            'nao_gerentes': len(nao_gerentes)
+        }
+
+    except Exception as e:
+        db.session.rollback()
+        return {'sucesso': False, 'erro': str(e)}
+
+
+def sortear_5_dias_alternados(semanas, ocupacao, limite):
+    """
+    Sorteia 5 dias alternados para não-gerentes
+    Padrão: SEG-QUA-SEX (semana 1) + TER-QUI (semana 2)
+    """
+    import random
+
+    # Padrões possíveis (dias da semana: 0=SEG, 1=TER, 2=QUA, 3=QUI, 4=SEX)
+    padroes = [
+        {'semana1': [0, 2, 4], 'semana2': [1, 3]},  # SEG-QUA-SEX + TER-QUI
+        {'semana1': [1, 3], 'semana2': [0, 2, 4]}  # TER-QUI + SEG-QUA-SEX
+    ]
+
+    random.shuffle(padroes)
+
+    # Tentar cada padrão
+    for padrao in padroes:
+        dias_sorteados = []
+        semanas_usadas = []
+
+        # Tentar sortear semana 1
+        semanas_disponiveis = [s for s in semanas.keys() if s not in semanas_usadas]
+        random.shuffle(semanas_disponiveis)
+
+        for num_semana in semanas_disponiveis:
+            dias_semana1 = []
+            valido = True
+
+            for dia_semana in padrao['semana1']:
+                if dia_semana in semanas[num_semana] and semanas[num_semana][dia_semana]:
+                    # Pegar primeira data disponível desse dia da semana
+                    candidatos = [
+                        d for d in semanas[num_semana][dia_semana]
+                        if ocupacao.get(d, 0) < limite
+                    ]
+                    if candidatos:
+                        dias_semana1.append(candidatos[0])
+                    else:
+                        valido = False
+                        break
+                else:
+                    valido = False
+                    break
+
+            if valido and len(dias_semana1) == len(padrao['semana1']):
+                dias_sorteados.extend(dias_semana1)
+                semanas_usadas.append(num_semana)
+                break
+
+        if len(dias_sorteados) != len(padrao['semana1']):
+            continue
+
+        # Tentar sortear semana 2
+        semanas_disponiveis = [s for s in semanas.keys() if s not in semanas_usadas]
+        random.shuffle(semanas_disponiveis)
+
+        for num_semana in semanas_disponiveis:
+            dias_semana2 = []
+            valido = True
+
+            for dia_semana in padrao['semana2']:
+                if dia_semana in semanas[num_semana] and semanas[num_semana][dia_semana]:
+                    candidatos = [
+                        d for d in semanas[num_semana][dia_semana]
+                        if ocupacao.get(d, 0) < limite
+                    ]
+                    if candidatos:
+                        dias_semana2.append(candidatos[0])
+                    else:
+                        valido = False
+                        break
+                else:
+                    valido = False
+                    break
+
+            if valido and len(dias_semana2) == len(padrao['semana2']):
+                dias_sorteados.extend(dias_semana2)
+                semanas_usadas.append(num_semana)
+                break
+
+        # Verificar se conseguiu os 5 dias
+        if len(dias_sorteados) == 5:
+            # Validar que não há dias consecutivos
+            dias_ordenados = sorted(dias_sorteados)
+            tem_consecutivo = False
+            for i in range(len(dias_ordenados) - 1):
+                if (dias_ordenados[i + 1] - dias_ordenados[i]).days == 1:
+                    tem_consecutivo = True
+                    break
+
+            if not tem_consecutivo:
+                return dias_sorteados
+
+    return []
+
+
+def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias):
+    """
+    Sorteia 1 ou 2 dias para gerentes
+    Regra: 1 dia por semana, semanas diferentes
+    """
+    import random
+
+    semanas_disponiveis = list(semanas.keys())
+    random.shuffle(semanas_disponiveis)
+
+    dias_sorteados = []
+    semanas_usadas = []
+
+    tentativas = 0
+    max_tentativas = 50
+
+    while len(dias_sorteados) < qtd_dias and tentativas < max_tentativas:
+        tentativas += 1
+
+        # Escolher uma semana não usada
+        semanas_candidatas = [s for s in semanas_disponiveis if s not in semanas_usadas]
+        if not semanas_candidatas:
+            break
+
+        num_semana = random.choice(semanas_candidatas)
+
+        # Escolher um dia da semana aleatório
+        dias_semana_disponiveis = []
+        for dia_semana in [0, 1, 2, 3, 4]:  # SEG a SEX
+            if dia_semana in semanas[num_semana] and semanas[num_semana][dia_semana]:
+                for data in semanas[num_semana][dia_semana]:
+                    if ocupacao.get(data, 0) < limite:
+                        dias_semana_disponiveis.append(data)
+
+        if dias_semana_disponiveis:
+            dia_escolhido = random.choice(dias_semana_disponiveis)
+
+            # Validar que não é consecutivo aos já sorteados
+            eh_valido = True
+            for dia_ja_sorteado in dias_sorteados:
+                if abs((dia_escolhido - dia_ja_sorteado).days) == 1:
+                    eh_valido = False
+                    break
+
+            if eh_valido:
+                dias_sorteados.append(dia_escolhido)
+                semanas_usadas.append(num_semana)
+
+    return dias_sorteados

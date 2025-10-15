@@ -279,18 +279,14 @@
 </style>
 
 <script>
-function mudarPeriodo() {
-    const mesRef = document.getElementById('selectPeriodo').value;
-    const area = '{{ area }}';
-    const tipoArea = '{{ tipo_area }}';
-    window.location.href = `/teletrabalho/calendario/${mesRef}?area=${area}&tipo_area=${tipoArea}`;
-}
-
 document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('.dia-checkbox');
-    const btnSolicitar = document.getElementById('btnSolicitar');
     const contadorDias = document.getElementById('contadorDias');
+    const btnSolicitar = document.getElementById('btnSolicitar');
     const tipoPeriodo = document.getElementById('tipoPeriodo');
+
+    // Obter datas já marcadas pelo usuário neste mês (para validar consecutividade)
+    const meusDiasMarcados = [{% for dia in meus_dias %}'{{ dia }}'{% if not loop.last %},{% endif %}{% endfor %}];
 
     function atualizarContador() {
         const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
@@ -317,9 +313,104 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Função para verificar se uma data é consecutiva a outra
+    function saoConsecutivos(data1, data2) {
+        const d1 = new Date(data1);
+        const d2 = new Date(data2);
+        const diffTime = Math.abs(d2 - d1);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays === 1;
+    }
+
+    // Função para obter o dia anterior/próximo útil
+    function getDiaUtil(data, direcao) {
+        const d = new Date(data);
+        let tentativas = 0;
+
+        while (tentativas < 7) {
+            d.setDate(d.getDate() + direcao);
+            const diaSemana = d.getDay();
+
+            // Pular finais de semana
+            if (diaSemana !== 0 && diaSemana !== 6) {
+                return d.toISOString().split('T')[0];
+            }
+            tentativas++;
+        }
+        return null;
+    }
+
+    // Validar se a seleção é válida
+    function validarSelecao(novaData, checked) {
+        const tipoSelecionado = tipoPeriodo.value;
+
+        // Se está desmarcando, sempre permitir
+        if (!checked) return true;
+
+        const diasSelecionados = Array.from(document.querySelectorAll('.dia-checkbox:checked'))
+            .map(cb => cb.value)
+            .filter(d => d !== novaData);
+
+        // MODO ALTERNADO (dias não consecutivos)
+        if (tipoSelecionado === 'ALTERNADO') {
+            // Só pode marcar 1 dia por vez neste modo
+            if (diasSelecionados.length >= 1) {
+                alert('⚠️ No modo "Dias Alternados", marque apenas 1 dia por vez!\n\nPara marcar 5 dias seguidos, selecione "5 Dias Corridos".');
+                return false;
+            }
+
+            // Verificar se o novo dia não é consecutivo aos dias já marcados anteriormente
+            for (let diaMarcado of meusDiasMarcados) {
+                const diaAnterior = getDiaUtil(novaData, -1);
+                const diaProximo = getDiaUtil(novaData, 1);
+
+                if (diaMarcado === diaAnterior || diaMarcado === diaProximo) {
+                    alert(`⚠️ Você já tem teletrabalho marcado no dia ${formatarData(diaMarcado)}.\n\nDias de teletrabalho devem ser alternados (não consecutivos).\n\nPara marcar 5 dias seguidos, selecione "5 Dias Corridos".`);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // MODO 5 DIAS CORRIDOS
+        if (tipoSelecionado === 'CINCO_DIAS_CORRIDOS') {
+            // Permitir até 5 dias
+            if (diasSelecionados.length >= 5) {
+                alert('⚠️ Você só pode selecionar 5 dias consecutivos!');
+                return false;
+            }
+            return true;
+        }
+
+        // Se não selecionou tipo ainda
+        if (!tipoSelecionado) {
+            alert('⚠️ Primeiro selecione o tipo de período (Alternado ou 5 Dias Corridos)');
+            return false;
+        }
+
+        return true;
+    }
+
+    function formatarData(dataStr) {
+        const [ano, mes, dia] = dataStr.split('-');
+        return `${dia}/${mes}/${ano}`;
+    }
+
     checkboxes.forEach(cb => {
         cb.addEventListener('change', function() {
             const cell = this.closest('.dia-cell');
+            const dataCheckbox = this.value;
+            const isChecked = this.checked;
+
+            // Validar antes de marcar
+            if (isChecked && !validarSelecao(dataCheckbox, isChecked)) {
+                this.checked = false;
+                atualizarContador();
+                return;
+            }
+
+            // Atualizar visual
             if (this.checked) {
                 cell.style.background = 'linear-gradient(135deg, #e3f2fd 0%, #90caf9 100%)';
                 cell.style.border = '2px solid #2196F3';
@@ -327,11 +418,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 cell.style.background = 'white';
                 cell.style.border = 'none';
             }
+
             atualizarContador();
         });
     });
 
-    tipoPeriodo.addEventListener('change', atualizarContador);
+    tipoPeriodo.addEventListener('change', function() {
+        // Limpar seleção ao mudar tipo
+        checkboxes.forEach(cb => {
+            cb.checked = false;
+            const cell = cb.closest('.dia-cell');
+            cell.style.background = 'white';
+            cell.style.border = 'none';
+        });
+        atualizarContador();
+    });
 
     const form = document.getElementById('formTeletrabalho');
     if (form) {
@@ -359,6 +460,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return confirm(`Confirmar ${selecionados} dia(s)?`);
         });
     }
+
+    atualizarContador();
 });
+
+function mudarPeriodo() {
+    const mes = document.getElementById('selectPeriodo').value;
+    window.location.href = `/teletrabalho/calendario/${mes}`;
+}
 </script>
 {% endblock %}

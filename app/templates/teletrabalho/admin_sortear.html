@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-random me-2"></i>
+            Sorteio Automático de Teletrabalho
+        </h1>
+    </div>
+
+    <!-- Regras do Sorteio -->
+    <div class="alert alert-info">
+        <h5><i class="fas fa-info-circle me-2"></i>Regras do Sorteio Automático:</h5>
+        <ul class="mb-0">
+            <li><strong>Elegibilidade:</strong> Exclui automaticamente estagiários e superintendentes</li>
+            <li><strong>Não-Gerentes:</strong> 5 dias alternados (SEG-QUA-SEX em uma semana + TER-QUI em outra)</li>
+            <li><strong>Gerentes:</strong> 2 dias no mês (1 dia por semana, em semanas diferentes)</li>
+            <li><strong>NUNCA dias consecutivos:</strong> Sistema garante que nenhuma pessoa terá dias seguidos</li>
+            <li><strong>Limite de 30%:</strong> Respeita capacidade máxima diária da área</li>
+            <li><strong>Aleatório:</strong> Semanas e pessoas são sorteadas randomicamente para distribuição justa</li>
+        </ul>
+    </div>
+
+    <!-- Formulário de Sorteio -->
+    <form method="POST" action="{{ url_for('teletrabalho.admin_sortear_processar') }}" id="formSortear">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Configurações do Sorteio</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Superintendência -->
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Superintendência: <span class="text-danger">*</span></label>
+                        <select name="area" id="selectArea" class="form-select" required>
+                            <option value="">Selecione...</option>
+                            {% for area in areas %}
+                            <option value="{{ area.area }}">
+                                {{ area.area }} ({{ area.qtd }} pessoas)
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            <i class="fas fa-building"></i> Todas as pessoas elegíveis desta área serão sorteadas
+                        </small>
+                    </div>
+
+                    <!-- Mês de Referência -->
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label fw-bold">Mês de Referência: <span class="text-danger">*</span></label>
+                        <select name="mes_referencia" id="selectMes" class="form-select" required>
+                            {% for periodo in periodos %}
+                            <option value="{{ periodo.mes_ref }}">{{ periodo.nome }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            <i class="fas fa-calendar"></i> Mês onde os dias serão sorteados
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Quantidade de Dias (FIXO) -->
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label fw-bold">Distribuição de Dias:</label>
+                        <div class="alert alert-secondary mb-0">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <i class="fas fa-users text-primary"></i>
+                                    <strong>Não-Gerentes:</strong> 5 dias alternados
+                                    <br>
+                                    <small class="text-muted">
+                                        Padrão: SEG-QUA-SEX (semana 1) + TER-QUI (semana 2)
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <i class="fas fa-user-tie text-warning"></i>
+                                    <strong>Gerentes:</strong> 2 dias no mês
+                                    <br>
+                                    <small class="text-muted">
+                                        1 dia por semana, em semanas diferentes
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                        <input type="hidden" name="qtd_dias" value="5">
+                    </div>
+                </div>
+
+                <!-- Resumo Dinâmico -->
+                <div class="alert alert-warning" id="resumo" style="display: none;">
+                    <h6 class="fw-bold">
+                        <i class="fas fa-calculator me-2"></i>Estimativa do Sorteio:
+                    </h6>
+                    <div id="resumoConteudo"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Botões de Ação -->
+        <div class="card shadow">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-secondary btn-lg w-100" onclick="window.location.href='{{ url_for('teletrabalho.index') }}'">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="submit" class="btn btn-success btn-lg w-100" id="btnSortear">
+                            <i class="fas fa-random me-2"></i>Executar Sorteio
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<style>
+.alert-info ul {
+    margin-left: 20px;
+}
+
+.alert-info li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.alert-secondary .row {
+    align-items: center;
+}
+
+.alert-secondary i {
+    font-size: 1.2rem;
+    margin-right: 5px;
+}
+
+#resumoConteudo p {
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.btn-lg {
+    padding: 12px 20px;
+    font-size: 1.1rem;
+}
+</style>
+
+<script>
+// Validação e confirmação do formulário
+document.getElementById('formSortear').addEventListener('submit', function(e) {
+    const area = document.getElementById('selectArea').value;
+    const mesSelect = document.getElementById('selectMes');
+    const mes = mesSelect.options[mesSelect.selectedIndex].text;
+
+    if (!area) {
+        e.preventDefault();
+        alert('⚠️ Selecione a superintendência!');
+        return false;
+    }
+
+    const confirmMsg = `⚠️ CONFIRMAR SORTEIO AUTOMÁTICO?\n\n` +
+        `📍 Área: ${area}\n` +
+        `📅 Mês: ${mes}\n\n` +
+        `📊 DISTRIBUIÇÃO AUTOMÁTICA:\n` +
+        `   • Não-Gerentes: 5 dias alternados (SEG-QUA-SEX + TER-QUI)\n` +
+        `   • Gerentes: 2 dias (1 por semana)\n\n` +
+        `🚫 EXCLUSÕES:\n` +
+        `   • Estagiários\n` +
+        `   • Superintendentes\n\n` +
+        `✅ GARANTIAS:\n` +
+        `   • NUNCA dias consecutivos\n` +
+        `   • Limite de 30% por dia\n` +
+        `   • Distribuição justa e aleatória\n\n` +
+        `⏳ Este processo pode levar alguns segundos.\n\n` +
+        `Deseja continuar?`;
+
+    if (!confirm(confirmMsg)) {
+        e.preventDefault();
+        return false;
+    }
+
+    // Desabilitar botão para evitar duplo clique
+    const btnSortear = document.getElementById('btnSortear');
+    btnSortear.disabled = true;
+    btnSortear.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sorteando... Aguarde';
+});
+
+// Atualizar resumo ao selecionar área
+document.getElementById('selectArea').addEventListener('change', atualizarResumo);
+
+function atualizarResumo() {
+    const areaSelect = document.getElementById('selectArea');
+    const area = areaSelect.value;
+
+    if (area) {
+        const texto = areaSelect.options[areaSelect.selectedIndex].text;
+        const match = texto.match(/\((\d+) pessoas\)/);
+
+        if (match) {
+            const qtdPessoas = parseInt(match[1]);
+            const limite = Math.ceil(qtdPessoas * 0.30);
+
+            // Estimativa: ~12% são gerentes (ajuste conforme sua realidade)
+            const estimativaGerentes = Math.ceil(qtdPessoas * 0.12);
+            const estimativaNaoGerentes = qtdPessoas - estimativaGerentes;
+            const totalDias = (estimativaNaoGerentes * 5) + (estimativaGerentes * 2);
+
+            document.getElementById('resumoConteudo').innerHTML = `
+                <p class="mb-1">
+                    <i class="fas fa-users text-primary"></i>
+                    <strong>Total de pessoas:</strong> ${qtdPessoas}
+                </p>
+                <p class="mb-1">
+                    <i class="fas fa-chart-pie text-info"></i>
+                    <strong>Estimativa:</strong> ~${estimativaNaoGerentes} não-gerentes (5 dias) + ~${estimativaGerentes} gerentes (2 dias)
+                </p>
+                <p class="mb-1">
+                    <i class="fas fa-percentage text-warning"></i>
+                    <strong>Limite por dia (30%):</strong> Máximo ${limite} pessoas por dia
+                </p>
+                <p class="mb-0">
+                    <i class="fas fa-calendar-check text-success"></i>
+                    <strong>Total estimado de dias:</strong> ~${totalDias} dias a serem sorteados
+                </p>
+            `;
+            document.getElementById('resumo').style.display = 'block';
+        }
+    } else {
+        document.getElementById('resumo').style.display = 'none';
+    }
+}
+
+// Carregar resumo se já tiver área selecionada (caso volte da página)
+window.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('selectArea').value) {
+        atualizarResumo();
+    }
+});
+</script>
+
+{% endblock %}

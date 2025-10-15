@@ -199,19 +199,15 @@ function renderizarCalendario(data) {
     const grid = document.getElementById('calendarioGrid');
     let html = '';
 
-    // Cabeçalho
     const diasSemana = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
     diasSemana.forEach(dia => {
         html += `<div class="dia-semana-header">${dia}</div>`;
     });
 
-    // CORREÇÃO CRÍTICA: Dias vazios no início usando primeiro_dia_grid
-    console.log('Primeiro dia grid:', data.primeiro_dia_grid);
     for (let i = 0; i < data.primeiro_dia_grid; i++) {
         html += '<div class="dia-cell vazio"></div>';
     }
 
-    // Dias do mês
     data.dias.forEach(dia => {
         let classes = 'dia-cell';
         if (!dia.eh_util) classes += ' nao-util';
@@ -226,94 +222,72 @@ function renderizarCalendario(data) {
         } else if (!dia.eh_util) {
             html += `<div class="dia-info text-danger"><small>Não útil</small></div>`;
         } else {
-            html += `<div class="dia-info"><small class="${dia.lotado ? 'text-danger' : 'text-muted'}">${dia.qtd_pessoas}/${dia.limite}</small></div>`;
-        }
+            html += `<div class="dia-info"><small class="${dia.lotado ? 'text-danger' : 'text-success'}"><i class="fas fa-users"></i> ${dia.qtd_pessoas}/${data.limite}</small></div>`;
 
-        if (dia.eh_util && !dia.lotado && !dia.ja_marcado) {
-            html += `<div class="dia-checkbox-container">
-                        <input class="form-check-input dia-checkbox" type="checkbox"
-                               name="datas[]" value="${dia.data}">
-                     </div>`;
-        }
+            if (dia.usuarios && dia.usuarios.length > 0) {
+                html += '<div style="font-size: 0.7rem; margin-top: 5px;">';
+                dia.usuarios.forEach(u => {
+                    html += `<div class="badge bg-secondary mb-1" style="font-size: 0.65rem;">${u.split(' ')[0]}</div>`;
+                });
+                html += '</div>';
+            }
 
-        if (dia.ja_marcado) {
-            html += `<div class="dia-badge"><span class="badge bg-warning w-100 text-dark">JÁ MARCADO</span></div>`;
-        } else if (dia.lotado) {
-            html += `<div class="dia-badge"><span class="badge bg-danger w-100">LOTADO</span></div>`;
+            if (dia.ja_marcado) {
+                html += '<div class="dia-badge"><span class="badge bg-warning">Marcado</span></div>';
+            } else if (!dia.lotado && dia.eh_util) {
+                html += `<div class="dia-checkbox-container"><input type="checkbox" class="dia-checkbox" name="datas[]" value="${dia.data}"></div>`;
+            } else if (dia.lotado) {
+                html += '<div class="dia-badge"><span class="badge bg-danger">Lotado</span></div>';
+            }
         }
 
         html += '</div>';
     });
 
     grid.innerHTML = html;
-
-    document.querySelectorAll('.dia-checkbox').forEach(cb => {
-        cb.addEventListener('change', atualizarContador);
-    });
 }
 
-function atualizarContador() {
-    const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
-    const contador = document.getElementById('contadorDias');
-    const btnCadastrar = document.getElementById('btnCadastrar');
-    const tipoPeriodo = document.getElementById('tipoPeriodo');
+function cadastrarTeletrabalho() {
+    const diasSelecionados = Array.from(document.querySelectorAll('.dia-checkbox:checked'))
+        .map(cb => cb.value)
+        .sort();
 
-    contador.textContent = `${selecionados} dia(s)`;
-
-    contador.classList.remove('bg-light', 'bg-warning', 'bg-success', 'text-dark');
-    if (selecionados === 0) {
-        contador.classList.add('bg-light', 'text-dark');
-    } else if (selecionados < 5) {
-        contador.classList.add('bg-warning');
-    } else {
-        contador.classList.add('bg-success');
-    }
-
-    btnCadastrar.disabled = !(selecionados > 0 && tipoPeriodo.value);
-
-    if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
-        contador.textContent = `${selecionados} - Selecione 5`;
-        btnCadastrar.disabled = true;
-    }
-
-    document.querySelectorAll('.dia-checkbox').forEach(cb => {
-        const cell = cb.closest('.dia-cell');
-        if (cb.checked) {
-            cell.style.background = 'linear-gradient(135deg, #e3f2fd 0%, #90caf9 100%)';
-            cell.style.border = '2px solid #2196F3';
-        } else if (!cell.classList.contains('ja-marcado') && !cell.classList.contains('lotado') && !cell.classList.contains('nao-util')) {
-            cell.style.background = 'white';
-            cell.style.border = 'none';
-        }
-    });
-}
-
-document.getElementById('tipoPeriodo')?.addEventListener('change', atualizarContador);
-
-document.getElementById('formCadastro')?.addEventListener('submit', function(e) {
-    const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
     const tipoPeriodo = document.getElementById('tipoPeriodo').value;
 
-    if (selecionados === 0) {
-        e.preventDefault();
-        alert('Selecione pelo menos um dia!');
+    if (diasSelecionados.length === 0) {
+        alert('⚠️ Selecione pelo menos um dia!');
         return false;
     }
 
     if (!tipoPeriodo) {
-        e.preventDefault();
-        alert('Selecione o tipo!');
+        alert('⚠️ Selecione o tipo de período!');
         return false;
     }
 
-    if (tipoPeriodo === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
-        e.preventDefault();
-        alert('Selecione exatamente 5 dias consecutivos!');
+    // VALIDAÇÃO MODO ALTERNADO: Não pode dias consecutivos
+    if (tipoPeriodo === 'ALTERNADO') {
+        for (let i = 0; i < diasSelecionados.length - 1; i++) {
+            const data1 = new Date(diasSelecionados[i]);
+            const data2 = new Date(diasSelecionados[i + 1]);
+
+            const diffTime = Math.abs(data2 - data1);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 1) {
+                alert(`⚠️ ERRO: Dias consecutivos não permitidos no modo ALTERNADO!\n\n❌ ${diasSelecionados[i]} e ${diasSelecionados[i + 1]} são consecutivos.\n\n✅ Para marcar 5 dias seguidos, selecione o tipo "5 Dias Corridos".`);
+                return false;
+            }
+        }
+    }
+
+    // VALIDAÇÃO MODO 5 DIAS CORRIDOS
+    if (tipoPeriodo === 'CINCO_DIAS_CORRIDOS' && diasSelecionados.length !== 5) {
+        alert(`⚠️ Para "5 Dias Corridos" você deve selecionar exatamente 5 dias!\n\nVocê selecionou: ${diasSelecionados.length} dia(s)`);
         return false;
     }
 
-    const usuario = document.getElementById('selectUsuario').options[document.getElementById('selectUsuario').selectedIndex].text;
-    return confirm(`Confirmar cadastro de ${selecionados} dia(s) para ${usuario}?`);
-});
+    const form = document.getElementById('formCadastro');
+    form.submit();
+}
 </script>
 {% endblock %}
