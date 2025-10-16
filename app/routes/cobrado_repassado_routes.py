@@ -37,15 +37,13 @@ def consultar():
             return redirect(url_for('cobrado_repassado.consultar'))
 
         try:
-            # Converter string para decimal para buscar na tabela de pendências
             try:
                 nu_contrato_decimal = Decimal(nu_contrato)
             except:
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('cobrado_repassado.consultar'))
 
-            # CORREÇÃO: Buscar pendências com VR_FALHA > 0 (valores cobrados da Caixa)
-            # Usar VR_FALHA em vez de VR_REAL_FALHA
+            # ✅ FILTRO ADICIONADO: DEVEDOR = 'CAIXA' e VR_FALHA > 0
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -66,71 +64,43 @@ def consultar():
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
                 PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
-                PenDetalhamento.VR_FALHA > 0  # ✅ CORRIGIDO: Usar VR_FALHA
+                PenDetalhamento.VR_FALHA > 0,  # Valores positivos
+                PenDetalhamento.DEVEDOR == 'CAIXA'  # ✅ NOVO FILTRO
             ).all()
 
-            # Criar múltiplas variações do número do contrato para buscar na tabela analítica
+            # Criar variações do número do contrato
             nu_contrato_int = int(nu_contrato_decimal)
             variações_contrato = [
-                str(nu_contrato_int),  # Sem zeros: "123456"
-                nu_contrato,  # Original digitado pelo usuário
-                nu_contrato.zfill(10),  # Com 10 dígitos: "0000123456"
-                nu_contrato.zfill(15),  # Com 15 dígitos: "000000000123456"
-                f"{nu_contrato_int:010d}",  # Formato com zeros à esquerda (10 dígitos)
-                f"{nu_contrato_int:015d}",  # Formato com zeros à esquerda (15 dígitos)
-                str(nu_contrato_decimal),  # Versão decimal como string
+                str(nu_contrato_int),
+                nu_contrato,
+                nu_contrato.zfill(10),
+                nu_contrato.zfill(15),
+                f"{nu_contrato_int:010d}",
+                f"{nu_contrato_int:015d}",
+                str(nu_contrato_decimal),
             ]
-
-            # Remover duplicatas mantendo a ordem
             variações_contrato = list(dict.fromkeys(variações_contrato))
 
-            # Log para debug
-            print(f"🔍 COBRADO VS REPASSADO - Buscando contrato: {nu_contrato}")
-            print(f"   Decimal: {nu_contrato_decimal}")
-            print(f"   Variações geradas: {variações_contrato}")
+            print(f"🔍 COBRADO VS REPASSADO - Buscando contrato: {nu_contrato} (DEVEDOR=CAIXA)")
             print(f"   Pendências encontradas: {len(pendencias)}")
 
-            # Buscar registros analíticos com VALOR > 0 (valores repassados)
-            # Tentando todas as variações do número de contrato
+            # Buscar valores repassados (POSITIVOS)
             analiticos = AexAnalitico.query.filter(
                 or_(*[AexAnalitico.NU_CONTRATO == var for var in variações_contrato]),
                 AexAnalitico.VALOR > 0
             ).all()
 
-            print(f"✅ Encontrados {len(analiticos)} valores repassados (primeira tentativa)")
+            print(f"✅ Encontrados {len(analiticos)} valores repassados (POSITIVOS)")
 
-            # Se não encontrou nenhum, tentar busca com LIKE (mais abrangente)
             if not analiticos:
-                print(f"⚠️ Nenhum analítico encontrado, tentando busca com LIKE...")
                 analiticos = AexAnalitico.query.filter(
                     AexAnalitico.NU_CONTRATO.like(f'%{nu_contrato_int}%'),
                     AexAnalitico.VALOR > 0
                 ).all()
                 print(f"📊 Encontrados {len(analiticos)} valores repassados com LIKE")
 
-            # Se ainda não encontrou, mostrar alguns exemplos do banco para debug
-            if not analiticos:
-                print(f"❌ NENHUM VALOR REPASSADO ENCONTRADO!")
-                print(f"   Buscando exemplos de contratos na tabela AEX_TB002_ANALITICO...")
-
-                # Buscar exemplos de contratos que começam com os mesmos dígitos
-                exemplos = db.session.query(
-                    AexAnalitico.NU_CONTRATO,
-                    AexAnalitico.VALOR
-                ).filter(
-                    AexAnalitico.VALOR > 0
-                ).limit(10).all()
-
-                if exemplos:
-                    print(f"   Exemplos de contratos no banco:")
-                    for ex in exemplos:
-                        print(f"     - '{ex[0]}' (tipo: {type(ex[0]).__name__}, tamanho: {len(str(ex[0]))})")
-                else:
-                    print(f"   ⚠️ Nenhum registro com VALOR > 0 encontrado na tabela AEX_TB002_ANALITICO")
-
-            # Buscar todas as vinculações existentes para as pendências encontradas
+            # Buscar vinculações
             ids_pendencias = [p.PenDetalhamento.ID_DETALHAMENTO for p in pendencias]
-
             vinculacoes_por_pendencia = {}
             pendencias_com_vinculacao = set()
 
@@ -145,12 +115,11 @@ def consultar():
                     vinculacoes_por_pendencia[v.ID_PENDENCIA].append(v.ID_ARREC_EXT_SISTEMA)
                     pendencias_com_vinculacao.add(v.ID_PENDENCIA)
 
-            # Registrar log de auditoria
             registrar_log(
                 acao='consultar',
                 entidade='cobrado_repassado',
                 entidade_id=str(nu_contrato),
-                descricao=f'Consulta de valores cobrados e repassados - Contrato: {nu_contrato}',
+                descricao=f'Consulta - Contrato: {nu_contrato} (DEVEDOR=CAIXA)',
                 dados_novos={
                     'nu_contrato': str(nu_contrato),
                     'pendencias_encontradas': len(pendencias),
@@ -168,7 +137,7 @@ def consultar():
             )
 
         except Exception as e:
-            print(f"❌ ERRO ao consultar: {str(e)}")
+            print(f"❌ ERRO: {str(e)}")
             import traceback
             traceback.print_exc()
             flash(f'Erro ao consultar dados: {str(e)}', 'danger')

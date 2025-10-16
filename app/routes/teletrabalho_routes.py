@@ -317,97 +317,6 @@ def calendario(mes_referencia):
         return redirect(url_for('teletrabalho.index'))
 
 
-@teletrabalho_bp.route('/visualizacao-geral')
-@login_required
-def visualizacao_geral():
-    """Visualização geral de todos os teletrabalhos"""
-    try:
-        # Filtros
-        mes_ref = request.args.get('mes_ref')
-        area_filtro = request.args.get('area')
-
-        # Período padrão: mês atual
-        if not mes_ref:
-            hoje = date.today()
-            mes_ref = hoje.strftime('%Y%m')
-
-        ano = int(mes_ref[:4])
-        mes = int(mes_ref[4:])
-
-        primeiro_dia = date(ano, mes, 1)
-        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
-
-        meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-        nome_mes = f"{meses_pt[mes - 1]} de {ano}"
-
-        # Buscar teletrabalhos
-        query = Teletrabalho.query.filter(
-            Teletrabalho.MES_REFERENCIA == mes_ref,
-            Teletrabalho.STATUS == 'APROVADO',
-            Teletrabalho.DELETED_AT.is_(None)
-        )
-
-        if area_filtro:
-            query = query.filter(Teletrabalho.AREA == area_filtro)
-
-        teletrabalhos = query.order_by(Teletrabalho.DATA_TELETRABALHO).all()
-
-        # Organizar por dia
-        dias_organizados = {}
-        data_atual = primeiro_dia
-
-        while data_atual <= ultimo_dia:
-            data_str = data_atual.strftime('%Y-%m-%d')
-            eh_util = Feriado.eh_dia_util(data_atual)
-            feriado = Feriado.obter_feriado(data_atual)
-
-            dias_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-            dia_semana_nome = dias_semana[data_atual.weekday()]
-
-            dias_organizados[data_str] = {
-                'data': data_atual,
-                'dia': data_atual.day,
-                'dia_semana': dia_semana_nome,
-                'eh_util': eh_util,
-                'feriado': feriado.DS_FERIADO if feriado else None,
-                'pessoas': []
-            }
-
-            data_atual += timedelta(days=1)
-
-        # Adicionar pessoas aos dias
-        for tele in teletrabalhos:
-            data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
-            if data_str in dias_organizados:
-                dias_organizados[data_str]['pessoas'].append({
-                    'nome': tele.usuario.NOME,
-                    'area': tele.AREA,
-                    'tipo_periodo': tele.TIPO_PERIODO,
-                    'observacao': tele.OBSERVACAO
-                })
-
-        # Estatísticas
-        total_dias_solicitados = len(teletrabalhos)
-        total_pessoas_unicas = len(set([t.USUARIO_ID for t in teletrabalhos]))
-
-        # Áreas e períodos
-        areas = obter_areas_disponiveis()
-        periodos = gerar_opcoes_periodo()
-
-        return render_template('teletrabalho/visualizacao_geral.html',
-                               dias_organizados=dias_organizados,
-                               nome_mes=nome_mes,
-                               mes_ref=mes_ref,
-                               area_filtro=area_filtro,
-                               areas=areas,
-                               periodos=periodos,
-                               total_dias=total_dias_solicitados,
-                               total_pessoas=total_pessoas_unicas)
-
-    except Exception as e:
-        flash(f'Erro ao carregar visualização: {str(e)}', 'danger')
-        return redirect(url_for('teletrabalho.index'))
 
 
 @teletrabalho_bp.route('/solicitar', methods=['POST'])
@@ -1440,3 +1349,154 @@ def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias):
                 semanas_usadas.append(num_semana)
 
     return dias_sorteados
+
+
+@teletrabalho_bp.route('/visualizacao-geral')
+@login_required
+def visualizacao_geral():
+    """Visualização consolidada de teletrabalho da área"""
+    try:
+        usuario = Usuario.query.get(current_user.id)
+
+        # Pegar parâmetros
+        mes_ref = request.args.get('mes_ref')
+        area_filtro = request.args.get('area')
+
+        # Se não passou mês, usa o atual
+        if not mes_ref:
+            hoje = date.today()
+            mes_ref = f"{hoje.year}{hoje.month:02d}"
+
+        # DEFINIR ÁREA baseado no nível de acesso
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            # Gerente vê apenas sua área
+            if usuario.empregado and usuario.empregado.sgSuperintendencia:
+                area = usuario.empregado.sgSuperintendencia
+                pode_trocar_area = False
+            else:
+                flash('Você não está vinculado a nenhuma área.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+        elif nivel_acesso in ['admin', 'moderador']:
+            # Admin/Moderador podem filtrar
+            if area_filtro:
+                area = area_filtro
+            else:
+                # Pegar primeira área disponível
+                primeira_area = db.session.query(Empregado.sgSuperintendencia).filter(
+                    Empregado.sgSuperintendencia.isnot(None),
+                    Empregado.fkStatus == 1
+                ).distinct().first()
+
+                area = primeira_area[0] if primeira_area else None
+
+            pode_trocar_area = True
+
+        else:
+            # Usuário comum vê sua própria área
+            if usuario.empregado and usuario.empregado.sgSuperintendencia:
+                area = usuario.empregado.sgSuperintendencia
+                pode_trocar_area = False
+            else:
+                flash('Você não está vinculado a nenhuma área.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+        if not area:
+            flash('Nenhuma área disponível.', 'warning')
+            return redirect(url_for('teletrabalho.index'))
+
+        # BUSCAR DADOS DO MÊS
+        ano = int(mes_ref[:4])
+        mes = int(mes_ref[4:])
+
+        # Buscar todos os teletrabalhos aprovados da área neste mês
+        teletrabalhos = Teletrabalho.query.join(
+            Usuario, Teletrabalho.USUARIO_ID == Usuario.ID
+        ).filter(
+            Teletrabalho.MES_REFERENCIA == mes_ref,
+            Teletrabalho.AREA == area,
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        # ORGANIZAR POR DIA
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        dias_organizados = {}
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            dia_str = data_atual.strftime('%Y-%m-%d')
+
+            # Informações do dia
+            eh_util = Feriado.eh_dia_util(data_atual)
+            feriado = Feriado.obter_feriado(data_atual)
+            dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][data_atual.weekday()]
+
+            # Buscar pessoas neste dia
+            pessoas_dia = []
+            for t in teletrabalhos:
+                if t.DATA_TELETRABALHO == data_atual:
+                    usuario_tele = Usuario.query.get(t.USUARIO_ID)
+                    if usuario_tele:
+                        pessoas_dia.append({
+                            'nome': usuario_tele.NOME,
+                            'tipo_periodo': t.TIPO_PERIODO,
+                            'observacao': t.OBSERVACAO
+                        })
+
+            dias_organizados[dia_str] = {
+                'data': data_atual,
+                'dia_semana': dia_semana,
+                'eh_util': eh_util,
+                'feriado': feriado.DS_FERIADO if feriado else None,
+                'qtd_pessoas': len(pessoas_dia),
+                'pessoas': pessoas_dia
+            }
+
+            data_atual += timedelta(days=1)
+
+        # CALCULAR ESTATÍSTICAS
+        total_dias_com_pessoas = sum(1 for d in dias_organizados.values() if d['qtd_pessoas'] > 0)
+        pessoas_unicas = set()
+        for t in teletrabalhos:
+            pessoas_unicas.add(t.USUARIO_ID)
+
+        # BUSCAR TODAS AS ÁREAS (para filtro de admin/moderador)
+        if pode_trocar_area:
+            areas_disponiveis = db.session.query(
+                Empregado.sgSuperintendencia,
+                func.count(Empregado.pkPessoa).label('qtd')
+            ).filter(
+                Empregado.sgSuperintendencia.isnot(None),
+                Empregado.fkStatus == 1
+            ).group_by(Empregado.sgSuperintendencia).all()
+        else:
+            areas_disponiveis = []
+
+        # PERÍODOS DISPONÍVEIS
+        periodos = gerar_opcoes_periodo()
+
+        # Nome do mês
+        meses_nomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                       'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+        nome_mes = f"{meses_nomes[mes - 1]} de {ano}"
+
+        return render_template('teletrabalho/visualizacao_geral.html',
+                               dias_organizados=dias_organizados,
+                               area=area,
+                               mes_referencia=mes_ref,
+                               nome_mes=nome_mes,
+                               total_dias_com_pessoas=total_dias_com_pessoas,
+                               total_pessoas_unicas=len(pessoas_unicas),
+                               total_agendamentos=len(teletrabalhos),
+                               pode_trocar_area=pode_trocar_area,
+                               areas_disponiveis=areas_disponiveis,
+                               periodos=periodos)
+
+    except Exception as e:
+        flash(f'Erro ao carregar visualização: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))

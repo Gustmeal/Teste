@@ -37,14 +37,13 @@ def consultar():
             return redirect(url_for('pendencia_retencao.consultar'))
 
         try:
-            # Converter string para decimal para buscar na tabela de pendências
             try:
                 nu_contrato_decimal = Decimal(nu_contrato)
             except:
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('pendencia_retencao.consultar'))
 
-            # Buscar TODAS as pendências do contrato
+            # ✅ FILTRO ADICIONADO: DEVEDOR = 'EMGEA'
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
@@ -64,66 +63,43 @@ def consultar():
                 PenOficios,
                 PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
             ).filter(
-                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal
+                PenDetalhamento.NU_CONTRATO == nu_contrato_decimal,
+                PenDetalhamento.DEVEDOR == 'EMGEA'  # ✅ NOVO FILTRO
             ).all()
 
-            # Criar múltiplas variações do número do contrato
+            # Criar variações do número do contrato
             nu_contrato_int = int(nu_contrato_decimal)
             variações_contrato = [
-                str(nu_contrato_int),  # Sem zeros: "123456"
-                nu_contrato,  # Original digitado
-                nu_contrato.zfill(10),  # Com 10 dígitos: "0000123456"
-                nu_contrato.zfill(15),  # Com 15 dígitos
-                f"{nu_contrato_int:010d}",  # Formato com zeros à esquerda
+                str(nu_contrato_int),
+                nu_contrato,
+                nu_contrato.zfill(10),
+                nu_contrato.zfill(15),
+                f"{nu_contrato_int:010d}",
                 f"{nu_contrato_int:015d}",
-                str(nu_contrato_decimal),  # Versão decimal como string
+                str(nu_contrato_decimal),
             ]
-
-            # Remover duplicatas
             variações_contrato = list(dict.fromkeys(variações_contrato))
 
-            print(f"🔍 COBRADOS VS RETIDOS - Buscando contrato: {nu_contrato}")
-            print(f"   Variações geradas: {variações_contrato}")
+            print(f"🔍 COBRADOS VS RETIDOS - Buscando contrato: {nu_contrato} (DEVEDOR=EMGEA)")
+            print(f"   Pendências encontradas: {len(pendencias)}")
 
-            # ✅ CORREÇÃO: Buscar registros analíticos com VALOR < 0 (valores NEGATIVOS/RETIDOS)
+            # Buscar valores retidos (NEGATIVOS)
             analiticos = AexAnalitico.query.filter(
                 or_(*[AexAnalitico.NU_CONTRATO == var for var in variações_contrato]),
-                AexAnalitico.VALOR < 0  # ✅ VALORES NEGATIVOS (RETIDOS)
+                AexAnalitico.VALOR < 0
             ).all()
 
             print(f"✅ Encontrados {len(analiticos)} valores retidos (NEGATIVOS)")
 
-            # Se não encontrou, tentar busca com LIKE
             if not analiticos:
-                print(f"⚠️ Nenhum analítico encontrado, tentando busca com LIKE...")
                 analiticos = AexAnalitico.query.filter(
                     AexAnalitico.NU_CONTRATO.like(f'%{nu_contrato_int}%'),
-                    AexAnalitico.VALOR < 0  # ✅ VALORES NEGATIVOS (RETIDOS)
+                    AexAnalitico.VALOR < 0
                 ).all()
                 print(f"📊 Encontrados {len(analiticos)} valores retidos com LIKE")
 
-            # Se ainda não encontrou, mostrar exemplos do banco
-            if not analiticos:
-                print(f"❌ NENHUM VALOR RETIDO ENCONTRADO!")
-                print(f"   Buscando exemplos de contratos com valores negativos...")
-
-                exemplos = db.session.query(
-                    AexAnalitico.NU_CONTRATO,
-                    AexAnalitico.VALOR
-                ).filter(
-                    AexAnalitico.VALOR < 0
-                ).limit(10).all()
-
-                if exemplos:
-                    print(f"   Exemplos de contratos com valores negativos no banco:")
-                    for ex in exemplos:
-                        print(f"     - '{ex[0]}' = R$ {ex[1]} (tipo: {type(ex[0]).__name__})")
-                else:
-                    print(f"   ⚠️ Nenhum registro com VALOR < 0 encontrado na tabela AEX_TB002_ANALITICO")
-
-            # Buscar todas as vinculações existentes
+            # Buscar vinculações
             ids_pendencias = [p.PenDetalhamento.ID_DETALHAMENTO for p in pendencias]
-
             vinculacoes_por_pendencia = {}
             pendencias_com_vinculacao = set()
 
@@ -138,12 +114,11 @@ def consultar():
                     vinculacoes_por_pendencia[v.ID_PENDENCIA].append(v.ID_ARREC_EXT_SISTEMA)
                     pendencias_com_vinculacao.add(v.ID_PENDENCIA)
 
-            # Registrar log
             registrar_log(
                 acao='consultar',
                 entidade='pendencia_retencao',
                 entidade_id=str(nu_contrato),
-                descricao=f'Consulta de valores cobrados e retidos - Contrato: {nu_contrato}',
+                descricao=f'Consulta - Contrato: {nu_contrato} (DEVEDOR=EMGEA)',
                 dados_novos={
                     'nu_contrato': str(nu_contrato),
                     'pendencias_encontradas': len(pendencias),

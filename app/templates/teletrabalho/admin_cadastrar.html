@@ -57,76 +57,86 @@
                 <div class="alert alert-success">
                     <strong>Área:</strong> <span id="infoArea"></span> |
                     <strong>Cargo:</strong> <span id="infoCargo"></span> |
-                    <strong>Dias marcados:</strong> <span id="infoDiasMarcados" class="badge bg-warning">0/5</span> |
-                    <strong>Limite diário:</strong> <span id="infoLimite"></span>
+                    <strong>Dias Marcados:</strong> <span id="infoDiasMarcados"></span> |
+                    <strong>Limite:</strong> <span id="infoLimite"></span>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Calendário -->
+    <!-- Container do Calendário -->
     <div id="containerCalendario" style="display: none;">
         <form method="POST" action="{{ url_for('teletrabalho.admin_cadastrar_post') }}" id="formCadastro">
             <input type="hidden" name="usuario_id" id="inputUsuarioId">
             <input type="hidden" name="mes_referencia" id="inputMesRef">
 
             <div class="card shadow mb-4">
-                <div class="card-header bg-primary text-white">
-                    <div class="row align-items-center">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Selecione os Dias</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Tipo de Período -->
+                    <div class="row mb-3">
                         <div class="col-md-6">
-                            <h5 class="mb-0">Selecione os Dias</h5>
+                            <label class="form-label fw-bold">Tipo de Período: <span class="text-danger">*</span></label>
+                            <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
+                                <option value="">Selecione...</option>
+                                <option value="ALTERNADO">Dias Alternados (com intervalo)</option>
+                                <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos (Segunda a Sexta)</option>
+                            </select>
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Alternado:</strong> Dias não podem ser consecutivos.
+                                <strong>5 Dias Corridos:</strong> Deve marcar 5 dias seguidos.
+                            </small>
                         </div>
-                        <div class="col-md-6 text-end">
-                            <span id="contadorDias" class="badge bg-light text-dark fs-6">0 dias</span>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Observação:</label>
+                            <input type="text" name="observacao" class="form-control"
+                                   placeholder="Ex: Projeto específico, férias, etc.">
                         </div>
                     </div>
-                </div>
-                <div class="card-body p-0">
-                    <div class="p-3 bg-light border-bottom">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Tipo: <span class="text-danger">*</span></label>
-                                <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
-                                    <option value="">Selecione...</option>
-                                    <option value="ALTERNADO">Dias Alternados</option>
-                                    <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos</option>
-                                </select>
+
+                    <!-- Legenda -->
+                    <div class="mb-3">
+                        <strong>Legenda:</strong>
+                        <div class="legenda-container">
+                            <div class="legenda-item">
+                                <div class="legenda-box" style="background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 2px solid #28a745;"></div>
+                                <span>Disponível</span>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Observação:</label>
-                                <input type="text" name="observacao" class="form-control"
-                                       placeholder="Ex: Aprovado pelo gestor">
+                            <div class="legenda-item">
+                                <div class="legenda-box" style="background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%); border: 2px solid #ffc107;"></div>
+                                <span>Já marcado para este usuário</span>
+                            </div>
+                            <div class="legenda-item">
+                                <div class="legenda-box" style="background: linear-gradient(135deg, #ffe6e6 0%, #ffcccc 100%);"></div>
+                                <span>Lotado</span>
+                            </div>
+                            <div class="legenda-item">
+                                <div class="legenda-box" style="background: #f5f5f5;"></div>
+                                <span>Não útil</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="calendario-container p-4">
-                        <div class="calendario-grid" id="calendarioGrid">
-                            <!-- Preenchido via JS -->
-                        </div>
-                    </div>
+                    <!-- Grid do Calendário -->
+                    <div id="calendarioGrid" class="calendario-grid"></div>
                 </div>
-                <div class="card-footer bg-light">
-                    <div class="row align-items-center">
+            </div>
+
+            <!-- Botão de Submit -->
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="row">
                         <div class="col-md-6">
-                            <div class="legenda-container">
-                                <span class="legenda-item">
-                                    <span class="legenda-box bg-warning"></span> Já marcado
-                                </span>
-                                <span class="legenda-item">
-                                    <span class="legenda-box bg-danger"></span> Lotado
-                                </span>
-                                <span class="legenda-item">
-                                    <span class="legenda-box bg-secondary"></span> Não útil
-                                </span>
-                                <span class="legenda-item">
-                                    <span class="legenda-box bg-primary"></span> Disponível
-                                </span>
-                            </div>
+                            <button type="button" class="btn btn-secondary btn-lg w-100" onclick="window.location.reload()">
+                                <i class="fas fa-redo me-2"></i>Resetar
+                            </button>
                         </div>
-                        <div class="col-md-6 text-end">
-                            <button type="submit" class="btn btn-success btn-lg" id="btnCadastrar" disabled>
-                                <i class="fas fa-check me-2"></i>Cadastrar
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-success btn-lg w-100" onclick="cadastrarTeletrabalho()">
+                                <i class="fas fa-save me-2"></i>Cadastrar Teletrabalho
                             </button>
                         </div>
                     </div>
@@ -137,7 +147,7 @@
 </div>
 
 <style>
-.calendario-container { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+.calendario-container { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 15px; padding: 20px; }
 .calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
 .dia-semana-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 15px; font-weight: bold; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .dia-cell { background: white; border-radius: 12px; padding: 15px; min-height: 140px; position: relative; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
@@ -224,10 +234,15 @@ function renderizarCalendario(data) {
         } else {
             html += `<div class="dia-info"><small class="${dia.lotado ? 'text-danger' : 'text-success'}"><i class="fas fa-users"></i> ${dia.qtd_pessoas}/${data.limite}</small></div>`;
 
-            if (dia.usuarios && dia.usuarios.length > 0) {
+            // CORREÇÃO DO ERRO: Validar tipo antes de fazer split
+            if (dia.usuarios && Array.isArray(dia.usuarios) && dia.usuarios.length > 0) {
                 html += '<div style="font-size: 0.7rem; margin-top: 5px;">';
                 dia.usuarios.forEach(u => {
-                    html += `<div class="badge bg-secondary mb-1" style="font-size: 0.65rem;">${u.split(' ')[0]}</div>`;
+                    // CRÍTICO: Verificar se u existe e é string
+                    if (u && typeof u === 'string') {
+                        const primeiroNome = u.split(' ')[0];
+                        html += `<div class="badge bg-secondary mb-1" style="font-size: 0.65rem;">${primeiroNome}</div>`;
+                    }
                 });
                 html += '</div>';
             }
@@ -264,7 +279,7 @@ function cadastrarTeletrabalho() {
         return false;
     }
 
-    // VALIDAÇÃO MODO ALTERNADO: Não pode dias consecutivos
+    // VALIDAÇÃO MODO ALTERNADO
     if (tipoPeriodo === 'ALTERNADO') {
         for (let i = 0; i < diasSelecionados.length - 1; i++) {
             const data1 = new Date(diasSelecionados[i]);
@@ -274,20 +289,22 @@ function cadastrarTeletrabalho() {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
             if (diffDays === 1) {
-                alert(`⚠️ ERRO: Dias consecutivos não permitidos no modo ALTERNADO!\n\n❌ ${diasSelecionados[i]} e ${diasSelecionados[i + 1]} são consecutivos.\n\n✅ Para marcar 5 dias seguidos, selecione o tipo "5 Dias Corridos".`);
+                alert(`⚠️ ERRO: Dias consecutivos não permitidos!\n\n❌ ${diasSelecionados[i]} e ${diasSelecionados[i + 1]} são consecutivos.\n\n✅ Use "5 Dias Corridos" para marcar dias seguidos.`);
                 return false;
             }
         }
     }
 
-    // VALIDAÇÃO MODO 5 DIAS CORRIDOS
+    // VALIDAÇÃO 5 DIAS CORRIDOS
     if (tipoPeriodo === 'CINCO_DIAS_CORRIDOS' && diasSelecionados.length !== 5) {
-        alert(`⚠️ Para "5 Dias Corridos" você deve selecionar exatamente 5 dias!\n\nVocê selecionou: ${diasSelecionados.length} dia(s)`);
+        alert(`⚠️ Selecione exatamente 5 dias!\n\nVocê selecionou: ${diasSelecionados.length} dia(s)`);
         return false;
     }
 
-    const form = document.getElementById('formCadastro');
-    form.submit();
+    const usuario = document.getElementById('selectUsuario').options[document.getElementById('selectUsuario').selectedIndex].text;
+    if (confirm(`Confirmar cadastro de ${diasSelecionados.length} dia(s) para ${usuario}?`)) {
+        document.getElementById('formCadastro').submit();
+    }
 }
 </script>
 {% endblock %}
