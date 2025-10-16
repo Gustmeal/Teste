@@ -146,7 +146,7 @@ def consultar():
     return render_template('cobrado_repassado/consultar.html')
 
 
-@cobrado_repassado_bp.route('/listar-contratos')
+@cobrado_repassado_bp.route('/cobrado-repassado/listar-contratos')
 @login_required
 def listar_contratos():
     """Listar contratos disponíveis para seleção"""
@@ -154,9 +154,7 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # Query base na nova tabela PEN_TB013
-        # MUDANÇA: Removido filtro VR_REAL_FALHA > 0 e IC_EXCLUIR == None
-        # Agora usa VR_FALHA > 0 para pegar contratos com pendências
+        # ✅ Query RIGOROSA com filtros específicos
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
@@ -176,9 +174,12 @@ def listar_contratos():
             PenOficios,
             PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
         ).filter(
-            PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA
+            PenDetalhamento.VR_FALHA > 0,  # ✅ Valores positivos
+            PenDetalhamento.DEVEDOR == 'CAIXA',  # ✅ FILTRO PRINCIPAL
+            PenDetalhamento.NU_CONTRATO.isnot(None)  # ✅ Contrato não pode ser NULL
         )
 
+        # Aplicar filtro de carteira se fornecido
         if carteira_filtro:
             query = query.filter(PenCarteiras.DSC_CARTEIRA.like(f'%{carteira_filtro}%'))
 
@@ -186,14 +187,26 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO.desc()
         ).all()
 
-        # Buscar lista de carteiras únicas
+        # Log para debug
+        print(f"📊 LISTA DE CONTRATOS (Cobrado vs Repassado)")
+        print(f"   Total encontrado: {len(contratos)}")
+        print(f"   Filtros aplicados: DEVEDOR = 'CAIXA' AND VR_FALHA > 0")
+
+        # Verificar se algum contrato não atende ao filtro (debug)
+        for c in contratos[:5]:  # Verificar os 5 primeiros
+            print(
+                f"   Contrato: {c.PenDetalhamento.NU_CONTRATO} | DEVEDOR: '{c.PenDetalhamento.DEVEDOR}' | VR_FALHA: {c.PenDetalhamento.VR_FALHA}")
+
+        # ✅ Buscar carteiras únicas COM MESMOS FILTROS
         carteiras_unicas = db.session.query(
             PenCarteiras.DSC_CARTEIRA
         ).join(
             PenDetalhamento,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
-            PenDetalhamento.VR_FALHA > 0  # MUDANÇA: usar VR_FALHA
+            PenDetalhamento.VR_FALHA > 0,  # ✅ MESMOS FILTROS
+            PenDetalhamento.DEVEDOR == 'CAIXA',
+            PenDetalhamento.NU_CONTRATO.isnot(None)
         ).distinct().order_by(
             PenCarteiras.DSC_CARTEIRA
         ).all()
@@ -212,6 +225,9 @@ def listar_contratos():
         ).outerjoin(
             AexAnalitico,
             PenRelacionaVlrRepassado.ID_ARREC_EXT_SISTEMA == AexAnalitico.ID
+        ).filter(
+            PenDetalhamento.DEVEDOR == 'CAIXA',  # ✅ FILTRO nas vinculações também
+            PenDetalhamento.VR_FALHA > 0
         ).distinct().all()
 
         for v in vinculacoes:
@@ -233,6 +249,9 @@ def listar_contratos():
         )
 
     except Exception as e:
+        print(f"❌ Erro ao listar contratos: {str(e)}")
+        import traceback
+        traceback.print_exc()
         flash(f'Erro ao listar contratos: {str(e)}', 'danger')
         return redirect(url_for('cobrado_repassado.index'))
 

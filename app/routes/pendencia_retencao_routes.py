@@ -145,7 +145,7 @@ def consultar():
     return render_template('pendencia_retencao/consultar.html')
 
 
-@pendencia_retencao_bp.route('/listar-contratos')
+@pendencia_retencao_bp.route('/pendencia-retencao/listar-contratos')
 @login_required
 def listar_contratos():
     """Listar contratos disponíveis para seleção"""
@@ -153,10 +153,7 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # Query base na tabela PEN_TB013
-        # LÓGICA: Filtramos apenas por DEVEDOR = 'CAIXA' porque queremos ver
-        # apenas os contratos onde a Caixa deve valores à EMGEA (valores retidos)
-        # Se quiséssemos ver contratos onde EMGEA deve à Caixa, usaríamos DEVEDOR = 'EMGEA'
+        # ✅ Query base com DEVEDOR = 'EMGEA'
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
@@ -176,10 +173,10 @@ def listar_contratos():
             PenOficios,
             PenDetalhamento.NU_OFICIO == PenOficios.NU_OFICIO
         ).filter(
-            PenDetalhamento.VR_FALHA > 0,  # Contratos com valor de falha
-            PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO: apenas quando Caixa é devedora
+            PenDetalhamento.DEVEDOR == 'EMGEA'  # ✅ FILTRO: Valores cobrados pela Caixa (DEVEDOR é EMGEA)
         )
 
+        # Aplicar filtro de carteira se fornecido
         if carteira_filtro:
             query = query.filter(PenCarteiras.DSC_CARTEIRA.like(f'%{carteira_filtro}%'))
 
@@ -187,15 +184,14 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO.desc()
         ).all()
 
-        # Buscar lista de carteiras únicas (também filtrando por DEVEDOR = 'CAIXA')
+        # ✅ Buscar lista de carteiras únicas (também filtrando por DEVEDOR = 'EMGEA')
         carteiras_unicas = db.session.query(
             PenCarteiras.DSC_CARTEIRA
         ).join(
             PenDetalhamento,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
-            PenDetalhamento.VR_FALHA > 0,
-            PenDetalhamento.DEVEDOR == 'CAIXA'  # FILTRO ADICIONADO
+            PenDetalhamento.DEVEDOR == 'EMGEA'  # ✅ FILTRO
         ).distinct().order_by(
             PenCarteiras.DSC_CARTEIRA
         ).all()
@@ -237,7 +233,6 @@ def listar_contratos():
     except Exception as e:
         flash(f'Erro ao listar contratos: {str(e)}', 'danger')
         return redirect(url_for('pendencia_retencao.index'))
-
 
 @pendencia_retencao_bp.route('/consultar-contrato/<nu_contrato>')
 @login_required

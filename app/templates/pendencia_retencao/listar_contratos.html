@@ -1,139 +1,141 @@
 {% extends "base.html" %}
 
-{% block title %}Lista de Contratos - Cobrados Vs Retidos - GEINC{% endblock %}
+{% block title %}Lista de Contratos - Cobrados Vs Retidos{% endblock %}
+
+{% block head %}
+<style>
+    /* Estilo para linhas clicáveis */
+    .clickable-row {
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .clickable-row:hover {
+        background-color: rgba(108, 99, 255, 0.1) !important;
+        transform: translateX(5px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .clickable-row:active {
+        transform: translateX(3px);
+    }
+
+    /* Impedir que o botão dispare o click da linha */
+    .clickable-row .btn {
+        position: relative;
+        z-index: 10;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col">
-            <a href="{{ url_for('pendencia_retencao.index') }}" class="btn btn-outline-secondary mb-3">
-                <i class="fas fa-arrow-left me-2"></i>Voltar
-            </a>
             <h1 class="h2">
-                <i class="fas fa-list-alt text-primary me-2"></i>
-                Lista de Contratos com Pendências
+                <a href="{{ url_for('pendencia_retencao.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
+                </a>
+                Lista de Contratos - Cobrados Vs Retidos
             </h1>
-            <p class="text-muted">Visualize e selecione contratos para consulta detalhada</p>
         </div>
     </div>
 
-    <!-- Filtro por carteira -->
-    <div class="row mb-4">
+    <!-- Filtro por Carteira -->
+    <div class="row mb-3">
         <div class="col-md-6">
-            <div class="card">
-                <div class="card-body">
-                    <form method="GET" action="{{ url_for('pendencia_retencao.listar_contratos') }}">
-                        <div class="row g-2">
-                            <div class="col-md-8">
-                                <label for="carteira" class="form-label">Filtrar por Carteira:</label>
-                                <select class="form-select" id="carteira" name="carteira" onchange="this.form.submit()">
-                                    <option value="">Todas as Carteiras</option>
-                                    {% for carteira in carteiras_unicas %}
-                                        <option value="{{ carteira }}"
-                                                {% if carteira == carteira_selecionada %}selected{% endif %}>
-                                            {{ carteira }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-4 d-flex align-items-end">
-                                {% if carteira_selecionada %}
-                                    <a href="{{ url_for('pendencia_retencao.listar_contratos') }}"
-                                       class="btn btn-secondary w-100">
-                                        <i class="fas fa-times me-2"></i>Limpar Filtro
-                                    </a>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </form>
+            <form method="GET" action="{{ url_for('pendencia_retencao.listar_contratos') }}">
+                <div class="input-group">
+                    <select class="form-select" name="carteira" id="carteira">
+                        <option value="">Todas as Carteiras</option>
+                        {% for carteira in carteiras_unicas %}
+                        <option value="{{ carteira }}" {% if carteira == carteira_selecionada %}selected{% endif %}>
+                            {{ carteira }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button class="btn btn-primary" type="submit">
+                        <i class="fas fa-filter me-2"></i>Filtrar
+                    </button>
                 </div>
+            </form>
+        </div>
+        <div class="col-md-6 text-end">
+            <div class="alert alert-info d-inline-block mb-0 py-2">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Dica:</strong> Clique em qualquer linha para consultar o contrato
             </div>
         </div>
     </div>
 
-    <!-- Tabela de contratos -->
+    <!-- Tabela de Contratos -->
     <div class="row">
-        <div class="col-12">
+        <div class="col">
             <div class="card shadow">
-                <div class="card-header bg-primary text-white">
-                    <div class="row align-items-center">
-                        <div class="col">
-                            <h5 class="mb-0">
-                                <i class="fas fa-file-contract me-2"></i>
-                                Contratos com Pendências
-                            </h5>
-                        </div>
-                        <div class="col-auto">
-                            <span class="badge bg-light text-dark">{{ contratos|length }} contratos</span>
-                        </div>
-                    </div>
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-contract me-2"></i>
+                        Contratos Disponíveis ({{ contratos|length }} registros)
+                    </h5>
                 </div>
                 <div class="card-body p-0">
                     {% if contratos %}
-                        <!-- Esta div cria a área com scroll horizontal e vertical -->
-                        <div class="table-container-scroll">
-                            <table class="table table-hover mb-0">
-                                <thead class="table-light thead-sticky">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <th width="30"></th>
                                         <th>ID</th>
-                                        <th>Contrato</th>
+                                        <th>Nº Contrato</th>
                                         <th>Carteira</th>
                                         <th>Ocorrência</th>
-                                        <th>Processo</th>
                                         <th>Status</th>
-                                        <th>Ofício</th>
-                                        <th>Data Ofício</th>
                                         <th>Valor Falha</th>
-                                        <th>Data Pagamento</th>
-                                        <th width="100">Ação</th>
+                                        <th>Nº Ofício</th>
+                                        <th>Data Ofício</th>
+                                        <th>Data Pagto</th>
+                                        <th>Nº Processo</th>
+                                        <th>Vinculado</th>
+                                        <th width="150">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for contrato in contratos %}
-                                    {% set is_vinculado = contrato.PenDetalhamento.NU_CONTRATO in contratos_com_vinculacao %}
-                                    <tr class="{% if is_vinculado %}table-success{% endif %}">
-                                        <td class="text-center">
-                                            {% if is_vinculado %}
-                                                <i class="fas fa-check-circle text-success" title="Contrato com vinculações"></i>
-                                            {% endif %}
-                                        </td>
+                                    <tr class="clickable-row" data-contrato="{{ contrato.PenDetalhamento.NU_CONTRATO }}">
                                         <td>{{ contrato.PenDetalhamento.ID_DETALHAMENTO }}</td>
-                                        <td><strong>{{ contrato.PenDetalhamento.NU_CONTRATO }}</strong></td>
+                                        <td>
+                                            <strong>{{ contrato.PenDetalhamento.NU_CONTRATO }}</strong>
+                                        </td>
                                         <td>{{ contrato.DSC_CARTEIRA or 'N/A' }}</td>
                                         <td>{{ contrato.DSC_OCORRENCIA or 'N/A' }}</td>
-                                        <td>{{ contrato.PenDetalhamento.NR_PROCESSO or 'N/A' }}</td>
                                         <td>
                                             <span class="badge bg-info">{{ contrato.DSC_STATUS or 'N/A' }}</span>
+                                        </td>
+                                        <td>
+                                            <strong class="text-success">
+                                                R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                            </strong>
                                         </td>
                                         <td>{{ contrato.PenDetalhamento.NU_OFICIO or 'N/A' }}</td>
                                         <td>
                                             {% if contrato.DT_OFICIO %}
-                                                {% if contrato.DT_OFICIO.__class__.__name__ == 'date' %}
-                                                    {{ contrato.DT_OFICIO.strftime('%d/%m/%Y') }}
-                                                {% else %}
-                                                    N/A
-                                                {% endif %}
+                                                {{ contrato.DT_OFICIO.strftime('%d/%m/%Y') if contrato.DT_OFICIO.__class__.__name__ == 'date' else 'N/A' }}
                                             {% else %}
                                                 N/A
                                             {% endif %}
                                         </td>
-                                        <td class="text-danger fw-bold">
-                                            R$ {{ '{:,.2f}'.format(contrato.PenDetalhamento.VR_FALHA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                        </td>
-                                        <td>
-                                            {% if contrato.PenDetalhamento.DT_PAGTO %}
-                                                {{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') }}
+                                        <td>{{ contrato.PenDetalhamento.DT_PAGTO.strftime('%d/%m/%Y') if contrato.PenDetalhamento.DT_PAGTO else 'N/A' }}</td>
+                                        <td>{{ contrato.PenDetalhamento.NR_PROCESSO or 'N/A' }}</td>
+                                        <td class="text-center">
+                                            {% if contrato.PenDetalhamento.NU_CONTRATO in contratos_com_vinculacao %}
+                                                <i class="fas fa-check-circle text-success" title="Possui vinculação"></i>
                                             {% else %}
-                                                N/A
+                                                <i class="fas fa-times-circle text-muted" title="Sem vinculação"></i>
                                             {% endif %}
                                         </td>
                                         <td>
-                                            <a href="{{ url_for('pendencia_retencao.consultar_contrato_direto', nu_contrato=contrato.PenDetalhamento.NU_CONTRATO|int) }}"
-                                               class="btn btn-sm btn-primary"
-                                               title="Consultar contrato">
-                                                <i class="fas fa-eye"></i>
-                                            </a>
+                                            <button type="button" class="btn btn-sm btn-primary btn-consultar" data-contrato="{{ contrato.PenDetalhamento.NU_CONTRATO }}">
+                                                <i class="fas fa-search me-1"></i>Consultar
+                                            </button>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -141,99 +143,57 @@
                             </table>
                         </div>
                     {% else %}
-                        <div class="text-center py-5">
-                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">Nenhum contrato encontrado com os filtros aplicados.</p>
+                        <div class="alert alert-info mb-0 m-3">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Nenhum contrato encontrado.
                         </div>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Legenda -->
-    <div class="row mt-3">
-        <div class="col">
-            <div class="alert alert-info">
-                <strong><i class="fas fa-info-circle me-2"></i>Legenda:</strong>
-                <ul class="mb-0">
-                    <li><i class="fas fa-check-circle text-success"></i> Contrato já possui vinculações cadastradas</li>
-                    <li>Clique no botão <i class="fas fa-eye"></i> para consultar detalhes e realizar vinculações</li>
-                    <li><i class="fas fa-arrows-alt-h text-primary"></i> Use a barra de rolagem horizontal para ver todas as colunas</li>
-                </ul>
-            </div>
-        </div>
-    </div>
 </div>
 
-<style>
-/* Contêiner com scroll horizontal e vertical */
-.table-container-scroll {
-    /* Scroll horizontal: aparece quando a tabela é mais larga que o contêiner */
-    overflow-x: auto;
-    /* Scroll vertical: limita a altura máxima para não ocupar toda a tela */
-    overflow-y: auto;
-    /* Altura máxima: 70% da altura da viewport (tela visível) */
-    max-height: 70vh;
-    /* Borda sutil para delimitar a área de scroll */
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Função para consultar contrato
+    function consultarContrato(nuContrato) {
+        // Criar um formulário temporário e submeter
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("pendencia_retencao.consultar") }}';
 
-/* Cabeçalho fixo: permanece visível ao rolar verticalmente */
-.table-container-scroll .thead-sticky {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    background-color: #f8f9fa;
-    /* Sombra para destacar o cabeçalho fixo */
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'nu_contrato';
+        input.value = nuContrato;
 
-/* Efeito hover nas linhas da tabela */
-.table-container-scroll .table tbody tr:hover {
-    background-color: rgba(108, 99, 255, 0.1);
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-}
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
 
-/* Destaque para contratos já vinculados */
-.table-success {
-    background-color: rgba(40, 167, 69, 0.1) !important;
-}
+    // Tornar as linhas clicáveis
+    document.querySelectorAll('.clickable-row').forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Não fazer nada se clicou no botão
+            if (e.target.closest('.btn-consultar')) {
+                return;
+            }
 
-/* Garante que a tabela não quebre o layout */
-.table-container-scroll table {
-    margin-bottom: 0;
-    /* Largura mínima para garantir que todas as colunas sejam visíveis */
-    min-width: 1200px;
-}
+            const nuContrato = this.getAttribute('data-contrato');
+            consultarContrato(nuContrato);
+        });
+    });
 
-/* Personalização da barra de rolagem no Chrome/Edge/Safari */
-.table-container-scroll::-webkit-scrollbar {
-    height: 10px;
-    width: 10px;
-}
-
-.table-container-scroll::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-.table-container-scroll::-webkit-scrollbar-thumb {
-    background: #6c63ff;
-    border-radius: 10px;
-}
-
-.table-container-scroll::-webkit-scrollbar-thumb:hover {
-    background: #5a52d5;
-}
-
-/* Melhora a legibilidade das células */
-.table-container-scroll td,
-.table-container-scroll th {
-    white-space: nowrap;
-    padding: 12px 15px;
-}
-</style>
+    // Botões de consulta
+    document.querySelectorAll('.btn-consultar').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Impedir que o click da linha seja disparado
+            const nuContrato = this.getAttribute('data-contrato');
+            consultarContrato(nuContrato);
+        });
+    });
+});
+</script>
 {% endblock %}
