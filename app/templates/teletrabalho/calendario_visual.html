@@ -1,0 +1,655 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-calendar-day me-2"></i>
+            {{ nome_mes }} - {{ area }}
+        </h1>
+        <div>
+            <button class="btn btn-success" onclick="exportarImagem()">
+                <i class="fas fa-image me-2"></i>Exportar JPEG
+            </button>
+            <a href="{{ url_for('teletrabalho.exportar_excel', mes_ref=mes_ref, area=area, tipo_area=tipo_area) }}"
+               class="btn btn-primary">
+                <i class="fas fa-file-excel me-2"></i>Exportar Excel
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Período:</label>
+                        <select name="mes_ref" class="form-select">
+                            {% for periodo in periodos %}
+                            <option value="{{ periodo.mes_ref }}" {% if periodo.mes_ref == mes_ref %}selected{% endif %}>
+                                {{ periodo.nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area" class="form-select">
+                            {% for a in areas %}
+                            <option value="{{ a.area }}" {% if a.area == area %}selected{% endif %}>
+                                {{ a.area }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <input type="hidden" name="tipo_area" value="{{ tipo_area }}">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary me-2">
+                            <i class="fas fa-search me-2"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('teletrabalho.calendario_visual') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Instruções Drag & Drop -->
+    {% if eh_gestor %}
+    <div class="alert alert-success alert-dismissible fade show">
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        <i class="fas fa-hand-pointer me-2"></i>
+        <strong>Modo Gestor:</strong> Arraste os nomes para mover entre os dias.
+        As regras de teletrabalho serão validadas automaticamente.
+    </div>
+    {% endif %}
+
+    <!-- Legenda -->
+    <div class="alert alert-info mb-4">
+        <div class="row">
+            <div class="col-md-4">
+                <strong><i class="fas fa-users me-2"></i>Total na área:</strong> {{ total_pessoas }}
+            </div>
+            <div class="col-md-4">
+                <strong><i class="fas fa-percentage me-2"></i>Limite/dia:</strong> {{ limite }} pessoas
+            </div>
+            <div class="col-md-4">
+                <span class="badge bg-success me-2">Com pessoas</span>
+                <span class="badge bg-secondary me-2">Não útil</span>
+                <span class="badge bg-danger">Lotado</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Calendário Visual -->
+    <div class="card shadow" id="calendario-exportar">
+        <div class="card-header bg-primary text-white text-center">
+            <h4 class="mb-0">{{ nome_mes }} - {{ area }}</h4>
+        </div>
+        <div class="card-body p-4">
+            <div class="calendario-visual-grid">
+                <!-- Cabeçalho -->
+                <div class="dia-header">DOM</div>
+                <div class="dia-header">SEG</div>
+                <div class="dia-header">TER</div>
+                <div class="dia-header">QUA</div>
+                <div class="dia-header">QUI</div>
+                <div class="dia-header">SEX</div>
+                <div class="dia-header">SÁB</div>
+
+                <!-- Dias vazios -->
+                {% for i in range(primeiro_dia_grid) %}
+                <div class="dia-visual vazio"></div>
+                {% endfor %}
+
+                <!-- Dias do mês -->
+                {% for data_str, info in dias_organizados.items() | sort %}
+                <div class="dia-visual
+                            {% if not info.eh_util %}nao-util{% endif %}
+                            {% if info.pessoas %}com-pessoas{% endif %}
+                            {% if info.pessoas|length >= limite %}lotado{% endif %}
+                            drop-zone"
+                     data-date="{{ data_str }}"
+                     data-util="{{ info.eh_util|lower }}"
+                     data-qtd="{{ info.pessoas|length }}"
+                     data-limite="{{ limite }}">
+
+                    <div class="dia-visual-numero">{{ info.dia }}</div>
+
+                    {% if info.feriado %}
+                    <div class="dia-visual-feriado">
+                        <i class="fas fa-flag"></i> {{ info.feriado.DS_FERIADO[:12] }}
+                    </div>
+                    {% endif %}
+
+                    {% if info.pessoas %}
+                    <div class="dia-visual-pessoas">
+                        {% for pessoa in info.pessoas %}
+                        <div class="pessoa-tag {{ 'draggable' if eh_gestor else '' }}"
+                             {% if eh_gestor %}draggable="true"{% endif %}
+                             data-teletrabalho-id="{{ pessoa.id }}"
+                             data-usuario-id="{{ pessoa.usuario_id }}"
+                             data-nome="{{ pessoa.nome_completo }}"
+                             data-bs-toggle="tooltip"
+                             title="{{ pessoa.nome_completo }} - Arraste para mover">
+                            <i class="fas fa-grip-vertical me-1 drag-handle"></i>
+                            <span>{{ pessoa.nome_exibicao }}</span>
+                            {% if eh_gestor %}
+                            <button type="button"
+                                    class="btn-remove-pessoa"
+                                    onclick="removerPessoa({{ pessoa.id }}, '{{ pessoa.nome_completo }}', '{{ info.dia }}')"
+                                    title="Remover">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="dia-visual-contador">
+                        <span class="badge {% if info.pessoas|length >= limite %}bg-danger{% else %}bg-success{% endif %}">
+                            {{ info.pessoas|length }}/{{ limite }}
+                        </span>
+                    </div>
+                    {% else %}
+                    {% if info.eh_util %}
+                    <div class="dia-visual-vazio">
+                        <small class="text-muted">Sem pessoas</small>
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.calendario-visual-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 12px;
+}
+
+.dia-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    text-align: center;
+    padding: 12px;
+    font-weight: bold;
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+
+.dia-visual {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 12px;
+    min-height: 180px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.dia-visual.vazio {
+    background: transparent;
+    border: none;
+}
+
+.dia-visual.nao-util {
+    background: #f5f5f5;
+    opacity: 0.7;
+}
+
+.dia-visual.com-pessoas {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-color: #28a745;
+}
+
+.dia-visual.lotado {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-color: #dc3545;
+}
+
+/* Drag & Drop Styles */
+.drop-zone {
+    position: relative;
+}
+
+.drop-zone.drag-over {
+    border: 3px dashed #667eea !important;
+    background: rgba(102, 126, 234, 0.1) !important;
+    transform: scale(1.02);
+}
+
+.drop-zone.drag-over-invalid {
+    border: 3px dashed #dc3545 !important;
+    background: rgba(220, 53, 69, 0.1) !important;
+}
+
+.pessoa-tag.draggable {
+    cursor: grab;
+    user-select: none;
+}
+
+.pessoa-tag.draggable:active {
+    cursor: grabbing;
+}
+
+.pessoa-tag.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+.drag-handle {
+    opacity: 0.5;
+    cursor: grab;
+}
+
+.pessoa-tag:hover .drag-handle {
+    opacity: 1;
+}
+
+.dia-visual-numero {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.dia-visual-feriado {
+    font-size: 0.7rem;
+    color: #dc3545;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.dia-visual-pessoas {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.pessoa-tag {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 6px 10px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    border: 1px solid #667eea;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.2s ease;
+}
+
+.pessoa-tag:hover {
+    background: #667eea;
+    color: white;
+    transform: translateX(3px);
+}
+
+.btn-remove-pessoa {
+    background: transparent;
+    border: none;
+    color: #dc3545;
+    padding: 0;
+    margin-left: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.pessoa-tag:hover .btn-remove-pessoa {
+    opacity: 1;
+}
+
+.btn-remove-pessoa:hover {
+    color: #ff0000;
+    transform: scale(1.2);
+}
+
+.dia-visual-contador {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+}
+
+.dia-visual-vazio {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100px;
+}
+
+/* Toast de Feedback */
+.toast-feedback {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+}
+
+@media print {
+    .btn-back, .card-header button, .btn-remove-pessoa, .drag-handle {
+        display: none !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .calendario-visual-grid {
+        gap: 6px;
+    }
+
+    .dia-visual {
+        min-height: 120px;
+        padding: 8px;
+    }
+
+    .dia-visual-numero {
+        font-size: 1.4rem;
+    }
+
+    .pessoa-tag {
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+}
+</style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<script>
+// Inicializar tooltips
+document.addEventListener('DOMContentLoaded', function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Configurar Drag & Drop
+    {% if eh_gestor %}
+    configurarDragAndDrop();
+    {% endif %}
+});
+
+/**
+ * Configura eventos de Drag & Drop
+ */
+function configurarDragAndDrop() {
+    const draggables = document.querySelectorAll('.pessoa-tag.draggable');
+    const dropZones = document.querySelectorAll('.drop-zone');
+
+    // Elementos arrastáveis
+    draggables.forEach(draggable => {
+        draggable.addEventListener('dragstart', handleDragStart);
+        draggable.addEventListener('dragend', handleDragEnd);
+    });
+
+    // Zonas de soltar
+    dropZones.forEach(zone => {
+        zone.addEventListener('dragover', handleDragOver);
+        zone.addEventListener('dragenter', handleDragEnter);
+        zone.addEventListener('dragleave', handleDragLeave);
+        zone.addEventListener('drop', handleDrop);
+    });
+}
+
+let draggedElement = null;
+let draggedData = null;
+
+/**
+ * Início do arrasto
+ */
+function handleDragStart(e) {
+    draggedElement = this;
+    draggedData = {
+        teletrabalhoId: this.dataset.teletrabalhoId,
+        usuarioId: this.dataset.usuarioId,
+        nome: this.dataset.nome
+    };
+
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+/**
+ * Fim do arrasto
+ */
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+
+    // Remover classes de todas as zonas
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.classList.remove('drag-over', 'drag-over-invalid');
+    });
+}
+
+/**
+ * Sobre a zona (validação)
+ */
+function handleDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+/**
+ * Entrada na zona
+ */
+function handleDragEnter(e) {
+    const ehUtil = this.dataset.util === 'true';
+    const qtdAtual = parseInt(this.dataset.qtd);
+    const limite = parseInt(this.dataset.limite);
+    const dataAtual = this.dataset.date;
+
+    // Pegar data original
+    const diaOriginal = draggedElement.closest('.drop-zone').dataset.date;
+
+    // Validar se pode soltar
+    if (dataAtual === diaOriginal) {
+        // Mesma data, não precisa fazer nada
+        return;
+    }
+
+    if (!ehUtil) {
+        this.classList.add('drag-over-invalid');
+    } else if (qtdAtual >= limite) {
+        this.classList.add('drag-over-invalid');
+    } else {
+        this.classList.add('drag-over');
+    }
+}
+
+/**
+ * Saída da zona
+ */
+function handleDragLeave(e) {
+    this.classList.remove('drag-over', 'drag-over-invalid');
+}
+
+/**
+ * Soltar elemento
+ */
+function handleDrop(e) {
+    if (e.stopPropagation) {
+        e.stopPropagation();
+    }
+
+    this.classList.remove('drag-over', 'drag-over-invalid');
+
+    const dataNova = this.dataset.date;
+    const diaOriginal = draggedElement.closest('.drop-zone').dataset.date;
+
+    // Se for a mesma data, não faz nada
+    if (dataNova === diaOriginal) {
+        return false;
+    }
+
+    // Validar novamente
+    const ehUtil = this.dataset.util === 'true';
+    const qtdAtual = parseInt(this.dataset.qtd);
+    const limite = parseInt(this.dataset.limite);
+
+    if (!ehUtil) {
+        mostrarToast('❌ Data não é dia útil', 'danger');
+        return false;
+    }
+
+    if (qtdAtual >= limite) {
+        mostrarToast(`❌ Dia lotado (${qtdAtual}/${limite})`, 'danger');
+        return false;
+    }
+
+    // Enviar para backend
+    moverPessoaBackend(draggedData.teletrabalhoId, dataNova, draggedData.nome);
+
+    return false;
+}
+
+/**
+ * Move pessoa via AJAX
+ */
+function moverPessoaBackend(teletrabalhoId, dataNova, nome) {
+    const dataNovaBr = new Date(dataNova + 'T00:00:00').toLocaleDateString('pt-BR');
+
+    mostrarToast('⏳ Movendo...', 'info');
+
+    fetch('/teletrabalho/mover-pessoa', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            teletrabalho_id: teletrabalhoId,
+            data_nova: dataNova
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.sucesso) {
+            mostrarToast(`✅ ${nome} movido para ${dataNovaBr}`, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            mostrarToast(`❌ ${data.erro}`, 'danger');
+        }
+    })
+    .catch(error => {
+        mostrarToast('❌ Erro ao mover: ' + error, 'danger');
+    });
+}
+
+/**
+ * Remove pessoa do dia
+ */
+function removerPessoa(teletrabalhoId, nomeCompleto, dia) {
+    if (!confirm(`Remover ${nomeCompleto} do dia ${dia}?`)) {
+        return;
+    }
+
+    fetch(`/teletrabalho/cancelar/${teletrabalhoId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            mostrarToast(`✅ ${nomeCompleto} removido`, 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            mostrarToast('❌ Erro ao remover', 'danger');
+        }
+    })
+    .catch(error => {
+        mostrarToast('❌ Erro: ' + error, 'danger');
+    });
+}
+
+/**
+ * Mostra toast de feedback
+ */
+function mostrarToast(mensagem, tipo) {
+    // Remover toasts anteriores
+    const toastsAntigos = document.querySelectorAll('.toast-feedback');
+    toastsAntigos.forEach(t => t.remove());
+
+    const cores = {
+        'success': '#28a745',
+        'danger': '#dc3545',
+        'info': '#17a2b8',
+        'warning': '#ffc107'
+    };
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-feedback alert alert-' + tipo + ' alert-dismissible fade show';
+    toast.style.backgroundColor = cores[tipo];
+    toast.style.color = 'white';
+    toast.innerHTML = `
+        ${mensagem}
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+    `;
+
+    document.body.appendChild(toast);
+
+    // Auto-remover após 3 segundos
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+/**
+ * Exporta calendário como imagem JPEG
+ */
+function exportarImagem() {
+    const botoes = document.querySelectorAll('.btn-back, .btn-remove-pessoa, .card-header .btn, .drag-handle');
+    botoes.forEach(btn => btn.style.display = 'none');
+
+    const elemento = document.getElementById('calendario-exportar');
+
+    html2canvas(elemento, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        logging: false,
+        useCORS: true
+    }).then(canvas => {
+        botoes.forEach(btn => btn.style.display = '');
+
+        canvas.toBlob(function(blob) {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = `Calendario_{{ nome_mes.replace(" ", "_") }}_{{ area }}.jpg`;
+            link.href = url;
+            link.click();
+            URL.revokeObjectURL(url);
+        }, 'image/jpeg', 0.95);
+    }).catch(error => {
+        botoes.forEach(btn => btn.style.display = '');
+        alert('Erro ao gerar imagem: ' + error);
+    });
+}
+</script>
+{% endblock %}
+
+
+
+print scroll to do that exclblemae

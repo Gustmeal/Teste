@@ -1500,3 +1500,428 @@ def visualizacao_geral():
     except Exception as e:
         flash(f'Erro ao carregar visualização: {str(e)}', 'danger')
         return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/calendario-visual')
+@login_required
+def calendario_visual():
+    """Calendário visual com nomes das pessoas"""
+    try:
+        usuario = Usuario.query.get(current_user.id)
+        empregado = usuario.empregado
+
+        # Obter filtros
+        mes_ref = request.args.get('mes_ref')
+        area_filtro = request.args.get('area')
+        tipo_area_filtro = request.args.get('tipo_area', 'superintendencia')
+
+        # Período padrão: mês atual
+        if not mes_ref:
+            hoje = date.today()
+            mes_ref = hoje.strftime('%Y%m')
+
+        # Área padrão
+        if not area_filtro:
+            if empregado:
+                area_filtro = empregado.sgSuperintendencia
+                tipo_area_filtro = 'superintendencia'
+            elif current_user.perfil == 'admin':
+                # Admin sem empregado - pegar primeira área disponível
+                primeira_area = db.session.query(
+                    Empregado.sgSuperintendencia
+                ).filter(
+                    Empregado.sgSuperintendencia.isnot(None),
+                    Empregado.fkStatus == 1
+                ).first()
+
+                if primeira_area:
+                    area_filtro = primeira_area[0]
+                    tipo_area_filtro = 'superintendencia'
+
+        if not area_filtro:
+            flash('Área não identificada.', 'warning')
+            return redirect(url_for('teletrabalho.index'))
+
+        ano = int(mes_ref[:4])
+        mes = int(mes_ref[4:])
+
+        meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+        nome_mes = f"{meses_pt[mes - 1]} de {ano}"
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+        primeiro_dia_grid = (primeiro_dia.weekday() + 1) % 7
+
+        # Buscar teletrabalhos
+        teletrabalhos = Teletrabalho.query.filter(
+            Teletrabalho.MES_REFERENCIA == mes_ref,
+            Teletrabalho.AREA == area_filtro,
+            Teletrabalho.TIPO_AREA == tipo_area_filtro,
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        # Organizar por dia
+        dias_organizados = {}
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            data_str = data_atual.strftime('%Y-%m-%d')
+            dias_organizados[data_str] = {
+                'data': data_atual,
+                'dia': data_atual.day,
+                'eh_util': Feriado.eh_dia_util(data_atual),
+                'feriado': Feriado.obter_feriado(data_atual),
+                'pessoas': []
+            }
+            data_atual += timedelta(days=1)
+
+        # Adicionar pessoas aos dias
+        for tele in teletrabalhos:
+            data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+            if data_str in dias_organizados:
+                dias_organizados[data_str]['pessoas'].append({
+                    'id': tele.ID,
+                    'nome_completo': tele.usuario.NOME,
+                    'nome_primeiro': tele.usuario.NOME.split()[0] if tele.usuario.NOME else '',
+                    'nome_segundo': tele.usuario.NOME.split()[1] if len(tele.usuario.NOME.split()) > 1 else '',
+                    'usuario_id': tele.USUARIO_ID,
+                    'tipo_periodo': tele.TIPO_PERIODO,
+                    'observacao': tele.OBSERVACAO
+                })
+
+        # Processar nomes para evitar duplicatas
+        for data_str, info in dias_organizados.items():
+            if info['pessoas']:
+                # Contar primeiros nomes
+                contagem_nomes = {}
+                for pessoa in info['pessoas']:
+                    primeiro = pessoa['nome_primeiro']
+                    contagem_nomes[primeiro] = contagem_nomes.get(primeiro, 0) + 1
+
+                # Adicionar inicial do sobrenome se nome repetido
+                for pessoa in info['pessoas']:
+                    primeiro = pessoa['nome_primeiro']
+                    if contagem_nomes[primeiro] > 1 and pessoa['nome_segundo']:
+                        pessoa['nome_exibicao'] = f"{primeiro} {pessoa['nome_segundo'][0]}."
+                    else:
+                        pessoa['nome_exibicao'] = primeiro
+
+        # Calcular limite
+        limite, total_pessoas = calcular_limite_area(area_filtro, tipo_area_filtro)
+
+        # Áreas e períodos para filtro
+        areas = obter_areas_disponiveis()
+        periodos = gerar_opcoes_periodo()
+
+        return render_template('teletrabalho/calendario_visual.html',
+                               dias_organizados=dias_organizados,
+                               nome_mes=nome_mes,
+                               mes_ref=mes_ref,
+                               area=area_filtro,
+                               tipo_area=tipo_area_filtro,
+                               limite=limite,
+                               total_pessoas=total_pessoas,
+                               areas=areas,
+                               periodos=periodos,
+                               primeiro_dia_grid=primeiro_dia_grid,
+                               eh_gestor=eh_gestor_ou_admin(usuario))
+
+    except Exception as e:
+        flash(f'Erro ao carregar calendário: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/exportar-excel/<mes_ref>')
+@login_required
+def exportar_excel(mes_ref):
+    """Exporta calendário para Excel com nomes abreviados"""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from flask import send_file
+        import io
+
+        area = request.args.get('area')
+        tipo_area = request.args.get('tipo_area', 'superintendencia')
+
+        ano = int(mes_ref[:4])
+        mes = int(mes_ref[4:])
+
+        meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+        nome_mes = f"{meses_pt[mes - 1]} {ano}"
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # Buscar dados
+        teletrabalhos = Teletrabalho.query.filter(
+            Teletrabalho.MES_REFERENCIA == mes_ref,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        # Organizar por dia com nomes abreviados
+        dias_dados = {}
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            data_str = data_atual.strftime('%Y-%m-%d')
+            dias_dados[data_str] = []
+            data_atual += timedelta(days=1)
+
+        # Adicionar pessoas
+        for tele in teletrabalhos:
+            data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+            if data_str in dias_dados:
+                nome_completo = tele.usuario.NOME
+                partes = nome_completo.split()
+
+                if len(partes) >= 2:
+                    nome_abreviado = f"{partes[0]} {partes[1][0]}."
+                else:
+                    nome_abreviado = partes[0] if partes else nome_completo
+
+                dias_dados[data_str].append(nome_abreviado)
+
+        # Processar nomes duplicados por dia
+        for data_str, nomes in dias_dados.items():
+            if len(nomes) > 1:
+                # Contar primeiros nomes
+                contagem = {}
+                for nome in nomes:
+                    primeiro = nome.split()[0]
+                    contagem[primeiro] = contagem.get(primeiro, 0) + 1
+
+                # Se houver duplicatas, já está com inicial do segundo nome
+                # Então não precisa fazer nada, já vem como "João S."
+
+        # Criar workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = f"Teletrabalho {nome_mes}"
+
+        # Estilos
+        header_fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        # Cabeçalho principal
+        ws.merge_cells('A1:G1')
+        ws['A1'] = f"Calendário de Teletrabalho - {nome_mes}"
+        ws['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+        ws['A1'].fill = PatternFill(start_color="667eea", end_color="667eea", fill_type="solid")
+        ws['A1'].alignment = center_align
+
+        ws.merge_cells('A2:G2')
+        ws['A2'] = f"Área: {area}"
+        ws['A2'].font = Font(size=11, bold=True)
+        ws['A2'].fill = PatternFill(start_color="e3f2fd", end_color="e3f2fd", fill_type="solid")
+        ws['A2'].alignment = center_align
+
+        # Cabeçalho dos dias
+        dias_semana = ['DOMINGO', 'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO']
+        row = 4
+        for col, dia in enumerate(dias_semana, start=1):
+            cell = ws.cell(row=row, column=col, value=dia)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = center_align
+            cell.border = border
+            ws.column_dimensions[chr(64 + col)].width = 18
+
+        # Dados do calendário
+        row = 5
+        col = (primeiro_dia.weekday() + 1) % 7 + 1  # Posição inicial
+
+        data_atual = primeiro_dia
+        while data_atual <= ultimo_dia:
+            if col > 7:
+                col = 1
+                row += 1
+
+            data_str = data_atual.strftime('%Y-%m-%d')
+            pessoas = dias_dados.get(data_str, [])
+
+            # Conteúdo da célula
+            conteudo = f"{data_atual.day}"
+            if pessoas:
+                conteudo += "\n\n" + "\n".join(pessoas)
+
+            cell = ws.cell(row=row, column=col, value=conteudo)
+            cell.alignment = Alignment(horizontal="center", vertical="top", wrap_text=True)
+            cell.border = border
+            cell.font = Font(size=10)
+
+            # Número do dia em negrito
+            if pessoas:
+                cell.font = Font(size=10, bold=True)
+
+            # Cor de fundo
+            if not Feriado.eh_dia_util(data_atual):
+                cell.fill = PatternFill(start_color="e0e0e0", end_color="e0e0e0", fill_type="solid")
+                cell.font = Font(size=10, color="666666")
+            elif pessoas:
+                # Verde claro se tem pessoas
+                cell.fill = PatternFill(start_color="d4edda", end_color="d4edda", fill_type="solid")
+                cell.font = Font(size=10, bold=True, color="155724")
+            else:
+                # Branco se vazio
+                cell.fill = PatternFill(start_color="ffffff", end_color="ffffff", fill_type="solid")
+
+            col += 1
+            data_atual += timedelta(days=1)
+
+        # Ajustar altura das linhas
+        for r in range(5, row + 1):
+            ws.row_dimensions[r].height = 80
+
+        # Rodapé com legenda
+        row += 2
+        ws.merge_cells(f'A{row}:G{row}')
+        ws[f'A{row}'] = "Legenda: Verde = Com teletrabalho | Cinza = Fim de semana/Feriado"
+        ws[f'A{row}'].font = Font(size=9, italic=True)
+        ws[f'A{row}'].alignment = Alignment(horizontal="center")
+
+        # Salvar em memória
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'Teletrabalho_{area}_{nome_mes.replace(" ", "_")}.xlsx'
+        )
+
+    except Exception as e:
+        flash(f'Erro ao exportar: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.calendario_visual'))
+
+
+@teletrabalho_bp.route('/mover-pessoa', methods=['POST'])
+@login_required
+def mover_pessoa():
+    """Move pessoa de um dia para outro via drag-and-drop"""
+    usuario = Usuario.query.get(current_user.id)
+
+    # Apenas gestores podem mover
+    if not eh_gestor_ou_admin(usuario):
+        return jsonify({'erro': 'Sem permissão'}), 403
+
+    try:
+        data = request.get_json()
+        teletrabalho_id = int(data.get('teletrabalho_id'))
+        data_nova_str = data.get('data_nova')
+
+        # Buscar teletrabalho
+        teletrabalho = Teletrabalho.query.get_or_404(teletrabalho_id)
+        data_antiga = teletrabalho.DATA_TELETRABALHO
+        data_nova = datetime.strptime(data_nova_str, '%Y-%m-%d').date()
+
+        # Validar se mudou
+        if data_antiga == data_nova:
+            return jsonify({'erro': 'Mesma data'}), 400
+
+        # Validar dia útil
+        if not Feriado.eh_dia_util(data_nova):
+            feriado = Feriado.obter_feriado(data_nova)
+            motivo = feriado.DS_FERIADO if feriado else "fim de semana"
+            return jsonify({'erro': f'Data não é dia útil ({motivo})'}), 400
+
+        # Validar mês
+        mes_referencia = teletrabalho.MES_REFERENCIA
+        if data_nova.strftime('%Y%m') != mes_referencia:
+            return jsonify({'erro': 'Não pode mover para outro mês'}), 400
+
+        # Validar limite de pessoas no dia
+        area = teletrabalho.AREA
+        tipo_area = teletrabalho.TIPO_AREA
+        limite, _ = calcular_limite_area(area, tipo_area)
+
+        qtd_no_dia = Teletrabalho.contar_pessoas_dia(data_nova, area, tipo_area)
+        if qtd_no_dia >= limite:
+            return jsonify({'erro': f'Dia lotado ({qtd_no_dia}/{limite})'}), 400
+
+        # Validar 5 dias corridos (se for o tipo)
+        if teletrabalho.TIPO_PERIODO == 'CINCO_DIAS_CORRIDOS':
+            # Buscar outros 4 dias do mesmo período
+            outros_dias = Teletrabalho.query.filter(
+                Teletrabalho.USUARIO_ID == teletrabalho.USUARIO_ID,
+                Teletrabalho.MES_REFERENCIA == mes_referencia,
+                Teletrabalho.TIPO_PERIODO == 'CINCO_DIAS_CORRIDOS',
+                Teletrabalho.STATUS == 'APROVADO',
+                Teletrabalho.DELETED_AT.is_(None),
+                Teletrabalho.ID != teletrabalho_id
+            ).all()
+
+            if len(outros_dias) == 4:
+                # Tem que ser 5 dias consecutivos
+                todas_datas = [d.DATA_TELETRABALHO for d in outros_dias]
+                todas_datas.append(data_nova)
+                todas_datas.sort()
+
+                # Verificar se são consecutivos (excluindo fins de semana)
+                consecutivos = True
+                for i in range(len(todas_datas) - 1):
+                    dias_entre = 0
+                    data_check = todas_datas[i]
+                    while data_check < todas_datas[i + 1]:
+                        data_check += timedelta(days=1)
+                        if Feriado.eh_dia_util(data_check):
+                            dias_entre += 1
+
+                    if dias_entre > 1:  # Mais de 1 dia útil entre eles
+                        consecutivos = False
+                        break
+
+                if not consecutivos:
+                    return jsonify({'erro': '5 dias corridos devem ser consecutivos'}), 400
+
+        # Validar dias alternados (intervalo mínimo)
+        elif teletrabalho.TIPO_PERIODO == 'ALTERNADO':
+            valido, msg = Teletrabalho.validar_dias_alternados(
+                teletrabalho.USUARIO_ID,
+                data_nova,
+                mes_referencia,
+                excluir_id=teletrabalho_id
+            )
+            if not valido:
+                return jsonify({'erro': msg}), 400
+
+        # Atualizar data
+        data_antiga_str = data_antiga.strftime('%d/%m/%Y')
+        data_nova_str_br = data_nova.strftime('%d/%m/%Y')
+
+        teletrabalho.DATA_TELETRABALHO = data_nova
+        teletrabalho.UPDATED_AT = datetime.utcnow()
+
+        # Log
+        registrar_log(
+            acao='editar',
+            entidade='teletrabalho',
+            entidade_id=teletrabalho_id,
+            descricao=f'Moveu {teletrabalho.usuario.NOME} de {data_antiga_str} para {data_nova_str_br}'
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            'sucesso': True,
+            'mensagem': f'Movido para {data_nova_str_br}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500

@@ -79,27 +79,58 @@ class Teletrabalho(db.Model):
         ).count()
 
     @staticmethod
-    def validar_dias_alternados(usuario_id, nova_data, mes_referencia):
+    def validar_dias_alternados(usuario_id, data_nova, mes_referencia, excluir_id=None):
         """
-        REGRA: Dias devem ter pelo menos 1 dia de intervalo
-        Exemplo OK: Segunda, Quarta, Sexta
-        Exemplo ERRO: Segunda, Terça (consecutivos)
+        Valida intervalo mínimo entre dias alternados
+
+        Args:
+            usuario_id: ID do usuário
+            data_nova: Data que será marcada
+            mes_referencia: Mês no formato YYYYMM
+            excluir_id: ID do teletrabalho a excluir da validação (usado em edição)
+
+        Returns:
+            tuple: (bool, str) - (válido, mensagem)
         """
-        dias_existentes = db.session.query(Teletrabalho.DATA_TELETRABALHO).filter(
+        from datetime import timedelta
+
+        query = Teletrabalho.query.filter(
             Teletrabalho.USUARIO_ID == usuario_id,
             Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_PERIODO == 'ALTERNADO',
             Teletrabalho.STATUS == 'APROVADO',
             Teletrabalho.DELETED_AT.is_(None)
-        ).all()
+        )
 
-        datas_existentes = [d[0] for d in dias_existentes]
+        # Se for edição, excluir o registro atual da validação
+        if excluir_id:
+            query = query.filter(Teletrabalho.ID != excluir_id)
 
-        for data_existente in datas_existentes:
-            diferenca = abs((nova_data - data_existente).days)
-            if diferenca == 1:  # Dias consecutivos = ERRO
-                return False, "Dias de teletrabalho devem ser alternados (não consecutivos)"
+        dias_marcados = [t.DATA_TELETRABALHO for t in query.all()]
 
-        return True, ""
+        # Verificar intervalo mínimo de 1 dia útil entre cada data
+        for dia_marcado in dias_marcados:
+            # Calcular diferença em dias
+            diferenca_dias = abs((data_nova - dia_marcado).days)
+
+            # Contar dias úteis entre as datas
+            data_inicio = min(data_nova, dia_marcado)
+            data_fim = max(data_nova, dia_marcado)
+            dias_uteis_entre = 0
+
+            data_check = data_inicio + timedelta(days=1)
+            while data_check < data_fim:
+                if Feriado.eh_dia_util(data_check):
+                    dias_uteis_entre += 1
+                data_check += timedelta(days=1)
+
+            # Validar intervalo mínimo
+            if dias_uteis_entre < 1:
+                data_marcada_str = dia_marcado.strftime("%d/%m/%Y")
+                data_nova_str = data_nova.strftime("%d/%m/%Y")
+                return False, f'Precisa haver pelo menos 1 dia útil entre {data_marcada_str} e {data_nova_str}'
+
+        return True, 'OK'
 
     @staticmethod
     def validar_cinco_dias_corridos(usuario_id, datas, mes_referencia):
