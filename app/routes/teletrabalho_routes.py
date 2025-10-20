@@ -420,21 +420,49 @@ def cancelar(id):
     """Cancela um dia de teletrabalho"""
     try:
         teletrabalho = Teletrabalho.query.get_or_404(id)
+        usuario = Usuario.query.get(current_user.id)
 
-        if teletrabalho.USUARIO_ID != current_user.id and not eh_gestor_ou_admin(Usuario.query.get(current_user.id)):
+        # Verificar permissão
+        if teletrabalho.USUARIO_ID != current_user.id and not eh_gestor_ou_admin(usuario):
             flash('Você não tem permissão para cancelar este teletrabalho.', 'danger')
             return redirect(url_for('teletrabalho.index'))
 
+        # ✅ VALIDAÇÃO: Gerente só pode excluir da sua área
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            if not usuario.empregado:
+                flash('Usuário sem vínculo de empregado.', 'danger')
+                return redirect(url_for('teletrabalho.index'))
+
+            area_gerente = usuario.empregado.sgSuperintendencia
+
+            if teletrabalho.AREA != area_gerente:
+                flash('Você só pode cancelar teletrabalhos da sua área.', 'danger')
+                return redirect(url_for('teletrabalho.index'))
+
+        # Guardar informações para o log
+        data_cancelada = teletrabalho.DATA_TELETRABALHO
+        usuario_nome = teletrabalho.usuario.NOME if teletrabalho.usuario else 'Usuário desconhecido'
+
+        # ✅ SOFT DELETE
         teletrabalho.DELETED_AT = datetime.utcnow()
 
-        registrar_log(
-            acao='excluir',
-            entidade='teletrabalho',
-            entidade_id=id,
-            descricao=f'Cancelamento de teletrabalho - {teletrabalho.DATA_TELETRABALHO}'
-        )
-
+        # ✅ COMMIT PRIMEIRO (antes do log)
         db.session.commit()
+
+        # ✅ LOG DEPOIS DO COMMIT (para evitar rollback)
+        try:
+            registrar_log(
+                acao='excluir',
+                entidade='teletrabalho',
+                entidade_id=id,
+                descricao=f'{nivel_acesso.upper()} cancelou teletrabalho de {usuario_nome} em {data_cancelada.strftime("%d/%m/%Y")}'
+            )
+        except Exception as log_error:
+            # Se falhar o log, não importa - o dado já foi salvo
+            print(f"[AVISO] Erro ao registrar log (não afeta a operação): {log_error}")
+
         flash('Teletrabalho cancelado com sucesso!', 'success')
 
     except Exception as e:
@@ -1505,7 +1533,7 @@ def visualizacao_geral():
 @teletrabalho_bp.route('/calendario-visual')
 @login_required
 def calendario_visual():
-    """Calendário visual com nomes das pessoas"""
+    """Calendário visual com drag-and-drop para gestores"""
     try:
         usuario = Usuario.query.get(current_user.id)
         empregado = usuario.empregado
@@ -1553,7 +1581,7 @@ def calendario_visual():
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
         primeiro_dia_grid = (primeiro_dia.weekday() + 1) % 7
 
-        # Buscar teletrabalhos
+        # Buscar teletrabalhos da área
         teletrabalhos = Teletrabalho.query.filter(
             Teletrabalho.MES_REFERENCIA == mes_ref,
             Teletrabalho.AREA == area_filtro,
@@ -1562,7 +1590,7 @@ def calendario_visual():
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
 
-        # Organizar por dia
+        # Organizar estrutura de dias do mês
         dias_organizados = {}
         data_atual = primeiro_dia
 
@@ -1581,26 +1609,29 @@ def calendario_visual():
         for tele in teletrabalhos:
             data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
             if data_str in dias_organizados:
+                nome_completo = tele.usuario.NOME if tele.usuario.NOME else 'Sem Nome'
+                partes_nome = nome_completo.split()
+
                 dias_organizados[data_str]['pessoas'].append({
                     'id': tele.ID,
-                    'nome_completo': tele.usuario.NOME,
-                    'nome_primeiro': tele.usuario.NOME.split()[0] if tele.usuario.NOME else '',
-                    'nome_segundo': tele.usuario.NOME.split()[1] if len(tele.usuario.NOME.split()) > 1 else '',
+                    'nome_completo': nome_completo,
+                    'nome_primeiro': partes_nome[0] if partes_nome else '',
+                    'nome_segundo': partes_nome[1] if len(partes_nome) > 1 else '',
                     'usuario_id': tele.USUARIO_ID,
                     'tipo_periodo': tele.TIPO_PERIODO,
                     'observacao': tele.OBSERVACAO
                 })
 
-        # Processar nomes para evitar duplicatas
+        # Processar nomes para evitar duplicatas no mesmo dia
         for data_str, info in dias_organizados.items():
             if info['pessoas']:
-                # Contar primeiros nomes
+                # Contar quantas vezes cada primeiro nome aparece
                 contagem_nomes = {}
                 for pessoa in info['pessoas']:
                     primeiro = pessoa['nome_primeiro']
                     contagem_nomes[primeiro] = contagem_nomes.get(primeiro, 0) + 1
 
-                # Adicionar inicial do sobrenome se nome repetido
+                # Se nome repetido, adicionar inicial do sobrenome
                 for pessoa in info['pessoas']:
                     primeiro = pessoa['nome_primeiro']
                     if contagem_nomes[primeiro] > 1 and pessoa['nome_segundo']:
@@ -1608,12 +1639,17 @@ def calendario_visual():
                     else:
                         pessoa['nome_exibicao'] = primeiro
 
-        # Calcular limite
+        # Calcular limite de pessoas por dia (30% da área)
         limite, total_pessoas = calcular_limite_area(area_filtro, tipo_area_filtro)
 
-        # Áreas e períodos para filtro
+        # Dados para os filtros
         areas = obter_areas_disponiveis()
         periodos = gerar_opcoes_periodo()
+
+        # ✅ CORREÇÃO CRÍTICA: Verificar corretamente se é gestor
+        # A função eh_gestor_ou_admin() usa verificar_nivel_acesso_teletrabalho()
+        # que PRIORIZA GERENTE sobre moderador
+        eh_gestor = eh_gestor_ou_admin(usuario)
 
         return render_template('teletrabalho/calendario_visual.html',
                                dias_organizados=dias_organizados,
@@ -1626,12 +1662,11 @@ def calendario_visual():
                                areas=areas,
                                periodos=periodos,
                                primeiro_dia_grid=primeiro_dia_grid,
-                               eh_gestor=eh_gestor_ou_admin(usuario))
+                               eh_gestor=eh_gestor)  # ✅ Passa corretamente
 
     except Exception as e:
         flash(f'Erro ao carregar calendário: {str(e)}', 'danger')
         return redirect(url_for('teletrabalho.index'))
-
 
 @teletrabalho_bp.route('/exportar-excel/<mes_ref>')
 @login_required
@@ -1827,6 +1862,19 @@ def mover_pessoa():
 
         # Buscar teletrabalho
         teletrabalho = Teletrabalho.query.get_or_404(teletrabalho_id)
+
+        # Validação de área para gerente
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            if not usuario.empregado:
+                return jsonify({'erro': 'Usuário sem vínculo de empregado'}), 403
+
+            area_gerente = usuario.empregado.sgSuperintendencia
+
+            if teletrabalho.AREA != area_gerente:
+                return jsonify({'erro': 'Você só pode mover pessoas da sua área'}), 403
+
         data_antiga = teletrabalho.DATA_TELETRABALHO
         data_nova = datetime.strptime(data_nova_str, '%Y-%m-%d').date()
 
@@ -1856,7 +1904,6 @@ def mover_pessoa():
 
         # Validar 5 dias corridos (se for o tipo)
         if teletrabalho.TIPO_PERIODO == 'CINCO_DIAS_CORRIDOS':
-            # Buscar outros 4 dias do mesmo período
             outros_dias = Teletrabalho.query.filter(
                 Teletrabalho.USUARIO_ID == teletrabalho.USUARIO_ID,
                 Teletrabalho.MES_REFERENCIA == mes_referencia,
@@ -1867,12 +1914,10 @@ def mover_pessoa():
             ).all()
 
             if len(outros_dias) == 4:
-                # Tem que ser 5 dias consecutivos
                 todas_datas = [d.DATA_TELETRABALHO for d in outros_dias]
                 todas_datas.append(data_nova)
                 todas_datas.sort()
 
-                # Verificar se são consecutivos (excluindo fins de semana)
                 consecutivos = True
                 for i in range(len(todas_datas) - 1):
                     dias_entre = 0
@@ -1882,14 +1927,14 @@ def mover_pessoa():
                         if Feriado.eh_dia_util(data_check):
                             dias_entre += 1
 
-                    if dias_entre > 1:  # Mais de 1 dia útil entre eles
+                    if dias_entre > 1:
                         consecutivos = False
                         break
 
                 if not consecutivos:
                     return jsonify({'erro': '5 dias corridos devem ser consecutivos'}), 400
 
-        # Validar dias alternados (intervalo mínimo)
+        # Validar dias alternados
         elif teletrabalho.TIPO_PERIODO == 'ALTERNADO':
             valido, msg = Teletrabalho.validar_dias_alternados(
                 teletrabalho.USUARIO_ID,
@@ -1900,22 +1945,27 @@ def mover_pessoa():
             if not valido:
                 return jsonify({'erro': msg}), 400
 
-        # Atualizar data
+        # ✅ ATUALIZAR DATA
         data_antiga_str = data_antiga.strftime('%d/%m/%Y')
         data_nova_str_br = data_nova.strftime('%d/%m/%Y')
 
         teletrabalho.DATA_TELETRABALHO = data_nova
         teletrabalho.UPDATED_AT = datetime.utcnow()
 
-        # Log
-        registrar_log(
-            acao='editar',
-            entidade='teletrabalho',
-            entidade_id=teletrabalho_id,
-            descricao=f'Moveu {teletrabalho.usuario.NOME} de {data_antiga_str} para {data_nova_str_br}'
-        )
-
+        # ✅ COMMIT PRIMEIRO
         db.session.commit()
+
+        # ✅ LOG DE AUDITORIA DEPOIS DO COMMIT (para evitar rollback)
+        try:
+            registrar_log(
+                acao='editar',
+                entidade='teletrabalho',
+                entidade_id=teletrabalho_id,
+                descricao=f'{nivel_acesso.upper()} moveu {teletrabalho.usuario.NOME} de {data_antiga_str} para {data_nova_str_br}'
+            )
+        except Exception as log_error:
+            # Se falhar o log, não importa - o dado já foi salvo
+            print(f"[AVISO] Erro ao registrar log (não afeta a operação): {log_error}")
 
         return jsonify({
             'sucesso': True,
@@ -1924,4 +1974,4 @@ def mover_pessoa():
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'erro': str(e)}), 500
+        return jsonify({'erro': f'Erro: {str(e)}'}), 500
