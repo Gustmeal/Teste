@@ -1080,6 +1080,7 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
     - GERENTES: 1-2 dias no mês (1 por semana, semanas diferentes)
     - NUNCA dias consecutivos
     - Respeita limite de 30% por dia
+    - NÃO sorteia em dias de férias
     """
     import random
     from datetime import datetime, timedelta
@@ -1108,6 +1109,24 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
         if not usuarios_query:
             return {'sucesso': False, 'erro': 'Nenhuma pessoa elegível'}
 
+        # ✅ BUSCAR FÉRIAS DE TODOS OS USUÁRIOS DA ÁREA NESTE MÊS
+        print(f"[SORTEIO] Buscando férias do mês {mes_referencia} na área {area}...")
+
+        ferias_mes = {}
+        ferias_query = Teletrabalho.query.filter(
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        for f in ferias_query:
+            if f.USUARIO_ID not in ferias_mes:
+                ferias_mes[f.USUARIO_ID] = []
+            ferias_mes[f.USUARIO_ID].append(f.DATA_TELETRABALHO)
+
+        print(f"[SORTEIO] Encontradas {len(ferias_query)} férias marcadas para {len(ferias_mes)} pessoas")
+
         # Separar gerentes de não-gerentes
         gerentes = []
         nao_gerentes = []
@@ -1131,7 +1150,6 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
 
         while data_atual <= ultimo_dia:
             if Feriado.eh_dia_util(data_atual):
-                # Número da semana no ano
                 num_semana = data_atual.isocalendar()[1]
                 dia_semana = data_atual.weekday()  # 0=SEG, 1=TER, 2=QUA, 3=QUI, 4=SEX
 
@@ -1154,47 +1172,96 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
             data_atual += timedelta(days=1)
 
         dias_por_usuario = {}
+        avisos_ferias = []
 
         # 5. SORTEAR PARA NÃO-GERENTES (5 dias: 3+2 alternados)
         random.shuffle(nao_gerentes)
 
         for usuario in nao_gerentes:
+            # ✅ PEGAR FÉRIAS DESTE USUÁRIO
+            dias_ferias_usuario = ferias_mes.get(usuario.ID, [])
+
+            # ✅ CALCULAR QUANTOS DIAS ÚTEIS DISPONÍVEIS (excluindo férias)
+            dias_uteis_disponiveis = sum(
+                1 for d in ocupacao_por_dia.keys()
+                if d not in dias_ferias_usuario
+            )
+
+            # ✅ AJUSTAR QUANTIDADE ESPERADA
+            if dias_uteis_disponiveis < 5:
+                qtd_esperada = min(dias_uteis_disponiveis, 5)
+                avisos_ferias.append(
+                    f"{usuario.NOME}: {qtd_esperada} dias (férias: {len(dias_ferias_usuario)} dias)"
+                )
+            else:
+                qtd_esperada = 5
+
+            if qtd_esperada == 0:
+                avisos_ferias.append(f"{usuario.NOME}: NENHUM dia (mês todo de férias)")
+                continue
+
+            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS
             dias_sorteados = sortear_5_dias_alternados(
                 semanas,
                 ocupacao_por_dia,
-                limite_diario
+                limite_diario,
+                excluir_datas=dias_ferias_usuario  # ✅ NOVO PARÂMETRO
             )
 
-            if len(dias_sorteados) == 5:
-                dias_por_usuario[usuario.ID] = dias_sorteados
-                for dia in dias_sorteados:
+            if len(dias_sorteados) >= qtd_esperada:
+                dias_por_usuario[usuario.ID] = dias_sorteados[:qtd_esperada]
+                for dia in dias_sorteados[:qtd_esperada]:
                     ocupacao_por_dia[dia] += 1
             else:
                 return {
                     'sucesso': False,
-                    'erro': f'Não conseguiu sortear 5 dias para {usuario.NOME}'
+                    'erro': f'Não conseguiu sortear {qtd_esperada} dias para {usuario.NOME} (tem {len(dias_ferias_usuario)} dias de férias)'
                 }
 
         # 6. SORTEAR PARA GERENTES (1-2 dias, semanas diferentes)
         random.shuffle(gerentes)
 
         for usuario in gerentes:
-            qtd_dias_gerente = 2  # Sempre 2 dias para gerentes
+            # ✅ PEGAR FÉRIAS DESTE GERENTE
+            dias_ferias_usuario = ferias_mes.get(usuario.ID, [])
+
+            # ✅ CALCULAR DIAS DISPONÍVEIS
+            dias_uteis_disponiveis = sum(
+                1 for d in ocupacao_por_dia.keys()
+                if d not in dias_ferias_usuario
+            )
+
+            # ✅ AJUSTAR QUANTIDADE (gerentes podem ter 1 ou 2 dias)
+            if dias_uteis_disponiveis < 2:
+                qtd_dias_gerente = max(1, dias_uteis_disponiveis)
+                if qtd_dias_gerente > 0:
+                    avisos_ferias.append(
+                        f"{usuario.NOME} (Gerente): {qtd_dias_gerente} dia (férias: {len(dias_ferias_usuario)} dias)"
+                    )
+            else:
+                qtd_dias_gerente = 2
+
+            if qtd_dias_gerente == 0:
+                avisos_ferias.append(f"{usuario.NOME} (Gerente): NENHUM dia (mês todo de férias)")
+                continue
+
+            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS
             dias_sorteados = sortear_dias_gerente(
                 semanas,
                 ocupacao_por_dia,
                 limite_diario,
-                qtd_dias_gerente
+                qtd_dias_gerente,
+                excluir_datas=dias_ferias_usuario  # ✅ NOVO PARÂMETRO
             )
 
-            if len(dias_sorteados) == qtd_dias_gerente:
-                dias_por_usuario[usuario.ID] = dias_sorteados
-                for dia in dias_sorteados:
+            if len(dias_sorteados) >= qtd_dias_gerente:
+                dias_por_usuario[usuario.ID] = dias_sorteados[:qtd_dias_gerente]
+                for dia in dias_sorteados[:qtd_dias_gerente]:
                     ocupacao_por_dia[dia] += 1
             else:
                 return {
                     'sucesso': False,
-                    'erro': f'Não conseguiu sortear dias para gerente {usuario.NOME}'
+                    'erro': f'Não conseguiu sortear dias para gerente {usuario.NOME} (tem {len(dias_ferias_usuario)} dias de férias)'
                 }
 
         # 7. SALVAR NO BANCO
@@ -1210,6 +1277,7 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
                     TIPO_AREA='superintendencia',
                     STATUS='APROVADO',
                     TIPO_PERIODO='ALTERNADO',
+                    TIPO_MARCACAO='TELETRABALHO',  # ✅ IMPORTANTE: Marcar como TELETRABALHO
                     OBSERVACAO=f'[SORTEIO AUTO] {datetime.now().strftime("%d/%m/%Y %H:%M")}',
                     APROVADO_POR=admin_id,
                     APROVADO_EM=datetime.utcnow()
@@ -1219,27 +1287,37 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
 
         db.session.commit()
 
+        # ✅ INCLUIR AVISOS DE FÉRIAS NO RESULTADO
         return {
             'sucesso': True,
-            'total_sorteados': len(usuarios_query),
+            'total_sorteados': len(dias_por_usuario),
             'total_dias': total_dias_cadastrados,
             'gerentes': len(gerentes),
-            'nao_gerentes': len(nao_gerentes)
+            'nao_gerentes': len(nao_gerentes),
+            'avisos_ferias': avisos_ferias  # ✅ NOVO
         }
 
     except Exception as e:
         db.session.rollback()
+        print(f"[SORTEIO] ERRO: {e}")
+        import traceback
+        traceback.print_exc()
         return {'sucesso': False, 'erro': str(e)}
 
 
-def sortear_5_dias_alternados(semanas, ocupacao, limite):
+def sortear_5_dias_alternados(semanas, ocupacao, limite, excluir_datas=None):
     """
     Sorteia 5 dias alternados para não-gerentes
     Padrão: SEG-QUA-SEX (semana 1) + TER-QUI (semana 2)
+
+    :param excluir_datas: Lista de datas (férias) que devem ser excluídas do sorteio
     """
     import random
 
-    # Padrões possíveis (dias da semana: 0=SEG, 1=TER, 2=QUA, 3=QUI, 4=SEX)
+    if excluir_datas is None:
+        excluir_datas = []
+
+    # Padrões possíveis
     padroes = [
         {'semana1': [0, 2, 4], 'semana2': [1, 3]},  # SEG-QUA-SEX + TER-QUI
         {'semana1': [1, 3], 'semana2': [0, 2, 4]}  # TER-QUI + SEG-QUA-SEX
@@ -1247,12 +1325,11 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
 
     random.shuffle(padroes)
 
-    # Tentar cada padrão
     for padrao in padroes:
         dias_sorteados = []
         semanas_usadas = []
 
-        # Tentar sortear semana 1
+        # Sortear semana 1
         semanas_disponiveis = [s for s in semanas.keys() if s not in semanas_usadas]
         random.shuffle(semanas_disponiveis)
 
@@ -1262,10 +1339,10 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
 
             for dia_semana in padrao['semana1']:
                 if dia_semana in semanas[num_semana] and semanas[num_semana][dia_semana]:
-                    # Pegar primeira data disponível desse dia da semana
                     candidatos = [
                         d for d in semanas[num_semana][dia_semana]
                         if ocupacao.get(d, 0) < limite
+                           and d not in excluir_datas  # ✅ EXCLUIR FÉRIAS
                     ]
                     if candidatos:
                         dias_semana1.append(candidatos[0])
@@ -1284,7 +1361,7 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
         if len(dias_sorteados) != len(padrao['semana1']):
             continue
 
-        # Tentar sortear semana 2
+        # Sortear semana 2
         semanas_disponiveis = [s for s in semanas.keys() if s not in semanas_usadas]
         random.shuffle(semanas_disponiveis)
 
@@ -1297,6 +1374,7 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
                     candidatos = [
                         d for d in semanas[num_semana][dia_semana]
                         if ocupacao.get(d, 0) < limite
+                           and d not in excluir_datas  # ✅ EXCLUIR FÉRIAS
                     ]
                     if candidatos:
                         dias_semana2.append(candidatos[0])
@@ -1312,9 +1390,8 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
                 semanas_usadas.append(num_semana)
                 break
 
-        # Verificar se conseguiu os 5 dias
+        # Verificar se conseguiu 5 dias
         if len(dias_sorteados) == 5:
-            # Validar que não há dias consecutivos
             dias_ordenados = sorted(dias_sorteados)
             tem_consecutivo = False
             for i in range(len(dias_ordenados) - 1):
@@ -1328,12 +1405,17 @@ def sortear_5_dias_alternados(semanas, ocupacao, limite):
     return []
 
 
-def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias):
+def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias, excluir_datas=None):
     """
     Sorteia 1 ou 2 dias para gerentes
     Regra: 1 dia por semana, semanas diferentes
+
+    :param excluir_datas: Lista de datas (férias) que devem ser excluídas do sorteio
     """
     import random
+
+    if excluir_datas is None:
+        excluir_datas = []
 
     semanas_disponiveis = list(semanas.keys())
     random.shuffle(semanas_disponiveis)
@@ -1347,28 +1429,28 @@ def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias):
     while len(dias_sorteados) < qtd_dias and tentativas < max_tentativas:
         tentativas += 1
 
-        # Escolher uma semana não usada
         semanas_candidatas = [s for s in semanas_disponiveis if s not in semanas_usadas]
         if not semanas_candidatas:
             break
 
         num_semana = random.choice(semanas_candidatas)
 
-        # Escolher um dia da semana aleatório
         dias_semana_disponiveis = []
         for dia_semana in [0, 1, 2, 3, 4]:  # SEG a SEX
             if dia_semana in semanas[num_semana] and semanas[num_semana][dia_semana]:
                 for data in semanas[num_semana][dia_semana]:
-                    if ocupacao.get(data, 0) < limite:
+                    if (ocupacao.get(data, 0) < limite
+                            and data not in excluir_datas  # ✅ EXCLUIR FÉRIAS
+                            and data not in dias_sorteados):
                         dias_semana_disponiveis.append(data)
 
         if dias_semana_disponiveis:
             dia_escolhido = random.choice(dias_semana_disponiveis)
 
-            # Validar que não é consecutivo aos já sorteados
+            # Validar não-consecutivo
             eh_valido = True
-            for dia_ja_sorteado in dias_sorteados:
-                if abs((dia_escolhido - dia_ja_sorteado).days) == 1:
+            for dia_ja in dias_sorteados:
+                if abs((dia_escolhido - dia_ja).days) == 1:
                     eh_valido = False
                     break
 
@@ -1377,7 +1459,6 @@ def sortear_dias_gerente(semanas, ocupacao, limite, qtd_dias):
                 semanas_usadas.append(num_semana)
 
     return dias_sorteados
-
 
 @teletrabalho_bp.route('/visualizacao-geral')
 @login_required
@@ -1975,3 +2056,459 @@ def mover_pessoa():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': f'Erro: {str(e)}'}), 500
+
+
+@teletrabalho_bp.route('/ferias', methods=['GET'])
+@login_required
+def marcar_ferias():
+    """Página para marcar férias"""
+    try:
+        usuario = Usuario.query.get(current_user.id)
+        empregado = usuario.empregado
+
+        if not empregado:
+            flash('Você precisa estar vinculado a um empregado.', 'warning')
+            return redirect(url_for('teletrabalho.index'))
+
+        periodos = gerar_opcoes_periodo()
+
+        # Buscar férias já marcadas
+        ferias_marcadas = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == current_user.id,
+            Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).order_by(Teletrabalho.DATA_TELETRABALHO).all()
+
+        return render_template('teletrabalho/marcar_ferias.html',
+                               periodos=periodos,
+                               ferias_marcadas=ferias_marcadas)
+
+    except Exception as e:
+        flash(f'Erro: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/ferias/calendario/<mes_referencia>', methods=['GET'])
+@login_required
+def ferias_calendario(mes_referencia):
+    """Retorna dados do calendário para marcação de férias via AJAX"""
+    try:
+        usuario = Usuario.query.get(current_user.id)
+        empregado = usuario.empregado
+
+        if not empregado:
+            return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+
+        ano = int(mes_referencia[:4])
+        mes = int(mes_referencia[4:])
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # Buscar férias já marcadas
+        ferias_marcadas = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == current_user.id,
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        datas_ferias = [f.DATA_TELETRABALHO.strftime('%Y-%m-%d') for f in ferias_marcadas]
+
+        # Buscar teletrabalhos já marcados
+        teletrabalhos = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == current_user.id,
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        datas_teletrabalho = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos]
+
+        # Montar dias
+        dias = []
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            data_str = data_atual.strftime('%Y-%m-%d')
+            feriado_obj = Feriado.obter_feriado(data_atual)
+
+            dias.append({
+                'data': data_str,
+                'dia': data_atual.day,
+                'eh_util': Feriado.eh_dia_util(data_atual),
+                'ja_marcado_ferias': data_str in datas_ferias,
+                'ja_marcado_teletrabalho': data_str in datas_teletrabalho,
+                'feriado': feriado_obj.DS_FERIADO if feriado_obj else None
+            })
+
+            data_atual += timedelta(days=1)
+
+        return jsonify({
+            'sucesso': True,
+            'dias': dias,
+            'primeiro_dia_grid': (primeiro_dia.weekday() + 1) % 7
+        })
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@teletrabalho_bp.route('/ferias/salvar', methods=['POST'])
+@login_required
+def salvar_ferias():
+    """Salva marcação de férias"""
+    try:
+        usuario = Usuario.query.get(current_user.id)
+        empregado = usuario.empregado
+
+        if not empregado:
+            return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+
+        data = request.get_json()
+        datas_str = data.get('datas', [])
+
+        if not datas_str:
+            return jsonify({'erro': 'Selecione pelo menos um dia'}), 400
+
+        area = empregado.sgSuperintendencia
+        tipo_area = 'superintendencia'
+
+        datas = [datetime.strptime(d, '%Y-%m-%d').date() for d in datas_str]
+
+        # Validar se já tem teletrabalho marcado
+        teletrabalhos_conflito = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == current_user.id,
+            Teletrabalho.DATA_TELETRABALHO.in_(datas),
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        if teletrabalhos_conflito:
+            datas_conflito = [t.DATA_TELETRABALHO.strftime('%d/%m/%Y') for t in teletrabalhos_conflito]
+            return jsonify({
+                'erro': f'Você já tem teletrabalho marcado em: {", ".join(datas_conflito)}'
+            }), 400
+
+        # Salvar férias
+        for data_ferias in datas:
+            # Verificar se já existe
+            existe = Teletrabalho.query.filter(
+                Teletrabalho.USUARIO_ID == current_user.id,
+                Teletrabalho.DATA_TELETRABALHO == data_ferias,
+                Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+                Teletrabalho.DELETED_AT.is_(None)
+            ).first()
+
+            if not existe:
+                ferias = Teletrabalho(
+                    USUARIO_ID=current_user.id,
+                    DATA_TELETRABALHO=data_ferias,
+                    MES_REFERENCIA=data_ferias.strftime('%Y%m'),
+                    AREA=area,
+                    TIPO_AREA=tipo_area,
+                    STATUS='APROVADO',
+                    TIPO_PERIODO='FERIAS',
+                    TIPO_MARCACAO='FERIAS',  # ✅ IMPORTANTE
+                    OBSERVACAO='Férias marcadas pelo usuário',
+                    APROVADO_POR=current_user.id,
+                    APROVADO_EM=datetime.utcnow()
+                )
+                db.session.add(ferias)
+
+        db.session.commit()
+
+        return jsonify({
+            'sucesso': True,
+            'mensagem': f'{len(datas)} dia(s) de férias marcado(s)!'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+
+@teletrabalho_bp.route('/ferias/excluir/<int:id>', methods=['POST'])
+@login_required
+def excluir_ferias(id):
+    """Exclui marcação de férias"""
+    try:
+        ferias = Teletrabalho.query.get_or_404(id)
+
+        if ferias.USUARIO_ID != current_user.id:
+            return jsonify({'erro': 'Sem permissão'}), 403
+
+        if ferias.TIPO_MARCACAO != 'FERIAS':
+            return jsonify({'erro': 'Não é registro de férias'}), 400
+
+        ferias.DELETED_AT = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({
+            'sucesso': True,
+            'mensagem': 'Férias removidas!'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+
+@teletrabalho_bp.route('/admin/marcar-ferias', methods=['GET'])
+@login_required
+def admin_marcar_ferias():
+    """Página para gestor marcar férias de usuários"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+    try:
+        # Buscar usuários da área (similar ao admin_cadastrar)
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso in ['admin', 'moderador']:
+            # Admin/Moderador vê todos
+            usuarios_query = db.session.query(
+                Usuario.ID,
+                Usuario.NOME,
+                Empregado.sgSuperintendencia,
+                Empregado.dsCargo
+            ).join(
+                Empregado, Usuario.FK_PESSOA == Empregado.pkPessoa
+            ).filter(
+                Usuario.ATIVO == True,
+                Usuario.DELETED_AT.is_(None),
+                Empregado.fkStatus == 1,
+                Empregado.sgSuperintendencia.isnot(None)
+            ).order_by(Usuario.NOME).all()
+
+        else:  # Gerente
+            if not usuario.empregado:
+                flash('Você não está vinculado a nenhuma área.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+            area_gerente = usuario.empregado.sgSuperintendencia
+
+            usuarios_query = db.session.query(
+                Usuario.ID,
+                Usuario.NOME,
+                Empregado.sgSuperintendencia,
+                Empregado.dsCargo
+            ).join(
+                Empregado, Usuario.FK_PESSOA == Empregado.pkPessoa
+            ).filter(
+                Usuario.ATIVO == True,
+                Usuario.DELETED_AT.is_(None),
+                Empregado.fkStatus == 1,
+                Empregado.sgSuperintendencia == area_gerente
+            ).order_by(Usuario.NOME).all()
+
+        usuarios = [
+            {
+                'id': u.ID,
+                'nome': u.NOME,
+                'area': u.sgSuperintendencia,
+                'cargo': u.dsCargo
+            }
+            for u in usuarios_query
+        ]
+
+        periodos = gerar_opcoes_periodo()
+
+        return render_template('teletrabalho/admin_marcar_ferias.html',
+                               usuarios=usuarios,
+                               periodos=periodos)
+
+    except Exception as e:
+        flash(f'Erro: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/admin/marcar-ferias/calendario/<int:usuario_id>/<mes_referencia>', methods=['GET'])
+@login_required
+def admin_ferias_calendario(usuario_id, mes_referencia):
+    """Retorna dados do calendário para gestor marcar férias de usuário"""
+    usuario_logado = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario_logado):
+        return jsonify({'erro': 'Sem permissão'}), 403
+
+    try:
+        # Buscar usuário alvo
+        usuario_alvo = Usuario.query.get_or_404(usuario_id)
+        empregado = usuario_alvo.empregado
+
+        if not empregado:
+            return jsonify({'erro': 'Usuário sem vínculo com empregado'}), 404
+
+        # Validar permissão de área (gerente só pode marcar da sua área)
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario_logado)
+
+        if nivel_acesso == 'gerente':
+            if not usuario_logado.empregado:
+                return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+
+            area_gerente = usuario_logado.empregado.sgSuperintendencia
+
+            if empregado.sgSuperintendencia != area_gerente:
+                return jsonify({'erro': 'Você só pode marcar férias de usuários da sua área'}), 403
+
+        ano = int(mes_referencia[:4])
+        mes = int(mes_referencia[4:])
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # Buscar férias já marcadas
+        ferias_marcadas = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == usuario_id,
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        datas_ferias = [f.DATA_TELETRABALHO.strftime('%Y-%m-%d') for f in ferias_marcadas]
+
+        # Buscar teletrabalhos
+        teletrabalhos = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == usuario_id,
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        datas_teletrabalho = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos]
+
+        # Montar dias
+        dias = []
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            data_str = data_atual.strftime('%Y-%m-%d')
+            feriado_obj = Feriado.obter_feriado(data_atual)
+
+            dias.append({
+                'data': data_str,
+                'dia': data_atual.day,
+                'eh_util': Feriado.eh_dia_util(data_atual),
+                'ja_marcado_ferias': data_str in datas_ferias,
+                'ja_marcado_teletrabalho': data_str in datas_teletrabalho,
+                'feriado': feriado_obj.DS_FERIADO if feriado_obj else None
+            })
+
+            data_atual += timedelta(days=1)
+
+        return jsonify({
+            'sucesso': True,
+            'dias': dias,
+            'primeiro_dia_grid': (primeiro_dia.weekday() + 1) % 7,
+            'usuario_nome': usuario_alvo.NOME,
+            'area': empregado.sgSuperintendencia
+        })
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@teletrabalho_bp.route('/admin/marcar-ferias/salvar', methods=['POST'])
+@login_required
+def admin_salvar_ferias():
+    """Gestor salva férias de usuário"""
+    usuario_logado = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario_logado):
+        return jsonify({'erro': 'Sem permissão'}), 403
+
+    try:
+        data = request.get_json()
+        usuario_id = int(data.get('usuario_id'))
+        datas_str = data.get('datas', [])
+
+        if not datas_str:
+            return jsonify({'erro': 'Selecione pelo menos um dia'}), 400
+
+        # Buscar usuário alvo
+        usuario_alvo = Usuario.query.get_or_404(usuario_id)
+        empregado = usuario_alvo.empregado
+
+        if not empregado:
+            return jsonify({'erro': 'Usuário sem vínculo com empregado'}), 404
+
+        # Validar permissão de área
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario_logado)
+
+        if nivel_acesso == 'gerente':
+            if not usuario_logado.empregado:
+                return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+
+            area_gerente = usuario_logado.empregado.sgSuperintendencia
+
+            if empregado.sgSuperintendencia != area_gerente:
+                return jsonify({'erro': 'Você só pode marcar férias de usuários da sua área'}), 403
+
+        area = empregado.sgSuperintendencia
+        tipo_area = 'superintendencia'
+
+        datas = [datetime.strptime(d, '%Y-%m-%d').date() for d in datas_str]
+
+        # Validar conflito com teletrabalho
+        teletrabalhos_conflito = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == usuario_id,
+            Teletrabalho.DATA_TELETRABALHO.in_(datas),
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        if teletrabalhos_conflito:
+            datas_conflito = [t.DATA_TELETRABALHO.strftime('%d/%m/%Y') for t in teletrabalhos_conflito]
+            return jsonify({
+                'erro': f'Usuário já tem teletrabalho marcado em: {", ".join(datas_conflito)}'
+            }), 400
+
+        # Salvar férias
+        for data_ferias in datas:
+            existe = Teletrabalho.query.filter(
+                Teletrabalho.USUARIO_ID == usuario_id,
+                Teletrabalho.DATA_TELETRABALHO == data_ferias,
+                Teletrabalho.TIPO_MARCACAO == 'FERIAS',
+                Teletrabalho.DELETED_AT.is_(None)
+            ).first()
+
+            if not existe:
+                ferias = Teletrabalho(
+                    USUARIO_ID=usuario_id,
+                    DATA_TELETRABALHO=data_ferias,
+                    MES_REFERENCIA=data_ferias.strftime('%Y%m'),
+                    AREA=area,
+                    TIPO_AREA=tipo_area,
+                    STATUS='APROVADO',
+                    TIPO_PERIODO='FERIAS',
+                    TIPO_MARCACAO='FERIAS',
+                    OBSERVACAO=f'[{nivel_acesso.upper()}] Férias marcadas por {usuario_logado.NOME}',
+                    APROVADO_POR=current_user.id,
+                    APROVADO_EM=datetime.utcnow()
+                )
+                db.session.add(ferias)
+
+        db.session.commit()
+
+        try:
+            registrar_log(
+                acao='criar',
+                entidade='ferias',
+                entidade_id=0,
+                descricao=f'{nivel_acesso.upper()} marcou {len(datas)} dia(s) de férias para {usuario_alvo.NOME}'
+            )
+        except:
+            pass
+
+        return jsonify({
+            'sucesso': True,
+            'mensagem': f'{len(datas)} dia(s) de férias marcado(s) para {usuario_alvo.NOME}!'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500

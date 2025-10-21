@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-umbrella-beach me-2"></i>
+            Marcar Férias (Gestor)
+        </h1>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Modo Gestor:</strong> Marque férias em nome de qualquer usuário da sua área.
+        Dias de férias não contam no limite de teletrabalho e não serão sorteados automaticamente.
+    </div>
+
+    <!-- Seleção de Usuário -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-user-check me-2"></i>Selecione o Usuário</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Usuário: <span class="text-danger">*</span></label>
+                    <select id="selectUsuario" class="form-select form-select-lg">
+                        <option value="">Selecione...</option>
+                        {% for usuario in usuarios %}
+                        <option value="{{ usuario.id }}"
+                                data-area="{{ usuario.area }}"
+                                data-cargo="{{ usuario.cargo }}">
+                            {{ usuario.nome }} - {{ usuario.area }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Mês: <span class="text-danger">*</span></label>
+                    <select id="selectMes" class="form-select form-select-lg">
+                        {% for periodo in periodos %}
+                        <option value="{{ periodo.mes_ref }}">{{ periodo.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-primary btn-lg w-100" onclick="carregarCalendario()">
+                        <i class="fas fa-calendar-alt me-2"></i>Carregar
+                    </button>
+                </div>
+            </div>
+
+            <div id="infoUsuario" class="mt-3" style="display: none;">
+                <div class="alert alert-success">
+                    <strong>Usuário:</strong> <span id="infoNome"></span> |
+                    <strong>Área:</strong> <span id="infoArea"></span> |
+                    <strong>Cargo:</strong> <span id="infoCargo"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Container do Calendário -->
+    <div id="containerCalendario" style="display: none;">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-calendar-check me-2"></i>Selecione os Dias de Férias</h5>
+            </div>
+            <div class="card-body">
+                <div class="legenda mb-3">
+                    <span class="badge bg-success me-2">Disponível</span>
+                    <span class="badge bg-warning me-2">Já marcado (Férias)</span>
+                    <span class="badge bg-danger me-2">Teletrabalho marcado</span>
+                    <span class="badge bg-secondary me-2">Não útil</span>
+                </div>
+
+                <div class="calendario-grid" id="calendarioGrid"></div>
+            </div>
+            <div class="card-footer">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button class="btn btn-secondary btn-lg w-100" onclick="location.reload()">
+                            <i class="fas fa-redo me-2"></i>Resetar
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-success btn-lg w-100" onclick="salvarFerias()">
+                            <i class="fas fa-save me-2"></i>Salvar Férias
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.calendario-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.dia-header { background: #667eea; color: white; text-align: center; padding: 10px; font-weight: bold; border-radius: 5px; }
+.dia-cell { background: white; border: 2px solid #e0e0e0; border-radius: 8px; padding: 15px; min-height: 100px; cursor: pointer; transition: all 0.3s; }
+.dia-cell:hover:not(.nao-util):not(.ja-marcado-teletrabalho) { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+.dia-cell.nao-util { background: #f5f5f5; cursor: not-allowed; opacity: 0.6; }
+.dia-cell.ja-marcado-ferias { background: #fff3cd; border-color: #ffc107; }
+.dia-cell.ja-marcado-teletrabalho { background: #f8d7da; border-color: #dc3545; cursor: not-allowed; }
+.dia-cell.selecionado { background: #d4edda; border-color: #28a745; }
+.dia-numero { font-size: 1.5rem; font-weight: bold; margin-bottom: 5px; }
+.dia-checkbox { width: 20px; height: 20px; margin-top: 10px; }
+</style>
+
+<script>
+let dadosCalendario = null;
+let usuarioIdAtual = null;
+
+function carregarCalendario() {
+    const usuarioId = document.getElementById('selectUsuario').value;
+    const mesRef = document.getElementById('selectMes').value;
+
+    if (!usuarioId) {
+        alert('Selecione um usuário!');
+        return;
+    }
+
+    usuarioIdAtual = usuarioId;
+
+    // Mostrar info do usuário
+    const selectUsuario = document.getElementById('selectUsuario');
+    const option = selectUsuario.options[selectUsuario.selectedIndex];
+
+    document.getElementById('infoNome').textContent = option.text.split(' - ')[0];
+    document.getElementById('infoArea').textContent = option.getAttribute('data-area');
+    document.getElementById('infoCargo').textContent = option.getAttribute('data-cargo');
+    document.getElementById('infoUsuario').style.display = 'block';
+
+    fetch(`/teletrabalho/admin/marcar-ferias/calendario/${usuarioId}/${mesRef}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso) {
+                dadosCalendario = data;
+                renderizarCalendario(data);
+                document.getElementById('containerCalendario').style.display = 'block';
+            } else {
+                alert('Erro: ' + data.erro);
+            }
+        })
+        .catch(e => alert('Erro: ' + e));
+}
+
+function renderizarCalendario(data) {
+    const grid = document.getElementById('calendarioGrid');
+    let html = '';
+
+    // Headers
+    ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'].forEach(dia => {
+        html += `<div class="dia-header">${dia}</div>`;
+    });
+
+    // Espaços vazios
+    for (let i = 0; i < data.primeiro_dia_grid; i++) {
+        html += '<div></div>';
+    }
+
+    // Dias
+    data.dias.forEach(dia => {
+        let classes = 'dia-cell';
+        let disabled = '';
+
+        if (!dia.eh_util) {
+            classes += ' nao-util';
+            disabled = 'disabled';
+        } else if (dia.ja_marcado_teletrabalho) {
+            classes += ' ja-marcado-teletrabalho';
+            disabled = 'disabled';
+        } else if (dia.ja_marcado_ferias) {
+            classes += ' ja-marcado-ferias';
+        }
+
+        html += `<div class="${classes}">`;
+        html += `<div class="dia-numero">${dia.dia}</div>`;
+
+        if (dia.feriado) {
+            html += `<small class="text-danger">${dia.feriado.substring(0, 10)}</small>`;
+        } else if (dia.ja_marcado_teletrabalho) {
+            html += '<small class="text-danger">Teletrabalho</small>';
+        } else if (dia.ja_marcado_ferias) {
+            html += '<small class="text-warning">Férias</small>';
+        } else if (!dia.eh_util) {
+            html += '<small class="text-muted">Não útil</small>';
+        } else {
+            html += `<input type="checkbox" class="dia-checkbox" value="${dia.data}" ${disabled}>`;
+        }
+
+        html += '</div>';
+    });
+
+    grid.innerHTML = html;
+}
+
+function salvarFerias() {
+    if (!usuarioIdAtual) {
+        alert('Selecione um usuário primeiro!');
+        return;
+    }
+
+    const checkboxes = document.querySelectorAll('.dia-checkbox:checked');
+    const datas = Array.from(checkboxes).map(cb => cb.value);
+
+    if (datas.length === 0) {
+        alert('Selecione pelo menos um dia!');
+        return;
+    }
+
+    if (!confirm(`Marcar ${datas.length} dia(s) de férias para este usuário?`)) {
+        return;
+    }
+
+    fetch('/teletrabalho/admin/marcar-ferias/salvar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            usuario_id: usuarioIdAtual,
+            datas: datas
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.sucesso) {
+            alert(data.mensagem);
+            location.reload();
+        } else {
+            alert('Erro: ' + data.erro);
+        }
+    })
+    .catch(e => alert('Erro: ' + e));
+}
+</script>
+{% endblock %}

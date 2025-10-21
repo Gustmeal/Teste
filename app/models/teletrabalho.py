@@ -47,12 +47,15 @@ class Teletrabalho(db.Model):
     OBSERVACAO = db.Column(db.Text)
     APROVADO_POR = db.Column(db.Integer, db.ForeignKey('BDG.APK_TB002_USUARIOS.ID'))
     APROVADO_EM = db.Column(db.DateTime)
+    TIPO_MARCACAO = db.Column(db.String(20), default='TELETRABALHO')
     CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
     UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
     DELETED_AT = db.Column(db.DateTime)
 
-    usuario = db.relationship('Usuario', foreign_keys=[USUARIO_ID], backref='teletrabalhos')
+    usuario = db.relationship('Usuario', foreign_keys=[USUARIO_ID])
     aprovador = db.relationship('Usuario', foreign_keys=[APROVADO_POR])
+
+    # ... resto dos métodos permanecem iguais ...
 
     def __repr__(self):
         return f'<Teletrabalho {self.ID} - Usuario {self.USUARIO_ID} - {self.DATA_TELETRABALHO}>'

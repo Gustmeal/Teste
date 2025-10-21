@@ -66,6 +66,55 @@
         </div>
     </div>
 
+    <!-- ✅ AÇÕES RÁPIDAS DO USUÁRIO (PARA TODOS) -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-bolt me-2"></i>Minhas Ações Rápidas</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="card border-warning h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-umbrella-beach fa-3x text-warning mb-3"></i>
+                            <h6>Marcar Minhas Férias</h6>
+                            <p class="small text-muted">Informar meus dias de férias</p>
+                            <a href="{{ url_for('teletrabalho.marcar_ferias') }}" class="btn btn-warning btn-sm">
+                                <i class="fas fa-calendar-plus me-1"></i>Marcar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card border-info h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-eye fa-3x text-info mb-3"></i>
+                            <h6>Ver Calendário</h6>
+                            <p class="small text-muted">Visualizar calendário completo</p>
+                            <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info btn-sm">
+                                <i class="fas fa-calendar me-1"></i>Visualizar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card border-secondary h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-history fa-3x text-secondary mb-3"></i>
+                            <h6>Meus Registros</h6>
+                            <p class="small text-muted">Ver meus dias marcados</p>
+                            <a href="{{ url_for('teletrabalho.calendario', mes_referencia=mes_atual) }}" class="btn btn-secondary btn-sm">
+                                <i class="fas fa-list me-1"></i>Ver
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Seleção de Área (Admin/Gerente) -->
     {% if eh_gestor and areas %}
     <div class="card shadow mb-4">
@@ -143,6 +192,7 @@
                         <li><strong>Limite Diário:</strong> {{ limite }} pessoas simultaneamente (30% da área)</li>
                         <li><strong>Dias Úteis:</strong> Apenas dias úteis podem ser selecionados</li>
                         <li><strong>Aprovação:</strong> Automática após seleção</li>
+                        <li><strong>Férias:</strong> Dias de férias não contam no limite e não podem ser sorteados</li>
                     </ul>
                 </div>
                 <div class="col-md-6">
@@ -188,7 +238,7 @@
                     <div class="card border-success h-100">
                         <div class="card-body text-center">
                             <i class="fas fa-user-plus fa-3x text-success mb-3"></i>
-                            <h6>Cadastrar</h6>
+                            <h6>Cadastrar Teletrabalho</h6>
                             <p class="small text-muted">Marcar dias para outros usuários</p>
                             <a href="{{ url_for('teletrabalho.admin_cadastrar') }}" class="btn btn-success btn-sm">
                                 Acessar
@@ -208,14 +258,29 @@
                         </div>
                     </div>
                 </div>
-                {% if current_user.perfil == 'admin' %}
+
+                <!-- BOTÃO MARCAR FÉRIAS DE USUÁRIOS (PARA GESTORES) -->
                 <div class="col-md-3">
                     <div class="card border-warning h-100">
                         <div class="card-body text-center">
-                            <i class="fas fa-chart-bar fa-3x text-warning mb-3"></i>
+                            <i class="fas fa-umbrella-beach fa-3x text-warning mb-3"></i>
+                            <h6>Marcar Férias</h6>
+                            <p class="small text-muted">Marcar férias de usuários</p>
+                            <a href="{{ url_for('teletrabalho.admin_marcar_ferias') }}" class="btn btn-warning btn-sm">
+                                Acessar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                {% if current_user.perfil == 'admin' %}
+                <div class="col-md-3">
+                    <div class="card border-danger h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-chart-bar fa-3x text-danger mb-3"></i>
                             <h6>Relatório</h6>
                             <p class="small text-muted">Estatísticas e análises</p>
-                            <a href="{{ url_for('teletrabalho.relatorio') }}" class="btn btn-warning btn-sm">
+                            <a href="{{ url_for('teletrabalho.relatorio') }}" class="btn btn-danger btn-sm">
                                 Acessar
                             </a>
                         </div>
@@ -253,6 +318,13 @@
 .card:hover {
     box-shadow: 0 8px 25px rgba(0,0,0,0.15);
 }
+
+.card.border-success:hover { border-width: 2px; }
+.card.border-warning:hover { border-width: 2px; }
+.card.border-info:hover { border-width: 2px; }
+.card.border-primary:hover { border-width: 2px; }
+.card.border-secondary:hover { border-width: 2px; }
+.card.border-danger:hover { border-width: 2px; }
 </style>
 
 <script>
