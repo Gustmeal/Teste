@@ -68,7 +68,7 @@ def processar_carga():
     """Processa a carga do arquivo TXT - ACUMULANDO DADOS"""
     try:
         # Caminho base para buscar os arquivos
-        caminho_base = r"\\Compartilhadas\UNIDADES\SUCRE\GEINC\AUTORIZAR_VALIDAR\Contrato Imobiliário\Seguro\FORA SFH\Caixa Seguradora\2025_CAIXA\092025"
+        caminho_base = r"\\Compartilhadas\UNIDADES\SUCRE\GEINC\AUTORIZAR_VALIDAR\Contrato Imobiliário\Seguro\FORA SFH\Caixa Seguradora\2025_CAIXAx2023"
 
         # Verifica se o caminho existe
         if not os.path.exists(caminho_base):

@@ -1,213 +1,355 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container fade-in">
-    <a href="{{ url_for('caixa_emgea.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
+<div class="container-fluid fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-money-check-alt me-2"></i>
+            {% if edit_mode %}Editar{% else %}Novo{% endif %} Registro - Caixa EMGEA
+        </h1>
+        <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Voltar
+        </a>
+    </div>
 
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white">
-            <h4 class="mb-0">
-                {% if registro %}
-                    <i class="fas fa-edit me-2"></i>Editar Registro
-                {% else %}
-                    <i class="fas fa-plus me-2"></i>Novo Registro
-                {% endif %}
-            </h4>
-        </div>
-        <div class="card-body">
-            {% if duplicidade %}
-            <div class="alert alert-warning">
-                <i class="fas fa-exclamation-triangle me-2"></i>
-                <strong>Atenção:</strong> Já existe um registro com este Número de Contrato e Valor.
-                <div class="form-check mt-2">
-                    <input type="checkbox" class="form-check-input" id="confirmar_duplicidade"
-                           name="confirmar_duplicidade" value="1">
-                    <label class="form-check-label" for="confirmar_duplicidade">
-                        Confirmo que desejo incluir mesmo assim
-                    </label>
+    <form method="POST" id="formCaixaEmgea">
+        <div class="row">
+            <!-- Coluna Esquerda -->
+            <div class="col-md-6">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Dados Principais</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Número do Contrato -->
+                        <div class="mb-3">
+                            <label for="nu_contrato" class="form-label">Número do Contrato</label>
+                            <input type="number" class="form-control" id="nu_contrato" name="nu_contrato"
+                                   value="{{ registro.NU_CONTRATO if edit_mode else (dados.nu_contrato if dados else '') }}">
+                        </div>
+
+                        <!-- Número do Ofício -->
+                        <div class="mb-3">
+                            <label for="nu_oficio" class="form-label">Número do Ofício</label>
+                            <input type="number" class="form-control" id="nu_oficio" name="nu_oficio"
+                                   value="{{ registro.NU_OFICIO if edit_mode else (dados.nu_oficio if dados else '') }}">
+                        </div>
+
+                        <!-- Data do Documento -->
+                        <div class="mb-3">
+                            <label for="dt_documento" class="form-label">Data do Documento</label>
+                            <input type="date" class="form-control" id="dt_documento" name="dt_documento"
+                                   value="{{ registro.DT_DOCUMENTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_DOCUMENTO else (dados.dt_documento if dados else '') }}">
+                        </div>
+
+                        <!-- Devedor (CAIXA ou EMGEA) -->
+                        <div class="mb-3">
+                            <label for="devedor" class="form-label">Devedor <span class="text-danger">*</span></label>
+                            <select class="form-select" id="devedor" name="devedor" required>
+                                <option value="">Selecione...</option>
+                                {% for dev in devedores %}
+                                <option value="{{ dev }}"
+                                        {% if edit_mode and registro.DEVEDOR == dev %}selected
+                                        {% elif dados and dados.devedor == dev %}selected{% endif %}>
+                                    {{ dev }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Selecione CAIXA ou EMGEA</small>
+                        </div>
+
+                        <!-- Valor da Falha -->
+                        <div class="mb-3">
+                            <label for="vr_falha" class="form-label">Valor da Falha <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" class="form-control" id="vr_falha" name="vr_falha" required
+                                   value="{{ registro.VR_FALHA if edit_mode else (dados.vr_falha if dados else '') }}">
+                        </div>
+
+                        <!-- Valor Real (Readonly, copia VR_FALHA) -->
+                        <div class="mb-3">
+                            <label for="vr_real" class="form-label">Valor Real</label>
+                            <div class="input-group">
+                                <span class="input-group-text" id="vr_real_simbolo">-</span>
+                                <input type="text" class="form-control" id="vr_real" name="vr_real" readonly
+                                       value="{{ registro.VR_REAL if edit_mode else '' }}">
+                            </div>
+                            <small class="text-muted">Valor copiado automaticamente do "Valor da Falha"</small>
+                        </div>
+
+                        <!-- Ocorrência -->
+                        <div class="mb-3">
+                            <label for="id_ocorrencia" class="form-label">Ocorrência</label>
+                            <select class="form-select" id="id_ocorrencia" name="id_ocorrencia">
+                                <option value="">Selecione...</option>
+                                {% for occ in ocorrencias %}
+                                <option value="{{ occ.ID_OCORRENCIA }}"
+                                        {% if edit_mode and registro.ID_OCORRENCIA == occ.ID_OCORRENCIA %}selected{% endif %}>
+                                    {{ occ.DSC_OCORRENCIA }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Status -->
+                        <div class="mb-3">
+                            <label for="id_status" class="form-label">Status</label>
+                            <select class="form-select" id="id_status" name="id_status">
+                                <option value="">Selecione...</option>
+                                {% for st in status_list %}
+                                <option value="{{ st.ID_STATUS }}"
+                                        {% if edit_mode and registro.ID_STATUS == st.ID_STATUS %}selected{% endif %}>
+                                    {{ st.DSC_STATUS }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Carteira -->
+                        <div class="mb-3">
+                            <label for="id_carteira" class="form-label">Carteira</label>
+                            <select class="form-select" id="id_carteira" name="id_carteira">
+                                <option value="">Selecione...</option>
+                                {% for cart in carteiras %}
+                                <option value="{{ cart.ID_CARTEIRA }}"
+                                        {% if edit_mode and registro.ID_CARTEIRA == cart.ID_CARTEIRA %}selected{% endif %}>
+                                    {{ cart.DSC_CARTEIRA }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
-            {% endif %}
 
-            <form method="POST">
-                <div class="row">
-                    <!-- Primeira coluna -->
-                    <div class="col-md-6">
-                        <div class="mb-3">
-                            <label class="form-label">Ocorrência</label>
-                            <select name="id_ocorrencia" class="form-select">
-                                <option value="">Selecione (Opcional)</option>
-                                {% for ocorrencia in ocorrencias %}
-                                <option value="{{ ocorrencia.ID_OCORRENCIA }}"
-                                    {% if registro and registro.ID_OCORRENCIA == ocorrencia.ID_OCORRENCIA %}selected{% endif %}
-                                    {% if dados and dados.get('id_ocorrencia') == ocorrencia.ID_OCORRENCIA|string %}selected{% endif %}>
-                                    {{ ocorrencia.DSC_OCORRENCIA }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Número do Ofício</label>
-                            <input type="number" name="nu_oficio" class="form-control"
-                                   value="{{ registro.NU_OFICIO if registro else dados.get('nu_oficio', '') if dados else '' }}"
-                                   placeholder="Opcional">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Data do Ofício (YYYYMMDD)</label>
-                            <input type="number" name="dt_oficio" class="form-control"
-                                   value="{{ registro.DT_OFICIO if registro else dados.get('dt_oficio', '') if dados else '' }}"
-                                   placeholder="Ex: 20240115 (Opcional)">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Emitente</label>
-                            <input type="text" name="emitente" class="form-control" maxlength="5"
-                                   value="{{ registro.EMITENTE if registro else dados.get('emitente', '') if dados else '' }}"
-                                   placeholder="Até 5 caracteres (Opcional)">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Status</label>
-                            <select name="id_status" class="form-select">
-                                <option value="">Selecione (Opcional)</option>
-                                {% for status in status_list %}
-                                <option value="{{ status.ID_STATUS }}"
-                                    {% if registro and registro.ID_STATUS == status.ID_STATUS %}selected{% endif %}
-                                    {% if dados and dados.get('id_status') == status.ID_STATUS|string %}selected{% endif %}>
-                                    {{ status.DSC_STATUS }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Número do Contrato</label>
-                            <input type="text" name="nu_contrato" class="form-control"
-                                   value="{{ registro.NU_CONTRATO if registro else dados.get('nu_contrato', '') if dados else '' }}"
-                                   placeholder="Opcional">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Número do Processo</label>
-                            <textarea name="nu_processo" class="form-control" rows="2"
-                                      placeholder="Opcional">{{ registro.NU_PROCESSO if registro else dados.get('nu_processo', '') if dados else '' }}</textarea>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Número do Ticket</label>
-                            <input type="number" name="nr_ticket" class="form-control"
-                                   value="{{ registro.NR_TICKET if registro else dados.get('nr_ticket', '') if dados else '' }}"
-                                   placeholder="Opcional">
-                        </div>
+            <!-- Coluna Direita -->
+            <div class="col-md-6">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Informações Adicionais</h5>
                     </div>
-
-                    <!-- Segunda coluna -->
-                    <div class="col-md-6">
+                    <div class="card-body">
+                        <!-- Observação (Campo de Texto) -->
                         <div class="mb-3">
-                            <label class="form-label">Valor</label>
-                            <input type="number" name="valor" class="form-control" step="0.01"
-                                   value="{{ registro.VALOR if registro else dados.get('valor', '') if dados else '' }}"
-                                   placeholder="0.00 (Opcional)">
+                            <label for="observacao_texto" class="form-label">Observação</label>
+                            <textarea class="form-control" id="observacao_texto" name="observacao_texto" rows="3"
+                                      placeholder="Digite a observação...">{{ observacao_atual if edit_mode else '' }}</textarea>
+                            <small class="text-muted">Será salvo na tabela de observações</small>
                         </div>
 
+                        <!-- Especificação (Campo de Texto) -->
                         <div class="mb-3">
-                            <label class="form-label">Valor Real</label>
-                            <input type="number" name="vr_real" class="form-control" step="0.01"
-                                   value="{{ registro.VR_REAL if registro else dados.get('vr_real', '') if dados else '' }}"
-                                   placeholder="0.00 (Opcional)">
+                            <label for="especificacao_texto" class="form-label">Especificação</label>
+                            <textarea class="form-control" id="especificacao_texto" name="especificacao_texto" rows="3"
+                                      placeholder="Digite a especificação...">{{ especificacao_atual if edit_mode else '' }}</textarea>
+                            <small class="text-muted">Será salvo na tabela de especificações</small>
                         </div>
 
+                        <!-- IC Condenação -->
                         <div class="mb-3">
-                            <label class="form-label">Valor ISS</label>
-                            <input type="number" name="vr_iss" class="form-control" step="0.01"
-                                   value="{{ registro.VR_ISS if registro else dados.get('vr_iss', '') if dados else '' }}"
-                                   placeholder="0.00 (Opcional)">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Data de Pagamento</label>
-                            <input type="date" name="dt_pagto" class="form-control"
-                                   value="{{ registro.DT_PAGTO.strftime('%Y-%m-%d') if registro and registro.DT_PAGTO else dados.get('dt_pagto', '') if dados else '' }}">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Observação</label>
-                            <select name="id_observacao" class="form-select">
-                                <option value="">Selecione (Opcional)</option>
-                                {% for obs in observacoes %}
-                                <option value="{{ obs.ID_OBSERVACAO }}"
-                                    {% if registro and registro.ID_OBSERVACAO == obs.ID_OBSERVACAO %}selected{% endif %}
-                                    {% if dados and dados.get('id_observacao') == obs.ID_OBSERVACAO|string %}selected{% endif %}>
-                                    {{ obs.DSC_OBSERVACAO }}
-                                </option>
-                                {% endfor %}
+                            <label for="ic_condenacao" class="form-label">IC Condenação</label>
+                            <select class="form-select" id="ic_condenacao" name="ic_condenacao">
+                                <option value="">Selecione...</option>
+                                <option value="S" {% if edit_mode and registro.IC_CONDENACAO == True %}selected{% endif %}>SIM</option>
+                                <option value="N" {% if edit_mode and registro.IC_CONDENACAO == False %}selected{% endif %}>NÃO</option>
                             </select>
                         </div>
 
+                        <!-- Número do Processo -->
                         <div class="mb-3">
-                            <label class="form-label">Especificação</label>
-                            <input type="number" name="id_especificacao" class="form-control"
-                                   value="{{ registro.ID_ESPECIFICACAO if registro else dados.get('id_especificacao', '') if dados else '' }}"
-                                   placeholder="ID da Especificação (Opcional)">
+                            <label for="nr_processo" class="form-label">Número do Processo</label>
+                            <textarea class="form-control" id="nr_processo" name="nr_processo" rows="2"
+                                      placeholder="Digite o número do processo...">{{ registro.NR_PROCESSO if edit_mode else '' }}</textarea>
                         </div>
 
+                        <!-- Data de Pagamento -->
                         <div class="mb-3">
-                            <label class="form-label">Carteira</label>
-                            <select name="id_carteira" class="form-select">
-                                <option value="">Selecione (Opcional)</option>
-                                {% for carteira in carteiras %}
-                                <option value="{{ carteira.ID_CARTEIRA }}"
-                                    {% if registro and registro.ID_CARTEIRA == carteira.ID_CARTEIRA %}selected{% endif %}
-                                    {% if dados and dados.get('id_carteira') == carteira.ID_CARTEIRA|string %}selected{% endif %}>
-                                    {{ carteira.DSC_CARTEIRA }}
-                                </option>
-                                {% endfor %}
-                            </select>
+                            <label for="dt_pagto" class="form-label">Data de Pagamento</label>
+                            <input type="date" class="form-control" id="dt_pagto" name="dt_pagto"
+                                   value="{{ registro.DT_PAGTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_PAGTO else '' }}">
                         </div>
 
+                        <!-- Data Início Atualização -->
                         <div class="mb-3">
-                            <label class="form-label">Descrição do Documento</label>
-                            <input type="text" name="dsc_documento" class="form-control" maxlength="100"
-                                   value="{{ registro.DSC_DOCUMENTO if registro else dados.get('dsc_documento', '') if dados else '' }}"
-                                   placeholder="Até 100 caracteres (Opcional)">
+                            <label for="dt_inicio_atualizacao" class="form-label">Data Início Atualização</label>
+                            <input type="date" class="form-control" id="dt_inicio_atualizacao" name="dt_inicio_atualizacao"
+                                   value="{{ registro.DT_INICIO_ATUALIZACAO.strftime('%Y-%m-%d') if edit_mode and registro.DT_INICIO_ATUALIZACAO else '' }}">
+                        </div>
+
+                        <!-- Data de Atualização -->
+                        <div class="mb-3">
+                            <label for="dt_atualizacao" class="form-label">Data de Atualização</label>
+                            <input type="date" class="form-control" id="dt_atualizacao" name="dt_atualizacao"
+                                   value="{{ registro.DT_ATUALIZACAO.strftime('%Y-%m-%d') if edit_mode and registro.DT_ATUALIZACAO else '' }}">
                         </div>
                     </div>
                 </div>
 
-                <hr>
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">Outros Dados</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Número do Ticket -->
+                        <div class="mb-3">
+                            <label for="nr_ticket" class="form-label">Número do Ticket</label>
+                            <input type="number" class="form-control" id="nr_ticket" name="nr_ticket"
+                                   value="{{ registro.NR_TICKET if edit_mode else '' }}">
+                        </div>
 
-                <div class="d-flex justify-content-end gap-2">
-                    <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary">
-                        <i class="fas fa-times me-2"></i>Cancelar
-                    </a>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save me-2"></i>
-                        {% if registro %}Atualizar{% else %}Salvar{% endif %}
-                    </button>
+                        <!-- Descrição do Documento -->
+                        <div class="mb-3">
+                            <label for="dsc_documento" class="form-label">Descrição do Documento</label>
+                            <input type="text" class="form-control" id="dsc_documento" name="dsc_documento"
+                                   value="{{ registro.DSC_DOCUMENTO if edit_mode else '' }}" maxlength="100">
+                        </div>
+
+                        <!-- Valor do ISS -->
+                        <div class="mb-3">
+                            <label for="vr_iss" class="form-label">Valor do ISS</label>
+                            <input type="number" step="0.01" class="form-control" id="vr_iss" name="vr_iss"
+                                   value="{{ registro.VR_ISS if edit_mode else '' }}">
+                        </div>
+                    </div>
                 </div>
-            </form>
+            </div>
         </div>
-    </div>
+
+        <!-- Alerta de Duplicidade -->
+        {% if duplicidade %}
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Atenção!</strong> Já existe um registro com este Número de Contrato e Valor de Falha.
+            <div class="form-check mt-2">
+                <input class="form-check-input" type="checkbox" id="confirmar_duplicidade" name="confirmar_duplicidade" value="1">
+                <label class="form-check-label" for="confirmar_duplicidade">
+                    Confirmo que desejo incluir/alterar mesmo assim
+                </label>
+            </div>
+            <small class="text-muted d-block mt-2">
+                <i class="fas fa-info-circle"></i> Se confirmar, o campo INDICIO_DUPLIC será marcado automaticamente como TRUE.
+            </small>
+        </div>
+        {% endif %}
+
+        <!-- Botões -->
+        <div class="d-flex justify-content-end gap-2 mb-4">
+            <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary">
+                <i class="fas fa-times me-2"></i>Cancelar
+            </a>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>
+                {% if edit_mode %}Atualizar{% else %}Salvar{% endif %}
+            </button>
+        </div>
+    </form>
 </div>
 
 <script>
-// Script para formatar data do ofício enquanto digita
 document.addEventListener('DOMContentLoaded', function() {
-    const dtOficioInput = document.querySelector('input[name="dt_oficio"]');
-    if (dtOficioInput) {
-        dtOficioInput.addEventListener('input', function(e) {
-            // Remove caracteres não numéricos
-            this.value = this.value.replace(/\D/g, '');
-            // Limita a 8 dígitos
-            if (this.value.length > 8) {
-                this.value = this.value.substring(0, 8);
+    const devedorSelect = document.getElementById('devedor');
+    const vrFalhaInput = document.getElementById('vr_falha');
+    const vrRealInput = document.getElementById('vr_real');
+    const vrRealSimbolo = document.getElementById('vr_real_simbolo');
+
+    /**
+     * Atualiza o VR_REAL com base no VR_FALHA e DEVEDOR
+     * - Copia o valor de VR_FALHA para VR_REAL
+     * - Se DEVEDOR = CAIXA: verde com "+"
+     * - Se DEVEDOR = EMGEA: vermelho com "-"
+     */
+    function atualizarVrReal() {
+        const valorFalha = parseFloat(vrFalhaInput.value) || 0;
+        const devedor = devedorSelect.value;
+
+        if (valorFalha > 0) {
+            // Formatar valor com 2 casas decimais
+            const valorFormatado = valorFalha.toFixed(2);
+
+            if (devedor === 'CAIXA') {
+                // Verde com "+"
+                vrRealInput.value = valorFormatado;
+                vrRealInput.style.color = '#28a745';
+                vrRealInput.style.fontWeight = 'bold';
+                vrRealSimbolo.textContent = '+';
+                vrRealSimbolo.style.backgroundColor = '#28a745';
+                vrRealSimbolo.style.color = 'white';
+            } else if (devedor === 'EMGEA') {
+                // Vermelho com "-"
+                vrRealInput.value = valorFormatado;
+                vrRealInput.style.color = '#dc3545';
+                vrRealInput.style.fontWeight = 'bold';
+                vrRealSimbolo.textContent = '-';
+                vrRealSimbolo.style.backgroundColor = '#dc3545';
+                vrRealSimbolo.style.color = 'white';
+            } else {
+                // Sem devedor selecionado
+                vrRealInput.value = valorFormatado;
+                vrRealInput.style.color = '#000';
+                vrRealInput.style.fontWeight = 'normal';
+                vrRealSimbolo.textContent = '-';
+                vrRealSimbolo.style.backgroundColor = '#6c757d';
+                vrRealSimbolo.style.color = 'white';
             }
-        });
+        } else {
+            vrRealInput.value = '';
+            vrRealSimbolo.textContent = '-';
+            vrRealSimbolo.style.backgroundColor = '#6c757d';
+            vrRealSimbolo.style.color = 'white';
+        }
     }
+
+    // Eventos para atualizar VR_REAL automaticamente
+    vrFalhaInput.addEventListener('input', atualizarVrReal);
+    vrFalhaInput.addEventListener('change', atualizarVrReal);
+    devedorSelect.addEventListener('change', atualizarVrReal);
+
+    // Executar ao carregar a página (modo edição)
+    atualizarVrReal();
+
+    // Validação do formulário
+    document.getElementById('formCaixaEmgea').addEventListener('submit', function(e) {
+        const devedor = devedorSelect.value;
+        const vrFalha = parseFloat(vrFalhaInput.value) || 0;
+
+        if (!devedor) {
+            e.preventDefault();
+            alert('Por favor, selecione o Devedor (CAIXA ou EMGEA).');
+            devedorSelect.focus();
+            return false;
+        }
+
+        if (vrFalha <= 0) {
+            e.preventDefault();
+            alert('Por favor, informe um Valor da Falha válido.');
+            vrFalhaInput.focus();
+            return false;
+        }
+    });
 });
 </script>
+
+<style>
+.card {
+    border-radius: 10px;
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.form-label {
+    font-weight: 600;
+}
+
+#vr_real_simbolo {
+    font-weight: bold;
+    font-size: 1.2em;
+    min-width: 45px;
+    justify-content: center;
+}
+
+.alert-warning {
+    border-left: 4px solid #ffc107;
+}
+</style>
 {% endblock %}
