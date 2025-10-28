@@ -347,7 +347,7 @@ def gerar_arquivo_final():
                 'message': 'Selecione uma referência'
             }), 400
 
-        # Buscar dados
+        # Buscar dados - Aqui vem da view SEG_TB001_ARQUIVO_FINAL_TI
         dados = FaturaCaixa.obter_dados_arquivo_final(referencia)
 
         if not dados:
@@ -356,8 +356,40 @@ def gerar_arquivo_final():
                 'message': 'Nenhum dado encontrado para esta referência'
             }), 404
 
-        # Criar DataFrame
-        df = pd.DataFrame(dados)
+        # MODIFICAÇÃO CRÍTICA AQUI: Ajustar os dados antes de criar o DataFrame
+        # Trocar NR_CONTRATO por NUM_CONTRAT com formato completo
+        dados_ajustados = []
+        for item in dados:
+            novo_item = item.copy()
+
+            # Pegar o NR_CONTRATO e formatar como número completo
+            # Considerando que precisa adicionar zeros à esquerda para ter o formato completo
+            if 'NR_CONTRATO' in novo_item:
+                nr_contrato = novo_item.pop('NR_CONTRATO')  # Remove NR_CONTRATO
+
+                # Formatar para o padrão completo (exemplo: 100080000371)
+                # Assumindo que o formato completo tem 12 dígitos
+                if nr_contrato:
+                    # Se for número, formatar com zeros à esquerda
+                    num_contrat_formatado = f"10{str(nr_contrato).zfill(10)}"
+                    novo_item['NUM_CONTRAT'] = num_contrat_formatado
+                else:
+                    novo_item['NUM_CONTRAT'] = ''
+
+            dados_ajustados.append(novo_item)
+
+        # Criar DataFrame com os dados ajustados
+        df = pd.DataFrame(dados_ajustados)
+
+        # Reorganizar as colunas para NUM_CONTRAT ficar na posição correta
+        colunas_ordem = ['COD_SUBEST', 'COD_PRODUTO', 'NUM_CONTRAT', 'NOME_TITULAR',
+                         'PREMIO_MIP', 'IOF_MIP', 'PRM_MIP_ATRASO', 'IOF_MIP_ATRASO',
+                         'PREMIO_DFI', 'IOF_DFI', 'PRM_DFI_ATRASO', 'IOF_DFI_ATRASO',
+                         'REMUNER_MES', 'REFERENCIA', 'OBS', 'MIP_DIF']
+
+        # Reordenar apenas as colunas que existem
+        colunas_existentes = [col for col in colunas_ordem if col in df.columns]
+        df = df[colunas_existentes]
 
         # Criar arquivo Excel
         output = BytesIO()
@@ -419,24 +451,23 @@ def gerar_arquivo_final():
                     # Erro na automação, mas arquivo foi salvo
                     return jsonify({
                         'success': True,
-                        'message': f'Arquivo salvo! Erro na automação. Abra o chamado manualmente.',
+                        'message': f'Arquivo salvo! Erro na automação: {str(e)}. Abra o chamado manualmente.',
                         'arquivo': nome_arquivo,
                         'caminho': caminho_completo,
                         'automacao_completa': False,
-                        'instrucoes_manuais': True,
-                        'erro_tecnico': str(e)
+                        'instrucoes_manuais': True
                     })
 
-            # Apenas salvar sem automação
+            # Arquivo salvo sem tentar abrir chamado
             return jsonify({
                 'success': True,
-                'message': f'Arquivo salvo com sucesso!',
+                'message': 'Arquivo salvo com sucesso!',
                 'arquivo': nome_arquivo,
                 'caminho': caminho_completo
             })
 
         else:
-            # Retornar para download
+            # Retornar arquivo para download direto
             return send_file(
                 output,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
