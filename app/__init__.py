@@ -141,6 +141,9 @@ def create_app():
     from app.routes.linha_tempo_routes import linha_tempo_bp
     app.register_blueprint(linha_tempo_bp)
 
+    from app.routes.siscalculo_routes import siscalculo_bp
+    app.register_blueprint(siscalculo_bp)
+
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
