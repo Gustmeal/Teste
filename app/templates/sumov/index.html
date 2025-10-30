@@ -1,110 +1,399 @@
+<!-- templates/sumov/index.html -->
 {% extends "base.html" %}
 
+{% block title %}SUMOV - Sistema Unificado de Gestão{% endblock %}
+
 {% block content %}
-<div class="central-panel mt-5 fade-in">
-    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
-    <h1>SUMOV - Superintendência de Movimentação</h1>
-    <p class="text-secondary">Sistema de Gestão de Contratos e Imóveis</p>
-
-    <!-- Sistemas disponíveis -->
-    <div class="row g-4 mt-4">
-        <!-- Sistema de Relação Imóvel/Contrato -->
-        <div class="col-md-6">
-            <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-5">
-                    <div class="system-icon sumov-main-color mx-auto mb-4">
-                        <i class="fas fa-home"></i>
-                    </div>
-                    <h3 class="system-title mb-3">Relação Imóvel e Contrato de Parcelamento</h3>
-                    <p class="text-muted mb-4">
-                        Gerencie vinculações entre contratos de parcelamento e imóveis.
-                    </p>
-                    <a href="{{ url_for('sumov.relacao_imovel_contrato') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
+<div class="container-fluid mt-4">
+    <!-- Cabeçalho -->
+    <div class="page-header mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="h2">
+                    <i class="fas fa-building text-primary me-2"></i>
+                    SUMOV - Sistema Unificado de Movimentação
+                </h1>
+                <p class="text-muted mb-0">
+                    Gestão integrada de contratos, imóveis e processos administrativos
+                </p>
             </div>
-        </div>
-
-        <!-- Sistema de Evidências-->
-        <div class="col-md-6">
-            <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-5">
-                    <div class="system-icon sumov-main-color mx-auto mb-4">
-                        <i class="fas fa-home"></i>
-                    </div>
-                    <h3 class="system-title mb-3">Evidências SUMOV</h3>
-                    <p class="text-muted mb-4">
-                        Gestão de evidências e explicações.
-                    </p>
-                    <a href="{{ url_for('sumov.evidencias_index') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sistema de Registros de Pagamentos de Despesas -->
-        <div class="col-md-6">
-            <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-5">
-                    <div class="system-icon sumov-payment-color mx-auto mb-4">
-                        <i class="fas fa-money-check-alt"></i>
-                    </div>
-                    <h3 class="system-title mb-3">Registros de Pagamentos de Despesas</h3>
-                    <p class="text-muted mb-4">
-                        Registre e gerencie pagamentos de despesas de contratos.
-                    </p>
-                    <a href="{{ url_for('sumov.despesas_pagamentos') }}" class="btn btn-access">
-                        <i class="fas fa-arrow-right me-2"></i> Acessar Sistema
+            <div class="col-auto">
+                <div class="btn-group" role="group">
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-home me-2"></i>Início
                     </a>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Cards de Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total de Vinculações
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ total_vinculacoes }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-link fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Vinculações no Mês
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                {{ vinculacoes_mes }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar-check fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Módulos Ativos
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">5</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-th fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Última Atualização
+                            </div>
+                            <div class="h6 mb-0 font-weight-bold text-gray-800">
+                                {{ datetime.now().strftime('%d/%m/%Y') }}
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-sync fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Módulos do Sistema -->
+    <div class="row">
+        <div class="col-12">
+            <h4 class="mb-3">
+                <i class="fas fa-th-large me-2"></i>Módulos Disponíveis
+            </h4>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Relação Imóvel/Contrato -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-primary bg-gradient text-white mb-3">
+                        <i class="fas fa-home fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">Relação Imóvel/Contrato</h5>
+                    <p class="card-text text-muted">
+                        Vincular imóveis a contratos e gerenciar parcelamentos
+                    </p>
+                    <a href="{{ url_for('sumov.relacao_imovel_contrato') }}"
+                       class="btn btn-primary">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Despesas e Pagamentos -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-success bg-gradient text-white mb-3">
+                        <i class="fas fa-money-check-alt fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">Despesas e Pagamentos</h5>
+                    <p class="card-text text-muted">
+                        Registro e controle de despesas administrativas
+                    </p>
+                    <a href="{{ url_for('sumov.despesas_pagamentos') }}"
+                       class="btn btn-success">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Evidências -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-info bg-gradient text-white mb-3">
+                        <i class="fas fa-file-invoice fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">Evidências SUMOV</h5>
+                    <p class="card-text text-muted">
+                        Gestão de evidências e documentos comprobatórios
+                    </p>
+                    <a href="{{ url_for('sumov.evidencias_index') }}"
+                       class="btn btn-info">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOVO: SISCalculo -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover border-warning">
+                <div class="ribbon ribbon-top-right">
+                    <span class="bg-warning text-dark">NOVO</span>
+                </div>
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-warning bg-gradient text-white mb-3">
+                        <i class="fas fa-calculator fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">SISCalculo</h5>
+                    <p class="card-text text-muted">
+                        Cálculo de correção monetária com índices econômicos
+                    </p>
+                    <a href="{{ url_for('siscalculo.index') }}"
+                       class="btn btn-warning text-dark">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Relatórios -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-secondary bg-gradient text-white mb-3">
+                        <i class="fas fa-chart-bar fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">Relatórios</h5>
+                    <p class="card-text text-muted">
+                        Relatórios gerenciais e operacionais
+                    </p>
+                    <a href="#" class="btn btn-secondary disabled">
+                        <i class="fas fa-lock me-2"></i>Em Breve
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configurações -->
+        <div class="col-lg-3 col-md-6">
+            <div class="card h-100 shadow card-hover">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon bg-dark bg-gradient text-white mb-3">
+                        <i class="fas fa-cogs fa-3x"></i>
+                    </div>
+                    <h5 class="card-title">Configurações</h5>
+                    <p class="card-text text-muted">
+                        Parâmetros e configurações do sistema
+                    </p>
+                    <a href="#" class="btn btn-dark disabled">
+                        <i class="fas fa-lock me-2"></i>Em Breve
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas Atividades -->
+    {% if ultimas_vinculacoes %}
+    <div class="card shadow mt-5">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="fas fa-clock me-2"></i>Últimas Vinculações
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>Data/Hora</th>
+                            <th>Contrato</th>
+                            <th>Imóvel</th>
+                            <th>Tipo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vinculacao in ultimas_vinculacoes %}
+                        <tr>
+                            <td>
+                                {{ vinculacao.CREATED_AT.strftime('%d/%m/%Y %H:%M') if vinculacao.CREATED_AT else 'N/A' }}
+                            </td>
+                            <td>{{ vinculacao.NR_CONTRATO }}</td>
+                            <td>{{ vinculacao.NR_IMOVEL }}</td>
+                            <td>
+                                <span class="badge bg-info">
+                                    {{ vinculacao.TIPO_PARCELAMENTO }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
+<!-- Estilos customizados -->
 <style>
-    .system-icon {
-        font-size: 3rem;
-        margin-bottom: 1.5rem;
-        display: inline-block;
-        width: 90px;
-        height: 90px;
-        line-height: 90px;
+    .feature-icon {
+        width: 100px;
+        height: 100px;
         border-radius: 50%;
-        text-align: center;
-        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
     }
 
-    .sumov-main-color {
-        background-color: #fd7e14;
+    .card-hover {
+        transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
     }
 
-    .sumov-payment-color {
-        background-color: #20c997;
-    }
-
-    .home-card {
-        transition: transform 0.3s ease;
-    }
-
-    .home-card:hover {
+    .card-hover:hover {
         transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
     }
 
-    .system-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--primary-color);
+    .border-left-primary {
+        border-left: 4px solid #4e73df;
     }
 
-    .btn-access {
-        padding: 12px 30px;
-        font-weight: 500;
+    .border-left-success {
+        border-left: 4px solid #1cc88a;
+    }
+
+    .border-left-info {
+        border-left: 4px solid #36b9cc;
+    }
+
+    .border-left-warning {
+        border-left: 4px solid #f6c23e;
+    }
+
+    .text-xs {
+        font-size: .7rem;
+    }
+
+    .text-gray-300 {
+        color: #dddfeb;
+    }
+
+    .text-gray-800 {
+        color: #5a5c69;
+    }
+
+    .font-weight-bold {
+        font-weight: 700;
+    }
+
+    .text-uppercase {
+        text-transform: uppercase;
+    }
+
+    /* Ribbon para indicar módulo novo */
+    .ribbon {
+        position: absolute;
+        right: -5px;
+        top: -5px;
+        z-index: 1;
+        overflow: hidden;
+        width: 75px;
+        height: 75px;
+        text-align: right;
+    }
+
+    .ribbon span {
+        font-size: 10px;
+        font-weight: bold;
+        color: white;
+        text-transform: uppercase;
+        text-align: center;
+        line-height: 20px;
+        transform: rotate(45deg);
+        width: 100px;
+        display: block;
+        position: absolute;
+        top: 19px;
+        right: -21px;
+    }
+
+    .ribbon span::before {
+        content: "";
+        position: absolute;
+        left: 0px;
+        top: 100%;
+        z-index: -1;
+        border-left: 3px solid #f6c23e;
+        border-right: 3px solid transparent;
+        border-bottom: 3px solid transparent;
+        border-top: 3px solid #f6c23e;
+    }
+
+    .ribbon span::after {
+        content: "";
+        position: absolute;
+        right: 0px;
+        top: 100%;
+        z-index: -1;
+        border-left: 3px solid transparent;
+        border-right: 3px solid #f6c23e;
+        border-bottom: 3px solid transparent;
+        border-top: 3px solid #f6c23e;
     }
 </style>
+
+<script>
+    // Adicionar tooltip nos cards
+    document.addEventListener('DOMContentLoaded', function() {
+        const cards = document.querySelectorAll('.card-hover');
+        cards.forEach(card => {
+            card.addEventListener('mouseenter', function() {
+                this.style.cursor = 'pointer';
+            });
+        });
+    });
+</script>
 {% endblock %}

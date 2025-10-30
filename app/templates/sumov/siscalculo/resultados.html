@@ -1,0 +1,166 @@
+<!-- templates/sumov/siscalculo/resultados.html -->
+{% extends "base.html" %}
+
+{% block title %}Resultados do Cálculo - SISCalculo{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Cabeçalho -->
+    <div class="page-header mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="h2">
+                    <i class="fas fa-chart-bar text-success me-2"></i>
+                    Resultados do Cálculo
+                </h1>
+                <p class="text-muted mb-0">
+                    Data de Atualização: {{ dt_atualizacao.strftime('%d/%m/%Y') }}
+                </p>
+            </div>
+            <div class="col-auto">
+                <a href="{{ url_for('siscalculo.exportar_resultados', dt_atualizacao=dt_atualizacao) }}"
+                   class="btn btn-success me-2">
+                    <i class="fas fa-file-excel me-2"></i>Exportar Excel
+                </a>
+                <a href="{{ url_for('siscalculo.comparar_indices', dt_atualizacao=dt_atualizacao) }}"
+                   class="btn btn-warning me-2">
+                    <i class="fas fa-chart-line me-2"></i>Comparar Índices
+                </a>
+                <a href="{{ url_for('siscalculo.index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Voltar
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo por Índice -->
+    {% if totais %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-primary text-white">
+            <h6 class="m-0 font-weight-bold">
+                <i class="fas fa-calculator me-2"></i>Resumo dos Cálculos
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Índice</th>
+                            <th class="text-end">Total Cotas</th>
+                            <th class="text-end">Atualização</th>
+                            <th class="text-end">Juros</th>
+                            <th class="text-end">Multa</th>
+                            <th class="text-end">Subtotal</th>
+                            <th class="text-end">Honorários (10%)</th>
+                            <th class="text-end">Total Final</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for total in totais %}
+                        <tr>
+                            <td>
+                                <strong>{{ total.DSC_INDICE_ECONOMICO }}</strong>
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(total.total_cotas).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(total.total_atualizacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(total.total_juros).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(total.total_multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end table-warning">
+                                <strong>R$ {{ "{:,.2f}".format(total.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(total.honorarios).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end table-success">
+                                <strong>R$ {{ "{:,.2f}".format(total.total_final).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Detalhamento por Cota -->
+    {% if calculos %}
+    <div class="card shadow">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="fas fa-list me-2"></i>Detalhamento por Cota
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-sm">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Imóvel</th>
+                            <th>Vencimento</th>
+                            <th>Valor Original</th>
+                            <th>Meses Atraso</th>
+                            <th>% Atualização</th>
+                            <th>Atualização</th>
+                            <th>Juros</th>
+                            <th>Multa</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for calc in calculos %}
+                        <tr>
+                            <td>{{ calc.IMOVEL or '-' }}</td>
+                            <td>{{ calc.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(calc.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-center">{{ calc.TEMPO_ATRASO }}</td>
+                            <td class="text-center">
+                                {{ "{:.4f}%".format(calc.PERC_ATUALIZACAO * 100) if calc.PERC_ATUALIZACAO else '0.00%' }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(calc.ATM or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(calc.VR_JUROS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">
+                                R$ {{ "{:,.2f}".format(calc.VR_MULTA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end table-info">
+                                <strong>R$ {{ "{:,.2f}".format(calc.VR_TOTAL or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Nenhum cálculo encontrado para esta data.
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.table-sm td, .table-sm th {
+    padding: 0.3rem;
+}
+.font-weight-bold {
+    font-weight: 700;
+}
+</style>
+{% endblock %}

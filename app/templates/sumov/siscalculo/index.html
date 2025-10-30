@@ -1,0 +1,322 @@
+<!-- templates/sumov/siscalculo/index.html -->
+{% extends "base.html" %}
+
+{% block title %}SISCalculo - Cálculo de Índices Econômicos{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Cabeçalho -->
+    <div class="page-header mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="h2">
+                    <i class="fas fa-calculator text-primary me-2"></i>
+                    SISCalculo - Sistema de Cálculo de Índices
+                </h1>
+                <p class="text-muted mb-0">
+                    Calcule correções monetárias com diferentes índices econômicos
+                </p>
+            </div>
+            <div class="col-auto">
+                <a href="{{ url_for('sumov.index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Voltar ao SUMOV
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cards de Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Índices Disponíveis
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">4</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chart-line fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Taxa de Juros
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">1% a.m.</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-percentage fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Multa (após 2003)
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">2%</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-exclamation-triangle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Honorários
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">10%</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-gavel fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulário Principal -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 bg-primary text-white">
+            <h6 class="m-0 font-weight-bold">
+                <i class="fas fa-upload me-2"></i>Processar Cálculo
+            </h6>
+        </div>
+        <div class="card-body">
+            <form id="formCalculo" method="POST" action="{{ url_for('siscalculo.processar') }}" enctype="multipart/form-data">
+                <div class="row">
+                    <!-- Data de Atualização -->
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_atualizacao" class="form-label">
+                            <i class="fas fa-calendar me-1"></i>Data de Atualização
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="date"
+                               class="form-control"
+                               id="dt_atualizacao"
+                               name="dt_atualizacao"
+                               value="{{ data_atual }}"
+                               required>
+                        <small class="form-text text-muted">
+                            Data para atualização dos valores
+                        </small>
+                    </div>
+
+                    <!-- Índice Econômico -->
+                    <div class="col-md-4 mb-3">
+                        <label for="id_indice" class="form-label">
+                            <i class="fas fa-chart-line me-1"></i>Índice Econômico
+                            <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="id_indice" name="id_indice" required>
+                            <option value="">Selecione o índice...</option>
+                            {% for indice in indices %}
+                            <option value="{{ indice.ID_INDICE_ECONOMICO }}">
+                                {{ indice.DSC_INDICE_ECONOMICO }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted">
+                            Escolha o índice para correção monetária
+                        </small>
+                    </div>
+
+                    <!-- Upload do Arquivo -->
+                    <div class="col-md-4 mb-3">
+                        <label for="arquivo_excel" class="form-label">
+                            <i class="fas fa-file-excel me-1"></i>Arquivo Excel
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="file"
+                               class="form-control"
+                               id="arquivo_excel"
+                               name="arquivo_excel"
+                               accept=".xlsx,.xls"
+                               required>
+                        <small class="form-text text-muted">
+                            Formato: Imóvel | Data Vencimento | Valor
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Informações do Arquivo -->
+                <div class="alert alert-info" role="alert">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>Formato do Arquivo Excel
+                    </h6>
+                    <p class="mb-2">O arquivo deve conter as seguintes colunas:</p>
+                    <ul class="mb-0">
+                        <li><strong>Coluna A:</strong> Imóvel (opcional)</li>
+                        <li><strong>Coluna B:</strong> Data de Vencimento (formato DD/MM/AAAA)</li>
+                        <li><strong>Coluna C:</strong> Valor da Cota (formato numérico)</li>
+                    </ul>
+                </div>
+
+                <!-- Botões -->
+                <div class="row mt-4">
+                    <div class="col-md-12 text-center">
+                        <button type="button" class="btn btn-secondary me-2" onclick="limparFormulario()">
+                            <i class="fas fa-eraser me-2"></i>Limpar
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-calculator me-2"></i>Processar Cálculo
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Histórico de Processamentos -->
+    {% if historico %}
+    <div class="card shadow">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">
+                <i class="fas fa-history me-2"></i>Últimos Processamentos
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead>
+                        <tr>
+                            <th>Data Atualização</th>
+                            <th>Qtd. Registros</th>
+                            <th>Valor Total</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in historico %}
+                        <tr>
+                            <td>{{ h.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
+                            <td>{{ h.qtd_registros }}</td>
+                            <td>R$ {{ "{:,.2f}".format(h.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td>
+                                <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO) }}"
+                                   class="btn btn-sm btn-info">
+                                    <i class="fas fa-eye"></i> Ver Resultados
+                                </a>
+                                <a href="{{ url_for('siscalculo.comparar_indices', dt_atualizacao=h.DT_ATUALIZACAO) }}"
+                                   class="btn btn-sm btn-warning">
+                                    <i class="fas fa-chart-bar"></i> Comparar
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal de Processamento -->
+<div class="modal fade" id="modalProcessando" data-backdrop="static" data-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center p-4">
+                <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status">
+                    <span class="sr-only">Processando...</span>
+                </div>
+                <h5>Processando Cálculos</h5>
+                <p class="text-muted mb-0">Por favor, aguarde enquanto os cálculos são realizados...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Validação e submissão do formulário
+document.getElementById('formCalculo').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    // Validar arquivo
+    const arquivo = document.getElementById('arquivo_excel');
+    if (!arquivo.files[0]) {
+        alert('Por favor, selecione um arquivo Excel');
+        return;
+    }
+
+    // Validar tamanho do arquivo (máximo 10MB)
+    if (arquivo.files[0].size > 10 * 1024 * 1024) {
+        alert('O arquivo não pode ser maior que 10MB');
+        return;
+    }
+
+    // Mostrar modal de processamento
+    $('#modalProcessando').modal('show');
+
+    // Submeter formulário
+    this.submit();
+});
+
+// Limpar formulário
+function limparFormulario() {
+    document.getElementById('formCalculo').reset();
+    document.getElementById('dt_atualizacao').value = '{{ data_atual }}';
+}
+
+// Preview do arquivo selecionado
+document.getElementById('arquivo_excel').addEventListener('change', function(e) {
+    const arquivo = e.target.files[0];
+    if (arquivo) {
+        const tamanho = (arquivo.size / 1024).toFixed(2);
+        console.log(`Arquivo selecionado: ${arquivo.name} (${tamanho} KB)`);
+    }
+});
+</script>
+
+<style>
+.border-left-primary {
+    border-left: 4px solid #4e73df;
+}
+.border-left-success {
+    border-left: 4px solid #1cc88a;
+}
+.border-left-info {
+    border-left: 4px solid #36b9cc;
+}
+.border-left-warning {
+    border-left: 4px solid #f6c23e;
+}
+.text-xs {
+    font-size: .7rem;
+}
+.font-weight-bold {
+    font-weight: 700;
+}
+.text-uppercase {
+    text-transform: uppercase;
+}
+.text-gray-800 {
+    color: #5a5c69;
+}
+.text-gray-300 {
+    color: #dddfeb;
+}
+</style>
+{% endblock %}
