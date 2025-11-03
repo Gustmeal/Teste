@@ -915,3 +915,231 @@ def verificar_contratos_invalidos():
 def contratos_invalidos():
     """Página para visualizar contratos inválidos"""
     return render_template('depositos_judiciais/contratos_invalidos.html')
+
+
+@depositos_judiciais_bp.route('/ratear/<int:nu_linha>', methods=['GET', 'POST'])
+@login_required
+def ratear(nu_linha):
+    """
+    Tela e processamento de rateio de valor de um depósito judicial.
+
+    LÓGICA:
+    1. GET: Exibe a tela com os campos pré-preenchidos (Lançamento RM, Data Lançamento DJ, Memo SUFIN, Data Memo)
+    2. POST: Processa o rateio:
+       - Cria um NOVO registro com o valor informado
+       - DIMINUI o VR_RATEIO do registro original
+       - Se o VR_RATEIO original ficar <= 0, fica com 0 (zero)
+    """
+
+    # Buscar o depósito original
+    deposito_original = db.session.query(
+        DepositosSufin,
+        CentroResultado.NO_CARTEIRA
+    ).outerjoin(
+        CentroResultado,
+        DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
+    ).filter(
+        DepositosSufin.NU_LINHA == nu_linha
+    ).first()
+
+    if not deposito_original:
+        flash('Depósito não encontrado.', 'danger')
+        return redirect(url_for('depositos_judiciais.edicao'))
+
+    deposito_obj = deposito_original[0]
+    carteira_original = deposito_original[1]
+
+    # Validar se o depósito tem valor positivo para ratear
+    if not deposito_obj.VR_RATEIO or deposito_obj.VR_RATEIO <= 0:
+        flash('Este depósito não possui valor disponível para ratear.', 'warning')
+        return redirect(url_for('depositos_judiciais.editar', nu_linha=nu_linha))
+
+    if request.method == 'POST':
+        try:
+            # ============================================
+            # ETAPA 1: VALIDAR E COLETAR DADOS DO FORMULÁRIO
+            # ============================================
+
+            # Valor a ratear - OBRIGATÓRIO
+            vr_rateio_str = request.form.get('vr_rateio')
+            if not vr_rateio_str or vr_rateio_str == '0,00':
+                raise ValueError("Valor a ratear é obrigatório")
+
+            # Converter valor monetário BR para decimal
+            vr_rateio_limpo = vr_rateio_str.replace('.', '').replace(',', '.')
+            vr_rateio_novo = float(vr_rateio_limpo)
+
+            # Validar se o valor não ultrapassa o disponível
+            if vr_rateio_novo > float(deposito_obj.VR_RATEIO):
+                raise ValueError(
+                    f"Valor informado ({vr_rateio_novo}) ultrapassa o valor disponível ({deposito_obj.VR_RATEIO})")
+
+            # Centro de Resultado - OBRIGATÓRIO
+            id_centro_str = request.form.get('id_centro')
+            if not id_centro_str:
+                raise ValueError("Centro de Resultado é obrigatório")
+            id_centro_novo = int(id_centro_str)
+
+            # ============================================
+            # ETAPA 2: BUSCAR PRÓXIMO NU_LINHA
+            # ============================================
+            ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
+            proximo_nu_linha = (ultimo_nu_linha or 0) + 1
+
+            # ============================================
+            # ETAPA 3: CRIAR NOVO REGISTRO COM VALOR RATEADO
+            # ============================================
+            novo_deposito = DepositosSufin()
+            novo_deposito.NU_LINHA = proximo_nu_linha
+
+            # CAMPOS PRÉ-PREENCHIDOS (da tela)
+            novo_deposito.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
+            novo_deposito.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
+            novo_deposito.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
+            novo_deposito.DT_MEMO = deposito_obj.DT_MEMO
+
+            # VALOR DO RATEIO (novo valor)
+            novo_deposito.VR_RATEIO = vr_rateio_novo
+
+            # CAMPOS PREENCHIDOS PELO USUÁRIO
+
+            # Data Identificação
+            dt_identificacao = request.form.get('dt_identificacao')
+            if dt_identificacao:
+                novo_deposito.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
+                novo_deposito.ID_IDENTIFICADO = True
+            else:
+                novo_deposito.DT_IDENTIFICACAO = None
+                novo_deposito.ID_IDENTIFICADO = False
+
+            # Área
+            id_area = request.form.get('id_area')
+            novo_deposito.ID_AREA = int(id_area) if id_area else None
+            novo_deposito.ID_AREA_2 = None
+
+            # Centro de Resultado
+            novo_deposito.ID_CENTRO = id_centro_novo
+
+            # ID_AJUSTE_RM sempre False
+            novo_deposito.ID_AJUSTE_RM = False
+
+            # Data Ajuste RM
+            dt_ajuste_rm = request.form.get('dt_ajuste_rm')
+            if dt_ajuste_rm:
+                novo_deposito.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+            else:
+                novo_deposito.DT_AJUSTE_RM = None
+
+            # Contrato
+            nu_contrato = request.form.get('nu_contrato')
+            if nu_contrato:
+                novo_deposito.NU_CONTRATO = int(nu_contrato)
+            else:
+                novo_deposito.NU_CONTRATO = None
+
+            novo_deposito.NU_CONTRATO_2 = None
+
+            # Eventos Contábeis
+            evento_anterior = request.form.get('evento_contabil_anterior')
+            if evento_anterior:
+                novo_deposito.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
+            else:
+                novo_deposito.EVENTO_CONTABIL_ANTERIOR = None
+
+            evento_atual = request.form.get('evento_contabil_atual')
+            if evento_atual:
+                novo_deposito.EVENTO_CONTABIL_ATUAL = int(evento_atual)
+            else:
+                novo_deposito.EVENTO_CONTABIL_ATUAL = None
+
+            # Observação
+            novo_deposito.OBS = request.form.get('obs')
+
+            # IC_APROPRIADO sempre None
+            novo_deposito.IC_APROPRIADO = None
+
+            # Data SISCOR
+            dt_siscor = request.form.get('dt_siscor')
+            if dt_siscor:
+                novo_deposito.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
+            else:
+                novo_deposito.DT_SISCOR = None
+
+            # IC_INCLUIDO_ACERTO sempre None
+            novo_deposito.IC_INCLUIDO_ACERTO = None
+
+            # Adicionar novo depósito ao banco
+            db.session.add(novo_deposito)
+
+            # ============================================
+            # ETAPA 4: CRIAR PROCESSO JUDICIAL SE INFORMADO
+            # ============================================
+            nr_processo = request.form.get('nr_processo')
+            if nr_processo and nr_processo.strip():
+                novo_processo = ProcessosJudiciais()
+                novo_processo.NU_LINHA = proximo_nu_linha
+                novo_processo.NR_PROCESSO = nr_processo.strip()
+                db.session.add(novo_processo)
+
+            # ============================================
+            # ETAPA 5: DIMINUIR VALOR DO DEPÓSITO ORIGINAL
+            # ============================================
+            valor_original_antigo = float(deposito_obj.VR_RATEIO)
+            valor_original_novo = valor_original_antigo - vr_rateio_novo
+
+            # Se o valor ficar negativo ou zero, garantir que fique exatamente 0
+            if valor_original_novo <= 0:
+                deposito_obj.VR_RATEIO = 0
+            else:
+                deposito_obj.VR_RATEIO = valor_original_novo
+
+            # ============================================
+            # ETAPA 6: COMMIT NO BANCO DE DADOS
+            # ============================================
+            db.session.commit()
+
+            # ============================================
+            # ETAPA 7: REGISTRAR LOG DE AUDITORIA
+            # ============================================
+            registrar_log(
+                'depositos_judiciais',
+                'rateio',
+                f'Rateio realizado - NU_LINHA original: {nu_linha}, novo NU_LINHA: {proximo_nu_linha}, valor rateado: R$ {vr_rateio_novo:.2f}',
+                {
+                    'nu_linha_original': nu_linha,
+                    'nu_linha_novo': proximo_nu_linha,
+                    'valor_rateado': vr_rateio_novo,
+                    'valor_original_antigo': valor_original_antigo,
+                    'valor_original_novo': float(deposito_obj.VR_RATEIO)
+                }
+            )
+
+            # Mensagem de sucesso
+            flash(
+                f'Rateio realizado com sucesso! '
+                f'Novo depósito criado (Nº Linha: {proximo_nu_linha}) com valor R$ {vr_rateio_novo:.2f}. '
+                f'Depósito original agora tem valor R$ {float(deposito_obj.VR_RATEIO):.2f}.',
+                'success'
+            )
+
+            return redirect(url_for('depositos_judiciais.edicao'))
+
+        except ValueError as ve:
+            db.session.rollback()
+            flash(f'Erro de validação: {str(ve)}', 'danger')
+            return redirect(url_for('depositos_judiciais.ratear', nu_linha=nu_linha))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao processar rateio: {str(e)}', 'danger')
+            return redirect(url_for('depositos_judiciais.ratear', nu_linha=nu_linha))
+
+    # GET - Buscar dados para os dropdowns
+    areas = Area.query.order_by(Area.NO_AREA).all()
+    centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
+
+    return render_template('depositos_judiciais/ratear.html',
+                           deposito_original=deposito_obj,
+                           carteira_original=carteira_original,
+                           areas=areas,
+                           centros=centros)

@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="header-with-back">
+            <i class="fas fa-cut me-2"></i>Ratear Valor do Depósito
+        </h1>
+    </div>
+
+    <!--Alert explicativo -->
+    <div class="alert alert-info">
+        <h5><i class="fas fa-info-circle me-2"></i>Como funciona o rateio:</h5>
+        <ul class="mb-0">
+            <li>Os campos <strong>Lançamento RM, Data Lançamento DJ, Memo SUFIN e Data Memo</strong> já estão preenchidos com os valores do depósito original</li>
+            <li>Você deve informar o <strong>valor a ser rateado</strong> e preencher os demais campos conforme necessário</li>
+            <li>O valor rateado será <strong>subtraído do depósito original</strong></li>
+            <li>Um <strong>novo registro</strong> será criado com o valor informado</li>
+            <li>Se o valor original chegar a zero, ele ficará como <strong>0 (zero)</strong>, não nulo</li>
+        </ul>
+    </div>
+
+    <!-- Informações do depósito original -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Depósito Original</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Nº Linha:</strong> {{ deposito_original.NU_LINHA }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Lançamento RM:</strong> {{ deposito_original.LANCAMENTO_RM }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Valor Disponível:</strong>
+                    <span class="text-success fw-bold">{{ deposito_original.VR_RATEIO|br_currency if deposito_original.VR_RATEIO else 'R$ 0,00' }}</span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Carteira:</strong> {{ carteira_original }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulário de rateio -->
+    <div class="card shadow">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Novo Registro (Rateio)</h5>
+        </div>
+        <div class="card-body">
+            <form id="formRateio" method="POST" action="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito_original.NU_LINHA) }}">
+                <div class="row">
+                    <!-- Campos PRÉ-PREENCHIDOS (da imagem) -->
+                    <div class="col-md-3 mb-3">
+                        <label for="lancamento_rm" class="form-label">
+                            Lançamento RM <span class="text-danger">*</span>
+                            <i class="fas fa-lock text-muted ms-1" title="Campo pré-preenchido"></i>
+                        </label>
+                        <input type="text" class="form-control bg-light" id="lancamento_rm" name="lancamento_rm"
+                               value="{{ deposito_original.LANCAMENTO_RM }}" readonly>
+                    </div>
+
+                    <div class="col-md-3 mb-3">
+                        <label for="dt_lancamento_dj" class="form-label">
+                            Data Lançamento DJ <span class="text-danger">*</span>
+                            <i class="fas fa-lock text-muted ms-1" title="Campo pré-preenchido"></i>
+                        </label>
+                        <input type="date" class="form-control bg-light" id="dt_lancamento_dj" name="dt_lancamento_dj"
+                               value="{{ deposito_original.DT_LANCAMENTO_DJ.strftime('%Y-%m-%d') if deposito_original.DT_LANCAMENTO_DJ else '' }}"
+                               readonly>
+                    </div>
+
+                    <div class="col-md-3 mb-3">
+                        <label for="memo_sufin" class="form-label">
+                            Memo SUFIN
+                            <i class="fas fa-lock text-muted ms-1" title="Campo pré-preenchido"></i>
+                        </label>
+                        <input type="text" class="form-control bg-light" id="memo_sufin" name="memo_sufin"
+                               value="{{ deposito_original.MEMO_SUFIN or '' }}" readonly>
+                    </div>
+
+                    <div class="col-md-3 mb-3">
+                        <label for="dt_memo" class="form-label">
+                            Data Memo
+                            <i class="fas fa-lock text-muted ms-1" title="Campo pré-preenchido"></i>
+                        </label>
+                        <input type="date" class="form-control bg-light" id="dt_memo" name="dt_memo"
+                               value="{{ deposito_original.DT_MEMO.strftime('%Y-%m-%d') if deposito_original.DT_MEMO else '' }}"
+                               readonly>
+                    </div>
+
+                    <!-- VALOR A RATEAR (obrigatório) -->
+                    <div class="col-md-4 mb-3">
+                        <label for="vr_rateio" class="form-label">
+                            Valor a Ratear <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
+                               required placeholder="0,00">
+                        <small class="text-muted">Máximo: {{ deposito_original.VR_RATEIO|br_currency }}</small>
+                    </div>
+
+                    <!-- OUTROS CAMPOS VAZIOS (podem ser preenchidos) -->
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_identificacao" class="form-label">Data Identificação</label>
+                        <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="id_area" class="form-label">Área</label>
+                        <select class="form-select" id="id_area" name="id_area">
+                            <option value="">Selecione...</option>
+                            {% for area in areas %}
+                            <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="id_centro" class="form-label">
+                            Centro de Resultado (Carteira) <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" id="id_centro" name="id_centro" required>
+                            <option value="">Selecione...</option>
+                            {% for centro in centros %}
+                            <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="nu_contrato" class="form-label">Número Contrato</label>
+                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
+                               maxlength="20" placeholder="Digite o número do contrato">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
+                        <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
+                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor">
+                    </div>
+
+                    <div class="col-md-4 mb-3">
+                        <label for="nr_processo" class="form-label">Número Processo</label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               maxlength="50" placeholder="Ex: 1234567-89.2023.8.26.0100">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
+                        <input type="number" class="form-control" id="evento_contabil_anterior"
+                               name="evento_contabil_anterior">
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
+                        <input type="number" class="form-control" id="evento_contabil_atual"
+                               name="evento_contabil_atual">
+                    </div>
+
+                    <div class="col-12 mb-3">
+                        <label for="obs" class="form-label">Observação</label>
+                        <input type="text" class="form-control" id="obs" name="obs"
+                               maxlength="70" placeholder="Digite uma observação">
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="col-12 d-flex justify-content-between align-items-center mt-4">
+                        <div>
+                            <a href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito_original.NU_LINHA) }}"
+                               class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Cancelar
+                            </a>
+                        </div>
+                        <div>
+                            <button type="submit" class="btn btn-warning btn-lg">
+                                <i class="fas fa-cut me-2"></i>Confirmar Rateio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const valorMaximo = {{ deposito_original.VR_RATEIO or 0 }};
+    const moneyInput = document.getElementById('vr_rateio');
+    let formJaValidado = false; // Flag para evitar loop
+
+    function formatarValorMonetario(valor) {
+        valor = valor.replace(/\D/g, '');
+        if (valor === '') return '0,00';
+        valor = (parseInt(valor) / 100).toFixed(2);
+        valor = valor.replace('.', ',');
+        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+        return valor;
+    }
+
+    if (moneyInput) {
+        moneyInput.addEventListener('input', function(e) {
+            let valor = e.target.value;
+            let cursorPos = e.target.selectionStart;
+            let valorAnterior = e.target.value;
+
+            let valorFormatado = formatarValorMonetario(valor);
+            e.target.value = valorFormatado;
+
+            let diff = valorFormatado.length - valorAnterior.length;
+            e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
+        });
+    }
+
+    // Validação do formulário
+    document.getElementById('formRateio').addEventListener('submit', function(e) {
+        // Se já foi validado, deixar submeter
+        if (formJaValidado) {
+            return true;
+        }
+
+        // Prevenir o submit padrão para validar
+        e.preventDefault();
+
+        // Validar valor rateio
+        const vrRateio = document.getElementById('vr_rateio').value;
+        const vrRateioNum = parseFloat(vrRateio.replace(/\./g, '').replace(',', '.'));
+
+        if (!vrRateio || vrRateioNum <= 0) {
+            alert('Por favor, informe um valor válido para o rateio.');
+            document.getElementById('vr_rateio').focus();
+            return false;
+        }
+
+        if (vrRateioNum > valorMaximo) {
+            alert(`O valor do rateio não pode ser maior que o valor disponível (R$ ${valorMaximo.toFixed(2).replace('.', ',')})`);
+            document.getElementById('vr_rateio').focus();
+            return false;
+        }
+
+        // Validar campos obrigatórios
+        const camposObrigatorios = ['vr_rateio', 'id_centro'];
+        let valido = true;
+
+        camposObrigatorios.forEach(campo => {
+            const input = document.getElementById(campo);
+            if (!input.value) {
+                input.classList.add('is-invalid');
+                valido = false;
+            } else {
+                input.classList.remove('is-invalid');
+            }
+        });
+
+        if (!valido) {
+            alert('Por favor, preencha todos os campos obrigatórios.');
+            return false;
+        }
+
+        // Confirmação final
+        const valorOriginal = valorMaximo.toFixed(2).replace('.', ',');
+        const valorRateado = vrRateioNum.toFixed(2).replace('.', ',');
+        const valorRestante = (valorMaximo - vrRateioNum).toFixed(2).replace('.', ',');
+
+        const mensagem = `Confirma o rateio do valor?\n\n` +
+                        `Valor Disponível: R$ ${valorOriginal}\n` +
+                        `Valor a Ratear: R$ ${valorRateado}\n` +
+                        `Valor que restará no original: R$ ${valorRestante}\n\n` +
+                        `Esta operação criará um novo registro e diminuirá o valor do depósito original.`;
+
+        if (confirm(mensagem)) {
+            // Marcar como validado e submeter o formulário
+            formJaValidado = true;
+            this.submit();
+        }
+    });
+});
+</script>
+
+<style>
+.bg-light {
+    background-color: #f8f9fa !important;
+    cursor: not-allowed;
+}
+</style>
+{% endblock %}
