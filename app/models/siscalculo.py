@@ -28,28 +28,28 @@ class SiscalculoDados(db.Model):
     __tablename__ = 'MOV_TB030_SISCALCULO_DADOS'
     __table_args__ = {'schema': 'BDG'}
 
-    ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    IMOVEL = db.Column(db.String(50), nullable=True)
-    DT_VENCIMENTO = db.Column(db.Date, nullable=False)
+    # Chave primária composta (não tem ID autoincrement)
+    IMOVEL = db.Column(db.String(50), primary_key=True, nullable=False, default='')
+    DT_VENCIMENTO = db.Column(db.Date, primary_key=True, nullable=False)
+    DT_ATUALIZACAO = db.Column(db.Date, primary_key=True, nullable=False)
+
+    # Dados
     VR_COTA = db.Column(db.Numeric(18, 2), nullable=False)
-    DT_ATUALIZACAO = db.Column(db.Date, nullable=False)
-    CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
-    UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
-    USUARIO_CARGA = db.Column(db.String(100), nullable=True)
 
     def __repr__(self):
-        return f'<SiscalculoDados {self.ID}: Vencimento {self.DT_VENCIMENTO}>'
+        return f'<SiscalculoDados {self.IMOVEL} - {self.DT_VENCIMENTO}>'
 
     @staticmethod
     def limpar_dados_temporarios(dt_atualizacao):
-        """Remove dados temporários para nova importação"""
+        """Remove dados anteriores para a mesma data de atualização"""
         try:
-            SiscalculoDados.query.filter_by(DT_ATUALIZACAO=dt_atualizacao).delete()
+            SiscalculoDados.query.filter_by(
+                DT_ATUALIZACAO=dt_atualizacao
+            ).delete()
             db.session.commit()
-            return True
         except Exception as e:
             db.session.rollback()
-            return False
+            print(f"Erro ao limpar dados temporários: {e}")
 
 
 class SiscalculoCalculos(db.Model):
@@ -57,24 +57,22 @@ class SiscalculoCalculos(db.Model):
     __tablename__ = 'MOV_TB031_SISCALCULO_CALCULOS'
     __table_args__ = {'schema': 'BDG'}
 
-    ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    IMOVEL = db.Column(db.String(50), nullable=True)
-    DT_VENCIMENTO = db.Column(db.Date, nullable=False)
+    # Chave primária composta: DT_ATUALIZACAO + ID_INDICE_ECONOMICO + DT_VENCIMENTO + IMOVEL
+    DT_ATUALIZACAO = db.Column(db.Date, primary_key=True, nullable=False)
+    ID_INDICE_ECONOMICO = db.Column(db.Integer, primary_key=True, nullable=False)
+    DT_VENCIMENTO = db.Column(db.Date, primary_key=True, nullable=False)
+    IMOVEL = db.Column(db.String(50), primary_key=True, nullable=False, default='')
     VR_COTA = db.Column(db.Numeric(18, 2), nullable=False)
-    DT_ATUALIZACAO = db.Column(db.Date, nullable=False)
-    TEMPO_ATRASO = db.Column(db.Integer, nullable=False)  # Meses
-    PERC_ATUALIZACAO = db.Column(db.Numeric(18, 8), nullable=True)
-    ATM = db.Column(db.Numeric(18, 2), nullable=True)  # Valor Atualização Monetária
+    TEMPO_ATRASO = db.Column(db.Integer, nullable=True)
+    PERC_ATUALIZACAO = db.Column(db.Numeric(18, 4), nullable=True)
+    ATM = db.Column(db.Numeric(18, 2), nullable=True)
     VR_JUROS = db.Column(db.Numeric(18, 2), nullable=True)
     VR_MULTA = db.Column(db.Numeric(18, 2), nullable=True)
-    VR_DESCONTO = db.Column(db.Numeric(18, 2), nullable=True, default=0)
+    VR_DESCONTO = db.Column(db.Numeric(18, 2), nullable=True)
     VR_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
-    ID_INDICE_ECONOMICO = db.Column(db.Integer, nullable=False)
-    CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
-    USUARIO_CALCULO = db.Column(db.String(100), nullable=True)
 
     def __repr__(self):
-        return f'<SiscalculoCalculo {self.ID}: Índice {self.ID_INDICE_ECONOMICO}>'
+        return f'<SiscalculoCalculo {self.DT_ATUALIZACAO} - Índice {self.ID_INDICE_ECONOMICO} - {self.IMOVEL}>'
 
     @staticmethod
     def obter_calculos_por_data(dt_atualizacao):

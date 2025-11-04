@@ -20,8 +20,12 @@ siscalculo_bp = Blueprint('siscalculo', __name__, url_prefix='/sumov/siscalculo'
 
 
 @siscalculo_bp.context_processor
-def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
+def inject_datetime():
+    """Injeta datetime e ano atual no contexto de todos os templates do SISCalculo"""
+    return {
+        'datetime': datetime,
+        'current_year': datetime.utcnow().year
+    }
 
 
 @siscalculo_bp.route('/')
@@ -34,16 +38,19 @@ def index():
     # Data padrão (hoje)
     data_atual = date.today()
 
-    # Buscar histórico de cálculos
+    # Buscar histórico de cálculos - SEM USAR ID que não existe na tabela
     historico = db.session.query(
         SiscalculoCalculos.DT_ATUALIZACAO,
-        db.func.count(SiscalculoCalculos.ID).label('qtd_registros'),
+        db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('qtd_registros'),
         db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
     ).group_by(
         SiscalculoCalculos.DT_ATUALIZACAO
     ).order_by(
         SiscalculoCalculos.DT_ATUALIZACAO.desc()
     ).limit(10).all()
+
+    # Últimas vinculações (se necessário - caso contrário, remover)
+    ultimas_vinculacoes = []  # Vazio por enquanto, já que não temos vinculações no SISCalculo
 
     return render_template('sumov/siscalculo/index.html',
                            indices=indices,
@@ -55,104 +62,249 @@ def index():
 @login_required
 def processar():
     """Processa o upload do Excel e realiza os cálculos"""
+    print("\n" + "=" * 80)
+    print("ROTA /PROCESSAR CHAMADA")
+    print("=" * 80)
+
     try:
+        print("\n[DEBUG 1] Validando arquivo recebido...")
+
         # Validar arquivo
         if 'arquivo_excel' not in request.files:
+            print("[ERRO 1] Nenhum arquivo foi enviado no request.files")
             flash('Nenhum arquivo foi enviado.', 'danger')
             return redirect(url_for('siscalculo.index'))
 
         arquivo = request.files['arquivo_excel']
+        print(f"[DEBUG 1] Arquivo recebido: {arquivo.filename}")
+
         if arquivo.filename == '':
+            print("[ERRO 1] Nome do arquivo está vazio")
             flash('Nenhum arquivo selecionado.', 'danger')
             return redirect(url_for('siscalculo.index'))
 
         # Capturar parâmetros
+        print("\n[DEBUG 2] Capturando parâmetros do formulário...")
         dt_atualizacao = request.form.get('dt_atualizacao')
-        id_indice = int(request.form.get('id_indice'))
+        id_indice = request.form.get('id_indice')
+        perc_honorarios = request.form.get('perc_honorarios')
 
-        # Converter data
-        dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
+        print(f"[DEBUG 2] dt_atualizacao (raw): {dt_atualizacao}")
+        print(f"[DEBUG 2] id_indice (raw): {id_indice}")
+        print(f"[DEBUG 2] perc_honorarios (raw): {perc_honorarios}")
 
-        # Ler arquivo Excel
+        if not dt_atualizacao or not id_indice or not perc_honorarios:
+            print("[ERRO 2] Parâmetros obrigatórios não informados")
+            flash('Data de atualização, índice e honorários são obrigatórios.', 'danger')
+            return redirect(url_for('siscalculo.index'))
+
+        # Converter parâmetros
+        print("\n[DEBUG 3] Convertendo parâmetros...")
         try:
-            df = pd.read_excel(arquivo, skiprows=1)  # Pular primeira linha se for cabeçalho
+            dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
+            id_indice = int(id_indice)
+            perc_honorarios = Decimal(perc_honorarios)
+            print(f"[DEBUG 3] dt_atualizacao (convertida): {dt_atualizacao}")
+            print(f"[DEBUG 3] id_indice (convertido): {id_indice}")
+            print(f"[DEBUG 3] perc_honorarios (convertido): {perc_honorarios}%")
+        except Exception as e:
+            print(f"[ERRO 3] Erro ao converter parâmetros: {e}")
+            flash(f'Erro nos parâmetros: {str(e)}', 'danger')
+            return redirect(url_for('siscalculo.index'))
 
-            # Mapear colunas esperadas
-            # Esperamos: IMÓVEL | DATA_VENCIMENTO | VALOR
-            if len(df.columns) < 3:
-                flash('O arquivo deve ter pelo menos 3 colunas: Imóvel, Data Vencimento e Valor', 'danger')
+        # Ler arquivo Excel - NOVO FORMATO
+        print("\n[DEBUG 4] Iniciando leitura do arquivo Excel - NOVO FORMATO...")
+        print(f"[DEBUG 4] Nome do arquivo: {arquivo.filename}")
+        print(f"[DEBUG 4] Content-Type: {arquivo.content_type}")
+
+        try:
+            print("[DEBUG 4.1] Lendo Excel com pandas...")
+
+            # Ler célula B1 (Número do Imóvel)
+            df_imovel = pd.read_excel(arquivo, header=None, nrows=1)
+            numero_imovel = str(int(df_imovel.iloc[0, 1]))  # Célula B1
+            print(f"[DEBUG 4.1] Número do Imóvel: {numero_imovel}")
+
+            # Ler os dados a partir da linha 3 (linha 4 no Excel, índice 3 no pandas)
+            df = pd.read_excel(arquivo, header=2)  # Linha 3 é o cabeçalho (índice 2)
+            print(f"[DEBUG 4.1] Excel lido! Shape: {df.shape}")
+            print(f"[DEBUG 4.1] Colunas encontradas: {list(df.columns)}")
+
+            # Validar se tem pelo menos 2 colunas
+            if len(df.columns) < 2:
+                print(f"[ERRO 4.1] Arquivo deve ter 2 colunas")
+                flash('O arquivo deve ter 2 colunas: Data Vencimento e Valor Cota', 'danger')
                 return redirect(url_for('siscalculo.index'))
 
             # Renomear colunas para padronizar
-            df.columns = ['IMOVEL', 'DT_VENCIMENTO', 'VR_COTA'] + list(df.columns[3:])
+            print("[DEBUG 4.2] Renomeando colunas...")
+            df.columns = ['DT_VENCIMENTO', 'VR_COTA'] + list(df.columns[2:])
+            print(f"[DEBUG 4.2] Colunas após renomear: {list(df.columns[:2])}")
+
+            # Remover linhas vazias
+            df = df.dropna(subset=['DT_VENCIMENTO', 'VR_COTA'], how='all')
+
+            # Mostrar primeiras linhas
+            print("\n[DEBUG 4.3] Primeiras 3 linhas do DataFrame:")
+            print(df[['DT_VENCIMENTO', 'VR_COTA']].head(3).to_string())
 
         except Exception as e:
+            print(f"[ERRO 4] Erro ao ler arquivo Excel: {str(e)}")
+            import traceback
+            traceback.print_exc()
             flash(f'Erro ao ler arquivo Excel: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # Limpar dados anteriores para esta data
-        SiscalculoDados.limpar_dados_temporarios(dt_atualizacao)
+        # Limpar dados anteriores
+        print("\n[DEBUG 5] Limpando dados temporários anteriores...")
+        try:
+            registros_deletados = SiscalculoDados.query.filter_by(
+                DT_ATUALIZACAO=dt_atualizacao,
+                IMOVEL=numero_imovel
+            ).delete()
+            db.session.commit()
+            print(f"[DEBUG 5] Registros deletados: {registros_deletados}")
+        except Exception as e:
+            print(f"[ERRO 5] Erro ao limpar dados temporários: {str(e)}")
+            db.session.rollback()
 
         # Inserir dados na tabela temporária
+        print("\n[DEBUG 6] Inserindo dados na tabela MOV_TB030_SISCALCULO_DADOS...")
+        print(f"[DEBUG 6] Imóvel: {numero_imovel}")
         registros_inseridos = 0
+        erros_insercao = 0
+
         for idx, row in df.iterrows():
             try:
-                # Converter data do vencimento
-                dt_venc = pd.to_datetime(row['DT_VENCIMENTO'])
+                if idx < 3 or idx % 50 == 0:
+                    print(f"\n[DEBUG 6.{idx}] Processando linha {idx + 1}/{len(df)}:")
+                    print(f"  DT_VENCIMENTO: {row['DT_VENCIMENTO']}")
+                    print(f"  VR_COTA: {row['VR_COTA']}")
+
+                # Converter data do vencimento - FORMATO BRASILEIRO (DD/MM/AAAA)
+                dt_venc = pd.to_datetime(row['DT_VENCIMENTO'], format='%d/%m/%Y', dayfirst=True)
+
+                if idx < 3:
+                    print(f"  [DEBUG] Data convertida: {dt_venc.date()}")
+
                 if pd.isna(dt_venc):
+                    if idx < 3:
+                        print(f"  [AVISO] Data de vencimento inválida, pulando linha")
+                    continue
+
+                # Validar valor
+                valor = row['VR_COTA']
+                if pd.isna(valor) or valor <= 0:
+                    if idx < 3:
+                        print(f"  [AVISO] Valor inválido ({valor}), pulando linha")
                     continue
 
                 # Criar registro
+                if idx < 3:
+                    print(f"  [DEBUG] Criando objeto SiscalculoDados...")
+
                 novo_dado = SiscalculoDados(
-                    IMOVEL=str(row['IMOVEL']) if not pd.isna(row['IMOVEL']) else None,
+                    IMOVEL=numero_imovel,
                     DT_VENCIMENTO=dt_venc.date(),
-                    VR_COTA=Decimal(str(row['VR_COTA'])),
-                    DT_ATUALIZACAO=dt_atualizacao,
-                    USUARIO_CARGA=current_user.nome
+                    VR_COTA=Decimal(str(valor)),
+                    DT_ATUALIZACAO=dt_atualizacao
                 )
+
                 db.session.add(novo_dado)
                 registros_inseridos += 1
 
+                if idx < 3:
+                    print(f"  [OK] Registro adicionado à sessão")
+
             except Exception as e:
-                print(f"Erro na linha {idx}: {e}")
+                print(f"  [ERRO] Erro na linha {idx}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                erros_insercao += 1
                 continue
 
-        db.session.commit()
+        print(f"\n[DEBUG 6] Resumo da inserção:")
+        print(f"  Imóvel: {numero_imovel}")
+        print(f"  Total de linhas no Excel: {len(df)}")
+        print(f"  Registros inseridos: {registros_inseridos}")
+        print(f"  Erros de inserção: {erros_insercao}")
+
+        # Commit dos dados importados
+        print("\n[DEBUG 7] Realizando commit dos dados importados...")
+        try:
+            db.session.commit()
+            print("[DEBUG 7] Commit realizado com sucesso!")
+        except Exception as e:
+            print(f"[ERRO 7] Erro no commit: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            db.session.rollback()
+            flash(f'Erro ao salvar dados: {str(e)}', 'danger')
+            return redirect(url_for('siscalculo.index'))
 
         if registros_inseridos == 0:
+            print("[ERRO 7] Nenhum registro válido foi inserido!")
             flash('Nenhum registro válido foi encontrado no arquivo.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
-        # Executar cálculos
-        calculador = CalculadorSiscalculo(dt_atualizacao, id_indice, current_user.nome)
+        # Executar cálculos COM PERCENTUAL DE HONORÁRIOS
+        print("\n[DEBUG 8] Iniciando execução dos cálculos...")
+        print(f"[DEBUG 8] Criando CalculadorSiscalculo...")
+        print(f"  - dt_atualizacao: {dt_atualizacao}")
+        print(f"  - id_indice: {id_indice}")
+        print(f"  - perc_honorarios: {perc_honorarios}%")
+        print(f"  - usuario: {current_user.nome}")
+
+        calculador = CalculadorSiscalculo(dt_atualizacao, id_indice, current_user.nome, perc_honorarios)
+        print("[DEBUG 8] CalculadorSiscalculo criado!")
+
+        print("[DEBUG 8] Chamando executar_calculos()...")
         resultado = calculador.executar_calculos()
+        print(f"[DEBUG 8] executar_calculos() retornou: {resultado}")
 
         if resultado['sucesso']:
-            flash(f'Processamento concluído! {registros_inseridos} registros importados e calculados.', 'success')
+            print("[DEBUG 9] Processamento concluído com sucesso!")
+            flash(f'Processamento concluído! {registros_inseridos} parcelas importadas e calculadas.', 'success')
 
             # Registrar no log
-            registrar_log(
-                acao='processar_siscalculo',
-                entidade='siscalculo',
-                entidade_id=None,
-                descricao=f'Processamento SISCalculo - {registros_inseridos} registros',
-                dados_novos={
-                    'dt_atualizacao': str(dt_atualizacao),
-                    'id_indice': id_indice,
-                    'registros': registros_inseridos,
-                    'valor_total': float(resultado.get('valor_total', 0))
-                }
-            )
+            try:
+                registrar_log(
+                    acao='processar_siscalculo',
+                    entidade='siscalculo',
+                    entidade_id=None,
+                    descricao=f'Processamento SISCalculo - Imóvel {numero_imovel} - {registros_inseridos} parcelas - Honorários {perc_honorarios}%',
+                    dados_novos={
+                        'dt_atualizacao': str(dt_atualizacao),
+                        'id_indice': id_indice,
+                        'imovel': numero_imovel,
+                        'parcelas': registros_inseridos,
+                        'perc_honorarios': float(perc_honorarios),
+                        'valor_total': float(resultado.get('valor_total', 0))
+                    }
+                )
+            except Exception as e:
+                print(f"[AVISO] Erro ao registrar log (não crítico): {str(e)}")
 
             # Redirecionar para visualização dos resultados
+            print(f"[DEBUG 10] Redirecionando para resultados...")
             return redirect(url_for('siscalculo.resultados',
                                     dt_atualizacao=dt_atualizacao,
-                                    id_indice=id_indice))
+                                    id_indice=id_indice,
+                                    imovel=numero_imovel,
+                                    perc_honorarios=perc_honorarios))
         else:
+            print(f"[ERRO 9] Erro no processamento: {resultado.get('erro', 'Erro desconhecido')}")
             flash(f'Erro no processamento: {resultado.get("erro", "Erro desconhecido")}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
     except Exception as e:
+        print("\n" + "=" * 80)
+        print("[ERRO CRÍTICO] Exceção não tratada na rota /processar:")
+        print(f"Erro: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        print("=" * 80)
+
         db.session.rollback()
         flash(f'Erro ao processar arquivo: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
@@ -164,56 +316,96 @@ def resultados():
     """Visualiza os resultados dos cálculos"""
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
+    imovel = request.args.get('imovel')
+    perc_honorarios = request.args.get('perc_honorarios', '10.00')
 
     if not dt_atualizacao:
         flash('Data de atualização não informada.', 'danger')
         return redirect(url_for('siscalculo.index'))
 
-    # Converter string para data
     try:
-        dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
-    except:
-        dt_atualizacao = date.today()
+        # Converter data
+        dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
+        perc_honorarios = Decimal(perc_honorarios)
 
-    # Buscar cálculos
-    query = SiscalculoCalculos.query.filter_by(DT_ATUALIZACAO=dt_atualizacao)
+        print(f"\n[DEBUG RESULTADOS] Buscando resultados:")
+        print(f"  - dt_atualizacao: {dt_atualizacao_filtro}")
+        print(f"  - id_indice: {id_indice}")
+        print(f"  - imovel: {imovel}")
+        print(f"  - perc_honorarios: {perc_honorarios}")
 
-    if id_indice:
-        query = query.filter_by(ID_INDICE_ECONOMICO=int(id_indice))
+        # Buscar parcelas calculadas - PERMITIR BUSCA APENAS POR DATA
+        query = SiscalculoCalculos.query.filter_by(DT_ATUALIZACAO=dt_atualizacao_filtro)
 
-    calculos = query.order_by(
-        SiscalculoCalculos.ID_INDICE_ECONOMICO,
-        SiscalculoCalculos.DT_VENCIMENTO
-    ).all()
+        # Aplicar filtros opcionais se fornecidos
+        if id_indice:
+            query = query.filter_by(ID_INDICE_ECONOMICO=int(id_indice))
 
-    # Totalizar por índice
-    totais = db.session.query(
-        SiscalculoCalculos.ID_INDICE_ECONOMICO,
-        ParamIndicesEconomicos.DSC_INDICE_ECONOMICO,
-        db.func.sum(SiscalculoCalculos.VR_COTA).label('total_cotas'),
-        db.func.sum(SiscalculoCalculos.ATM).label('total_atualizacao'),
-        db.func.sum(SiscalculoCalculos.VR_JUROS).label('total_juros'),
-        db.func.sum(SiscalculoCalculos.VR_MULTA).label('total_multa'),
-        db.func.sum(SiscalculoCalculos.VR_TOTAL).label('total_geral')
-    ).join(
-        ParamIndicesEconomicos,
-        SiscalculoCalculos.ID_INDICE_ECONOMICO == ParamIndicesEconomicos.ID_INDICE_ECONOMICO
-    ).filter(
-        SiscalculoCalculos.DT_ATUALIZACAO == dt_atualizacao
-    ).group_by(
-        SiscalculoCalculos.ID_INDICE_ECONOMICO,
-        ParamIndicesEconomicos.DSC_INDICE_ECONOMICO
-    ).all()
+        if imovel:
+            query = query.filter_by(IMOVEL=imovel)
 
-    # Calcular honorários (10% sobre o total)
-    for total in totais:
-        total.honorarios = total.total_geral * Decimal('0.10')
-        total.total_final = total.total_geral + total.honorarios
+        parcelas = query.order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
 
-    return render_template('sumov/siscalculo/resultados.html',
-                           calculos=calculos,
-                           totais=totais,
-                           dt_atualizacao=dt_atualizacao)
+        print(f"[DEBUG RESULTADOS] Total de parcelas encontradas: {len(parcelas)}")
+
+        if not parcelas:
+            flash('Nenhum resultado encontrado para esta data.', 'warning')
+            return redirect(url_for('siscalculo.index'))
+
+        # Se não veio imóvel nos parâmetros, pegar da primeira parcela
+        if not imovel and parcelas:
+            imovel = parcelas[0].IMOVEL
+            print(f"[DEBUG RESULTADOS] Imóvel identificado: {imovel}")
+
+        # Se não veio id_indice nos parâmetros, pegar da primeira parcela
+        if not id_indice and parcelas:
+            id_indice = parcelas[0].ID_INDICE_ECONOMICO
+            print(f"[DEBUG RESULTADOS] Índice identificado: {id_indice}")
+
+        # Calcular totais gerais
+        total_parcelas = len(parcelas)
+        total_vr_cota = sum(p.VR_COTA for p in parcelas)
+        total_atm = sum(p.ATM or Decimal('0') for p in parcelas)
+        total_juros = sum(p.VR_JUROS or Decimal('0') for p in parcelas)
+        total_multa = sum(p.VR_MULTA or Decimal('0') for p in parcelas)
+        total_geral = sum(p.VR_TOTAL or Decimal('0') for p in parcelas)
+
+        # Honorários COM PERCENTUAL PERSONALIZADO
+        honorarios = total_geral * (perc_honorarios / Decimal('100'))
+        total_final = total_geral + honorarios
+
+        totais = {
+            'quantidade': total_parcelas,
+            'vr_cota': float(total_vr_cota),
+            'atm': float(total_atm),
+            'juros': float(total_juros),
+            'multa': float(total_multa),
+            'total_geral': float(total_geral),
+            'honorarios': float(honorarios),
+            'total_final': float(total_final),
+            'perc_honorarios': float(perc_honorarios)
+        }
+
+        # Buscar nome do índice
+        indice = None
+        if id_indice:
+            indice = ParamIndicesEconomicos.query.get(int(id_indice))
+            print(
+                f"[DEBUG RESULTADOS] Índice encontrado: {indice.DSC_INDICE_ECONOMICO if indice else 'Não encontrado'}")
+
+        return render_template('sumov/siscalculo/resultados.html',
+                               parcelas=parcelas,
+                               totais=totais,
+                               dt_atualizacao=dt_atualizacao_filtro,
+                               imovel=imovel,
+                               indice=indice)
+
+    except Exception as e:
+        print(f"[ERRO] Erro ao buscar resultados: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao buscar resultados: {str(e)}', 'danger')
+        return redirect(url_for('siscalculo.index'))
 
 
 @siscalculo_bp.route('/exportar_resultados')

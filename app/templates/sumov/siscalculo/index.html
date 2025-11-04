@@ -63,9 +63,19 @@
                     </div>
                 </div>
 
-                <!-- Linha 2: Upload do arquivo -->
+                <!-- Linha 2: Honorários e Upload do arquivo -->
                 <div class="row mb-4">
-                    <div class="col-md-12">
+                    <div class="col-md-4">
+                        <label for="perc_honorarios" class="form-label">
+                            Honorários (%) <span class="text-danger">*</span>
+                        </label>
+                        <input type="number" class="form-control" id="perc_honorarios"
+                               name="perc_honorarios" min="0" max="100" step="0.01"
+                               value="10.00" required>
+                        <small class="text-muted">Percentual de honorários advocatícios</small>
+                    </div>
+
+                    <div class="col-md-8">
                         <label for="arquivo_excel" class="form-label">
                             Arquivo Excel <span class="text-danger">*</span>
                         </label>
@@ -150,6 +160,8 @@
 // Função para limpar formulário
 function limparFormulario() {
     document.getElementById('formSiscalculo').reset();
+    // Resetar honorários para 10%
+    document.getElementById('perc_honorarios').value = '10.00';
 }
 
 // Adicionar listener de submit com debug
@@ -163,6 +175,7 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
     console.log('Dados do formulário:');
     console.log('- dt_atualizacao:', formData.get('dt_atualizacao'));
     console.log('- id_indice:', formData.get('id_indice'));
+    console.log('- perc_honorarios:', formData.get('perc_honorarios'));
     console.log('- arquivo_excel:', formData.get('arquivo_excel')?.name);
 
     // Validações básicas
@@ -174,6 +187,12 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
 
     if (!formData.get('id_indice')) {
         alert('Por favor, selecione um índice econômico!');
+        e.preventDefault();
+        return false;
+    }
+
+    if (!formData.get('perc_honorarios')) {
+        alert('Por favor, informe o percentual de honorários!');
         e.preventDefault();
         return false;
     }

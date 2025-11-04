@@ -14,10 +14,12 @@ sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
 
 @sumov_bp.context_processor
-def inject_current_year():
-    return {'current_year': datetime.utcnow().year}
-
-
+def inject_datetime():
+    """Injeta datetime e ano atual no contexto de todos os templates do SUMOV"""
+    return {
+        'datetime': datetime,
+        'current_year': datetime.utcnow().year
+    }
 @sumov_bp.route('/')
 @login_required
 def index():

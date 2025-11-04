@@ -15,9 +15,9 @@ class DepositosSufin(db.Model):
     DT_MEMO = db.Column(db.Date)
     ID_IDENTIFICADO = db.Column(db.Boolean)
     DT_IDENTIFICACAO = db.Column(db.Date)
-    ID_AREA = db.Column(db.Integer, db.ForeignKey('dbo.DPJ_TB001_AREA.ID_AREA'))
+    ID_AREA = db.Column(db.Integer, db.ForeignKey('BDG.DPJ_TB001_AREA.ID_AREA'))
     ID_AREA_2 = db.Column(db.Integer)
-    ID_CENTRO = db.Column(db.Integer, db.ForeignKey('dbo.DPJ_TB002_CENTRO_RESULTADO.ID_CENTRO'))
+    ID_CENTRO = db.Column(db.Integer, db.ForeignKey('BDG.DPJ_TB002_CENTRO_RESULTADO.ID_CENTRO'))
     ID_AJUSTE_RM = db.Column(db.Boolean)
     DT_AJUSTE_RM = db.Column(db.Date)
     NU_CONTRATO = db.Column(db.BigInteger)
@@ -37,7 +37,7 @@ class DepositosSufin(db.Model):
 class Area(db.Model):
     """Modelo para a tabela de Áreas"""
     __tablename__ = 'DPJ_TB001_AREA'
-    __table_args__ = {'schema': 'dbo'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID_AREA = db.Column(db.Integer, primary_key=True)
     NO_AREA = db.Column(db.String(100))
@@ -46,7 +46,7 @@ class Area(db.Model):
 class CentroResultado(db.Model):
     """Modelo para a tabela de Centro de Resultado"""
     __tablename__ = 'DPJ_TB002_CENTRO_RESULTADO'
-    __table_args__ = {'schema': 'dbo'}
+    __table_args__ = {'schema': 'BDG'}
 
     ID_CENTRO = db.Column(db.Integer, primary_key=True)
     NO_CENTRO_RESULTADO = db.Column(db.String(100))
@@ -56,7 +56,7 @@ class CentroResultado(db.Model):
 class ProcessosJudiciais(db.Model):
     """Modelo para a tabela de Processos Judiciais"""
     __tablename__ = 'DPJ_TB006_PROCESSOS_JUDICIAIS'
-    __table_args__ = {'schema': 'dbo'}
+    __table_args__ = {'schema': 'BDG'}
 
     NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)
     NR_PROCESSO = db.Column(db.String(100))
