@@ -16,11 +16,25 @@
                     Quitação de todos os débitos exigíveis, mediante aceitação dos encargos, inclusive honorários, conforme critérios no rodapé - JUDICIAL
                 </p>
                 <div class="mt-2">
-                    <strong>Imóvel:</strong> {{ imovel }} |
-                    <strong>Data de Atualização:</strong> {{ dt_atualizacao.strftime('%d/%m/%Y') }}
-                    {% if indice %}
-                    | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
+                    {% if nome_condominio %}
+                    <div class="mb-1">
+                        <strong>Reclamante:</strong> {{ nome_condominio }}
+                    </div>
                     {% endif %}
+
+                    {% if endereco_imovel %}
+                    <div class="mb-1">
+                        <strong>Endereço do Imóvel:</strong> {{ endereco_imovel }}
+                    </div>
+                    {% endif %}
+
+                    <div>
+                        <strong>Imóvel:</strong> {{ imovel }} |
+                        <strong>Data de Atualização:</strong> {{ dt_atualizacao.strftime('%d/%m/%Y') }}
+                        {% if indice %}
+                        | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="col-auto">

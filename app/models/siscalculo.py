@@ -30,6 +30,7 @@ class SiscalculoDados(db.Model):
 
     # Chave primária composta (não tem ID autoincrement)
     IMOVEL = db.Column(db.String(50), primary_key=True, nullable=False, default='')
+    NOME_CONDOMINIO = db.Column(db.String(200), nullable=True)
     DT_VENCIMENTO = db.Column(db.Date, primary_key=True, nullable=False)
     DT_ATUALIZACAO = db.Column(db.Date, primary_key=True, nullable=False)
 
