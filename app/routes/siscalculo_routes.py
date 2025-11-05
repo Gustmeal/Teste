@@ -39,24 +39,33 @@ def index():
     # Data padrão (hoje)
     data_atual = date.today()
 
-    # Buscar histórico de cálculos - SEM USAR ID que não existe na tabela
-    historico = db.session.query(
+    # ✅ NOVO: Capturar filtro de número de contrato da URL
+    filtro_contrato = request.args.get('filtro_contrato', '').strip()
+
+    # ✅ MODIFICADO: Buscar histórico de cálculos com TODOS OS REGISTROS e NÚMERO DE CONTRATO
+    query = db.session.query(
+        SiscalculoCalculos.IMOVEL,  # ✅ ADICIONADO: Número do contrato
         SiscalculoCalculos.DT_ATUALIZACAO,
         db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('qtd_registros'),
         db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
-    ).group_by(
+    )
+
+    # ✅ NOVO: Aplicar filtro por número de contrato, se fornecido
+    if filtro_contrato:
+        query = query.filter(SiscalculoCalculos.IMOVEL.like(f'%{filtro_contrato}%'))
+
+    historico = query.group_by(
+        SiscalculoCalculos.IMOVEL,  # ✅ ADICIONADO ao GROUP BY
         SiscalculoCalculos.DT_ATUALIZACAO
     ).order_by(
         SiscalculoCalculos.DT_ATUALIZACAO.desc()
-    ).limit(10).all()
-
-    # Últimas vinculações (se necessário - caso contrário, remover)
-    ultimas_vinculacoes = []  # Vazio por enquanto, já que não temos vinculações no SISCalculo
+    ).all()  # ✅ REMOVIDO .limit(10) - AGORA MOSTRA TODOS OS REGISTROS!
 
     return render_template('sumov/siscalculo/index.html',
                            indices=indices,
                            data_atual=data_atual,
-                           historico=historico)
+                           historico=historico,
+                           filtro_contrato=filtro_contrato)
 
 
 @siscalculo_bp.route('/processar', methods=['POST'])
@@ -667,4 +676,156 @@ def comparar_indices():
 
     except Exception as e:
         flash(f'Erro ao comparar índices: {str(e)}', 'danger')
+        return redirect(url_for('siscalculo.index'))
+
+
+@siscalculo_bp.route('/exportar_pdf')
+@login_required
+def exportar_pdf():
+    """Exporta os resultados para PDF no formato da Proposta Negocial EMGEA"""
+    dt_atualizacao = request.args.get('dt_atualizacao')
+    id_indice = request.args.get('id_indice')
+    imovel = request.args.get('imovel')
+    perc_honorarios = request.args.get('perc_honorarios', '10')
+
+    if not dt_atualizacao:
+        flash('Data de atualização não informada.', 'danger')
+        return redirect(url_for('siscalculo.index'))
+
+    try:
+        # Converter parâmetros
+        dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
+        perc_honorarios = Decimal(perc_honorarios)
+
+        # Buscar parcelas calculadas (mesma lógica da rota resultados)
+        if imovel and id_indice:
+            parcelas = SiscalculoCalculos.query.filter_by(
+                DT_ATUALIZACAO=dt_atualizacao_filtro,
+                ID_INDICE_ECONOMICO=int(id_indice),
+                IMOVEL=imovel
+            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
+        elif id_indice:
+            parcelas = SiscalculoCalculos.query.filter_by(
+                DT_ATUALIZACAO=dt_atualizacao_filtro,
+                ID_INDICE_ECONOMICO=int(id_indice)
+            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
+        else:
+            parcelas = SiscalculoCalculos.query.filter_by(
+                DT_ATUALIZACAO=dt_atualizacao_filtro
+            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
+
+        if not parcelas:
+            flash('Nenhum cálculo encontrado.', 'warning')
+            return redirect(url_for('siscalculo.index'))
+
+        # Se não veio imóvel nos parâmetros, pegar da primeira parcela
+        if not imovel and parcelas:
+            imovel = parcelas[0].IMOVEL
+
+        # Buscar informações complementares
+        nome_condominio = ''
+        endereco_imovel = ''
+
+        if imovel:
+            # Buscar nome do condomínio
+            dado = SiscalculoDados.query.filter_by(IMOVEL=imovel).first()
+            nome_condominio = dado.NOME_CONDOMINIO if dado and dado.NOME_CONDOMINIO else ''
+
+            # Buscar endereço do imóvel
+            try:
+                sql_endereco = text("""
+                    SELECT TOP 1
+                        [ABR_LOGR_IMO],
+                        [LOGR_IMO],
+                        [NU_IMO],
+                        [COMPL_IMO],
+                        [BAIR_IMO],
+                        [CIDADE_IMO],
+                        [UF_IMO]
+                    FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL]
+                    WHERE [IMOVEL] = :imovel
+                """)
+
+                resultado = db.session.execute(sql_endereco, {'imovel': imovel}).fetchone()
+
+                if resultado:
+                    partes_endereco = []
+                    if resultado[0] and resultado[1]:  # ABR_LOGR_IMO e LOGR_IMO
+                        partes_endereco.append(f"{resultado[0]} {resultado[1]}")
+                    if resultado[2]:  # NU_IMO
+                        partes_endereco.append(f", {resultado[2]}")
+                    if resultado[3]:  # COMPL_IMO
+                        partes_endereco.append(f", {resultado[3]}")
+                    if resultado[4]:  # BAIR_IMO
+                        partes_endereco.append(f" - {resultado[4]}")
+                    if resultado[5]:  # CIDADE_IMO
+                        partes_endereco.append(f" - {resultado[5]}")
+                    if resultado[6]:  # UF_IMO
+                        partes_endereco.append(f"/{resultado[6]}")
+
+                    endereco_imovel = ''.join(partes_endereco)
+
+            except Exception as e:
+                print(f"[AVISO] Erro ao buscar endereço: {e}")
+                endereco_imovel = f"Imóvel {imovel}"
+
+        # Preparar dados das parcelas para o PDF
+        parcelas_pdf = []
+        total_soma = Decimal('0')
+
+        for p in parcelas:
+            parcelas_pdf.append({
+                'DT_VENCIMENTO': p.DT_VENCIMENTO,
+                'TEMPO_ATRASO': p.TEMPO_ATRASO,
+                'VR_COTA': p.VR_COTA,
+                'PERC_ATUALIZACAO': p.PERC_ATUALIZACAO,
+                'ATM': p.ATM,
+                'VR_JUROS': p.VR_JUROS,
+                'VR_MULTA': p.VR_MULTA,
+                'VR_DESCONTO': p.VR_DESCONTO,
+                'VR_TOTAL': p.VR_TOTAL
+            })
+            total_soma += p.VR_TOTAL
+
+        # Importar módulo de geração de PDF
+        from app.utils.siscalculo_pdf import gerar_pdf_siscalculo
+
+        # Caminho para a logo (ajustar conforme sua estrutura)
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo_emgea.png')
+
+        # Criar arquivo temporário para o PDF
+        import tempfile
+        pdf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        pdf_path = pdf_temp.name
+        pdf_temp.close()
+
+        # Gerar PDF
+        gerar_pdf_siscalculo(
+            output_path=pdf_path,
+            parcelas=parcelas_pdf,
+            nome_condominio=nome_condominio,
+            endereco_imovel=endereco_imovel,
+            data_adjudicacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
+            valor_proposta=total_soma + (total_soma * perc_honorarios / 100),
+            data_analise=datetime.now().strftime('%d/%m/%Y'),
+            perc_honorarios=float(perc_honorarios),
+            logo_path=logo_path if os.path.exists(logo_path) else None
+        )
+
+        # Nome do arquivo para download
+        nome_arquivo = f'proposta_negocial_{imovel}_{dt_atualizacao_filtro.strftime("%Y%m%d")}.pdf'
+
+        # Enviar arquivo
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=nome_arquivo
+        )
+
+    except Exception as e:
+        print(f"\n[ERRO] Erro ao gerar PDF: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao exportar PDF: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))

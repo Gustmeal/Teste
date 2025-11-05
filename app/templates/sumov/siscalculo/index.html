@@ -115,12 +115,51 @@
         </div>
     </div>
 
-    <!-- Histórico de Processamentos -->
+    <!-- ✅ NOVO: Filtro de Número de Contrato -->
+    {% if historico %}
+    <div class="card shadow mb-3">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('siscalculo.index') }}" class="row g-3">
+                <div class="col-md-10">
+                    <label for="filtro_contrato" class="form-label">
+                        <i class="fas fa-filter me-2"></i>Filtrar por Número de Contrato
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="filtro_contrato"
+                           name="filtro_contrato"
+                           placeholder="Digite o número do contrato para filtrar..."
+                           value="{{ filtro_contrato or '' }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-search me-2"></i>Buscar
+                    </button>
+                </div>
+            </form>
+            {% if filtro_contrato %}
+            <div class="mt-2">
+                <a href="{{ url_for('siscalculo.index') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-times me-1"></i>Limpar Filtro
+                </a>
+                <span class="text-muted ms-2">Filtrando por: <strong>{{ filtro_contrato }}</strong></span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ✅ MODIFICADO: Histórico de Processamentos com Número de Contrato -->
     {% if historico %}
     <div class="card shadow">
         <div class="card-header py-3">
             <h6 class="m-0 font-weight-bold text-primary">
-                <i class="fas fa-history me-2"></i>Últimos Processamentos
+                <i class="fas fa-history me-2"></i>Processamentos
+                {% if filtro_contrato %}
+                <span class="badge bg-info ms-2">{{ historico|length }} resultado(s)</span>
+                {% else %}
+                <span class="badge bg-secondary ms-2">{{ historico|length }} total</span>
+                {% endif %}
             </h6>
         </div>
         <div class="card-body">
@@ -128,6 +167,7 @@
                 <table class="table table-bordered table-hover">
                     <thead>
                         <tr>
+                            <th>Número do Contrato</th>
                             <th>Data Atualização</th>
                             <th>Qtd. Registros</th>
                             <th>Valor Total</th>
@@ -137,11 +177,12 @@
                     <tbody>
                         {% for h in historico %}
                         <tr>
+                            <td><strong>{{ h.IMOVEL or 'N/A' }}</strong></td>
                             <td>{{ h.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
                             <td>{{ h.qtd_registros }}</td>
                             <td>R$ {{ "{:,.2f}".format(h.valor_total or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                             <td>
-                                <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO.strftime('%Y-%m-%d')) }}"
+                                <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO.strftime('%Y-%m-%d'), imovel=h.IMOVEL) }}"
                                    class="btn btn-sm btn-primary">
                                     <i class="fas fa-eye"></i> Ver Resultados
                                 </a>
@@ -152,6 +193,15 @@
                 </table>
             </div>
         </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        {% if filtro_contrato %}
+        Nenhum processamento encontrado para o contrato <strong>{{ filtro_contrato }}</strong>.
+        {% else %}
+        Nenhum processamento realizado ainda. Faça o upload de um arquivo Excel para começar.
+        {% endif %}
     </div>
     {% endif %}
 </div>

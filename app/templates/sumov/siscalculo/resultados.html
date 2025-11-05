@@ -41,6 +41,18 @@
                 <a href="{{ url_for('siscalculo.index') }}" class="btn btn-outline-secondary btn-sm">
                     <i class="fas fa-arrow-left me-2"></i>Voltar
                 </a>
+
+                <!-- ✅ NOVO: Botão de Exportar para PDF -->
+                <a href="{{ url_for('siscalculo.exportar_pdf',
+                                    dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'),
+                                    imovel=imovel,
+                                    id_indice=indice.ID_INDICE_ECONOMICO if indice else '',
+                                    perc_honorarios=totais.perc_honorarios) }}"
+                   class="btn btn-danger btn-sm"
+                   title="Exportar para PDF">
+                    <i class="fas fa-file-pdf me-2"></i>Exportar PDF
+                </a>
+
                 <button class="btn btn-success btn-sm" onclick="window.print()">
                     <i class="fas fa-print me-2"></i>Imprimir
                 </button>
