@@ -29,6 +29,10 @@ class DepositosSufin(db.Model):
     DT_SISCOR = db.Column(db.Date)
     IC_INCLUIDO_ACERTO = db.Column(db.Boolean)
 
+    # NOVAS COLUNAS
+    STATUS = db.Column(db.String(20))  # 'Em andamento' ou 'Concluído'
+    AREA_STATUS = db.Column(db.String(100))  # Superintendência do usuário
+
     # Relacionamentos
     area = db.relationship('Area', backref='depositos', foreign_keys=[ID_AREA])
     centro = db.relationship('CentroResultado', backref='depositos', foreign_keys=[ID_CENTRO])

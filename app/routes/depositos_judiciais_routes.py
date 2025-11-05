@@ -4,7 +4,7 @@ from app import db
 from app.models.depositos_judiciais import DepositosSufin, Area, CentroResultado, ProcessosJudiciais
 from app.utils.audit import registrar_log
 from datetime import datetime
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_, and_, extract
 from decimal import Decimal
 from sqlalchemy import text
 
@@ -192,7 +192,8 @@ def edicao():
             'mes_identificacao': request.args.get('mes_identificacao', ''),
             'ano_identificacao': request.args.get('ano_identificacao', ''),
             'dt_siscor': request.args.get('dt_siscor', ''),
-            'dt_siscor_status': request.args.get('dt_siscor_status', '')
+            'dt_siscor_status': request.args.get('dt_siscor_status', ''),
+            'status': request.args.get('status', '')
         }
 
         # Query base usando os modelos corretos
@@ -226,63 +227,105 @@ def edicao():
             except ValueError:
                 pass
 
+        # Filtro de STATUS
+        if filtros['status']:
+            if filtros['status'] == 'em_andamento':
+                query = query.filter(DepositosSufin.STATUS == 'Em andamento')
+            elif filtros['status'] == 'concluido':
+                query = query.filter(DepositosSufin.STATUS == 'Concluído')
+            elif filtros['status'] == 'sem_status':
+                query = query.filter(
+                    or_(
+                        DepositosSufin.STATUS.is_(None),
+                        DepositosSufin.STATUS == ''
+                    )
+                )
+
+        # Filtros de data de identificação
         if filtros['dt_identificacao']:
             try:
-                data = datetime.strptime(filtros['dt_identificacao'], '%Y-%m-%d').date()
+                data = datetime.strptime(filtros['dt_identificacao'], '%Y-%m-%d')
                 query = query.filter(DepositosSufin.DT_IDENTIFICACAO == data)
             except ValueError:
                 pass
 
-        # FILTROS DE MÊS E ANO - IMPLEMENTAÇÃO CORRIGIDA
-        if filtros['mes_identificacao'] or filtros['ano_identificacao']:
-            condicoes_data = []
+        if filtros['mes_identificacao']:
+            try:
+                mes = int(filtros['mes_identificacao'])
+                query = query.filter(extract('month', DepositosSufin.DT_IDENTIFICACAO) == mes)
+            except ValueError:
+                pass
 
-            if filtros['mes_identificacao']:
-                try:
-                    mes = int(filtros['mes_identificacao'])
-                    if 1 <= mes <= 12:
-                        # Usar func.extract do SQLAlchemy
-                        condicoes_data.append(
-                            func.extract('month', DepositosSufin.DT_IDENTIFICACAO) == mes
-                        )
-                except ValueError:
-                    pass
+        if filtros['ano_identificacao']:
+            try:
+                ano = int(filtros['ano_identificacao'])
+                query = query.filter(extract('year', DepositosSufin.DT_IDENTIFICACAO) == ano)
+            except ValueError:
+                pass
 
-            if filtros['ano_identificacao']:
-                try:
-                    ano = int(filtros['ano_identificacao'])
-                    if 2000 <= ano <= 2099:
-                        # Usar func.extract do SQLAlchemy
-                        condicoes_data.append(
-                            func.extract('year', DepositosSufin.DT_IDENTIFICACAO) == ano
-                        )
-                except ValueError:
-                    pass
-
-            if condicoes_data:
-                query = query.filter(and_(*condicoes_data))
-
+        # Filtros de DT_SISCOR
         if filtros['dt_siscor']:
             try:
-                data = datetime.strptime(filtros['dt_siscor'], '%Y-%m-%d').date()
+                data = datetime.strptime(filtros['dt_siscor'], '%Y-%m-%d')
                 query = query.filter(DepositosSufin.DT_SISCOR == data)
             except ValueError:
                 pass
 
-        if filtros['dt_siscor_status'] == 'nulo':
-            query = query.filter(DepositosSufin.DT_SISCOR.is_(None))
-        elif filtros['dt_siscor_status'] == 'preenchido':
-            query = query.filter(DepositosSufin.DT_SISCOR.isnot(None))
+        if filtros['dt_siscor_status']:
+            if filtros['dt_siscor_status'] == 'preenchido':
+                query = query.filter(DepositosSufin.DT_SISCOR.isnot(None))
+            elif filtros['dt_siscor_status'] == 'vazio':
+                query = query.filter(DepositosSufin.DT_SISCOR.is_(None))
 
-        # Executar query
-        depositos = query.order_by(DepositosSufin.NU_LINHA.desc()).all()
+        # Ordenar por NU_LINHA decrescente
+        resultados = query.order_by(DepositosSufin.NU_LINHA.desc()).all()
+
+        # Preparar dados para o template COM LÓGICA DE CORES
+        depositos_lista = []
+        for resultado in resultados:
+            deposito_obj = resultado[0]
+            nr_processo = resultado[1]
+            no_area = resultado[2]
+            no_carteira = resultado[3]
+
+            # LÓGICA DE MARCAÇÃO COLORIDA
+            cor_marcacao = None  # Padrão: sem cor
+
+            # REGRA 1: Vermelho se está Em andamento (PRIORIDADE MÁXIMA)
+            if deposito_obj.STATUS == 'Em andamento':
+                cor_marcacao = 'vermelho'
+
+            # REGRA 2: Laranja se mês/ano de DT_IDENTIFICACAO diferente de DT_LANCAMENTO_DJ
+            elif (deposito_obj.DT_IDENTIFICACAO and deposito_obj.DT_LANCAMENTO_DJ):
+                mes_ident = deposito_obj.DT_IDENTIFICACAO.month
+                ano_ident = deposito_obj.DT_IDENTIFICACAO.year
+                mes_lanc = deposito_obj.DT_LANCAMENTO_DJ.month
+                ano_lanc = deposito_obj.DT_LANCAMENTO_DJ.year
+
+                if mes_ident != mes_lanc or ano_ident != ano_lanc:
+                    cor_marcacao = 'laranja'
+
+            # REGRA 3: Amarelo se MEMO_SUFIN não nulo E DT_AJUSTE_RM e DT_IDENTIFICACAO nulos
+            if cor_marcacao is None:  # Só verifica se ainda não tem cor
+                if (deposito_obj.MEMO_SUFIN and
+                        deposito_obj.DT_AJUSTE_RM is None and
+                        deposito_obj.DT_IDENTIFICACAO is None):
+                    cor_marcacao = 'amarelo'
+
+            depositos_lista.append({
+                'deposito': deposito_obj,
+                'nr_processo': nr_processo,
+                'no_area': no_area,
+                'no_carteira': no_carteira,
+                'cor_marcacao': cor_marcacao
+            })
 
         # Buscar centros para o select
         centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
 
         return render_template(
             'depositos_judiciais/edicao.html',
-            depositos=depositos,
+            depositos_lista=depositos_lista,
             centros=centros,
             filtros=filtros
         )
@@ -290,6 +333,121 @@ def edicao():
     except Exception as e:
         flash(f'Erro ao consultar depósitos: {str(e)}', 'danger')
         return redirect(url_for('depositos_judiciais.index'))
+
+
+@depositos_judiciais_bp.route('/api/marcar-em-andamento/<int:nu_linha>', methods=['POST'])
+@login_required
+def marcar_em_andamento(nu_linha):
+    """
+    API para marcar um depósito como 'Em andamento'
+    Salva automaticamente sem precisar clicar em Salvar
+    """
+    try:
+        from app.models.usuario import Usuario, Empregado
+
+        deposito = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
+
+        if not deposito:
+            return jsonify({
+                'success': False,
+                'message': 'Depósito não encontrado'
+            }), 404
+
+        # Verificar se já está em andamento por outro usuário
+        if deposito.STATUS == 'Em andamento':
+            return jsonify({
+                'success': False,
+                'message': f'Este contrato já está sendo editado por outro usuário da área {deposito.AREA_STATUS}',
+                'area': deposito.AREA_STATUS
+            }), 409
+
+        # Obter área do usuário logado - CORRIGIDO
+        area_usuario = None
+
+        # Buscar o usuário completo do banco de dados
+        usuario = Usuario.query.get(current_user.id)
+
+        if usuario and usuario.FK_PESSOA:
+            # Buscar o empregado pela FK_PESSOA
+            empregado = Empregado.query.filter_by(pkPessoa=usuario.FK_PESSOA).first()
+
+            if empregado and empregado.sgSuperintendencia:
+                area_usuario = empregado.sgSuperintendencia
+
+        # Marcar como em andamento
+        deposito.STATUS = 'Em andamento'
+        deposito.AREA_STATUS = area_usuario
+
+        db.session.commit()
+
+        # Registrar log
+        registrar_log(
+            'depositos_judiciais',
+            'update',
+            f'Depósito NU_LINHA {nu_linha} marcado como Em andamento',
+            {'nu_linha': nu_linha, 'area': area_usuario}
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Contrato marcado como Em andamento',
+            'status': 'Em andamento',
+            'area': area_usuario,
+            'usuario': usuario.NOME
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao marcar contrato: {str(e)}'
+        }), 500
+
+
+@depositos_judiciais_bp.route('/api/verificar-status/<int:nu_linha>', methods=['GET'])
+@login_required
+def verificar_status(nu_linha):
+    """
+    API para verificar o status atual de um depósito
+    Retorna se está em andamento e por qual usuário/área
+    """
+    try:
+        from app.models.usuario import Usuario, Empregado
+
+        deposito = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
+
+        if not deposito:
+            return jsonify({
+                'success': False,
+                'message': 'Depósito não encontrado'
+            }), 404
+
+        # Verificar se o usuário atual é o mesmo que está editando
+        area_usuario_atual = None
+        usuario_atual = Usuario.query.get(current_user.id)
+
+        if usuario_atual and usuario_atual.FK_PESSOA:
+            empregado_atual = Empregado.query.filter_by(pkPessoa=usuario_atual.FK_PESSOA).first()
+            if empregado_atual and empregado_atual.sgSuperintendencia:
+                area_usuario_atual = empregado_atual.sgSuperintendencia
+
+        # Verificar se é a mesma área que está editando
+        eh_mesmo_usuario = (deposito.STATUS == 'Em andamento' and
+                            deposito.AREA_STATUS == area_usuario_atual)
+
+        return jsonify({
+            'success': True,
+            'status': deposito.STATUS,
+            'area_status': deposito.AREA_STATUS,
+            'em_andamento': deposito.STATUS == 'Em andamento',
+            'eh_mesmo_usuario': eh_mesmo_usuario  # NOVO
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao verificar status: {str(e)}'
+        }), 500
 
 @depositos_judiciais_bp.route('/editar/<int:nu_linha>', methods=['GET', 'POST'])
 @login_required
@@ -331,7 +489,7 @@ def editar(nu_linha):
 
             # Determinar se a carteira antiga ou nova é Institucional
             eh_institucional_antigo = (
-                                                  carteira_antiga and carteira_antiga.NO_CARTEIRA == 'Institucional') or centro_antigo == 6
+                carteira_antiga and carteira_antiga.NO_CARTEIRA == 'Institucional') or centro_antigo == 6
             eh_institucional_novo = (nova_carteira and nova_carteira.NO_CARTEIRA == 'Institucional') or novo_centro == 6
 
             # Se mudou o centro E a nova carteira NÃO é Institucional E a antiga também NÃO era Institucional
@@ -342,57 +500,101 @@ def editar(nu_linha):
                 ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
                 proximo_nu_linha_estorno = (ultimo_nu_linha or 0) + 1
 
-                # 2. Criar ESTORNO (cópia com valor negativo)
+                # 2. Criar linha de ESTORNO (valor negativo) na carteira ANTIGA
                 estorno = DepositosSufin()
                 estorno.NU_LINHA = proximo_nu_linha_estorno
-                estorno.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
-                estorno.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
-                estorno.VR_RATEIO = -abs(deposito_obj.VR_RATEIO) if deposito_obj.VR_RATEIO else 0
-                estorno.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
-                estorno.DT_MEMO = deposito_obj.DT_MEMO
-                estorno.ID_IDENTIFICADO = deposito_obj.ID_IDENTIFICADO
-                estorno.DT_IDENTIFICACAO = deposito_obj.DT_IDENTIFICACAO
-                estorno.ID_AREA = deposito_obj.ID_AREA
-                estorno.ID_AREA_2 = deposito_obj.ID_AREA_2
-                estorno.ID_CENTRO = deposito_obj.ID_CENTRO  # MANTÉM O CENTRO ORIGINAL
-                estorno.ID_AJUSTE_RM = deposito_obj.ID_AJUSTE_RM
-                estorno.DT_AJUSTE_RM = deposito_obj.DT_AJUSTE_RM
-                estorno.NU_CONTRATO = deposito_obj.NU_CONTRATO
-                estorno.NU_CONTRATO_2 = deposito_obj.NU_CONTRATO_2
-                estorno.EVENTO_CONTABIL_ANTERIOR = deposito_obj.EVENTO_CONTABIL_ANTERIOR
-                estorno.EVENTO_CONTABIL_ATUAL = deposito_obj.EVENTO_CONTABIL_ATUAL
-                estorno.OBS = f"ESTORNO REF. LINHA {deposito_obj.NU_LINHA}"
-                estorno.IC_APROPRIADO = deposito_obj.IC_APROPRIADO
-                estorno.DT_SISCOR = deposito_obj.DT_SISCOR
-                estorno.IC_INCLUIDO_ACERTO = deposito_obj.IC_INCLUIDO_ACERTO
+                estorno.LANCAMENTO_RM = request.form.get('lancamento_rm')
+                estorno.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
+
+                # Valor NEGATIVO para estorno
+                vr_rateio = request.form.get('vr_rateio')
+                vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
+                estorno.VR_RATEIO = -abs(float(vr_rateio_limpo))
+
+                estorno.MEMO_SUFIN = request.form.get('memo_sufin')
+
+                dt_memo = request.form.get('dt_memo')
+                if dt_memo:
+                    estorno.DT_MEMO = datetime.strptime(dt_memo, '%Y-%m-%d')
+                    estorno.ID_IDENTIFICADO = True
+                else:
+                    estorno.DT_MEMO = None
+                    estorno.ID_IDENTIFICADO = False
+
+                dt_identificacao = request.form.get('dt_identificacao')
+                if dt_identificacao:
+                    estorno.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
+                else:
+                    estorno.DT_IDENTIFICACAO = None
+
+                estorno.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
+                estorno.ID_CENTRO = centro_antigo  # Carteira ANTIGA
+
+                dt_ajuste_rm = request.form.get('dt_ajuste_rm')
+                if dt_ajuste_rm:
+                    estorno.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+                    estorno.ID_AJUSTE_RM = True
+                else:
+                    estorno.DT_AJUSTE_RM = None
+                    estorno.ID_AJUSTE_RM = False
+
+                nu_contrato = request.form.get('nu_contrato')
+                if nu_contrato:
+                    estorno.NU_CONTRATO = int(nu_contrato)
+                else:
+                    estorno.NU_CONTRATO = None
+
+                estorno.NU_CONTRATO_2 = None
+
+                evento_anterior = request.form.get('evento_contabil_anterior')
+                if evento_anterior:
+                    estorno.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
+                else:
+                    estorno.EVENTO_CONTABIL_ANTERIOR = None
+
+                evento_atual = request.form.get('evento_contabil_atual')
+                if evento_atual:
+                    estorno.EVENTO_CONTABIL_ATUAL = int(evento_atual)
+                else:
+                    estorno.EVENTO_CONTABIL_ATUAL = None
+
+                estorno.OBS = request.form.get('obs')
+                estorno.IC_APROPRIADO = None
+
+                dt_siscor = request.form.get('dt_siscor')
+                if dt_siscor:
+                    estorno.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
+                else:
+                    estorno.DT_SISCOR = None
+
+                estorno.IC_INCLUIDO_ACERTO = None
+                estorno.STATUS = None
+                estorno.AREA_STATUS = None
 
                 db.session.add(estorno)
 
-                # Copiar processo judicial para estorno se existir
-                if nr_processo:
+                # Criar processo judicial para estorno se informado
+                nr_processo_form = request.form.get('nr_processo')
+                if nr_processo_form and nr_processo_form.strip():
                     processo_estorno = ProcessosJudiciais()
                     processo_estorno.NU_LINHA = proximo_nu_linha_estorno
-                    processo_estorno.NR_PROCESSO = nr_processo
+                    processo_estorno.NR_PROCESSO = nr_processo_form.strip()
                     db.session.add(processo_estorno)
 
                 # 3. Buscar próximo NU_LINHA para nova linha
                 proximo_nu_linha_nova = proximo_nu_linha_estorno + 1
 
-                # 4. Criar NOVA linha com as alterações
+                # 4. Criar NOVA linha (valor positivo) na carteira NOVA
                 nova_linha = DepositosSufin()
                 nova_linha.NU_LINHA = proximo_nu_linha_nova
                 nova_linha.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 nova_linha.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
-                # Corrigir conversão do valor rateio
-                vr_rateio = request.form.get('vr_rateio')
-                vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
-                nova_linha.VR_RATEIO = float(vr_rateio_limpo)
+                # Valor POSITIVO
+                nova_linha.VR_RATEIO = abs(float(vr_rateio_limpo))
 
                 nova_linha.MEMO_SUFIN = request.form.get('memo_sufin')
 
-                # Lógica para DT_MEMO e ID_IDENTIFICADO
-                dt_memo = request.form.get('dt_memo')
                 if dt_memo:
                     nova_linha.DT_MEMO = datetime.strptime(dt_memo, '%Y-%m-%d')
                     nova_linha.ID_IDENTIFICADO = True
@@ -400,25 +602,21 @@ def editar(nu_linha):
                     nova_linha.DT_MEMO = None
                     nova_linha.ID_IDENTIFICADO = False
 
-                # DT_IDENTIFICACAO
-                dt_identificacao = request.form.get('dt_identificacao')
                 if dt_identificacao:
                     nova_linha.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
                 else:
                     nova_linha.DT_IDENTIFICACAO = None
 
                 nova_linha.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
-                nova_linha.ID_AREA_2 = None
-                nova_linha.ID_CENTRO = novo_centro  # NOVO CENTRO
-                nova_linha.ID_AJUSTE_RM = False
+                nova_linha.ID_CENTRO = novo_centro  # Carteira NOVA
 
-                dt_ajuste_rm = request.form.get('dt_ajuste_rm')
                 if dt_ajuste_rm:
                     nova_linha.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+                    nova_linha.ID_AJUSTE_RM = True
                 else:
                     nova_linha.DT_AJUSTE_RM = None
+                    nova_linha.ID_AJUSTE_RM = False
 
-                nu_contrato = request.form.get('nu_contrato')
                 if nu_contrato:
                     nova_linha.NU_CONTRATO = int(nu_contrato)
                 else:
@@ -426,13 +624,11 @@ def editar(nu_linha):
 
                 nova_linha.NU_CONTRATO_2 = None
 
-                evento_anterior = request.form.get('evento_contabil_anterior')
                 if evento_anterior:
                     nova_linha.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
                 else:
                     nova_linha.EVENTO_CONTABIL_ANTERIOR = None
 
-                evento_atual = request.form.get('evento_contabil_atual')
                 if evento_atual:
                     nova_linha.EVENTO_CONTABIL_ATUAL = int(evento_atual)
                 else:
@@ -441,19 +637,18 @@ def editar(nu_linha):
                 nova_linha.OBS = request.form.get('obs')
                 nova_linha.IC_APROPRIADO = None
 
-                # DT_SISCOR - NULL a menos que preenchida
-                dt_siscor = request.form.get('dt_siscor')
                 if dt_siscor:
                     nova_linha.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
                 else:
                     nova_linha.DT_SISCOR = None
 
                 nova_linha.IC_INCLUIDO_ACERTO = None
+                nova_linha.STATUS = None
+                nova_linha.AREA_STATUS = None
 
                 db.session.add(nova_linha)
 
                 # Criar processo judicial para nova linha se informado
-                nr_processo_form = request.form.get('nr_processo')
                 if nr_processo_form and nr_processo_form.strip():
                     processo_novo = ProcessosJudiciais()
                     processo_novo.NU_LINHA = proximo_nu_linha_nova
@@ -463,6 +658,14 @@ def editar(nu_linha):
                 # NÃO ALTERAR O REGISTRO ORIGINAL!
 
                 db.session.commit()
+
+                # Registrar log
+                registrar_log(
+                    'depositos_judiciais',
+                    'update',
+                    f'Mudança de carteira - NU_LINHA: {nu_linha} - Criadas linhas {proximo_nu_linha_estorno} (estorno) e {proximo_nu_linha_nova} (nova)',
+                    {'nu_linha_original': nu_linha, 'estorno': proximo_nu_linha_estorno, 'nova': proximo_nu_linha_nova}
+                )
 
                 flash('Depósito judicial processado com sucesso! Criadas linha de estorno e nova linha.', 'success')
                 return redirect(url_for('depositos_judiciais.edicao'))
@@ -487,9 +690,12 @@ def editar(nu_linha):
                     deposito_obj.DT_MEMO = None
                     deposito_obj.ID_IDENTIFICADO = False
 
+                # MODIFICAÇÃO AQUI: Data de identificação muda status para Concluído
                 dt_identificacao = request.form.get('dt_identificacao')
                 if dt_identificacao:
                     deposito_obj.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
+                    # NOVA LÓGICA: Quando coloca data de identificação, muda status para Concluído
+                    deposito_obj.STATUS = 'Concluído'
                 else:
                     deposito_obj.DT_IDENTIFICACAO = None
 
@@ -499,14 +705,18 @@ def editar(nu_linha):
                 dt_ajuste_rm = request.form.get('dt_ajuste_rm')
                 if dt_ajuste_rm:
                     deposito_obj.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+                    deposito_obj.ID_AJUSTE_RM = True
                 else:
                     deposito_obj.DT_AJUSTE_RM = None
+                    deposito_obj.ID_AJUSTE_RM = False
 
                 nu_contrato = request.form.get('nu_contrato')
                 if nu_contrato:
                     deposito_obj.NU_CONTRATO = int(nu_contrato)
                 else:
                     deposito_obj.NU_CONTRATO = None
+
+                deposito_obj.NU_CONTRATO_2 = None
 
                 evento_anterior = request.form.get('evento_contabil_anterior')
                 if evento_anterior:
@@ -521,6 +731,7 @@ def editar(nu_linha):
                     deposito_obj.EVENTO_CONTABIL_ATUAL = None
 
                 deposito_obj.OBS = request.form.get('obs')
+                deposito_obj.IC_APROPRIADO = None
 
                 dt_siscor = request.form.get('dt_siscor')
                 if dt_siscor:
@@ -528,43 +739,40 @@ def editar(nu_linha):
                 else:
                     deposito_obj.DT_SISCOR = None
 
-                # Atualizar ou criar registro de processo judicial
-                nr_processo_form = request.form.get('nr_processo')
-                if nr_processo_form and nr_processo_form.strip():
-                    # Verificar se já existe registro de processo
-                    processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+                deposito_obj.IC_INCLUIDO_ACERTO = None
 
-                    if processo_existente:
-                        # Atualizar existente
-                        processo_existente.NR_PROCESSO = nr_processo_form.strip()
+                # Atualizar processo judicial
+                processo = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
+                nr_processo_form = request.form.get('nr_processo')
+
+                if nr_processo_form and nr_processo_form.strip():
+                    if processo:
+                        processo.NR_PROCESSO = nr_processo_form.strip()
                     else:
-                        # Criar novo
                         novo_processo = ProcessosJudiciais()
                         novo_processo.NU_LINHA = nu_linha
                         novo_processo.NR_PROCESSO = nr_processo_form.strip()
                         db.session.add(novo_processo)
                 else:
-                    # Se o campo foi limpo, remover registro de processo se existir
-                    processo_existente = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha).first()
-                    if processo_existente:
-                        db.session.delete(processo_existente)
+                    if processo:
+                        db.session.delete(processo)
 
                 db.session.commit()
+
+                # Registrar log
+                registrar_log(
+                    'depositos_judiciais',
+                    'update',
+                    f'Depósito editado - NU_LINHA: {nu_linha}',
+                    {'nu_linha': nu_linha}
+                )
 
                 flash('Depósito judicial atualizado com sucesso!', 'success')
                 return redirect(url_for('depositos_judiciais.edicao'))
 
-            # Registrar log
-            registrar_log(
-                'depositos_judiciais',
-                'update',
-                f'Depósito editado - NU_LINHA: {nu_linha}',
-                {'nu_linha': nu_linha}
-            )
-
         except Exception as e:
             db.session.rollback()
-            flash(f'Erro ao atualizar depósito: {str(e)}', 'danger')
+            flash(f'Erro ao editar depósito: {str(e)}', 'danger')
             return redirect(url_for('depositos_judiciais.editar', nu_linha=nu_linha))
 
     # GET - Buscar dados para os dropdowns
@@ -1139,6 +1347,175 @@ def ratear(nu_linha):
     centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
 
     return render_template('depositos_judiciais/ratear.html',
+                           deposito_original=deposito_obj,
+                           carteira_original=carteira_original,
+                           areas=areas,
+                           centros=centros)
+
+
+@depositos_judiciais_bp.route('/ratear-multiplo/<int:nu_linha>', methods=['GET', 'POST'])
+@login_required
+def ratear_multiplo(nu_linha):
+    """
+    Ratear o valor de um depósito para MÚLTIPLOS contratos
+    O usuário só consegue finalizar quando distribuir TODO o valor
+    """
+    # Buscar o depósito original
+    deposito_obj = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
+
+    if not deposito_obj:
+        flash('Depósito não encontrado.', 'danger')
+        return redirect(url_for('depositos_judiciais.edicao'))
+
+    # Buscar carteira original
+    carteira_original = CentroResultado.query.filter_by(ID_CENTRO=deposito_obj.ID_CENTRO).first()
+    carteira_original = carteira_original.NO_CARTEIRA if carteira_original else 'Não informada'
+
+    if request.method == 'POST':
+        try:
+            import json
+
+            # Receber JSON com todas as linhas de rateio
+            rateios_json = request.form.get('rateios_data')
+            if not rateios_json:
+                raise ValueError("Nenhum rateio informado")
+
+            rateios = json.loads(rateios_json)
+
+            if not rateios or len(rateios) == 0:
+                raise ValueError("É necessário informar pelo menos um rateio")
+
+            # Validar valor total
+            valor_original = float(deposito_obj.VR_RATEIO)
+            valor_total_rateado = sum(float(r['vr_rateio'].replace('.', '').replace(',', '.')) for r in rateios)
+
+            if abs(valor_total_rateado - valor_original) > 0.01:  # Tolerância de 1 centavo
+                raise ValueError(
+                    f"A soma dos rateios (R$ {valor_total_rateado:.2f}) deve ser igual ao valor original (R$ {valor_original:.2f})"
+                )
+
+            # Buscar próximo NU_LINHA disponível
+            ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
+            proximo_nu_linha = (ultimo_nu_linha or 0) + 1
+
+            # Criar cada linha de rateio
+            linhas_criadas = []
+            for idx, rateio in enumerate(rateios):
+                novo_deposito = DepositosSufin()
+                novo_deposito.NU_LINHA = proximo_nu_linha + idx
+
+                # Copiar campos do original
+                novo_deposito.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
+                novo_deposito.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
+                novo_deposito.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
+                novo_deposito.DT_MEMO = deposito_obj.DT_MEMO
+                novo_deposito.ID_IDENTIFICADO = deposito_obj.ID_IDENTIFICADO
+
+                # Campos específicos do rateio
+                vr_rateio_str = rateio['vr_rateio'].replace('.', '').replace(',', '.')
+                novo_deposito.VR_RATEIO = float(vr_rateio_str)
+
+                # Área
+                id_area = rateio.get('id_area')
+                if id_area:
+                    novo_deposito.ID_AREA = int(id_area)
+
+                # Centro
+                id_centro = rateio.get('id_centro')
+                if id_centro:
+                    novo_deposito.ID_CENTRO = int(id_centro)
+
+                # Data identificação
+                dt_identificacao = rateio.get('dt_identificacao')
+                if dt_identificacao:
+                    novo_deposito.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
+
+                # Data ajuste RM
+                dt_ajuste_rm = rateio.get('dt_ajuste_rm')
+                if dt_ajuste_rm:
+                    novo_deposito.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+                    novo_deposito.ID_AJUSTE_RM = True
+                else:
+                    novo_deposito.ID_AJUSTE_RM = False
+
+                # Contrato
+                nu_contrato = rateio.get('nu_contrato')
+                if nu_contrato:
+                    novo_deposito.NU_CONTRATO = int(nu_contrato)
+
+                # Eventos contábeis
+                evento_anterior = rateio.get('evento_contabil_anterior')
+                if evento_anterior:
+                    novo_deposito.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
+
+                evento_atual = rateio.get('evento_contabil_atual')
+                if evento_atual:
+                    novo_deposito.EVENTO_CONTABIL_ATUAL = int(evento_atual)
+
+                # Observação
+                novo_deposito.OBS = rateio.get('obs')
+
+                # Data SISCOR
+                dt_siscor = rateio.get('dt_siscor')
+                if dt_siscor:
+                    novo_deposito.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
+
+                # Campos que sempre são None/False
+                novo_deposito.NU_CONTRATO_2 = None
+                novo_deposito.IC_APROPRIADO = None
+                novo_deposito.IC_INCLUIDO_ACERTO = None
+                novo_deposito.STATUS = None
+                novo_deposito.AREA_STATUS = None
+
+                db.session.add(novo_deposito)
+                linhas_criadas.append(proximo_nu_linha + idx)
+
+                # Criar processo judicial se informado
+                nr_processo = rateio.get('nr_processo')
+                if nr_processo and nr_processo.strip():
+                    novo_processo = ProcessosJudiciais()
+                    novo_processo.NU_LINHA = proximo_nu_linha + idx
+                    novo_processo.NR_PROCESSO = nr_processo.strip()
+                    db.session.add(novo_processo)
+
+            # ZERAR o depósito original
+            deposito_obj.VR_RATEIO = 0
+
+            db.session.commit()
+
+            # Registrar log
+            registrar_log(
+                'depositos_judiciais',
+                'rateio_multiplo',
+                f'Rateio múltiplo realizado - NU_LINHA original: {nu_linha}, criadas {len(linhas_criadas)} linhas',
+                {
+                    'nu_linha_original': nu_linha,
+                    'linhas_criadas': linhas_criadas,
+                    'quantidade': len(linhas_criadas),
+                    'valor_total': valor_total_rateado
+                }
+            )
+
+            flash(
+                f'Rateio múltiplo realizado com sucesso! Criadas {len(linhas_criadas)} novas linhas. '
+                f'Depósito original zerado.',
+                'success'
+            )
+            return redirect(url_for('depositos_judiciais.edicao'))
+
+        except ValueError as ve:
+            db.session.rollback()
+            flash(f'Erro de validação: {str(ve)}', 'danger')
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao processar rateio múltiplo: {str(e)}', 'danger')
+
+    # GET - Buscar dados para os dropdowns
+    areas = Area.query.order_by(Area.NO_AREA).all()
+    centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
+
+    return render_template('depositos_judiciais/ratear_multiplo.html',
                            deposito_original=deposito_obj,
                            carteira_original=carteira_original,
                            areas=areas,

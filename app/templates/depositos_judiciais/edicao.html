@@ -8,23 +8,21 @@
 
     <div class="page-title-bar">
         <h1>Edição de Depósitos Judiciais</h1>
-        <p class="text-muted">Consulte e edite os depósitos judiciais cadastrados</p>
+        <p class="text-muted">Pesquise e edite os depósitos judiciais</p>
     </div>
 
-    <!-- Filtros -->
+    <!-- Filtros de Pesquisa -->
     <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">
-                <i class="fas fa-filter me-2"></i> Filtros de Pesquisa
-            </h5>
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros de Pesquisa</h5>
         </div>
         <div class="card-body">
-            <form method="GET" action="{{ url_for('depositos_judiciais.edicao') }}">
+            <form method="GET" action="{{ url_for('depositos_judiciais.edicao') }}" id="formFiltros">
                 <div class="row g-3">
                     <div class="col-md-3">
-                        <label for="nu_contrato" class="form-label">Número Contrato</label>
+                        <label for="nu_contrato" class="form-label">Nº Contrato</label>
                         <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
-                               value="{{ filtros.nu_contrato }}" placeholder="Digite o número">
+                               value="{{ filtros.nu_contrato }}" placeholder="Digite o número do contrato">
                     </div>
 
                     <div class="col-md-3">
@@ -32,8 +30,7 @@
                         <select class="form-select" id="id_centro" name="id_centro">
                             <option value="">Todas as carteiras</option>
                             {% for centro in centros %}
-                            <option value="{{ centro.ID_CENTRO }}"
-                                    {% if filtros.id_centro == centro.ID_CENTRO|string %}selected{% endif %}>
+                            <option value="{{ centro.ID_CENTRO }}" {% if filtros.id_centro == centro.ID_CENTRO|string %}selected{% endif %}>
                                 {{ centro.NO_CARTEIRA }}
                             </option>
                             {% endfor %}
@@ -43,7 +40,25 @@
                     <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio</label>
                         <input type="text" class="form-control" id="vr_rateio" name="vr_rateio"
-                               value="{{ filtros.vr_rateio }}" placeholder="0,00">
+                               value="{{ filtros.vr_rateio }}" placeholder="Ex: 1000,00">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="status" class="form-label">
+                            <i class="fas fa-flag me-1"></i>Status
+                        </label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="">Todos os status</option>
+                            <option value="em_andamento" {% if filtros.status == 'em_andamento' %}selected{% endif %}>
+                                Em Andamento
+                            </option>
+                            <option value="concluido" {% if filtros.status == 'concluido' %}selected{% endif %}>
+                                Concluído
+                            </option>
+                            <option value="sem_status" {% if filtros.status == 'sem_status' %}selected{% endif %}>
+                                Sem Status
+                            </option>
+                        </select>
                     </div>
 
                     <div class="col-md-3">
@@ -52,77 +67,86 @@
                                value="{{ filtros.dt_identificacao }}">
                     </div>
 
-                    <!-- NOVOS FILTROS DE MÊS E ANO -->
-                    <div class="col-md-2">
-                        <label for="mes_identificacao" class="form-label">Mês Identificação</label>
-                        <input type="number" class="form-control" id="mes_identificacao" name="mes_identificacao"
-                               value="{{ filtros.mes_identificacao }}" min="1" max="12"
-                               placeholder="1-12">
-                    </div>
-
-                    <div class="col-md-2">
-                        <label for="ano_identificacao" class="form-label">Ano Identificação</label>
-                        <input type="number" class="form-control" id="ano_identificacao" name="ano_identificacao"
-                               value="{{ filtros.ano_identificacao }}" min="2000" max="2099"
-                               placeholder="Ex: 2024">
-                    </div>
-
-                    <div class="col-md-2">
-                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
-                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
-                               value="{{ filtros.dt_siscor }}">
-                    </div>
-
                     <div class="col-md-3">
-                        <label for="dt_siscor_status" class="form-label">Status Data SISCOR</label>
-                        <select class="form-select" id="dt_siscor_status" name="dt_siscor_status">
-                            <option value="">Todos</option>
-                            <option value="nulo" {% if filtros.dt_siscor_status == 'nulo' %}selected{% endif %}>
-                                Vazio
+                        <label for="mes_identificacao" class="form-label">Mês Identificação</label>
+                        <select class="form-select" id="mes_identificacao" name="mes_identificacao">
+                            <option value="">Todos os meses</option>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}" {% if filtros.mes_identificacao == i|string %}selected{% endif %}>
+                                {{ ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][i-1] }}
                             </option>
-                            <option value="preenchido" {% if filtros.dt_siscor_status == 'preenchido' %}selected{% endif %}>
-                                Preenchido
-                            </option>
+                            {% endfor %}
                         </select>
                     </div>
 
-                    <div class="col-md-3 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary me-2">
-                            <i class="fas fa-search me-2"></i> Pesquisar
-                        </button>
-                        <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary">
-                            <i class="fas fa-eraser me-2"></i> Limpar Filtros
-                        </a>
+                    <div class="col-md-3">
+                        <label for="ano_identificacao" class="form-label">Ano Identificação</label>
+                        <input type="number" class="form-control" id="ano_identificacao" name="ano_identificacao"
+                               value="{{ filtros.ano_identificacao }}" placeholder="Ex: 2025">
                     </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_siscor_status" class="form-label">Status DT_SISCOR</label>
+                        <select class="form-select" id="dt_siscor_status" name="dt_siscor_status">
+                            <option value="">Todos</option>
+                            <option value="preenchido" {% if filtros.dt_siscor_status == 'preenchido' %}selected{% endif %}>
+                                Preenchido
+                            </option>
+                            <option value="vazio" {% if filtros.dt_siscor_status == 'vazio' %}selected{% endif %}>
+                                Vazio
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr class="my-3">
+
+                <div class="d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary" onclick="limparFiltros()">
+                        <i class="fas fa-eraser me-2"></i>Limpar Filtros
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Pesquisar
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Card de Totalizador -->
-    <div class="card shadow mb-4 bg-light" id="cardTotalizador">
+    <!-- Legenda das cores -->
+    <div class="card shadow mb-4">
         <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h6 class="text-muted mb-1">
-                        <i class="fas fa-calculator me-2"></i> Total dos Valores Filtrados
-                    </h6>
-                    <h3 class="mb-0" id="valorTotal">R$ 0,00</h3>
+            <div class="d-flex align-items-center gap-4 flex-wrap">
+                <span class="fw-bold me-2">Legenda:</span>
+                <span><span class="marcacao-cor bg-vermelho"></span> Em andamento</span>
+                <span><span class="marcacao-cor bg-laranja"></span> Mês/Ano diferentes (Lançamento vs Identificação)</span>
+                <span><span class="marcacao-cor bg-amarelo"></span> Memo SUFIN preenchido (sem ajuste/identificação)</span>
+                <span><span class="marcacao-cor bg-sem-cor"></span> Normal</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Totalizador -->
+    <div class="card shadow mb-4" id="cardTotalizador">
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <div>
+                        <small class="text-muted d-block">Total Geral</small>
+                        <span class="fs-5" id="valorTotal">R$ 0,00</span>
+                    </div>
                 </div>
-                <div class="col-md-6 text-end">
-                    <div class="d-flex justify-content-end align-items-center">
-                        <div class="me-4">
-                            <small class="text-muted d-block">Total de Registros</small>
-                            <span class="fs-5" id="totalRegistros">0</span>
-                        </div>
-                        <div class="me-4">
-                            <small class="text-muted d-block">Valores Positivos</small>
-                            <span class="fs-5 text-success" id="totalPositivos">R$ 0,00</span>
-                        </div>
-                        <div>
-                            <small class="text-muted d-block">Valores Negativos</small>
-                            <span class="fs-5 text-danger" id="totalNegativos">R$ 0,00</span>
-                        </div>
+                <div class="col-md-4">
+                    <div>
+                        <small class="text-muted d-block">Valores Positivos</small>
+                        <span class="fs-5 text-success" id="totalPositivos">R$ 0,00</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div>
+                        <small class="text-muted d-block">Valores Negativos</small>
+                        <span class="fs-5 text-danger" id="totalNegativos">R$ 0,00</span>
                     </div>
                 </div>
             </div>
@@ -144,6 +168,8 @@
                 <table class="table table-bordered table-hover table-sm mb-0" id="tabelaDepositos">
                     <thead class="sticky-header">
                         <tr>
+                            <!-- Coluna de Marcação -->
+                            <th style="width: 30px;"></th>
                             <th class="sortable" data-column="0">
                                 Nº Linha
                                 <span class="sort-icon">
@@ -151,54 +177,67 @@
                                 </span>
                             </th>
                             <th class="sortable" data-column="1">
-                                Nº Processo
+                                Status
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
                             <th class="sortable" data-column="2">
-                                Lançamento RM
+                                Nº Processo
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
                             <th class="sortable" data-column="3">
+                                Lançamento RM
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="4">
                                 Dt. Lançamento
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable text-end" data-column="4">
+                            <th class="sortable text-end" data-column="5">
                                 Valor Rateio
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="5">
+                            <th class="sortable" data-column="6">
                                 Memo SUFIN
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="6">
+                            <th class="sortable" data-column="7">
                                 Carteira
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="7">
+                            <th class="sortable" data-column="8">
                                 Nº Contrato
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="8">
+                            <th class="sortable" data-column="9">
                                 Dt. Identificação
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
                                 </span>
                             </th>
-                            <th class="sortable" data-column="9">
+                            <!-- NOVA COLUNA: Data Ajuste RM -->
+                            <th class="sortable" data-column="10">
+                                Dt. Ajuste RM
+                                <span class="sort-icon">
+                                    <i class="fas fa-sort"></i>
+                                </span>
+                            </th>
+                            <th class="sortable" data-column="11">
                                 Dt. SISCOR
                                 <span class="sort-icon">
                                     <i class="fas fa-sort"></i>
@@ -207,14 +246,41 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in depositos %}
-                        {% set deposito = item[0] %}
-                        {% set nr_processo = item[1] %}
-                        {% set no_area = item[2] %}
-                        {% set no_carteira = item[3] %}
+                        {% for item in depositos_lista %}
+                        {% set deposito = item.deposito %}
+                        {% set nr_processo = item.nr_processo %}
+                        {% set no_area = item.no_area %}
+                        {% set no_carteira = item.no_carteira %}
+                        {% set cor_marcacao = item.cor_marcacao %}
                         <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}"
                             data-valor="{{ deposito.VR_RATEIO or 0 }}">
+                            <!-- Coluna de Marcação colorida -->
+                            <td class="text-center p-0">
+                                {% if cor_marcacao == 'vermelho' %}
+                                <div class="marcacao-linha bg-vermelho" title="Em andamento"></div>
+                                {% elif cor_marcacao == 'laranja' %}
+                                <div class="marcacao-linha bg-laranja" title="Mês/Ano diferentes"></div>
+                                {% elif cor_marcacao == 'amarelo' %}
+                                <div class="marcacao-linha bg-amarelo" title="Memo SUFIN preenchido"></div>
+                                {% else %}
+                                <div class="marcacao-linha bg-sem-cor"></div>
+                                {% endif %}
+                            </td>
                             <td>{{ deposito.NU_LINHA }}</td>
+                            <!-- Badge de status -->
+                            <td>
+                                {% if deposito.STATUS == 'Em andamento' %}
+                                <span class="badge bg-info text-dark" title="Área: {{ deposito.AREA_STATUS }}">
+                                    <i class="fas fa-edit me-1"></i>Em Andamento
+                                </span>
+                                {% elif deposito.STATUS == 'Concluído' %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-check-circle me-1"></i>Concluído
+                                </span>
+                                {% else %}
+                                <span class="badge bg-secondary">-</span>
+                                {% endif %}
+                            </td>
                             <td>{{ nr_processo or '-' }}</td>
                             <td>{{ deposito.LANCAMENTO_RM or '-' }}</td>
                             <td data-sort="{{ deposito.DT_LANCAMENTO_DJ.strftime('%Y%m%d') if deposito.DT_LANCAMENTO_DJ else '0' }}">
@@ -237,6 +303,10 @@
                             <td data-sort="{{ deposito.DT_IDENTIFICACAO.strftime('%Y%m%d') if deposito.DT_IDENTIFICACAO else '0' }}">
                                 {{ deposito.DT_IDENTIFICACAO.strftime('%d/%m/%Y') if deposito.DT_IDENTIFICACAO else '-' }}
                             </td>
+                            <!-- NOVA COLUNA: Data Ajuste RM -->
+                            <td data-sort="{{ deposito.DT_AJUSTE_RM.strftime('%Y%m%d') if deposito.DT_AJUSTE_RM else '0' }}">
+                                {{ deposito.DT_AJUSTE_RM.strftime('%d/%m/%Y') if deposito.DT_AJUSTE_RM else '-' }}
+                            </td>
                             <td data-sort="{{ deposito.DT_SISCOR.strftime('%Y%m%d') if deposito.DT_SISCOR else '0' }}">
                                 {% if deposito.DT_SISCOR %}
                                     {{ deposito.DT_SISCOR.strftime('%d/%m/%Y') }}
@@ -249,7 +319,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="10" class="text-center">
+                            <td colspan="13" class="text-center">
                                 <i class="fas fa-info-circle me-2"></i>
                                 Nenhum depósito encontrado com os filtros aplicados.
                             </td>
@@ -312,9 +382,50 @@
         color: #007bff;
         font-weight: bold;
     }
+
+    /* Marcações coloridas */
+    .marcacao-linha {
+        width: 20px;
+        height: 100%;
+        min-height: 30px;
+        display: inline-block;
+        border-radius: 3px;
+    }
+
+    .marcacao-cor {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 3px;
+        margin-right: 5px;
+        vertical-align: middle;
+        border: 1px solid #ddd;
+    }
+
+    .bg-vermelho {
+        background-color: #dc3545 !important;
+    }
+
+    .bg-laranja {
+        background-color: #fd7e14 !important;
+    }
+
+    .bg-amarelo {
+        background-color: #ffc107 !important;
+    }
+
+    .bg-sem-cor {
+        background-color: transparent !important;
+        border: 1px solid #e9ecef;
+    }
 </style>
 
 <script>
+function limparFiltros() {
+    document.getElementById('formFiltros').reset();
+    window.location.href = '{{ url_for("depositos_judiciais.edicao") }}';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Função para calcular e exibir os totais
     function calcularTotais() {
@@ -328,67 +439,35 @@ document.addEventListener('DOMContentLoaded', function() {
             const valorAttr = row.getAttribute('data-valor');
             if (valorAttr) {
                 const valor = parseFloat(valorAttr.replace(',', '.'));
-                if (!isNaN(valor)) {
-                    totalGeral += valor;
-                    totalRegistros++;
+                totalGeral += valor;
+                totalRegistros++;
 
-                    if (valor > 0) {
-                        totalPositivos += valor;
-                    } else if (valor < 0) {
-                        totalNegativos += valor;
-                    }
+                if (valor > 0) {
+                    totalPositivos += valor;
+                } else if (valor < 0) {
+                    totalNegativos += valor;
                 }
             }
         });
 
-        // Função para formatar valores em moeda brasileira
-        function formatarMoeda(valor) {
-            return new Intl.NumberFormat('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-            }).format(valor);
-        }
-
-        // Atualizar os elementos na página
+        // Formatar valores
         document.getElementById('valorTotal').textContent = formatarMoeda(totalGeral);
-        document.getElementById('totalRegistros').textContent = totalRegistros;
         document.getElementById('totalPositivos').textContent = formatarMoeda(totalPositivos);
-        document.getElementById('totalNegativos').textContent = formatarMoeda(Math.abs(totalNegativos));
+        document.getElementById('totalNegativos').textContent = formatarMoeda(totalNegativos);
     }
 
-    // Calcular totais ao carregar a página
-    calcularTotais();
-
-    // Validação SOMENTE ao sair do campo (blur) para mês
-    const mesInput = document.getElementById('mes_identificacao');
-    if (mesInput) {
-        mesInput.addEventListener('blur', function(e) {
-            let value = parseInt(e.target.value);
-            if (value && (value < 1 || value > 12)) {
-                if (value < 1) e.target.value = 1;
-                if (value > 12) e.target.value = 12;
-            }
-        });
+    // Função para formatar valores monetários
+    function formatarMoeda(valor) {
+        return 'R$ ' + valor.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
 
-    // Validação SOMENTE ao sair do campo (blur) para ano
-    const anoInput = document.getElementById('ano_identificacao');
-    if (anoInput) {
-        anoInput.addEventListener('blur', function(e) {
-            let value = parseInt(e.target.value);
-            if (value && (value < 2000 || value > 2099)) {
-                if (value < 2000) e.target.value = 2000;
-                if (value > 2099) e.target.value = 2099;
-            }
-        });
-    }
-
-    // Máscara para valor monetário no filtro
+    // Aplicar máscara de moeda nos campos
     const vrRateioInput = document.getElementById('vr_rateio');
     if (vrRateioInput) {
         vrRateioInput.addEventListener('input', function(e) {
             let value = e.target.value.replace(/\D/g, '');
-            value = (value / 100).toFixed(2).replace('.', ',');
+            value = (value / 100).toFixed(2);
+            value = value.replace('.', ',');
             e.target.value = value;
         });
     }
@@ -417,10 +496,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentSort.ascending = true;
             }
 
-            // Ordenar as linhas
+            // Ordenar as linhas (ajustado para +1 por causa da coluna de marcação)
             rows.sort((a, b) => {
-                let aValue = a.cells[column].dataset.sort || a.cells[column].textContent.trim();
-                let bValue = b.cells[column].dataset.sort || b.cells[column].textContent.trim();
+                let aValue = a.cells[column + 1].dataset.sort || a.cells[column + 1].textContent.trim();
+                let bValue = b.cells[column + 1].dataset.sort || b.cells[column + 1].textContent.trim();
 
                 // Tentar converter para número
                 if (!isNaN(aValue) && !isNaN(bValue)) {
@@ -445,6 +524,9 @@ document.addEventListener('DOMContentLoaded', function() {
             rows.forEach(row => tbody.appendChild(row));
         });
     });
+
+    // Calcular totais ao carregar a página
+    calcularTotais();
 });
 </script>
 {% endblock %}

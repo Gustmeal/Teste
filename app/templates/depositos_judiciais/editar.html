@@ -13,12 +13,46 @@
 
     <div class="card shadow">
         <div class="card-body">
-            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
-                <!-- Informações do Depósito -->
-                <div class="alert alert-info">
-                    <strong>Nº Linha:</strong> {{ deposito.NU_LINHA }}
+            <!-- Badge de Status -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <div class="alert alert-info mb-0">
+                        <strong>Nº Linha:</strong> {{ deposito.NU_LINHA }}
+                    </div>
                 </div>
+                <div>
+                    <!-- Mostrar status atual -->
+                    {% if deposito.STATUS == 'Em andamento' %}
+                    <span class="badge bg-info text-dark fs-6">
+                        <i class="fas fa-edit me-1"></i>Em Andamento
+                        {% if deposito.AREA_STATUS %}
+                        <br><small>Área: {{ deposito.AREA_STATUS }}</small>
+                        {% endif %}
+                    </span>
+                    {% elif deposito.STATUS == 'Concluído' %}
+                    <span class="badge bg-success fs-6">
+                        <i class="fas fa-check-circle me-1"></i>Concluído
+                    </span>
+                    {% else %}
+                    <span class="badge bg-secondary fs-6">Sem Status</span>
+                    {% endif %}
+                </div>
+            </div>
 
+            <!-- Botão para marcar Em Andamento -->
+            {% if not deposito.STATUS or deposito.STATUS != 'Em andamento' %}
+            <div class="mb-3">
+                <button type="button" class="btn btn-warning" id="btnMarcarAndamento">
+                    <i class="fas fa-play me-2"></i>Marcar como Em Andamento
+                </button>
+                <small class="text-muted ms-2">
+                    <i class="fas fa-info-circle"></i>
+                    Clique aqui para indicar que você está trabalhando neste contrato
+                </small>
+            </div>
+            {% endif %}
+
+            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
                 <div class="row g-3">
                     <!-- Primeira Linha -->
                     <div class="col-md-3">
@@ -62,12 +96,16 @@
                         <label for="dt_identificacao" class="form-label">Data Identificação</label>
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
                                value="{{ deposito.DT_IDENTIFICACAO.strftime('%Y-%m-%d') if deposito.DT_IDENTIFICACAO else '' }}">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i>
+                            Ao salvar com esta data, o status mudará automaticamente para Concluído
+                        </small>
                     </div>
 
                     <div class="col-md-3">
                         <label for="id_area" class="form-label">Área</label>
                         <select class="form-select" id="id_area" name="id_area">
-                            <option value="">Selecione...</option>
+                            <option value="">Selecione uma área</option>
                             {% for area in areas %}
                             <option value="{{ area.ID_AREA }}" {% if deposito.ID_AREA == area.ID_AREA %}selected{% endif %}>
                                 {{ area.NO_AREA }}
@@ -77,10 +115,10 @@
                     </div>
 
                     <!-- Terceira Linha -->
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="id_centro" class="form-label">Centro de Resultado <span class="text-danger">*</span></label>
                         <select class="form-select" id="id_centro" name="id_centro" required>
-                            <option value="">Selecione...</option>
+                            <option value="">Selecione um centro</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}" {% if deposito.ID_CENTRO == centro.ID_CENTRO %}selected{% endif %}>
                                 {{ centro.NO_CARTEIRA }}
@@ -89,64 +127,99 @@
                         </select>
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
                         <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm"
                                value="{{ deposito.DT_AJUSTE_RM.strftime('%Y-%m-%d') if deposito.DT_AJUSTE_RM else '' }}">
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
+                        <label for="nu_contrato" class="form-label">Nº Contrato</label>
+                        <input type="number" class="form-control" id="nu_contrato" name="nu_contrato"
+                               value="{{ deposito.NU_CONTRATO or '' }}" placeholder="Ex: 123456789">
+                    </div>
+
+                    <div class="col-md-3">
                         <label for="dt_siscor" class="form-label">Data SISCOR</label>
                         <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
                                value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
                     </div>
 
                     <!-- Quarta Linha -->
-                    <div class="col-md-4">
-                        <label for="nu_contrato" class="form-label">Contrato</label>
-                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
-                               maxlength="20" value="{{ deposito.NU_CONTRATO or '' }}" placeholder="Digite o número do contrato">
-                    </div>
-
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
-                        <input type="text" class="form-control" id="evento_contabil_anterior" name="evento_contabil_anterior"
-                               maxlength="10" value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}" placeholder="Ex: 1001">
+                        <input type="number" class="form-control" id="evento_contabil_anterior" name="evento_contabil_anterior"
+                               value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
-                        <input type="text" class="form-control" id="evento_contabil_atual" name="evento_contabil_atual"
-                               maxlength="10" value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}" placeholder="Ex: 1002">
+                        <input type="number" class="form-control" id="evento_contabil_atual" name="evento_contabil_atual"
+                               value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
                     </div>
 
-                    <!-- Quinta Linha -->
-                    <div class="col-12">
+                    <div class="col-md-6">
                         <label for="obs" class="form-label">Observação</label>
                         <input type="text" class="form-control" id="obs" name="obs"
-                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Digite observações">
+                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Observações adicionais">
                     </div>
+                </div>
 
-                    <!-- Botões -->
-                    <div class="col-12 mt-4">
-                        <hr>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <!-- BOTÃO RATEAR VALOR - FIXO (SEMPRE VISÍVEL) -->
-                                <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito.NU_LINHA) }}"
-                                   class="btn btn-warning">
-                                    <i class="fas fa-share-alt me-2"></i>Ratear Valor
-                                </a>
-                            </div>
-                            <div>
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save me-2"></i>Salvar
-                                </button>
-                            </div>
-                        </div>
+                <hr class="my-4">
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <!-- BOTÕES DE RATEIO -->
+                        <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito.NU_LINHA) }}"
+                           class="btn btn-warning">
+                            <i class="fas fa-share-alt me-2"></i>Ratear Valor
+                        </a>
+                        <a href="{{ url_for('depositos_judiciais.ratear_multiplo', nu_linha=deposito.NU_LINHA) }}"
+                           class="btn btn-info ms-2">
+                            <i class="fas fa-layer-group me-2"></i>Ratear Múltiplos
+                        </a>
+                    </div>
+                    <div>
+                        <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary me-2">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Salvar Alterações
+                        </button>
                     </div>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para avisar que está em andamento -->
+<div class="modal fade" id="modalEmAndamento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Contrato Em Desenvolvimento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2"><strong>Este contrato já está sendo editado!</strong></p>
+                <p class="mb-2">
+                    <i class="fas fa-user me-2"></i>
+                    <strong>Área:</strong> <span id="modalArea"></span>
+                </p>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Aguarde a conclusão da edição ou entre em contato com a área responsável.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Fechar
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -172,58 +245,83 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Máscara monetária corrigida para o campo valor rateio
-    const moneyInput = document.getElementById('vr_rateio');
+    const nuLinha = {{ deposito.NU_LINHA }};
+    const btnMarcarAndamento = document.getElementById('btnMarcarAndamento');
 
-    // Função para formatar valor monetário
-    function formatarValorMonetario(valor) {
-        // Remove tudo que não for número
-        valor = valor.replace(/\D/g, '');
+    // Verificar status ao carregar a página
+    verificarStatusContrato();
 
-        // Se não tiver valor, retorna 0,00
-        if (valor === '') return '0,00';
-
-        // Converte para número e divide por 100
-        let numero = parseInt(valor) / 100;
-
-        // Formata com 2 casas decimais e troca ponto por vírgula
-        return numero.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    // Função para verificar se contrato está em andamento
+    function verificarStatusContrato() {
+        fetch(`/depositos-judiciais/api/verificar-status/${nuLinha}`)
+            .then(response => response.json())
+            .then(data => {
+                // Só mostra modal se estiver em andamento E não for o mesmo usuário
+                if (data.success && data.em_andamento && !data.eh_mesmo_usuario) {
+                    // Mostrar modal de aviso
+                    document.getElementById('modalArea').textContent = data.area_status || 'Não especificada';
+                    const modal = new bootstrap.Modal(document.getElementById('modalEmAndamento'));
+                    modal.show();
+                }
+            })
+            .catch(error => {
+                console.error('Erro ao verificar status:', error);
+            });
     }
 
-    // Evento de input para aplicar a máscara
+    // Marcar como em andamento
+    if (btnMarcarAndamento) {
+        btnMarcarAndamento.addEventListener('click', function() {
+            if (confirm('Deseja marcar este contrato como Em Andamento?')) {
+                fetch(`/depositos-judiciais/api/marcar-em-andamento/${nuLinha}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Contrato marcado como Em Andamento!');
+                        location.reload();
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Erro ao marcar contrato: ' + error);
+                });
+            }
+        });
+    }
+
+    // Máscara de moeda
+    const moneyInput = document.getElementById('vr_rateio');
+
+    function formatarValorMonetario(valor) {
+        valor = valor.replace(/\D/g, '');
+        if (!valor) return '0,00';
+        valor = (parseInt(valor) / 100).toFixed(2);
+        return valor.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    }
+
     moneyInput.addEventListener('input', function(e) {
         let valor = e.target.value;
-
-        // Salva a posição do cursor
         let cursorPos = e.target.selectionStart;
         let valorAnterior = e.target.value;
-
-        // Formata o valor
         let valorFormatado = formatarValorMonetario(valor);
-
-        // Atualiza o campo
         e.target.value = valorFormatado;
-
-        // Ajusta a posição do cursor
         let diff = valorFormatado.length - valorAnterior.length;
         e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
     });
 
-    // Evento de paste (colar) para formatar valores colados
     moneyInput.addEventListener('paste', function(e) {
         e.preventDefault();
-
-        // Pega o texto colado
         let textoColado = (e.clipboardData || window.clipboardData).getData('text');
-
-        // Remove caracteres não numéricos e formata
         let valorFormatado = formatarValorMonetario(textoColado);
-
-        // Insere o valor formatado
         e.target.value = valorFormatado;
     });
 
-    // Evento de focus para selecionar todo o texto
     moneyInput.addEventListener('focus', function(e) {
         if (e.target.value === '0,00') {
             e.target.select();
@@ -234,11 +332,9 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('formEdicao').addEventListener('submit', function(e) {
         e.preventDefault();
 
-        // Guardar centro antigo para verificar mudança
         const centroAntigo = {{ deposito.ID_CENTRO }};
         const centroNovo = parseInt(document.getElementById('id_centro').value);
 
-        // Verificar se mudou o centro E não é Institucional (ID 6)
         if (centroNovo !== centroAntigo && centroNovo !== 6 && centroAntigo !== 6) {
             const confirmacao = confirm(
                 'ATENÇÃO: Você está mudando a carteira!\n\n' +
@@ -253,7 +349,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Validar campos obrigatórios
         const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
         let valido = true;
 
@@ -268,7 +363,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         if (valido) {
-            // Confirmar antes de enviar
             if (confirm('Confirma a edição do depósito judicial?')) {
                 this.submit();
             }

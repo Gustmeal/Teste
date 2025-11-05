@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container fade-in">
+    <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito_original.NU_LINHA) }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="header-with-back">
+            <i class="fas fa-cut me-2"></i>Ratear para Múltiplos Contratos
+        </h1>
+    </div>
+
+    <!-- Alert explicativo -->
+    <div class="alert alert-info">
+        <h5><i class="fas fa-info-circle me-2"></i>Como funciona o rateio múltiplo:</h5>
+        <ul class="mb-0">
+            <li>Você pode adicionar <strong>quantas linhas quiser</strong> clicando em "Adicionar Linha"</li>
+            <li>Cada linha representa um <strong>novo depósito</strong> que será criado</li>
+            <li>O sistema soma automaticamente os valores e mostra quanto <strong>falta distribuir</strong></li>
+            <li>Você só pode finalizar quando <strong>distribuir TODO o valor</strong> disponível</li>
+            <li>O depósito original será <strong>zerado</strong> após a operação</li>
+        </ul>
+    </div>
+
+    <!-- Informações do depósito original -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Depósito Original</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-2">
+                    <strong>Nº Linha:</strong><br>{{ deposito_original.NU_LINHA }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Lançamento RM:</strong><br>{{ deposito_original.LANCAMENTO_RM }}
+                </div>
+                <div class="col-md-2">
+                    <strong>Carteira:</strong><br>{{ carteira_original }}
+                </div>
+                <div class="col-md-2">
+                    <strong>Valor Total:</strong><br>
+                    <span class="text-primary fw-bold fs-5">{{ deposito_original.VR_RATEIO|br_currency }}</span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Valor Restante:</strong><br>
+                    <span class="fw-bold fs-5" id="valorRestante">{{ deposito_original.VR_RATEIO|br_currency }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Formulário principal -->
+    <form method="POST" id="formRateioMultiplo" action="{{ url_for('depositos_judiciais.ratear_multiplo', nu_linha=deposito_original.NU_LINHA) }}">
+        <input type="hidden" name="rateios_data" id="rateios_data">
+
+        <!-- Container das linhas de rateio -->
+        <div id="containerLinhas">
+            <!-- As linhas serão adicionadas aqui via JavaScript -->
+        </div>
+
+        <!-- Botões de ação -->
+        <div class="card shadow mt-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <button type="button" class="btn btn-success" id="btnAdicionarLinha">
+                            <i class="fas fa-plus me-2"></i>Adicionar Linha
+                        </button>
+                    </div>
+                    <div>
+                        <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito_original.NU_LINHA) }}"
+                           class="btn btn-secondary me-2">
+                            <i class="fas fa-times me-2"></i>Cancelar
+                        </a>
+                        <button type="submit" class="btn btn-warning btn-lg" id="btnFinalizar" disabled>
+                            <i class="fas fa-check me-2"></i>Finalizar Rateio
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted" id="msgStatus">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Adicione linhas e distribua todo o valor para poder finalizar
+                    </small>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+const VALOR_ORIGINAL = {{ deposito_original.VR_RATEIO or 0 }};
+let contadorLinhas = 0;
+let linhas = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Adicionar primeira linha automaticamente
+    adicionarLinha();
+
+    // Evento do botão adicionar linha
+    document.getElementById('btnAdicionarLinha').addEventListener('click', adicionarLinha);
+
+    // Evento do formulário
+    document.getElementById('formRateioMultiplo').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        if (!validarRateio()) {
+            return false;
+        }
+
+        // Preparar dados para envio
+        const dadosRateios = linhas.map(linha => {
+            return {
+                vr_rateio: document.getElementById(`vr_rateio_${linha.id}`).value,
+                nu_contrato: document.getElementById(`nu_contrato_${linha.id}`).value,
+                id_area: document.getElementById(`id_area_${linha.id}`).value,
+                id_centro: document.getElementById(`id_centro_${linha.id}`).value,
+                dt_identificacao: document.getElementById(`dt_identificacao_${linha.id}`).value,
+                dt_ajuste_rm: document.getElementById(`dt_ajuste_rm_${linha.id}`).value,
+                dt_siscor: document.getElementById(`dt_siscor_${linha.id}`).value,
+                evento_contabil_anterior: document.getElementById(`evento_contabil_anterior_${linha.id}`).value,
+                evento_contabil_atual: document.getElementById(`evento_contabil_atual_${linha.id}`).value,
+                obs: document.getElementById(`obs_${linha.id}`).value,
+                nr_processo: document.getElementById(`nr_processo_${linha.id}`).value
+            };
+        });
+
+        // Confirmar
+        const totalRateado = calcularTotalRateado();
+        if (confirm(
+            `Confirma o rateio múltiplo?\n\n` +
+            `Quantidade de linhas: ${linhas.length}\n` +
+            `Valor total: R$ ${totalRateado.toFixed(2).replace('.', ',')}\n\n` +
+            `O depósito original será ZERADO.`
+        )) {
+            document.getElementById('rateios_data').value = JSON.stringify(dadosRateios);
+            this.submit();
+        }
+    });
+});
+
+function adicionarLinha() {
+    contadorLinhas++;
+    const linhaId = contadorLinhas;
+
+    linhas.push({ id: linhaId });
+
+    const html = `
+        <div class="card shadow mb-3 linha-rateio" id="linha_${linhaId}">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-file-invoice me-2"></i>Linha ${linhaId}</span>
+                <button type="button" class="btn btn-sm btn-danger" onclick="removerLinha(${linhaId})">
+                    <i class="fas fa-trash"></i> Remover
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <!-- Valor do Rateio -->
+                    <div class="col-md-3">
+                        <label class="form-label">Valor Rateio <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control money" id="vr_rateio_${linhaId}"
+                               placeholder="0,00" required onkeyup="calcularRestante()">
+                    </div>
+
+                    <!-- Número do Contrato -->
+                    <div class="col-md-3">
+                        <label class="form-label">Nº Contrato</label>
+                        <input type="number" class="form-control" id="nu_contrato_${linhaId}"
+                               placeholder="Ex: 123456789">
+                    </div>
+
+                    <!-- Número do Processo -->
+                    <div class="col-md-3">
+                        <label class="form-label">Nº Processo</label>
+                        <input type="text" class="form-control" id="nr_processo_${linhaId}"
+                               maxlength="100" placeholder="Ex: 1234567-89.2023">
+                    </div>
+
+                    <!-- Área -->
+                    <div class="col-md-3">
+                        <label class="form-label">Área</label>
+                        <select class="form-select" id="id_area_${linhaId}">
+                            <option value="">Selecione</option>
+                            {% for area in areas %}
+                            <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Centro de Resultado -->
+                    <div class="col-md-3">
+                        <label class="form-label">Centro de Resultado <span class="text-danger">*</span></label>
+                        <select class="form-select" id="id_centro_${linhaId}" required>
+                            <option value="">Selecione</option>
+                            {% for centro in centros %}
+                            <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Data Identificação -->
+                    <div class="col-md-3">
+                        <label class="form-label">Data Identificação</label>
+                        <input type="date" class="form-control" id="dt_identificacao_${linhaId}">
+                    </div>
+
+                    <!-- Data Ajuste RM -->
+                    <div class="col-md-3">
+                        <label class="form-label">Data Ajuste RM</label>
+                        <input type="date" class="form-control" id="dt_ajuste_rm_${linhaId}">
+                    </div>
+
+                    <!-- Data SISCOR -->
+                    <div class="col-md-3">
+                        <label class="form-label">Data SISCOR</label>
+                        <input type="date" class="form-control" id="dt_siscor_${linhaId}">
+                    </div>
+
+                    <!-- Evento Contábil Anterior -->
+                    <div class="col-md-2">
+                        <label class="form-label">Evento Anterior</label>
+                        <input type="number" class="form-control" id="evento_contabil_anterior_${linhaId}">
+                    </div>
+
+                    <!-- Evento Contábil Atual -->
+                    <div class="col-md-2">
+                        <label class="form-label">Evento Atual</label>
+                        <input type="number" class="form-control" id="evento_contabil_atual_${linhaId}">
+                    </div>
+
+                    <!-- Observação -->
+                    <div class="col-md-8">
+                        <label class="form-label">Observação</label>
+                        <input type="text" class="form-control" id="obs_${linhaId}"
+                               maxlength="70" placeholder="Digite uma observação">
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('containerLinhas').insertAdjacentHTML('beforeend', html);
+
+    // Aplicar máscara de moeda no campo adicionado
+    aplicarMascaraMoeda(`vr_rateio_${linhaId}`);
+
+    calcularRestante();
+}
+
+function removerLinha(linhaId) {
+    if (linhas.length === 1) {
+        alert('É necessário manter pelo menos uma linha!');
+        return;
+    }
+
+    if (confirm('Deseja remover esta linha?')) {
+        document.getElementById(`linha_${linhaId}`).remove();
+        linhas = linhas.filter(l => l.id !== linhaId);
+        calcularRestante();
+    }
+}
+
+function aplicarMascaraMoeda(inputId) {
+    const input = document.getElementById(inputId);
+
+    input.addEventListener('input', function(e) {
+        let valor = e.target.value.replace(/\D/g, '');
+        if (valor === '') valor = '0';
+        valor = (parseInt(valor) / 100).toFixed(2);
+        valor = valor.replace('.', ',');
+        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+        e.target.value = valor;
+    });
+
+    // Inicializar com 0,00
+    input.value = '0,00';
+}
+
+function calcularTotalRateado() {
+    let total = 0;
+    linhas.forEach(linha => {
+        const valor = document.getElementById(`vr_rateio_${linha.id}`).value;
+        const valorNum = parseFloat(valor.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(valorNum)) {
+            total += valorNum;
+        }
+    });
+    return total;
+}
+
+function calcularRestante() {
+    const totalRateado = calcularTotalRateado();
+    const restante = VALOR_ORIGINAL - totalRateado;
+
+    // Atualizar display
+    const elementoRestante = document.getElementById('valorRestante');
+    elementoRestante.textContent = 'R$ ' + restante.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+    // Mudar cor conforme o valor
+    if (Math.abs(restante) < 0.01) {
+        elementoRestante.className = 'fw-bold fs-5 text-success';
+    } else if (restante < 0) {
+        elementoRestante.className = 'fw-bold fs-5 text-danger';
+    } else {
+        elementoRestante.className = 'fw-bold fs-5 text-warning';
+    }
+
+    // Habilitar/desabilitar botão finalizar
+    const btnFinalizar = document.getElementById('btnFinalizar');
+    const msgStatus = document.getElementById('msgStatus');
+
+    if (Math.abs(restante) < 0.01) {
+        btnFinalizar.disabled = false;
+        msgStatus.innerHTML = '<i class="fas fa-check-circle me-1 text-success"></i>Valor totalmente distribuído! Você pode finalizar o rateio.';
+        msgStatus.className = 'text-success';
+    } else if (restante < 0) {
+        btnFinalizar.disabled = true;
+        msgStatus.innerHTML = '<i class="fas fa-exclamation-triangle me-1 text-danger"></i>O valor total rateado excede o valor disponível!';
+        msgStatus.className = 'text-danger';
+    } else {
+        btnFinalizar.disabled = true;
+        msgStatus.innerHTML = `<i class="fas fa-info-circle me-1 text-warning"></i>Ainda falta distribuir R$ ${restante.toFixed(2).replace('.', ',')}`;
+        msgStatus.className = 'text-warning';
+    }
+}
+
+function validarRateio() {
+    // Validar se todos os campos obrigatórios estão preenchidos
+    for (const linha of linhas) {
+        const valor = document.getElementById(`vr_rateio_${linha.id}`).value;
+        const centro = document.getElementById(`id_centro_${linha.id}`).value;
+
+        if (!valor || valor === '0,00') {
+            alert(`Linha ${linha.id}: Informe um valor válido!`);
+            return false;
+        }
+
+        if (!centro) {
+            alert(`Linha ${linha.id}: Selecione um Centro de Resultado!`);
+            return false;
+        }
+    }
+
+    // Validar se o total está correto
+    const totalRateado = calcularTotalRateado();
+    if (Math.abs(totalRateado - VALOR_ORIGINAL) > 0.01) {
+        alert('O valor total dos rateios deve ser igual ao valor original!');
+        return false;
+    }
+
+    return true;
+}
+</script>
+
+<style>
+.linha-rateio {
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.money {
+    text-align: right;
+}
+</style>
+{% endblock %}
