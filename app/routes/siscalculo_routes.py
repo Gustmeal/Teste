@@ -682,7 +682,7 @@ def comparar_indices():
 @siscalculo_bp.route('/exportar_pdf')
 @login_required
 def exportar_pdf():
-    """Exporta os resultados para PDF no formato da Proposta Negocial EMGEA"""
+    """Exporta os resultados para PDF - VERSÃO COMPLETA"""
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
@@ -697,7 +697,7 @@ def exportar_pdf():
         dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
         perc_honorarios = Decimal(perc_honorarios)
 
-        # Buscar parcelas calculadas (mesma lógica da rota resultados)
+        # Buscar parcelas calculadas
         if imovel and id_indice:
             parcelas = SiscalculoCalculos.query.filter_by(
                 DT_ATUALIZACAO=dt_atualizacao_filtro,
@@ -725,6 +725,7 @@ def exportar_pdf():
         # Buscar informações complementares
         nome_condominio = ''
         endereco_imovel = ''
+        indice_nome = ''
 
         if imovel:
             # Buscar nome do condomínio
@@ -750,28 +751,40 @@ def exportar_pdf():
 
                 if resultado:
                     partes_endereco = []
-                    if resultado[0] and resultado[1]:  # ABR_LOGR_IMO e LOGR_IMO
+                    if resultado[0] and resultado[1]:
                         partes_endereco.append(f"{resultado[0]} {resultado[1]}")
-                    if resultado[2]:  # NU_IMO
+                    if resultado[2]:
                         partes_endereco.append(f", {resultado[2]}")
-                    if resultado[3]:  # COMPL_IMO
+                    if resultado[3]:
                         partes_endereco.append(f", {resultado[3]}")
-                    if resultado[4]:  # BAIR_IMO
+                    if resultado[4]:
                         partes_endereco.append(f" - {resultado[4]}")
-                    if resultado[5]:  # CIDADE_IMO
+                    if resultado[5]:
                         partes_endereco.append(f" - {resultado[5]}")
-                    if resultado[6]:  # UF_IMO
+                    if resultado[6]:
                         partes_endereco.append(f"/{resultado[6]}")
 
                     endereco_imovel = ''.join(partes_endereco)
-
             except Exception as e:
                 print(f"[AVISO] Erro ao buscar endereço: {e}")
                 endereco_imovel = f"Imóvel {imovel}"
 
+        # Buscar nome do índice
+        if id_indice:
+            indice = ParamIndicesEconomicos.query.get(int(id_indice))
+            indice_nome = indice.DSC_INDICE_ECONOMICO if indice else 'N/A'
+
         # Preparar dados das parcelas para o PDF
         parcelas_pdf = []
-        total_soma = Decimal('0')
+
+        # Calcular totais
+        total_quantidade = len(parcelas)
+        total_vr_cota = Decimal('0')
+        total_atm = Decimal('0')
+        total_juros = Decimal('0')
+        total_multa = Decimal('0')
+        total_desconto = Decimal('0')
+        total_geral = Decimal('0')
 
         for p in parcelas:
             parcelas_pdf.append({
@@ -785,12 +798,36 @@ def exportar_pdf():
                 'VR_DESCONTO': p.VR_DESCONTO,
                 'VR_TOTAL': p.VR_TOTAL
             })
-            total_soma += p.VR_TOTAL
+
+            total_vr_cota += p.VR_COTA
+            total_atm += p.ATM if p.ATM else Decimal('0')
+            total_juros += p.VR_JUROS if p.VR_JUROS else Decimal('0')
+            total_multa += p.VR_MULTA if p.VR_MULTA else Decimal('0')
+            total_desconto += p.VR_DESCONTO if p.VR_DESCONTO else Decimal('0')
+            total_geral += p.VR_TOTAL if p.VR_TOTAL else Decimal('0')
+
+        # Calcular honorários e total final
+        honorarios = total_geral * (perc_honorarios / Decimal('100'))
+        total_final = total_geral + honorarios
+
+        # Montar dicionário de totais
+        totais = {
+            'quantidade': total_quantidade,
+            'vr_cota': total_vr_cota,
+            'atm': total_atm,
+            'juros': total_juros,
+            'multa': total_multa,
+            'desconto': total_desconto,
+            'total_geral': total_geral,
+            'perc_honorarios': perc_honorarios,
+            'honorarios': honorarios,
+            'total_final': total_final
+        }
 
         # Importar módulo de geração de PDF
         from app.utils.siscalculo_pdf import gerar_pdf_siscalculo
 
-        # Caminho para a logo (ajustar conforme sua estrutura)
+        # Caminho para a logo
         logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo_emgea.png')
 
         # Criar arquivo temporário para o PDF
@@ -803,11 +840,12 @@ def exportar_pdf():
         gerar_pdf_siscalculo(
             output_path=pdf_path,
             parcelas=parcelas_pdf,
+            totais=totais,
             nome_condominio=nome_condominio,
             endereco_imovel=endereco_imovel,
-            data_adjudicacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
-            valor_proposta=total_soma + (total_soma * perc_honorarios / 100),
-            data_analise=datetime.now().strftime('%d/%m/%Y'),
+            imovel=imovel,
+            data_atualizacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
+            indice_nome=indice_nome,
             perc_honorarios=float(perc_honorarios),
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
