@@ -87,6 +87,51 @@
                     </div>
                 </div>
 
+                <!-- ✅ NOVO: Linha 3 - Período da Prescrição -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="aplicar_prescricao"
+                                   name="aplicar_prescricao" onchange="togglePrescricao()">
+                            <label class="form-check-label fw-bold" for="aplicar_prescricao">
+                                <i class="fas fa-ban text-danger me-2"></i>Aplicar Período da Prescrição
+                            </label>
+                            <small class="text-muted d-block ms-4">
+                                Marque esta opção para excluir datas prescritas do cálculo
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ✅ NOVO: Campos de data do período de prescrição (inicialmente ocultos) -->
+                <div class="row mb-4" id="campos_prescricao" style="display: none;">
+                    <div class="col-md-6">
+                        <label for="dt_prescricao_inicio" class="form-label">
+                            <i class="fas fa-calendar-alt me-2"></i>Data Início da Prescrição
+                        </label>
+                        <input type="date" class="form-control" id="dt_prescricao_inicio"
+                               name="dt_prescricao_inicio">
+                        <small class="text-muted">Data inicial do período prescrito</small>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="dt_prescricao_fim" class="form-label">
+                            <i class="fas fa-calendar-alt me-2"></i>Data Fim da Prescrição
+                        </label>
+                        <input type="date" class="form-control" id="dt_prescricao_fim"
+                               name="dt_prescricao_fim">
+                        <small class="text-muted">Data final do período prescrito</small>
+                    </div>
+
+                    <div class="col-md-12 mt-2">
+                        <div class="alert alert-warning mb-0">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Atenção:</strong> Todas as datas de vencimento que estiverem dentro
+                            deste período serão <strong>excluídas</strong> e <strong>não participarão do cálculo</strong>.
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Informações sobre o formato -->
                 <div class="alert alert-info" role="alert">
                     <h6 class="alert-heading">
@@ -124,64 +169,46 @@
                     <label for="filtro_contrato" class="form-label">
                         <i class="fas fa-filter me-2"></i>Filtrar por Número de Contrato
                     </label>
-                    <input type="text"
-                           class="form-control"
-                           id="filtro_contrato"
-                           name="filtro_contrato"
-                           placeholder="Digite o número do contrato para filtrar..."
-                           value="{{ filtro_contrato or '' }}">
+                    <input type="text" class="form-control" id="filtro_contrato"
+                           name="filtro_contrato" value="{{ filtro_contrato or '' }}"
+                           placeholder="Digite o número do contrato...">
                 </div>
                 <div class="col-md-2 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-search me-2"></i>Buscar
+                        <i class="fas fa-search me-2"></i>Filtrar
                     </button>
                 </div>
             </form>
-            {% if filtro_contrato %}
-            <div class="mt-2">
-                <a href="{{ url_for('siscalculo.index') }}" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-times me-1"></i>Limpar Filtro
-                </a>
-                <span class="text-muted ms-2">Filtrando por: <strong>{{ filtro_contrato }}</strong></span>
-            </div>
-            {% endif %}
         </div>
     </div>
-    {% endif %}
 
-    <!-- ✅ MODIFICADO: Histórico de Processamentos com Número de Contrato -->
-    {% if historico %}
+    <!-- Histórico de Processamentos -->
     <div class="card shadow">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">
-                <i class="fas fa-history me-2"></i>Processamentos
-                {% if filtro_contrato %}
-                <span class="badge bg-info ms-2">{{ historico|length }} resultado(s)</span>
-                {% else %}
-                <span class="badge bg-secondary ms-2">{{ historico|length }} total</span>
-                {% endif %}
-            </h6>
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0">
+                <i class="fas fa-history me-2"></i>Histórico de Processamentos
+            </h5>
         </div>
-        <div class="card-body">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-bordered table-hover">
-                    <thead>
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
                         <tr>
-                            <th>Número do Contrato</th>
-                            <th>Data Atualização</th>
-                            <th>Qtd. Registros</th>
-                            <th>Valor Total</th>
-                            <th>Ações</th>
+                            <th>Nº Contrato</th>
+                            <th>Data de Atualização</th>
+                            <th class="text-center">Qtd. Parcelas</th>
+                            <th class="text-end">Valor Total</th>
+                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for h in historico %}
                         <tr>
-                            <td><strong>{{ h.IMOVEL or 'N/A' }}</strong></td>
+                            <td><strong>{{ h.IMOVEL }}</strong></td>
                             <td>{{ h.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
-                            <td>{{ h.qtd_registros }}</td>
-                            <td>R$ {{ "{:,.2f}".format(h.valor_total or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td>
+                            <td class="text-center">{{ h.qtd_registros }}</td>
+                            <td class="text-end">R$ {{ "{:,.2f}".format(h.valor_total or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-center">
                                 <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO.strftime('%Y-%m-%d'), imovel=h.IMOVEL) }}"
                                    class="btn btn-sm btn-primary">
                                     <i class="fas fa-eye"></i> Ver Resultados
@@ -207,11 +234,38 @@
 </div>
 
 <script>
+// ✅ NOVA FUNÇÃO: Mostrar/ocultar campos de prescrição
+function togglePrescricao() {
+    const checkbox = document.getElementById('aplicar_prescricao');
+    const campos = document.getElementById('campos_prescricao');
+    const dtInicio = document.getElementById('dt_prescricao_inicio');
+    const dtFim = document.getElementById('dt_prescricao_fim');
+
+    if (checkbox.checked) {
+        campos.style.display = 'flex';
+        // Tornar campos obrigatórios quando checkbox marcado
+        dtInicio.required = true;
+        dtFim.required = true;
+    } else {
+        campos.style.display = 'none';
+        // Remover obrigatoriedade quando checkbox desmarcado
+        dtInicio.required = false;
+        dtFim.required = false;
+        // Limpar valores
+        dtInicio.value = '';
+        dtFim.value = '';
+    }
+}
+
 // Função para limpar formulário
 function limparFormulario() {
     document.getElementById('formSiscalculo').reset();
     // Resetar honorários para 10%
     document.getElementById('perc_honorarios').value = '10.00';
+    // Ocultar campos de prescrição
+    document.getElementById('campos_prescricao').style.display = 'none';
+    document.getElementById('dt_prescricao_inicio').required = false;
+    document.getElementById('dt_prescricao_fim').required = false;
 }
 
 // Adicionar listener de submit com debug
@@ -227,6 +281,9 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
     console.log('- id_indice:', formData.get('id_indice'));
     console.log('- perc_honorarios:', formData.get('perc_honorarios'));
     console.log('- arquivo_excel:', formData.get('arquivo_excel')?.name);
+    console.log('- aplicar_prescricao:', formData.get('aplicar_prescricao'));
+    console.log('- dt_prescricao_inicio:', formData.get('dt_prescricao_inicio'));
+    console.log('- dt_prescricao_fim:', formData.get('dt_prescricao_fim'));
 
     // Validações básicas
     if (!formData.get('dt_atualizacao')) {
@@ -251,6 +308,28 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
         alert('Por favor, selecione um arquivo Excel!');
         e.preventDefault();
         return false;
+    }
+
+    // ✅ NOVA VALIDAÇÃO: Validar período de prescrição
+    const aplicarPrescricao = document.getElementById('aplicar_prescricao').checked;
+    if (aplicarPrescricao) {
+        const dtInicio = formData.get('dt_prescricao_inicio');
+        const dtFim = formData.get('dt_prescricao_fim');
+
+        if (!dtInicio || !dtFim) {
+            alert('Por favor, informe o período completo da prescrição (início e fim)!');
+            e.preventDefault();
+            return false;
+        }
+
+        // Validar se data início é menor que data fim
+        if (new Date(dtInicio) > new Date(dtFim)) {
+            alert('A data de início da prescrição deve ser anterior à data de fim!');
+            e.preventDefault();
+            return false;
+        }
+
+        console.log('✅ Período de prescrição válido:', dtInicio, 'até', dtFim);
     }
 
     console.log('Validações OK! Enviando formulário...');

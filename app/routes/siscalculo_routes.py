@@ -99,14 +99,30 @@ def processar():
         id_indice = request.form.get('id_indice')
         perc_honorarios = request.form.get('perc_honorarios')
 
+        # ✅ NOVO: Capturar parâmetros de prescrição
+        aplicar_prescricao = request.form.get('aplicar_prescricao') == 'on'
+        dt_prescricao_inicio = request.form.get('dt_prescricao_inicio')
+        dt_prescricao_fim = request.form.get('dt_prescricao_fim')
+
         print(f"[DEBUG 2] dt_atualizacao (raw): {dt_atualizacao}")
         print(f"[DEBUG 2] id_indice (raw): {id_indice}")
         print(f"[DEBUG 2] perc_honorarios (raw): {perc_honorarios}")
+        print(f"[DEBUG 2] ✅ aplicar_prescricao: {aplicar_prescricao}")
+        if aplicar_prescricao:
+            print(f"[DEBUG 2] ✅ dt_prescricao_inicio: {dt_prescricao_inicio}")
+            print(f"[DEBUG 2] ✅ dt_prescricao_fim: {dt_prescricao_fim}")
 
         if not dt_atualizacao or not id_indice or not perc_honorarios:
             print("[ERRO 2] Parâmetros obrigatórios não informados")
             flash('Data de atualização, índice e honorários são obrigatórios.', 'danger')
             return redirect(url_for('siscalculo.index'))
+
+        # ✅ NOVO: Validar período de prescrição se aplicado
+        if aplicar_prescricao:
+            if not dt_prescricao_inicio or not dt_prescricao_fim:
+                print("[ERRO 2] Período de prescrição incompleto")
+                flash('Informe o período completo da prescrição (início e fim).', 'danger')
+                return redirect(url_for('siscalculo.index'))
 
         # Converter parâmetros
         print("\n[DEBUG 3] Convertendo parâmetros...")
@@ -114,6 +130,17 @@ def processar():
             dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
             id_indice = int(id_indice)
             perc_honorarios = Decimal(perc_honorarios)
+
+            # ✅ NOVO: Converter datas de prescrição
+            if aplicar_prescricao:
+                dt_prescricao_inicio_obj = datetime.strptime(dt_prescricao_inicio, '%Y-%m-%d').date()
+                dt_prescricao_fim_obj = datetime.strptime(dt_prescricao_fim, '%Y-%m-%d').date()
+                print(
+                    f"[DEBUG 3] ✅ Período de prescrição convertido: {dt_prescricao_inicio_obj} até {dt_prescricao_fim_obj}")
+            else:
+                dt_prescricao_inicio_obj = None
+                dt_prescricao_fim_obj = None
+
             print(f"[DEBUG 3] dt_atualizacao (convertida): {dt_atualizacao}")
             print(f"[DEBUG 3] id_indice (convertido): {id_indice}")
             print(f"[DEBUG 3] perc_honorarios (convertido): {perc_honorarios}%")
@@ -167,6 +194,7 @@ def processar():
         # Importar dados
         print(f"\n[DEBUG 6] Importando dados das parcelas...")
         registros_inseridos = 0
+        registros_excluidos_prescricao = 0  # ✅ NOVO: Contador de registros prescritos
         erros_insercao = 0
 
         for idx, row in df.iterrows():
@@ -195,6 +223,15 @@ def processar():
                         print(f"  [AVISO] Valor inválido ({valor}), pulando linha")
                     continue
 
+                # ✅ NOVO: Verificar se a data está no período de prescrição
+                if aplicar_prescricao:
+                    data_vencimento = dt_venc.date()
+                    if dt_prescricao_inicio_obj <= data_vencimento <= dt_prescricao_fim_obj:
+                        if idx < 3 or registros_excluidos_prescricao < 5:
+                            print(f"  [PRESCRIÇÃO] Data {data_vencimento} está no período prescrito - EXCLUÍDA")
+                        registros_excluidos_prescricao += 1
+                        continue  # ✅ Pula este registro - não insere no banco
+
                 # Criar registro COM NOME_CONDOMINIO
                 if idx < 3:
                     print(f"  [DEBUG] Criando objeto SiscalculoDados...")
@@ -220,20 +257,21 @@ def processar():
                 erros_insercao += 1
                 continue
 
-        print(f"\n[DEBUG 6] Resumo da inserção:")
+        print(f"\n[DEBUG 7] Resumo da inserção:")
         print(f"  Imóvel: {numero_imovel}")
         print(f"  Condomínio: {nome_condominio}")
         print(f"  Total de linhas no Excel: {len(df)}")
-        print(f"  Registros inseridos: {registros_inseridos}")
+        print(f"  ✅ Registros EXCLUÍDOS (prescritos): {registros_excluidos_prescricao}")
+        print(f"  ✅ Registros INSERIDOS (válidos): {registros_inseridos}")
         print(f"  Erros de inserção: {erros_insercao}")
 
         # Commit dos dados importados
-        print("\n[DEBUG 7] Realizando commit dos dados importados...")
+        print("\n[DEBUG 8] Realizando commit dos dados importados...")
         try:
             db.session.commit()
-            print("[DEBUG 7] Commit realizado com sucesso!")
+            print("[DEBUG 8] Commit realizado com sucesso!")
         except Exception as e:
-            print(f"[ERRO 7] Erro no commit: {str(e)}")
+            print(f"[ERRO 8] Erro no commit: {str(e)}")
             import traceback
             traceback.print_exc()
             db.session.rollback()
@@ -241,77 +279,84 @@ def processar():
             return redirect(url_for('siscalculo.index'))
 
         if registros_inseridos == 0:
-            print("[ERRO 7] Nenhum registro válido foi inserido!")
-            flash('Nenhum registro válido foi encontrado no arquivo.', 'warning')
+            print("[ERRO 8] Nenhum registro válido foi inserido!")
+            if registros_excluidos_prescricao > 0:
+                flash(
+                    f'Atenção: Todos os {registros_excluidos_prescricao} registros do Excel estavam no período de prescrição e foram excluídos. Nenhum dado foi salvo.',
+                    'warning')
+            else:
+                flash('Nenhum registro válido foi encontrado no arquivo.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
+        # ✅ Mensagem informativa sobre prescrição
+        if registros_excluidos_prescricao > 0:
+            flash(
+                f'✅ {registros_excluidos_prescricao} registro(s) foram excluídos por estarem no período de prescrição.',
+                'info')
+
         # Executar cálculos
-        print("\n[DEBUG 8] Iniciando execução dos cálculos...")
+        print("\n[DEBUG 9] Iniciando execução dos cálculos...")
         try:
             calculador = CalculadorSiscalculo(
                 dt_atualizacao=dt_atualizacao,
                 id_indice=id_indice,
-                usuario=current_user.nome
+                usuario=current_user.nome,
+                perc_honorarios=perc_honorarios
             )
 
             resultado = calculador.executar_calculos()
 
             if not resultado['sucesso']:
-                print(f"[ERRO 8] Erro ao executar cálculos: {resultado.get('erro')}")
+                print(f"[ERRO 9] Erro ao executar cálculos: {resultado.get('erro')}")
                 flash(f"Erro ao executar cálculos: {resultado.get('erro')}", 'danger')
                 return redirect(url_for('siscalculo.index'))
 
-            print(f"[DEBUG 8] Cálculos executados com sucesso!")
-            print(f"  Registros processados: {resultado['registros_processados']}")
-            print(f"  Valor total: R$ {resultado['valor_total']:,.2f}")
+            print(f"[DEBUG 9] Cálculos executados com sucesso!")
+            print(f"[DEBUG 9] Total processado: R$ {resultado.get('total_processado', 0)}")
+            print(f"[DEBUG 9] Registros calculados: {resultado.get('registros_calculados', 0)}")
+
+            # Registrar no log de auditoria
+            registrar_log(
+                acao='processar_siscalculo',
+                entidade='siscalculo',
+                entidade_id=numero_imovel,
+                descricao=f'Processamento SISCalculo - Imóvel {numero_imovel}',
+                dados_novos={
+                    'imovel': numero_imovel,
+                    'dt_atualizacao': str(dt_atualizacao),
+                    'id_indice': id_indice,
+                    'registros_inseridos': registros_inseridos,
+                    'registros_prescritos': registros_excluidos_prescricao,  # ✅ NOVO
+                    'total_processado': str(resultado.get('total_processado', 0))
+                }
+            )
+
+            # ✅ Mensagem de sucesso com informações sobre prescrição
+            mensagem_sucesso = f'Processamento concluído com sucesso! '
+            mensagem_sucesso += f'{registros_inseridos} parcela(s) processada(s). '
+            if registros_excluidos_prescricao > 0:
+                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição. '
+            mensagem_sucesso += f'Total: R$ {resultado.get("total_processado", 0):,.2f}'
+
+            flash(mensagem_sucesso, 'success')
+
+            # Redirecionar para resultados
+            return redirect(url_for('siscalculo.resultados',
+                                    dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'),
+                                    imovel=numero_imovel))
 
         except Exception as e:
-            print(f"[ERRO 8] Erro ao executar cálculos: {str(e)}")
+            print(f"[ERRO 9] Erro ao executar cálculos: {str(e)}")
             import traceback
             traceback.print_exc()
             flash(f'Erro ao executar cálculos: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # Registrar log de auditoria
-        try:
-            registrar_log(
-                entidade='siscalculo',
-                acao='processar',
-                descricao=f'Processamento completo - Imóvel: {numero_imovel}, Índice: {id_indice}, Data: {dt_atualizacao}',
-                detalhes={
-                    'imovel': numero_imovel,
-                    'condominio': nome_condominio,
-                    'id_indice': id_indice,
-                    'dt_atualizacao': str(dt_atualizacao),
-                    'registros': registros_inseridos,
-                    'perc_honorarios': float(perc_honorarios)
-                }
-            )
-        except Exception as e:
-            print(f"[AVISO] Erro ao registrar log: {str(e)}")
-
-        print("\n" + "=" * 80)
-        print("PROCESSAMENTO CONCLUÍDO COM SUCESSO")
-        print("=" * 80)
-
-        flash(f'Processamento concluído! {registros_inseridos} parcelas importadas e calculadas.', 'success')
-
-        # Redirecionar para resultados
-        return redirect(url_for('siscalculo.resultados',
-                                dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'),
-                                id_indice=id_indice,
-                                imovel=numero_imovel,
-                                perc_honorarios=float(perc_honorarios)))
-
     except Exception as e:
-        print("\n" + "=" * 80)
-        print("[ERRO CRÍTICO NA ROTA /PROCESSAR]")
-        print(f"Erro: {str(e)}")
+        print(f"[ERRO GERAL] Erro no processamento: {str(e)}")
         import traceback
         traceback.print_exc()
-        print("=" * 80)
-
-        flash(f'Erro ao processar: {str(e)}', 'danger')
+        flash(f'Erro no processamento: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
 
 
