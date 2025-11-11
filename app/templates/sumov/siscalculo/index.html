@@ -87,7 +87,7 @@
                     </div>
                 </div>
 
-                <!-- ✅ NOVO: Linha 3 - Período da Prescrição -->
+                <!-- ✅ MODIFICADO: Linha 3 - Período da Prescrição (MÊS/ANO) -->
                 <div class="row mb-4">
                     <div class="col-md-12">
                         <div class="form-check mb-3">
@@ -97,37 +97,40 @@
                                 <i class="fas fa-ban text-danger me-2"></i>Aplicar Período da Prescrição
                             </label>
                             <small class="text-muted d-block ms-4">
-                                Marque esta opção para excluir datas prescritas do cálculo
+                                Marque esta opção para excluir datas prescritas do cálculo (por mês/ano)
                             </small>
                         </div>
                     </div>
                 </div>
 
-                <!-- ✅ NOVO: Campos de data do período de prescrição (inicialmente ocultos) -->
+                <!-- ✅ MODIFICADO: Campos de MÊS/ANO do período de prescrição (inicialmente ocultos) -->
                 <div class="row mb-4" id="campos_prescricao" style="display: none;">
                     <div class="col-md-6">
-                        <label for="dt_prescricao_inicio" class="form-label">
-                            <i class="fas fa-calendar-alt me-2"></i>Data Início da Prescrição
+                        <label for="mes_ano_prescricao_inicio" class="form-label">
+                            <i class="fas fa-calendar-alt me-2"></i>Mês/Ano Início da Prescrição
                         </label>
-                        <input type="date" class="form-control" id="dt_prescricao_inicio"
-                               name="dt_prescricao_inicio">
-                        <small class="text-muted">Data inicial do período prescrito</small>
+                        <input type="month" class="form-control" id="mes_ano_prescricao_inicio"
+                               name="mes_ano_prescricao_inicio">
+                        <small class="text-muted">Mês e ano inicial do período prescrito (ex: Janeiro/2015)</small>
                     </div>
 
                     <div class="col-md-6">
-                        <label for="dt_prescricao_fim" class="form-label">
-                            <i class="fas fa-calendar-alt me-2"></i>Data Fim da Prescrição
+                        <label for="mes_ano_prescricao_fim" class="form-label">
+                            <i class="fas fa-calendar-alt me-2"></i>Mês/Ano Fim da Prescrição
                         </label>
-                        <input type="date" class="form-control" id="dt_prescricao_fim"
-                               name="dt_prescricao_fim">
-                        <small class="text-muted">Data final do período prescrito</small>
+                        <input type="month" class="form-control" id="mes_ano_prescricao_fim"
+                               name="mes_ano_prescricao_fim">
+                        <small class="text-muted">Mês e ano final do período prescrito (ex: Dezembro/2018)</small>
                     </div>
 
                     <div class="col-md-12 mt-2">
                         <div class="alert alert-warning mb-0">
                             <i class="fas fa-exclamation-triangle me-2"></i>
                             <strong>Atenção:</strong> Todas as datas de vencimento que estiverem dentro
-                            deste período serão <strong>excluídas</strong> e <strong>não participarão do cálculo</strong>.
+                            deste período (mês/ano) serão <strong>excluídas</strong> e <strong>não participarão do cálculo</strong>.
+                            <br>
+                            <strong>Exemplo:</strong> Se escolher Janeiro/2015 até Dezembro/2018, todos os vencimentos
+                            de 01/01/2015 até 31/12/2018 serão excluídos.
                         </div>
                     </div>
                 </div>
@@ -234,26 +237,26 @@
 </div>
 
 <script>
-// ✅ NOVA FUNÇÃO: Mostrar/ocultar campos de prescrição
+// ✅ MODIFICADA: Função para mostrar/ocultar campos de prescrição
 function togglePrescricao() {
     const checkbox = document.getElementById('aplicar_prescricao');
     const campos = document.getElementById('campos_prescricao');
-    const dtInicio = document.getElementById('dt_prescricao_inicio');
-    const dtFim = document.getElementById('dt_prescricao_fim');
+    const mesAnoInicio = document.getElementById('mes_ano_prescricao_inicio');
+    const mesAnoFim = document.getElementById('mes_ano_prescricao_fim');
 
     if (checkbox.checked) {
         campos.style.display = 'flex';
         // Tornar campos obrigatórios quando checkbox marcado
-        dtInicio.required = true;
-        dtFim.required = true;
+        mesAnoInicio.required = true;
+        mesAnoFim.required = true;
     } else {
         campos.style.display = 'none';
         // Remover obrigatoriedade quando checkbox desmarcado
-        dtInicio.required = false;
-        dtFim.required = false;
+        mesAnoInicio.required = false;
+        mesAnoFim.required = false;
         // Limpar valores
-        dtInicio.value = '';
-        dtFim.value = '';
+        mesAnoInicio.value = '';
+        mesAnoFim.value = '';
     }
 }
 
@@ -264,8 +267,8 @@ function limparFormulario() {
     document.getElementById('perc_honorarios').value = '10.00';
     // Ocultar campos de prescrição
     document.getElementById('campos_prescricao').style.display = 'none';
-    document.getElementById('dt_prescricao_inicio').required = false;
-    document.getElementById('dt_prescricao_fim').required = false;
+    document.getElementById('mes_ano_prescricao_inicio').required = false;
+    document.getElementById('mes_ano_prescricao_fim').required = false;
 }
 
 // Adicionar listener de submit com debug
@@ -282,8 +285,8 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
     console.log('- perc_honorarios:', formData.get('perc_honorarios'));
     console.log('- arquivo_excel:', formData.get('arquivo_excel')?.name);
     console.log('- aplicar_prescricao:', formData.get('aplicar_prescricao'));
-    console.log('- dt_prescricao_inicio:', formData.get('dt_prescricao_inicio'));
-    console.log('- dt_prescricao_fim:', formData.get('dt_prescricao_fim'));
+    console.log('- mes_ano_prescricao_inicio:', formData.get('mes_ano_prescricao_inicio'));
+    console.log('- mes_ano_prescricao_fim:', formData.get('mes_ano_prescricao_fim'));
 
     // Validações básicas
     if (!formData.get('dt_atualizacao')) {
@@ -310,26 +313,26 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
         return false;
     }
 
-    // ✅ NOVA VALIDAÇÃO: Validar período de prescrição
+    // ✅ MODIFICADA: Validar período de prescrição (MÊS/ANO)
     const aplicarPrescricao = document.getElementById('aplicar_prescricao').checked;
     if (aplicarPrescricao) {
-        const dtInicio = formData.get('dt_prescricao_inicio');
-        const dtFim = formData.get('dt_prescricao_fim');
+        const mesAnoInicio = formData.get('mes_ano_prescricao_inicio');
+        const mesAnoFim = formData.get('mes_ano_prescricao_fim');
 
-        if (!dtInicio || !dtFim) {
-            alert('Por favor, informe o período completo da prescrição (início e fim)!');
+        if (!mesAnoInicio || !mesAnoFim) {
+            alert('Por favor, informe o período completo da prescrição (mês/ano início e fim)!');
             e.preventDefault();
             return false;
         }
 
-        // Validar se data início é menor que data fim
-        if (new Date(dtInicio) > new Date(dtFim)) {
-            alert('A data de início da prescrição deve ser anterior à data de fim!');
+        // Validar se mês/ano início é menor ou igual ao mês/ano fim
+        if (mesAnoInicio > mesAnoFim) {
+            alert('O mês/ano de início da prescrição deve ser anterior ou igual ao mês/ano de fim!');
             e.preventDefault();
             return false;
         }
 
-        console.log('✅ Período de prescrição válido:', dtInicio, 'até', dtFim);
+        console.log('✅ Período de prescrição válido:', mesAnoInicio, 'até', mesAnoFim);
     }
 
     console.log('Validações OK! Enviando formulário...');

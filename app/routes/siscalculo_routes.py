@@ -99,29 +99,29 @@ def processar():
         id_indice = request.form.get('id_indice')
         perc_honorarios = request.form.get('perc_honorarios')
 
-        # ✅ NOVO: Capturar parâmetros de prescrição
+        # ✅ Capturar MÊS/ANO de prescrição
         aplicar_prescricao = request.form.get('aplicar_prescricao') == 'on'
-        dt_prescricao_inicio = request.form.get('dt_prescricao_inicio')
-        dt_prescricao_fim = request.form.get('dt_prescricao_fim')
+        mes_ano_prescricao_inicio = request.form.get('mes_ano_prescricao_inicio')
+        mes_ano_prescricao_fim = request.form.get('mes_ano_prescricao_fim')
 
         print(f"[DEBUG 2] dt_atualizacao (raw): {dt_atualizacao}")
         print(f"[DEBUG 2] id_indice (raw): {id_indice}")
         print(f"[DEBUG 2] perc_honorarios (raw): {perc_honorarios}")
         print(f"[DEBUG 2] ✅ aplicar_prescricao: {aplicar_prescricao}")
         if aplicar_prescricao:
-            print(f"[DEBUG 2] ✅ dt_prescricao_inicio: {dt_prescricao_inicio}")
-            print(f"[DEBUG 2] ✅ dt_prescricao_fim: {dt_prescricao_fim}")
+            print(f"[DEBUG 2] ✅ mes_ano_prescricao_inicio: {mes_ano_prescricao_inicio}")
+            print(f"[DEBUG 2] ✅ mes_ano_prescricao_fim: {mes_ano_prescricao_fim}")
 
         if not dt_atualizacao or not id_indice or not perc_honorarios:
             print("[ERRO 2] Parâmetros obrigatórios não informados")
             flash('Data de atualização, índice e honorários são obrigatórios.', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # ✅ NOVO: Validar período de prescrição se aplicado
+        # ✅ Validar período de prescrição se aplicado
         if aplicar_prescricao:
-            if not dt_prescricao_inicio or not dt_prescricao_fim:
+            if not mes_ano_prescricao_inicio or not mes_ano_prescricao_fim:
                 print("[ERRO 2] Período de prescrição incompleto")
-                flash('Informe o período completo da prescrição (início e fim).', 'danger')
+                flash('Informe o período completo da prescrição (mês/ano início e fim).', 'danger')
                 return redirect(url_for('siscalculo.index'))
 
         # Converter parâmetros
@@ -131,15 +131,13 @@ def processar():
             id_indice = int(id_indice)
             perc_honorarios = Decimal(perc_honorarios)
 
-            # ✅ NOVO: Converter datas de prescrição
+            # ✅ Converter mês/ano de prescrição
             if aplicar_prescricao:
-                dt_prescricao_inicio_obj = datetime.strptime(dt_prescricao_inicio, '%Y-%m-%d').date()
-                dt_prescricao_fim_obj = datetime.strptime(dt_prescricao_fim, '%Y-%m-%d').date()
-                print(
-                    f"[DEBUG 3] ✅ Período de prescrição convertido: {dt_prescricao_inicio_obj} até {dt_prescricao_fim_obj}")
+                ano_inicio, mes_inicio = map(int, mes_ano_prescricao_inicio.split('-'))
+                ano_fim, mes_fim = map(int, mes_ano_prescricao_fim.split('-'))
+                print(f"[DEBUG 3] ✅ Período de prescrição: {mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}")
             else:
-                dt_prescricao_inicio_obj = None
-                dt_prescricao_fim_obj = None
+                ano_inicio = mes_inicio = ano_fim = mes_fim = None
 
             print(f"[DEBUG 3] dt_atualizacao (convertida): {dt_atualizacao}")
             print(f"[DEBUG 3] id_indice (convertido): {id_indice}")
@@ -149,8 +147,8 @@ def processar():
             flash(f'Erro nos parâmetros: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # Ler arquivo Excel - NOVO FORMATO COM CONDOMÍNIO
-        print("\n[DEBUG 4] Iniciando leitura do arquivo Excel - NOVO FORMATO COM CONDOMÍNIO...")
+        # Ler arquivo Excel
+        print("\n[DEBUG 4] Iniciando leitura do arquivo Excel...")
         print(f"[DEBUG 4] Nome do arquivo: {arquivo.filename}")
 
         try:
@@ -158,35 +156,35 @@ def processar():
 
             # Ler célula B1 (Número do Imóvel)
             df_imovel = pd.read_excel(arquivo, header=None, nrows=1)
-            numero_imovel = str(int(df_imovel.iloc[0, 1]))  # Célula B1
+            numero_imovel = str(int(df_imovel.iloc[0, 1]))
             print(f"[DEBUG 4.1] Número do Imóvel: {numero_imovel}")
 
-            # ✅ Ler célula B2 (Nome do Condomínio)
+            # Ler célula B2 (Nome do Condomínio)
             df_condominio = pd.read_excel(arquivo, header=None, nrows=2)
             nome_condominio = str(df_condominio.iloc[1, 1]) if pd.notna(df_condominio.iloc[1, 1]) else ''
             print(f"[DEBUG 4.1] Nome do Condomínio: {nome_condominio}")
 
-            # Ler os dados a partir da linha 3 (linha 4 no Excel, índice 3 no pandas)
-            df = pd.read_excel(arquivo, header=2)  # Linha 3 é o cabeçalho (índice 2)
+            # Ler os dados a partir da linha 3
+            df = pd.read_excel(arquivo, header=2)
             print(f"[DEBUG 4.1] Excel lido com sucesso!")
-            print(f"[DEBUG 4.1] Total de linhas no DataFrame: {len(df)}")
-            print(f"[DEBUG 4.1] Colunas encontradas: {df.columns.tolist()}")
+            print(f"[DEBUG 4.1] Total de linhas: {len(df)}")
 
         except Exception as e:
-            print(f"[ERRO 4.1] Erro ao ler Excel: {str(e)}")
+            print(f"[ERRO 4] Erro ao ler Excel: {str(e)}")
             import traceback
             traceback.print_exc()
             flash(f'Erro ao ler arquivo Excel: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # Limpar dados anteriores deste imóvel
-        print(f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel}...")
+        # ✅ CORREÇÃO: Limpar dados anteriores por IMOVEL + DT_ATUALIZACAO
+        print(f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel} com dt_atualizacao {dt_atualizacao}...")
         try:
             deletados = SiscalculoDados.query.filter_by(
-                IMOVEL=numero_imovel
+                IMOVEL=numero_imovel,
+                DT_ATUALIZACAO=dt_atualizacao  # ✅ CORREÇÃO: Incluir data de atualização
             ).delete()
             db.session.commit()
-            print(f"[DEBUG 5] {deletados} registros deletados")
+            print(f"[DEBUG 5] ✅ {deletados} registros deletados (sem duplicação)")
         except Exception as e:
             print(f"[ERRO 5] Erro ao limpar dados: {str(e)}")
             db.session.rollback()
@@ -194,48 +192,48 @@ def processar():
         # Importar dados
         print(f"\n[DEBUG 6] Importando dados das parcelas...")
         registros_inseridos = 0
-        registros_excluidos_prescricao = 0  # ✅ NOVO: Contador de registros prescritos
+        registros_excluidos_prescricao = 0
         erros_insercao = 0
 
         for idx, row in df.iterrows():
             try:
-                # Debug apenas das primeiras 3 linhas
                 if idx < 3:
                     print(f"  [DEBUG {idx}] Processando linha {idx + 1}/{len(df)}:")
                     print(f"  DATA VENCIMENTO: {row['DATA VENCIMENTO']}")
                     print(f"  VALOR COTA: {row['VALOR COTA']}")
 
-                # ✅ Converter data do vencimento (já vem como datetime do Excel)
+                # Converter data do vencimento
                 dt_venc = pd.to_datetime(row['DATA VENCIMENTO'])
-
-                if idx < 3:
-                    print(f"  [DEBUG] Data convertida: {dt_venc.date()}")
 
                 if pd.isna(dt_venc):
                     if idx < 3:
-                        print(f"  [AVISO] Data de vencimento inválida, pulando linha")
+                        print(f"  [AVISO] Data inválida, pulando linha")
                     continue
 
-                # ✅ Validar valor (nome correto da coluna)
+                # Validar valor
                 valor = row['VALOR COTA']
                 if pd.isna(valor) or valor <= 0:
                     if idx < 3:
                         print(f"  [AVISO] Valor inválido ({valor}), pulando linha")
                     continue
 
-                # ✅ NOVO: Verificar se a data está no período de prescrição
+                # ✅ Verificar prescrição por MÊS/ANO
                 if aplicar_prescricao:
                     data_vencimento = dt_venc.date()
-                    if dt_prescricao_inicio_obj <= data_vencimento <= dt_prescricao_fim_obj:
+                    ano_venc = data_vencimento.year
+                    mes_venc = data_vencimento.month
+
+                    chave_venc = ano_venc * 100 + mes_venc
+                    chave_inicio = ano_inicio * 100 + mes_inicio
+                    chave_fim = ano_fim * 100 + mes_fim
+
+                    if chave_inicio <= chave_venc <= chave_fim:
                         if idx < 3 or registros_excluidos_prescricao < 5:
-                            print(f"  [PRESCRIÇÃO] Data {data_vencimento} está no período prescrito - EXCLUÍDA")
+                            print(f"  [PRESCRIÇÃO] Data {data_vencimento} ({mes_venc:02d}/{ano_venc}) - EXCLUÍDA")
                         registros_excluidos_prescricao += 1
-                        continue  # ✅ Pula este registro - não insere no banco
+                        continue
 
-                # Criar registro COM NOME_CONDOMINIO
-                if idx < 3:
-                    print(f"  [DEBUG] Criando objeto SiscalculoDados...")
-
+                # Criar registro
                 novo_dado = SiscalculoDados(
                     IMOVEL=numero_imovel,
                     NOME_CONDOMINIO=nome_condominio,
@@ -248,28 +246,28 @@ def processar():
                 registros_inseridos += 1
 
                 if idx < 3:
-                    print(f"  [OK] Registro adicionado à sessão")
+                    print(f"  [OK] Registro adicionado")
 
             except Exception as e:
                 print(f"  [ERRO] Erro na linha {idx}: {str(e)}")
-                import traceback
-                traceback.print_exc()
                 erros_insercao += 1
                 continue
 
         print(f"\n[DEBUG 7] Resumo da inserção:")
         print(f"  Imóvel: {numero_imovel}")
         print(f"  Condomínio: {nome_condominio}")
-        print(f"  Total de linhas no Excel: {len(df)}")
-        print(f"  ✅ Registros EXCLUÍDOS (prescritos): {registros_excluidos_prescricao}")
-        print(f"  ✅ Registros INSERIDOS (válidos): {registros_inseridos}")
-        print(f"  Erros de inserção: {erros_insercao}")
+        print(f"  Total linhas Excel: {len(df)}")
+        if aplicar_prescricao:
+            print(f"  ✅ Período prescrição: {mes_inicio:02d}/{ano_inicio} - {mes_fim:02d}/{ano_fim}")
+        print(f"  ✅ EXCLUÍDOS (prescritos): {registros_excluidos_prescricao}")
+        print(f"  ✅ INSERIDOS (válidos): {registros_inseridos}")
+        print(f"  Erros: {erros_insercao}")
 
         # Commit dos dados importados
-        print("\n[DEBUG 8] Realizando commit dos dados importados...")
+        print("\n[DEBUG 8] Realizando commit...")
         try:
             db.session.commit()
-            print("[DEBUG 8] Commit realizado com sucesso!")
+            print("[DEBUG 8] ✅ Commit realizado!")
         except Exception as e:
             print(f"[ERRO 8] Erro no commit: {str(e)}")
             import traceback
@@ -279,23 +277,21 @@ def processar():
             return redirect(url_for('siscalculo.index'))
 
         if registros_inseridos == 0:
-            print("[ERRO 8] Nenhum registro válido foi inserido!")
             if registros_excluidos_prescricao > 0:
                 flash(
-                    f'Atenção: Todos os {registros_excluidos_prescricao} registros do Excel estavam no período de prescrição e foram excluídos. Nenhum dado foi salvo.',
+                    f'Atenção: Todos os {registros_excluidos_prescricao} registros estavam prescritos e foram excluídos.',
                     'warning')
             else:
-                flash('Nenhum registro válido foi encontrado no arquivo.', 'warning')
+                flash('Nenhum registro válido encontrado.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
-        # ✅ Mensagem informativa sobre prescrição
+        # Mensagem sobre prescrição
         if registros_excluidos_prescricao > 0:
-            flash(
-                f'✅ {registros_excluidos_prescricao} registro(s) foram excluídos por estarem no período de prescrição.',
-                'info')
+            msg_periodo = f'{mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}'
+            flash(f'✅ {registros_excluidos_prescricao} registro(s) excluídos por prescrição ({msg_periodo}).', 'info')
 
         # Executar cálculos
-        print("\n[DEBUG 9] Iniciando execução dos cálculos...")
+        print("\n[DEBUG 9] Executando cálculos...")
         try:
             calculador = CalculadorSiscalculo(
                 dt_atualizacao=dt_atualizacao,
@@ -307,15 +303,14 @@ def processar():
             resultado = calculador.executar_calculos()
 
             if not resultado['sucesso']:
-                print(f"[ERRO 9] Erro ao executar cálculos: {resultado.get('erro')}")
+                print(f"[ERRO 9] Erro: {resultado.get('erro')}")
                 flash(f"Erro ao executar cálculos: {resultado.get('erro')}", 'danger')
                 return redirect(url_for('siscalculo.index'))
 
-            print(f"[DEBUG 9] Cálculos executados com sucesso!")
-            print(f"[DEBUG 9] Total processado: R$ {resultado.get('total_processado', 0)}")
-            print(f"[DEBUG 9] Registros calculados: {resultado.get('registros_calculados', 0)}")
+            print(f"[DEBUG 9] ✅ Cálculos executados!")
+            print(f"[DEBUG 9] Total: R$ {resultado.get('total_processado', 0)}")
 
-            # Registrar no log de auditoria
+            # Log de auditoria
             registrar_log(
                 acao='processar_siscalculo',
                 entidade='siscalculo',
@@ -326,34 +321,34 @@ def processar():
                     'dt_atualizacao': str(dt_atualizacao),
                     'id_indice': id_indice,
                     'registros_inseridos': registros_inseridos,
-                    'registros_prescritos': registros_excluidos_prescricao,  # ✅ NOVO
+                    'registros_prescritos': registros_excluidos_prescricao,
+                    'periodo_prescricao': f'{mes_inicio:02d}/{ano_inicio} - {mes_fim:02d}/{ano_fim}' if aplicar_prescricao else 'Não aplicado',
                     'total_processado': str(resultado.get('total_processado', 0))
                 }
             )
 
-            # ✅ Mensagem de sucesso com informações sobre prescrição
+            # Mensagem de sucesso
             mensagem_sucesso = f'Processamento concluído com sucesso! '
             mensagem_sucesso += f'{registros_inseridos} parcela(s) processada(s). '
             if registros_excluidos_prescricao > 0:
-                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição. '
+                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição ({mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}). '
             mensagem_sucesso += f'Total: R$ {resultado.get("total_processado", 0):,.2f}'
 
             flash(mensagem_sucesso, 'success')
 
-            # Redirecionar para resultados
             return redirect(url_for('siscalculo.resultados',
                                     dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'),
                                     imovel=numero_imovel))
 
         except Exception as e:
-            print(f"[ERRO 9] Erro ao executar cálculos: {str(e)}")
+            print(f"[ERRO 9] Erro nos cálculos: {str(e)}")
             import traceback
             traceback.print_exc()
             flash(f'Erro ao executar cálculos: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
     except Exception as e:
-        print(f"[ERRO GERAL] Erro no processamento: {str(e)}")
+        print(f"[ERRO GERAL] {str(e)}")
         import traceback
         traceback.print_exc()
         flash(f'Erro no processamento: {str(e)}', 'danger')
