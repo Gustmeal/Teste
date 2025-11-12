@@ -39,27 +39,35 @@ def index():
     # Data padrão (hoje)
     data_atual = date.today()
 
-    # ✅ NOVO: Capturar filtro de número de contrato da URL
+    # ✅ Capturar filtro de número de contrato da URL
     filtro_contrato = request.args.get('filtro_contrato', '').strip()
 
-    # ✅ MODIFICADO: Buscar histórico de cálculos com TODOS OS REGISTROS e NÚMERO DE CONTRATO
+    # ✅ MODIFICADO: Buscar histórico agrupando também por ID_INDICE_ECONOMICO
     query = db.session.query(
-        SiscalculoCalculos.IMOVEL,  # ✅ ADICIONADO: Número do contrato
+        SiscalculoCalculos.IMOVEL,
         SiscalculoCalculos.DT_ATUALIZACAO,
+        SiscalculoCalculos.ID_INDICE_ECONOMICO,  # ✅ ADICIONAR
+        ParamIndicesEconomicos.DSC_INDICE_ECONOMICO,  # ✅ ADICIONAR para mostrar nome
         db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('qtd_registros'),
         db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+    ).join(
+        ParamIndicesEconomicos,
+        SiscalculoCalculos.ID_INDICE_ECONOMICO == ParamIndicesEconomicos.ID_INDICE_ECONOMICO
     )
 
-    # ✅ NOVO: Aplicar filtro por número de contrato, se fornecido
+    # ✅ Aplicar filtro por número de contrato, se fornecido
     if filtro_contrato:
         query = query.filter(SiscalculoCalculos.IMOVEL.like(f'%{filtro_contrato}%'))
 
     historico = query.group_by(
-        SiscalculoCalculos.IMOVEL,  # ✅ ADICIONADO ao GROUP BY
-        SiscalculoCalculos.DT_ATUALIZACAO
+        SiscalculoCalculos.IMOVEL,
+        SiscalculoCalculos.DT_ATUALIZACAO,
+        SiscalculoCalculos.ID_INDICE_ECONOMICO,  # ✅ ADICIONAR ao GROUP BY
+        ParamIndicesEconomicos.DSC_INDICE_ECONOMICO  # ✅ ADICIONAR ao GROUP BY
     ).order_by(
-        SiscalculoCalculos.DT_ATUALIZACAO.desc()
-    ).all()  # ✅ REMOVIDO .limit(10) - AGORA MOSTRA TODOS OS REGISTROS!
+        SiscalculoCalculos.DT_ATUALIZACAO.desc(),
+        SiscalculoCalculos.IMOVEL
+    ).all()
 
     return render_template('sumov/siscalculo/index.html',
                            indices=indices,
@@ -135,9 +143,11 @@ def processar():
             if aplicar_prescricao:
                 ano_inicio, mes_inicio = map(int, mes_ano_prescricao_inicio.split('-'))
                 ano_fim, mes_fim = map(int, mes_ano_prescricao_fim.split('-'))
-                print(f"[DEBUG 3] ✅ Período de prescrição: {mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}")
+                periodo_prescricao = f"{mes_inicio:02d}/{ano_inicio} - {mes_fim:02d}/{ano_fim}"
+                print(f"[DEBUG 3] ✅ Período de prescrição: {periodo_prescricao}")
             else:
                 ano_inicio = mes_inicio = ano_fim = mes_fim = None
+                periodo_prescricao = None
 
             print(f"[DEBUG 3] dt_atualizacao (convertida): {dt_atualizacao}")
             print(f"[DEBUG 3] id_indice (convertido): {id_indice}")
@@ -176,15 +186,25 @@ def processar():
             flash(f'Erro ao ler arquivo Excel: {str(e)}', 'danger')
             return redirect(url_for('siscalculo.index'))
 
-        # ✅ CORREÇÃO: Limpar dados anteriores por IMOVEL + DT_ATUALIZACAO
-        print(f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel} com dt_atualizacao {dt_atualizacao}...")
+        # ✅ CORREÇÃO PRINCIPAL: Limpar dados anteriores por IMOVEL + DT_ATUALIZACAO + ID_INDICE
+        print(f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel} com dt_atualizacao {dt_atualizacao} e índice {id_indice}...")
         try:
-            deletados = SiscalculoDados.query.filter_by(
+            # ✅ Limpar SiscalculoDados (dados temporários) - APENAS para este imóvel e data
+            deletados_dados = SiscalculoDados.query.filter_by(
                 IMOVEL=numero_imovel,
-                DT_ATUALIZACAO=dt_atualizacao  # ✅ CORREÇÃO: Incluir data de atualização
+                DT_ATUALIZACAO=dt_atualizacao
             ).delete()
+
+            # ✅ Limpar SiscalculoCalculos (resultados anteriores) - FILTRANDO POR ÍNDICE
+            deletados_calculos = SiscalculoCalculos.query.filter_by(
+                IMOVEL=numero_imovel,
+                DT_ATUALIZACAO=dt_atualizacao,
+                ID_INDICE_ECONOMICO=id_indice
+            ).delete()
+
             db.session.commit()
-            print(f"[DEBUG 5] ✅ {deletados} registros deletados (sem duplicação)")
+            print(f"[DEBUG 5] ✅ {deletados_dados} registros deletados em SiscalculoDados")
+            print(f"[DEBUG 5] ✅ {deletados_calculos} registros deletados em SiscalculoCalculos (índice {id_indice})")
         except Exception as e:
             print(f"[ERRO 5] Erro ao limpar dados: {str(e)}")
             db.session.rollback()
@@ -258,7 +278,7 @@ def processar():
         print(f"  Condomínio: {nome_condominio}")
         print(f"  Total linhas Excel: {len(df)}")
         if aplicar_prescricao:
-            print(f"  ✅ Período prescrição: {mes_inicio:02d}/{ano_inicio} - {mes_fim:02d}/{ano_fim}")
+            print(f"  ✅ Período prescrição: {periodo_prescricao}")
         print(f"  ✅ EXCLUÍDOS (prescritos): {registros_excluidos_prescricao}")
         print(f"  ✅ INSERIDOS (válidos): {registros_inseridos}")
         print(f"  Erros: {erros_insercao}")
@@ -287,8 +307,7 @@ def processar():
 
         # Mensagem sobre prescrição
         if registros_excluidos_prescricao > 0:
-            msg_periodo = f'{mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}'
-            flash(f'✅ {registros_excluidos_prescricao} registro(s) excluídos por prescrição ({msg_periodo}).', 'info')
+            flash(f'✅ {registros_excluidos_prescricao} registro(s) excluídos por prescrição ({periodo_prescricao}).', 'info')
 
         # Executar cálculos
         print("\n[DEBUG 9] Executando cálculos...")
@@ -322,7 +341,7 @@ def processar():
                     'id_indice': id_indice,
                     'registros_inseridos': registros_inseridos,
                     'registros_prescritos': registros_excluidos_prescricao,
-                    'periodo_prescricao': f'{mes_inicio:02d}/{ano_inicio} - {mes_fim:02d}/{ano_fim}' if aplicar_prescricao else 'Não aplicado',
+                    'periodo_prescricao': periodo_prescricao or 'Não aplicado',
                     'total_processado': str(resultado.get('total_processado', 0))
                 }
             )
@@ -331,14 +350,18 @@ def processar():
             mensagem_sucesso = f'Processamento concluído com sucesso! '
             mensagem_sucesso += f'{registros_inseridos} parcela(s) processada(s). '
             if registros_excluidos_prescricao > 0:
-                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição ({mes_inicio:02d}/{ano_inicio} até {mes_fim:02d}/{ano_fim}). '
+                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição ({periodo_prescricao}). '
             mensagem_sucesso += f'Total: R$ {resultado.get("total_processado", 0):,.2f}'
 
             flash(mensagem_sucesso, 'success')
 
+            # ✅ CORREÇÃO: Passar período de prescrição na URL
             return redirect(url_for('siscalculo.resultados',
                                     dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'),
-                                    imovel=numero_imovel))
+                                    imovel=numero_imovel,
+                                    id_indice=id_indice,
+                                    perc_honorarios=float(perc_honorarios),
+                                    periodo_prescricao=periodo_prescricao or ''))
 
         except Exception as e:
             print(f"[ERRO 9] Erro nos cálculos: {str(e)}")
@@ -354,7 +377,6 @@ def processar():
         flash(f'Erro no processamento: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
 
-
 @siscalculo_bp.route('/resultados')
 @login_required
 def resultados():
@@ -369,12 +391,14 @@ def resultados():
         id_indice = request.args.get('id_indice')
         imovel = request.args.get('imovel')
         perc_honorarios = request.args.get('perc_honorarios', '10.00')
+        periodo_prescricao = request.args.get('periodo_prescricao', '')  # ✅ NOVO
 
         print(f"[DEBUG RESULTADOS] Parâmetros recebidos:")
         print(f"  dt_atualizacao: {dt_atualizacao_str}")
         print(f"  id_indice: {id_indice}")
         print(f"  imovel: {imovel}")
         print(f"  perc_honorarios: {perc_honorarios}")
+        print(f"  periodo_prescricao: {periodo_prescricao}")  # ✅ NOVO
 
         if not dt_atualizacao_str:
             flash('Data de atualização não informada.', 'warning')
@@ -424,7 +448,7 @@ def resultados():
             nome_condominio = dado.NOME_CONDOMINIO if dado and dado.NOME_CONDOMINIO else ''
             print(f"[DEBUG RESULTADOS] Nome do Condomínio: {nome_condominio}")
 
-        # ✅ NOVO: Buscar endereço do imóvel na tabela SIFOB_ATUAL
+        # Buscar endereço do imóvel na tabela SIFOB_ATUAL
         endereco_imovel = ''
         if imovel:
             try:
@@ -458,7 +482,6 @@ def resultados():
                     cidade = resultado_endereco[5] or ''
                     uf = resultado_endereco[6] or ''
 
-                    # Formato: "Av Mal Mauricio J Cardoso nº 280 Apto 608, Boqueirao, Praia Grande - SP"
                     partes_endereco = []
 
                     # Parte 1: Logradouro com número
@@ -533,8 +556,7 @@ def resultados():
         indice = None
         if id_indice:
             indice = ParamIndicesEconomicos.query.get(int(id_indice))
-            print(
-                f"[DEBUG RESULTADOS] Índice encontrado: {indice.DSC_INDICE_ECONOMICO if indice else 'Não encontrado'}")
+            print(f"[DEBUG RESULTADOS] Índice encontrado: {indice.DSC_INDICE_ECONOMICO if indice else 'Não encontrado'}")
 
         print("=" * 80)
         print("RENDERIZANDO TEMPLATE DE RESULTADOS")
@@ -546,8 +568,9 @@ def resultados():
                                dt_atualizacao=dt_atualizacao_filtro,
                                imovel=imovel,
                                nome_condominio=nome_condominio,
-                               endereco_imovel=endereco_imovel,  # ✅ NOVO
-                               indice=indice)
+                               endereco_imovel=endereco_imovel,
+                               indice=indice,
+                               periodo_prescricao=periodo_prescricao)  # ✅ NOVO
 
     except Exception as e:
         print("\n" + "=" * 80)
@@ -727,6 +750,7 @@ def exportar_pdf():
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
     perc_honorarios = request.args.get('perc_honorarios', '10')
+    periodo_prescricao = request.args.get('periodo_prescricao', '')  # ✅ NOVO
 
     if not dt_atualizacao:
         flash('Data de atualização não informada.', 'danger')
@@ -784,25 +808,25 @@ def exportar_pdf():
                         [CIDADE_IMO],
                         [UF_IMO]
                     FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL]
-                    WHERE [IMOVEL] = :imovel
+                    WHERE CTR = :contrato
                 """)
 
-                resultado = db.session.execute(sql_endereco, {'imovel': imovel}).fetchone()
+                resultado = db.session.execute(sql_endereco, {'contrato': imovel}).fetchone()
 
                 if resultado:
                     partes_endereco = []
                     if resultado[0] and resultado[1]:
                         partes_endereco.append(f"{resultado[0]} {resultado[1]}")
                     if resultado[2]:
-                        partes_endereco.append(f", {resultado[2]}")
+                        partes_endereco.append(f" nº {resultado[2]}")
                     if resultado[3]:
-                        partes_endereco.append(f", {resultado[3]}")
+                        partes_endereco.append(f" {resultado[3]}")
                     if resultado[4]:
-                        partes_endereco.append(f" - {resultado[4]}")
+                        partes_endereco.append(f", {resultado[4]}")
                     if resultado[5]:
-                        partes_endereco.append(f" - {resultado[5]}")
+                        partes_endereco.append(f", {resultado[5]}")
                     if resultado[6]:
-                        partes_endereco.append(f"/{resultado[6]}")
+                        partes_endereco.append(f" - {resultado[6]}")
 
                     endereco_imovel = ''.join(partes_endereco)
             except Exception as e:
@@ -887,6 +911,7 @@ def exportar_pdf():
             data_atualizacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
             indice_nome=indice_nome,
             perc_honorarios=float(perc_honorarios),
+            periodo_prescricao=periodo_prescricao,  # ✅ NOVO
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
 

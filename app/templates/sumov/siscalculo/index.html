@@ -87,7 +87,7 @@
                     </div>
                 </div>
 
-                <!-- ✅ MODIFICADO: Linha 3 - Período da Prescrição (MÊS/ANO) -->
+                <!-- Linha 3 - Período da Prescrição (MÊS/ANO) -->
                 <div class="row mb-4">
                     <div class="col-md-12">
                         <div class="form-check mb-3">
@@ -103,7 +103,7 @@
                     </div>
                 </div>
 
-                <!-- ✅ MODIFICADO: Campos de MÊS/ANO do período de prescrição (inicialmente ocultos) -->
+                <!-- Campos de MÊS/ANO do período de prescrição (inicialmente ocultos) -->
                 <div class="row mb-4" id="campos_prescricao" style="display: none;">
                     <div class="col-md-6">
                         <label for="mes_ano_prescricao_inicio" class="form-label">
@@ -163,7 +163,7 @@
         </div>
     </div>
 
-    <!-- ✅ NOVO: Filtro de Número de Contrato -->
+    <!-- Filtro de Número de Contrato -->
     {% if historico %}
     <div class="card shadow mb-3">
         <div class="card-body">
@@ -199,6 +199,7 @@
                         <tr>
                             <th>Nº Contrato</th>
                             <th>Data de Atualização</th>
+                            <th>Índice</th>
                             <th class="text-center">Qtd. Parcelas</th>
                             <th class="text-end">Valor Total</th>
                             <th class="text-center">Ações</th>
@@ -209,10 +210,11 @@
                         <tr>
                             <td><strong>{{ h.IMOVEL }}</strong></td>
                             <td>{{ h.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
+                            <td><span class="badge bg-info">{{ h.DSC_INDICE_ECONOMICO }}</span></td>
                             <td class="text-center">{{ h.qtd_registros }}</td>
                             <td class="text-end">R$ {{ "{:,.2f}".format(h.valor_total or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                             <td class="text-center">
-                                <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO.strftime('%Y-%m-%d'), imovel=h.IMOVEL) }}"
+                                <a href="{{ url_for('siscalculo.resultados', dt_atualizacao=h.DT_ATUALIZACAO.strftime('%Y-%m-%d'), imovel=h.IMOVEL, id_indice=h.ID_INDICE_ECONOMICO) }}"
                                    class="btn btn-sm btn-primary">
                                     <i class="fas fa-eye"></i> Ver Resultados
                                 </a>
@@ -237,7 +239,7 @@
 </div>
 
 <script>
-// ✅ MODIFICADA: Função para mostrar/ocultar campos de prescrição
+// Função para mostrar/ocultar campos de prescrição
 function togglePrescricao() {
     const checkbox = document.getElementById('aplicar_prescricao');
     const campos = document.getElementById('campos_prescricao');
@@ -246,15 +248,12 @@ function togglePrescricao() {
 
     if (checkbox.checked) {
         campos.style.display = 'flex';
-        // Tornar campos obrigatórios quando checkbox marcado
         mesAnoInicio.required = true;
         mesAnoFim.required = true;
     } else {
         campos.style.display = 'none';
-        // Remover obrigatoriedade quando checkbox desmarcado
         mesAnoInicio.required = false;
         mesAnoFim.required = false;
-        // Limpar valores
         mesAnoInicio.value = '';
         mesAnoFim.value = '';
     }
@@ -263,32 +262,16 @@ function togglePrescricao() {
 // Função para limpar formulário
 function limparFormulario() {
     document.getElementById('formSiscalculo').reset();
-    // Resetar honorários para 10%
     document.getElementById('perc_honorarios').value = '10.00';
-    // Ocultar campos de prescrição
     document.getElementById('campos_prescricao').style.display = 'none';
     document.getElementById('mes_ano_prescricao_inicio').required = false;
     document.getElementById('mes_ano_prescricao_fim').required = false;
 }
 
-// Adicionar listener de submit com debug
+// Validação do formulário
 document.getElementById('formSiscalculo').addEventListener('submit', function(e) {
-    console.log('========================================');
-    console.log('FORMULÁRIO SUBMETIDO!');
-    console.log('========================================');
-
     const formData = new FormData(this);
 
-    console.log('Dados do formulário:');
-    console.log('- dt_atualizacao:', formData.get('dt_atualizacao'));
-    console.log('- id_indice:', formData.get('id_indice'));
-    console.log('- perc_honorarios:', formData.get('perc_honorarios'));
-    console.log('- arquivo_excel:', formData.get('arquivo_excel')?.name);
-    console.log('- aplicar_prescricao:', formData.get('aplicar_prescricao'));
-    console.log('- mes_ano_prescricao_inicio:', formData.get('mes_ano_prescricao_inicio'));
-    console.log('- mes_ano_prescricao_fim:', formData.get('mes_ano_prescricao_fim'));
-
-    // Validações básicas
     if (!formData.get('dt_atualizacao')) {
         alert('Por favor, informe a data de atualização!');
         e.preventDefault();
@@ -313,7 +296,6 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
         return false;
     }
 
-    // ✅ MODIFICADA: Validar período de prescrição (MÊS/ANO)
     const aplicarPrescricao = document.getElementById('aplicar_prescricao').checked;
     if (aplicarPrescricao) {
         const mesAnoInicio = formData.get('mes_ano_prescricao_inicio');
@@ -325,33 +307,18 @@ document.getElementById('formSiscalculo').addEventListener('submit', function(e)
             return false;
         }
 
-        // Validar se mês/ano início é menor ou igual ao mês/ano fim
         if (mesAnoInicio > mesAnoFim) {
             alert('O mês/ano de início da prescrição deve ser anterior ou igual ao mês/ano de fim!');
             e.preventDefault();
             return false;
         }
-
-        console.log('✅ Período de prescrição válido:', mesAnoInicio, 'até', mesAnoFim);
     }
 
-    console.log('Validações OK! Enviando formulário...');
-
-    // Mostrar loading
     const btn = document.getElementById('btnProcessar');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
 
-    console.log('Action URL:', this.action);
-    console.log('Method:', this.method);
-    console.log('========================================');
-
-    // Deixar o submit acontecer normalmente
     return true;
 });
-
-// Debug ao carregar a página
-console.log('Página SISCalculo carregada!');
-console.log('Action do formulário:', document.getElementById('formSiscalculo').action);
 </script>
 {% endblock %}

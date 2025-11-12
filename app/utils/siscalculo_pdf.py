@@ -18,7 +18,7 @@ class SiscalculoPDF:
         self.margin = 15 * mm
 
     def _criar_cabecalho(self, nome_condominio, endereco_imovel, imovel,
-                         data_atualizacao, indice_nome):
+                         data_atualizacao, indice_nome, periodo_prescricao=''):  # ✅ NOVO PARÂMETRO
         """Cria o cabeçalho completo do PDF"""
         elementos = []
 
@@ -77,6 +77,32 @@ class SiscalculoPDF:
         if indice_nome:
             info_linha += f" | <b>Índice:</b> {indice_nome}"
         elementos.append(Paragraph(info_linha, style_info))
+
+        # ✅ NOVO: Alert de Período de Prescrição
+        if periodo_prescricao:
+            style_alert = ParagraphStyle(
+                'Alert',
+                parent=styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#856404'),
+                alignment=TA_LEFT,
+                spaceAfter=2 * mm,
+                leftIndent=5 * mm
+            )
+            elementos.append(Spacer(1, 2 * mm))
+            elementos.append(Paragraph(f"<b>⚠️ Período Prescrito Excluído:</b> {periodo_prescricao}", style_alert))
+        else:
+            style_alert = ParagraphStyle(
+                'Alert',
+                parent=styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#004085'),
+                alignment=TA_LEFT,
+                spaceAfter=2 * mm,
+                leftIndent=5 * mm
+            )
+            elementos.append(Spacer(1, 2 * mm))
+            elementos.append(Paragraph("<b>ℹ️ Nenhum período prescrito aplicado</b>", style_alert))
 
         elementos.append(Spacer(1, 5 * mm))
 
@@ -373,7 +399,8 @@ class SiscalculoPDF:
             dados.get('endereco_imovel', ''),
             dados.get('imovel', ''),
             dados.get('data_atualizacao', ''),
-            dados.get('indice_nome', '')
+            dados.get('indice_nome', ''),
+            dados.get('periodo_prescricao', '')  # ✅ NOVO
         ))
 
         # Tabela de parcelas
@@ -397,10 +424,10 @@ class SiscalculoPDF:
 
         return output_path
 
-
 def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
                          endereco_imovel='', imovel='', data_atualizacao='',
-                         indice_nome='', perc_honorarios=10, logo_path=None):
+                         indice_nome='', perc_honorarios=10, periodo_prescricao='',  # ✅ NOVO
+                         logo_path=None):
     """Função auxiliar para gerar PDF completo"""
     pdf_generator = SiscalculoPDF(logo_path=logo_path)
 
@@ -412,9 +439,9 @@ def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
         'indice_nome': indice_nome,
         'parcelas': parcelas,
         'perc_honorarios': perc_honorarios,
+        'periodo_prescricao': periodo_prescricao,  # ✅ NOVO
         'totais': totais
     }
 
     return pdf_generator.gerar_pdf(output_path, dados)
-
 
