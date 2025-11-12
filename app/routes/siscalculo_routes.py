@@ -591,6 +591,10 @@ def exportar_resultados():
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
 
+    # ✅ NOVA LINHA ADICIONADA - Capturar percentual de honorários
+    perc_honorarios = request.args.get('perc_honorarios', '10.00')
+    perc_honorarios = Decimal(perc_honorarios)
+
     if not dt_atualizacao:
         flash('Data de atualização não informada.', 'danger')
         return redirect(url_for('siscalculo.index'))
@@ -650,8 +654,11 @@ def exportar_resultados():
                 'Total': 'sum'
             }).round(2)
 
-            # Adicionar honorários (10%)
-            resumo['Honorários'] = (resumo['Total'] * 0.10).round(2)
+            # ✅ CORREÇÃO APLICADA AQUI - Linhas modificadas
+            # ❌ ANTES: resumo['Honorários'] = (resumo['Total'] * 0.10).round(2)  # HARDCODED em 10%
+            # ✅ DEPOIS: Usar o percentual correto capturado da URL
+            percentual_decimal = float(perc_honorarios) / 100.0  # Converter % para decimal (ex: 15% = 0.15)
+            resumo['Honorários'] = (resumo['Total'] * percentual_decimal).round(2)
             resumo['Total Final'] = resumo['Total'] + resumo['Honorários']
 
             resumo.to_excel(writer, sheet_name='Resumo')
@@ -749,17 +756,20 @@ def exportar_pdf():
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
-    perc_honorarios = request.args.get('perc_honorarios', '10')
-    periodo_prescricao = request.args.get('periodo_prescricao', '')  # ✅ NOVO
+
+    # ✅ CORREÇÃO APLICADA AQUI - Linha modificada
+    perc_honorarios = request.args.get('perc_honorarios', '10.00')  # ✅ Alterado de '10' para '10.00'
+    perc_honorarios = Decimal(perc_honorarios)  # ✅ NOVA LINHA - Conversão para Decimal
+
+    periodo_prescricao = request.args.get('periodo_prescricao', '')
 
     if not dt_atualizacao:
         flash('Data de atualização não informada.', 'danger')
         return redirect(url_for('siscalculo.index'))
 
     try:
-        # Converter parâmetros
+        # Converter data
         dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
-        perc_honorarios = Decimal(perc_honorarios)
 
         # Buscar parcelas calculadas
         if imovel and id_indice:
@@ -779,24 +789,22 @@ def exportar_pdf():
             ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
 
         if not parcelas:
-            flash('Nenhum cálculo encontrado.', 'warning')
+            flash('Nenhum resultado encontrado.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
         # Se não veio imóvel nos parâmetros, pegar da primeira parcela
         if not imovel and parcelas:
             imovel = parcelas[0].IMOVEL
 
-        # Buscar informações complementares
+        # Buscar nome do condomínio
         nome_condominio = ''
-        endereco_imovel = ''
-        indice_nome = ''
-
         if imovel:
-            # Buscar nome do condomínio
             dado = SiscalculoDados.query.filter_by(IMOVEL=imovel).first()
             nome_condominio = dado.NOME_CONDOMINIO if dado and dado.NOME_CONDOMINIO else ''
 
-            # Buscar endereço do imóvel
+        # Buscar endereço do imóvel
+        endereco_imovel = ''
+        if imovel:
             try:
                 sql_endereco = text("""
                     SELECT TOP 1
@@ -808,40 +816,31 @@ def exportar_pdf():
                         [CIDADE_IMO],
                         [UF_IMO]
                     FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL]
-                    WHERE CTR = :contrato
+                    WHERE [NU_IMO] = :numero_imovel
                 """)
+                resultado_endereco = db.session.execute(sql_endereco, {'numero_imovel': imovel}).fetchone()
 
-                resultado = db.session.execute(sql_endereco, {'contrato': imovel}).fetchone()
-
-                if resultado:
+                if resultado_endereco:
                     partes_endereco = []
-                    if resultado[0] and resultado[1]:
-                        partes_endereco.append(f"{resultado[0]} {resultado[1]}")
-                    if resultado[2]:
-                        partes_endereco.append(f" nº {resultado[2]}")
-                    if resultado[3]:
-                        partes_endereco.append(f" {resultado[3]}")
-                    if resultado[4]:
-                        partes_endereco.append(f", {resultado[4]}")
-                    if resultado[5]:
-                        partes_endereco.append(f", {resultado[5]}")
-                    if resultado[6]:
-                        partes_endereco.append(f" - {resultado[6]}")
-
-                    endereco_imovel = ''.join(partes_endereco)
+                    if resultado_endereco[0]: partes_endereco.append(resultado_endereco[0])
+                    if resultado_endereco[1]: partes_endereco.append(resultado_endereco[1])
+                    if resultado_endereco[2]: partes_endereco.append(str(resultado_endereco[2]))
+                    if resultado_endereco[3]: partes_endereco.append(resultado_endereco[3])
+                    if resultado_endereco[4]: partes_endereco.append(resultado_endereco[4])
+                    if resultado_endereco[5]: partes_endereco.append(resultado_endereco[5])
+                    if resultado_endereco[6]: partes_endereco.append(resultado_endereco[6])
+                    endereco_imovel = ' - '.join(partes_endereco)
             except Exception as e:
-                print(f"[AVISO] Erro ao buscar endereço: {e}")
-                endereco_imovel = f"Imóvel {imovel}"
+                print(f"[ERRO] Erro ao buscar endereço: {str(e)}")
 
         # Buscar nome do índice
+        indice_nome = ''
         if id_indice:
             indice = ParamIndicesEconomicos.query.get(int(id_indice))
-            indice_nome = indice.DSC_INDICE_ECONOMICO if indice else 'N/A'
+            indice_nome = indice.DSC_INDICE_ECONOMICO if indice else str(id_indice)
 
-        # Preparar dados das parcelas para o PDF
+        # Preparar dados para PDF
         parcelas_pdf = []
-
-        # Calcular totais
         total_quantidade = len(parcelas)
         total_vr_cota = Decimal('0')
         total_atm = Decimal('0')
@@ -870,7 +869,7 @@ def exportar_pdf():
             total_desconto += p.VR_DESCONTO if p.VR_DESCONTO else Decimal('0')
             total_geral += p.VR_TOTAL if p.VR_TOTAL else Decimal('0')
 
-        # Calcular honorários e total final
+        # ✅ Calcular honorários COM O PERCENTUAL CORRETO
         honorarios = total_geral * (perc_honorarios / Decimal('100'))
         total_final = total_geral + honorarios
 
@@ -883,7 +882,7 @@ def exportar_pdf():
             'multa': total_multa,
             'desconto': total_desconto,
             'total_geral': total_geral,
-            'perc_honorarios': perc_honorarios,
+            'perc_honorarios': perc_honorarios,  # ✅ Agora usa o valor correto
             'honorarios': honorarios,
             'total_final': total_final
         }
@@ -910,8 +909,8 @@ def exportar_pdf():
             imovel=imovel,
             data_atualizacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
             indice_nome=indice_nome,
-            perc_honorarios=float(perc_honorarios),
-            periodo_prescricao=periodo_prescricao,  # ✅ NOVO
+            perc_honorarios=float(perc_honorarios),  # ✅ Passa o valor correto
+            periodo_prescricao=periodo_prescricao,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
 
@@ -932,3 +931,5 @@ def exportar_pdf():
         traceback.print_exc()
         flash(f'Erro ao exportar PDF: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
+
+

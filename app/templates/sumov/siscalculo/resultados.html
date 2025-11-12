@@ -35,6 +35,17 @@
                         | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
                         {% endif %}
                     </div>
+                    {% if periodo_prescricao %}
+                    <div class="alert alert-warning mt-2 mb-0" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Período Prescrito Excluído:</strong> {{ periodo_prescricao }}
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mt-2 mb-0" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Período Prescrito:</strong> Nenhum
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             <div class="col-auto">
