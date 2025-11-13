@@ -11,6 +11,10 @@
             <i class="fas fa-eye me-2"></i>
             Visualização Geral - {{ nome_mes }}
         </h1>
+        <!-- ✅ NOVO: Botão de exportar para PDF -->
+        <a href="{{ url_for('teletrabalho.exportar_pdf', mes_referencia=mes_referencia, area=area) }}" class="btn btn-danger">
+            <i class="fas fa-file-pdf me-2"></i>Exportar PDF
+        </a>
     </div>
 
     <!-- Filtros -->

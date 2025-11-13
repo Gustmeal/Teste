@@ -10,8 +10,16 @@ from sqlalchemy import and_, or_, func, text, extract
 import calendar
 import math
 from app.models.teletrabalho import ConfigAreaTeletrabalho
+from flask import send_file
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 
 teletrabalho_bp = Blueprint('teletrabalho', __name__, url_prefix='/teletrabalho')
+
 
 
 def verificar_nivel_acesso_teletrabalho(usuario):
@@ -2882,3 +2890,108 @@ def excluir_bloqueio(id):
         db.session.rollback()
         flash(f'Erro ao remover bloqueio: {str(e)}', 'danger')
         return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+@teletrabalho_bp.route('/exportar-pdf/<mes_referencia>')
+@login_required
+def exportar_pdf(mes_referencia):
+    """Exporta a visualização geral para PDF"""
+    usuario = Usuario.query.get(current_user.id)
+    empregado = usuario.empregado
+
+    # Determinar área (similar à visualizacao_geral)
+    nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+    if nivel_acesso == 'gerente':
+        if usuario.empregado and usuario.empregado.sgSuperintendencia:
+            area = usuario.empregado.sgSuperintendencia
+        else:
+            flash('Você não está vinculado a nenhuma área.', 'warning')
+            return redirect(url_for('teletrabalho.index'))
+    else:
+        area = request.args.get('area', empregado.sgSuperintendencia if empregado else None)
+        if not area:
+            flash('Área não identificada.', 'warning')
+            return redirect(url_for('teletrabalho.index'))
+
+    # Buscar dados (reutilizar lógica da visualizacao_geral)
+    ano = int(mes_referencia[:4])
+    mes = int(mes_referencia[4:])
+    primeiro_dia = date(ano, mes, 1)
+    ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+    meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+    nome_mes = f"{meses_pt[mes - 1]} de {ano}"
+
+    teletrabalhos = Teletrabalho.query.join(
+        Usuario, Teletrabalho.USUARIO_ID == Usuario.ID
+    ).filter(
+        Teletrabalho.MES_REFERENCIA == mes_referencia,
+        Teletrabalho.AREA == area,
+        Teletrabalho.STATUS == 'APROVADO',
+        Teletrabalho.DELETED_AT.is_(None)
+    ).all()
+
+    dias_organizados = {}
+    data_atual = primeiro_dia
+    while data_atual <= ultimo_dia:
+        data_str = data_atual.strftime('%Y-%m-%d')
+        dias_organizados[data_str] = {
+            'data': data_atual,
+            'dia_semana': ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][data_atual.weekday()],
+            'pessoas': []
+        }
+        data_atual += timedelta(days=1)
+
+    for tele in teletrabalhos:
+        data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+        if data_str in dias_organizados:
+            nome_completo = tele.usuario.NOME
+            partes = nome_completo.split()
+            nome_abreviado = f"{partes[0]} {partes[1][0]}." if len(partes) >= 2 else partes[0]
+            dias_organizados[data_str]['pessoas'].append({
+                'nome': nome_abreviado,
+                'tipo_periodo': tele.TIPO_PERIODO
+            })
+
+    # Gerar PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=inch, leftMargin=inch, topMargin=inch, bottomMargin=inch)
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('title', parent=styles['Heading1'], fontSize=18, spaceAfter=30, alignment=1)
+    normal_style = styles['Normal']
+
+    elements = []
+
+    # Cabeçalho
+    elements.append(Paragraph(f"<b>Calendário de Teletrabalho - {nome_mes}</b>", title_style))
+    elements.append(Paragraph(f"<b>Área:</b> {area}", normal_style))
+    elements.append(Spacer(1, 0.5 * inch))
+
+    # Tabela com dias e pessoas
+    data = [['Data', 'Dia da Semana', 'Pessoas em Teletrabalho']]
+    for data_str, info in sorted(dias_organizados.items()):
+        pessoas = ', '.join([p['nome'] for p in info['pessoas']]) if info['pessoas'] else 'Nenhuma'
+        data.append([info['data'].strftime('%d/%m/%Y'), info['dia_semana'], pessoas])
+
+    table = Table(data, colWidths=[1.5*inch, 1.5*inch, 4*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(table)
+
+    # Rodapé
+    elements.append(Spacer(1, 0.5 * inch))
+    elements.append(Paragraph("Gerado automaticamente pelo sistema de teletrabalho.", normal_style))
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    return send_file(buffer, as_attachment=True, download_name=f'visualizacao_geral_{area}_{mes_referencia}.pdf', mimetype='application/pdf')
