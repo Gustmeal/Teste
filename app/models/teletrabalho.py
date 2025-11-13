@@ -153,6 +153,64 @@ class Teletrabalho(db.Model):
 
         return True, ""
 
+    # ADICIONAR ESTES MÉTODOS NA CLASSE Teletrabalho:
+
+    @staticmethod
+    def dia_esta_bloqueado(data, area, tipo_area):
+        """Verifica se um dia está bloqueado para teletrabalho"""
+        bloqueio = Teletrabalho.query.filter(
+            Teletrabalho.DATA_TELETRABALHO == data,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).first()
+        return bloqueio is not None, bloqueio
+
+    @staticmethod
+    def obter_bloqueio(data, area, tipo_area):
+        """Retorna o bloqueio de um dia específico"""
+        return Teletrabalho.query.filter(
+            Teletrabalho.DATA_TELETRABALHO == data,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).first()
+
+    @staticmethod
+    def listar_bloqueios_mes(mes_referencia, area, tipo_area):
+        """Lista todos os bloqueios de um mês específico"""
+        ano = int(mes_referencia[:4])
+        mes = int(mes_referencia[4:])
+
+        from datetime import date
+        import calendar
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        return Teletrabalho.query.filter(
+            Teletrabalho.DATA_TELETRABALHO >= primeiro_dia,
+            Teletrabalho.DATA_TELETRABALHO <= ultimo_dia,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+    @staticmethod
+    def contar_pessoas_dia_sem_bloqueio(data, area, tipo_area):
+        """Conta pessoas em teletrabalho (excluindo bloqueios e férias)"""
+        return Teletrabalho.query.filter(
+            Teletrabalho.DATA_TELETRABALHO == data,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).count()
+
 
 class Feriado(db.Model):
     """Acessa tabela de feriados existente"""

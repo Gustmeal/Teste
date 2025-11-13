@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold">
+            <i class="fas fa-ban me-2 text-danger"></i>
+            Bloqueios de Dias
+        </h1>
+        <div>
+            <a href="{{ url_for('teletrabalho.adicionar_bloqueio') }}" class="btn btn-danger">
+                <i class="fas fa-plus me-2"></i>Bloquear Dias
+            </a>
+            <a href="{{ url_for('teletrabalho.index') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('teletrabalho.listar_bloqueios') }}">
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Mês de Referência:</label>
+                        <select name="mes_ref" class="form-select">
+                            <option value="">Todos os meses</option>
+                            {% for periodo in periodos %}
+                            <option value="{{ periodo.valor }}"
+                                    {% if mes_ref == periodo.valor %}selected{% endif %}>
+                                {{ periodo.nome }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Área:</label>
+                        <select name="area" class="form-select">
+                            <option value="">Todas as áreas</option>
+                            {% for area in areas_disponiveis %}
+                            <option value="{{ area }}"
+                                    {% if area_filtro == area %}selected{% endif %}>
+                                {{ area }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Filtrar
+                    </button>
+                    <a href="{{ url_for('teletrabalho.listar_bloqueios') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Limpar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lista de Bloqueios -->
+    <div class="card shadow">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-list me-2"></i>
+                Bloqueios Cadastrados ({{ bloqueios|length }})
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if bloqueios %}
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Data</th>
+                            <th>Dia da Semana</th>
+                            <th>Área</th>
+                            <th>Motivo</th>
+                            <th>Bloqueado Por</th>
+                            <th>Data do Bloqueio</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bloqueio in bloqueios %}
+                        <tr>
+                            <td>
+                                <strong>{{ bloqueio.DATA_TELETRABALHO.strftime('%d/%m/%Y') }}</strong>
+                            </td>
+                            <td>
+                                {% set dia_semana = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'][bloqueio.DATA_TELETRABALHO.weekday()] %}
+                                <span class="badge bg-secondary">{{ dia_semana }}</span>
+                            </td>
+                            <td>{{ bloqueio.AREA }}</td>
+                            <td>
+                                {% if bloqueio.OBSERVACAO %}
+                                    {{ bloqueio.OBSERVACAO }}
+                                {% else %}
+                                    <span class="text-muted">Sem motivo especificado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if bloqueio.aprovador %}
+                                    <i class="fas fa-user me-1"></i>{{ bloqueio.aprovador.NOME }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {{ bloqueio.CREATED_AT.strftime('%d/%m/%Y %H:%M') if bloqueio.CREATED_AT else '-' }}
+                                </small>
+                            </td>
+                            <td class="text-center">
+                                <form method="POST"
+                                      action="{{ url_for('teletrabalho.excluir_bloqueio', id=bloqueio.ID) }}"
+                                      style="display: inline;"
+                                      onsubmit="return confirm('Tem certeza que deseja desbloquear este dia?');">
+                                    <button type="submit" class="btn btn-sm btn-success" title="Desbloquear">
+                                        <i class="fas fa-unlock"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                Nenhum bloqueio cadastrado com os filtros selecionados.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.editais-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.fade-in {
+    animation: fadeIn 0.5s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+</style>
+{% endblock %}

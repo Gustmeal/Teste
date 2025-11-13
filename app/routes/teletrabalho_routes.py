@@ -238,21 +238,24 @@ def calendario(mes_referencia):
         primeiro_dia = date(ano, mes, 1)
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
 
-        # CORREÇÃO CRÍTICA: Calcular dia da semana
+        # Calcular dia da semana para o grid
         # Python: 0=Segunda, 1=Terça, ..., 6=Domingo
         # Grid: 0=Domingo, 1=Segunda, ..., 6=Sábado
         # Fórmula: (weekday + 1) % 7
         primeiro_dia_weekday = primeiro_dia.weekday()
         primeiro_dia_grid = (primeiro_dia_weekday + 1) % 7
 
+        # Buscar todos os teletrabalhos aprovados da área (exceto bloqueios)
         teletrabalhos = Teletrabalho.query.filter(
             Teletrabalho.MES_REFERENCIA == mes_referencia,
             Teletrabalho.AREA == area,
             Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
             Teletrabalho.STATUS == 'APROVADO',
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
 
+        # Organizar pessoas por dia
         dias_ocupados = {}
         for tele in teletrabalhos:
             data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
@@ -264,6 +267,17 @@ def calendario(mes_referencia):
                 'id': tele.ID
             })
 
+        # Buscar bloqueios do mês
+        bloqueios = Teletrabalho.listar_bloqueios_mes(mes_referencia, area, tipo_area)
+        dias_bloqueados = {}
+        for bloq in bloqueios:
+            data_str = bloq.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+            dias_bloqueados[data_str] = {
+                'motivo': bloq.OBSERVACAO,
+                'bloqueado_por': bloq.aprovador.NOME if bloq.aprovador else 'Gestor'
+            }
+
+        # Montar estrutura de dias do calendário
         dias_calendario = []
         data_atual = primeiro_dia
 
@@ -273,6 +287,9 @@ def calendario(mes_referencia):
             feriado = Feriado.obter_feriado(data_atual)
             qtd_pessoas = len(dias_ocupados.get(data_str, []))
 
+            # ✅ VERIFICAR SE O DIA ESTÁ BLOQUEADO
+            bloqueio_info = dias_bloqueados.get(data_str, None)
+
             dias_calendario.append({
                 'data': data_str,
                 'dia': data_atual.day,
@@ -281,14 +298,19 @@ def calendario(mes_referencia):
                 'qtd_pessoas': qtd_pessoas,
                 'limite': limite,
                 'lotado': qtd_pessoas >= limite,
-                'pessoas': dias_ocupados.get(data_str, [])
+                'pessoas': dias_ocupados.get(data_str, []),
+                'bloqueado': bloqueio_info is not None,  # ✅ NOVO
+                'motivo_bloqueio': bloqueio_info['motivo'] if bloqueio_info else None,  # ✅ NOVO
+                'bloqueado_por': bloqueio_info['bloqueado_por'] if bloqueio_info else None  # ✅ NOVO
             })
 
             data_atual += timedelta(days=1)
 
+        # Buscar dias que o usuário já marcou neste mês
         meus_dias = Teletrabalho.query.filter(
             Teletrabalho.USUARIO_ID == current_user.id,
             Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
             Teletrabalho.STATUS == 'APROVADO',
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
@@ -353,6 +375,7 @@ def solicitar():
 
         datas = [datetime.strptime(d, '%Y-%m-%d').date() for d in datas_str]
 
+        # Validação de tipo de período
         if tipo_periodo == 'CINCO_DIAS_CORRIDOS':
             if len(datas) != 5:
                 flash('Para o tipo "5 dias corridos" você deve selecionar exatamente 5 dias.', 'warning')
@@ -370,18 +393,29 @@ def solicitar():
                     flash(f'Data {data.strftime("%d/%m/%Y")}: {msg}', 'warning')
                     return redirect(url_for('teletrabalho.calendario', mes_referencia=mes_referencia))
 
+        # Validações de cada data selecionada
         for data in datas:
+            # 1. Validar se é dia útil
             if not Feriado.eh_dia_util(data):
                 feriado = Feriado.obter_feriado(data)
                 motivo = feriado.DS_FERIADO if feriado else "fim de semana"
                 flash(f'A data {data.strftime("%d/%m/%Y")} não é dia útil ({motivo}).', 'warning')
                 return redirect(url_for('teletrabalho.calendario', mes_referencia=mes_referencia))
 
+            # 2. ✅ NOVA VALIDAÇÃO - Verificar se o dia está bloqueado
+            bloqueado, bloqueio = Teletrabalho.dia_esta_bloqueado(data, area, tipo_area)
+            if bloqueado:
+                motivo_bloqueio = bloqueio.OBSERVACAO if bloqueio and bloqueio.OBSERVACAO else "bloqueado pelo gestor"
+                flash(f'A data {data.strftime("%d/%m/%Y")} está bloqueada: {motivo_bloqueio}', 'danger')
+                return redirect(url_for('teletrabalho.calendario', mes_referencia=mes_referencia))
+
+            # 3. Validar limite de pessoas no dia
             qtd_atual = Teletrabalho.contar_pessoas_dia(data, area, tipo_area)
             if qtd_atual >= limite:
                 flash(f'Data {data.strftime("%d/%m/%Y")}: Limite de {limite} pessoas atingido.', 'warning')
                 return redirect(url_for('teletrabalho.calendario', mes_referencia=mes_referencia))
 
+        # Salvar teletrabalhos
         for data in datas:
             teletrabalho = Teletrabalho(
                 USUARIO_ID=current_user.id,
@@ -391,6 +425,7 @@ def solicitar():
                 TIPO_AREA=tipo_area,
                 STATUS='APROVADO',
                 TIPO_PERIODO=tipo_periodo,
+                TIPO_MARCACAO='TELETRABALHO',
                 OBSERVACAO=observacao,
                 APROVADO_POR=current_user.id,
                 APROVADO_EM=datetime.utcnow()
@@ -2512,3 +2547,335 @@ def admin_salvar_ferias():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
+
+# ==================== BLOQUEIO DE DIAS ====================
+
+@teletrabalho_bp.route('/bloqueios', methods=['GET'])
+@login_required
+def listar_bloqueios():
+    """Lista bloqueios de dias"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado. Apenas gestores e admins.', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+    try:
+        mes_ref = request.args.get('mes_ref')
+        area_filtro = request.args.get('area')
+
+        # Determinar área do filtro
+        if not area_filtro:
+            nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+            if nivel_acesso == 'gerente':
+                if usuario.empregado:
+                    area_filtro = usuario.empregado.sgSuperintendencia
+                else:
+                    flash('Você não está vinculado a nenhuma área.', 'warning')
+                    return redirect(url_for('teletrabalho.index'))
+
+        # Query base - bloqueios
+        query = Teletrabalho.query.filter(
+            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
+            Teletrabalho.DELETED_AT.is_(None)
+        )
+
+        # Filtrar por área se for gerente
+        if not pode_ver_todas_areas(usuario) and area_filtro:
+            query = query.filter(Teletrabalho.AREA == area_filtro)
+        elif area_filtro:
+            query = query.filter(Teletrabalho.AREA == area_filtro)
+
+        # Filtrar por mês se especificado
+        if mes_ref:
+            ano = int(mes_ref[:4])
+            mes = int(mes_ref[4:])
+            primeiro_dia = date(ano, mes, 1)
+            ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+            query = query.filter(
+                Teletrabalho.DATA_TELETRABALHO >= primeiro_dia,
+                Teletrabalho.DATA_TELETRABALHO <= ultimo_dia
+            )
+
+        bloqueios = query.order_by(Teletrabalho.DATA_TELETRABALHO.desc()).all()
+
+        # Buscar áreas disponíveis
+        if pode_ver_todas_areas(usuario):
+            areas = db.session.query(
+                Empregado.sgSuperintendencia
+            ).filter(
+                Empregado.sgSuperintendencia.isnot(None),
+                Empregado.fkStatus == 1
+            ).group_by(Empregado.sgSuperintendencia).all()
+            areas_disponiveis = [a[0] for a in areas]
+        else:
+            areas_disponiveis = [area_filtro] if area_filtro else []
+
+        periodos = gerar_opcoes_periodo()
+
+        return render_template('teletrabalho/bloqueios.html',
+                               bloqueios=bloqueios,
+                               areas_disponiveis=areas_disponiveis,
+                               periodos=periodos,
+                               mes_ref=mes_ref,
+                               area_filtro=area_filtro)
+
+    except Exception as e:
+        flash(f'Erro ao carregar bloqueios: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/bloqueios/adicionar', methods=['GET', 'POST'])
+@login_required
+def adicionar_bloqueio():
+    """Adiciona bloqueio de dia"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado. Apenas gestores e admins.', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+    if request.method == 'POST':
+        try:
+            datas_str = request.form.getlist('datas[]')
+            motivo = request.form.get('motivo', '').strip()
+            area = request.form.get('area')
+            tipo_area = request.form.get('tipo_area', 'superintendencia')
+            mes_referencia = request.form.get('mes_referencia')
+
+            if not datas_str:
+                flash('Selecione pelo menos um dia para bloquear.', 'warning')
+                return redirect(url_for('teletrabalho.adicionar_bloqueio'))
+
+            # Determinar área
+            nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+            if nivel_acesso == 'gerente':
+                if not usuario.empregado:
+                    flash('Você não está vinculado a nenhuma área.', 'warning')
+                    return redirect(url_for('teletrabalho.adicionar_bloqueio'))
+
+                area = usuario.empregado.sgSuperintendencia
+                tipo_area = 'superintendencia'
+            elif not area:
+                flash('Selecione uma área.', 'warning')
+                return redirect(url_for('teletrabalho.adicionar_bloqueio'))
+
+            # Converter strings para datas
+            datas = [datetime.strptime(d, '%Y-%m-%d').date() for d in datas_str]
+
+            bloqueios_adicionados = 0
+            bloqueios_existentes = 0
+
+            for data_bloqueio in datas:
+                # Verificar se já existe bloqueio
+                ja_bloqueado, _ = Teletrabalho.dia_esta_bloqueado(data_bloqueio, area, tipo_area)
+
+                if ja_bloqueado:
+                    bloqueios_existentes += 1
+                    continue
+
+                # Criar bloqueio
+                bloqueio = Teletrabalho(
+                    USUARIO_ID=None,  # Bloqueio não tem usuário específico
+                    DATA_TELETRABALHO=data_bloqueio,
+                    MES_REFERENCIA=data_bloqueio.strftime('%Y%m'),
+                    AREA=area,
+                    TIPO_AREA=tipo_area,
+                    STATUS='APROVADO',
+                    TIPO_PERIODO='BLOQUEIO',
+                    TIPO_MARCACAO='BLOQUEIO',
+                    OBSERVACAO=motivo if motivo else 'Dia bloqueado pelo gestor',
+                    APROVADO_POR=current_user.id,
+                    APROVADO_EM=datetime.utcnow()
+                )
+                db.session.add(bloqueio)
+                bloqueios_adicionados += 1
+
+            db.session.commit()
+
+            registrar_log(
+                acao='criar',
+                entidade='bloqueio_dia',
+                entidade_id=0,
+                descricao=f'{nivel_acesso.upper()} bloqueou {bloqueios_adicionados} dia(s) na área {area}'
+            )
+
+            mensagem = f'{bloqueios_adicionados} dia(s) bloqueado(s) com sucesso!'
+            if bloqueios_existentes > 0:
+                mensagem += f' ({bloqueios_existentes} dia(s) já estavam bloqueados)'
+
+            flash(mensagem, 'success')
+            return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao bloquear dias: {str(e)}', 'danger')
+            return redirect(url_for('teletrabalho.adicionar_bloqueio'))
+
+    # GET - Exibir formulário
+    try:
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            if not usuario.empregado:
+                flash('Você não está vinculado a nenhuma área.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
+
+            area = usuario.empregado.sgSuperintendencia
+            areas_disponiveis = [area]
+        else:
+            # Admin ou Moderador
+            areas = db.session.query(
+                Empregado.sgSuperintendencia
+            ).filter(
+                Empregado.sgSuperintendencia.isnot(None),
+                Empregado.fkStatus == 1
+            ).group_by(Empregado.sgSuperintendencia).all()
+            areas_disponiveis = [a[0] for a in areas]
+
+        periodos = gerar_opcoes_periodo()
+
+        return render_template('teletrabalho/adicionar_bloqueio.html',
+                               areas_disponiveis=areas_disponiveis,
+                               periodos=periodos)
+
+    except Exception as e:
+        flash(f'Erro ao carregar formulário: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.index'))
+
+
+@teletrabalho_bp.route('/bloqueios/calendario/<mes_referencia>')
+@login_required
+def bloqueios_calendario(mes_referencia):
+    """Retorna calendário para seleção de dias a bloquear via AJAX"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        return jsonify({'erro': 'Acesso negado'}), 403
+
+    try:
+        area = request.args.get('area')
+        tipo_area = request.args.get('tipo_area', 'superintendencia')
+
+        # Validar área para gerentes
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            if not usuario.empregado:
+                return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+
+            if area != usuario.empregado.sgSuperintendencia:
+                return jsonify({'erro': 'Você só pode bloquear dias da sua área'}), 403
+
+        ano = int(mes_referencia[:4])
+        mes = int(mes_referencia[4:])
+
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # Buscar bloqueios existentes
+        bloqueios = Teletrabalho.listar_bloqueios_mes(mes_referencia, area, tipo_area)
+        datas_bloqueadas = {b.DATA_TELETRABALHO.strftime('%Y-%m-%d'): b.OBSERVACAO for b in bloqueios}
+
+        # Buscar teletrabalhos já agendados (apenas TELETRABALHO, não férias nem bloqueios)
+        teletrabalhos = Teletrabalho.query.filter(
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        # Contar teletrabalhos por dia
+        teletrabalhos_por_dia = {}
+        for t in teletrabalhos:
+            data_str = t.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+            if data_str not in teletrabalhos_por_dia:
+                teletrabalhos_por_dia[data_str] = 0
+            teletrabalhos_por_dia[data_str] += 1
+
+        # Montar dias
+        dias = []
+        data_atual = primeiro_dia
+
+        while data_atual <= ultimo_dia:
+            data_str = data_atual.strftime('%Y-%m-%d')
+            feriado_obj = Feriado.obter_feriado(data_atual)
+
+            dias.append({
+                'data': data_str,
+                'dia': data_atual.day,
+                'eh_util': Feriado.eh_dia_util(data_atual),
+                'ja_bloqueado': data_str in datas_bloqueadas,
+                'motivo_bloqueio': datas_bloqueadas.get(data_str, ''),
+                'qtd_teletrabalhos': teletrabalhos_por_dia.get(data_str, 0),
+                'feriado': feriado_obj.DS_FERIADO if feriado_obj else None
+            })
+
+            data_atual += timedelta(days=1)
+
+        return jsonify({
+            'sucesso': True,
+            'dias': dias,
+            'primeiro_dia_grid': (primeiro_dia.weekday() + 1) % 7
+        })
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@teletrabalho_bp.route('/bloqueios/excluir/<int:id>', methods=['POST'])
+@login_required
+def excluir_bloqueio(id):
+    """Remove bloqueio de dia"""
+    usuario = Usuario.query.get(current_user.id)
+
+    if not eh_gestor_ou_admin(usuario):
+        flash('Acesso negado. Apenas gestores e admins.', 'danger')
+        return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+    try:
+        bloqueio = Teletrabalho.query.get_or_404(id)
+
+        # Validar que é realmente um bloqueio
+        if bloqueio.TIPO_MARCACAO != 'BLOQUEIO':
+            flash('Este registro não é um bloqueio.', 'danger')
+            return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+        # Validar permissão para gerentes
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
+        if nivel_acesso == 'gerente':
+            if not usuario.empregado:
+                flash('Sem vínculo com empregado.', 'danger')
+                return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+            if bloqueio.AREA != usuario.empregado.sgSuperintendencia:
+                flash('Você só pode desbloquear dias da sua área.', 'danger')
+                return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+        # Soft delete
+        data_bloqueada = bloqueio.DATA_TELETRABALHO
+        area_bloqueada = bloqueio.AREA
+
+        bloqueio.DELETED_AT = datetime.utcnow()
+        db.session.commit()
+
+        registrar_log(
+            acao='excluir',
+            entidade='bloqueio_dia',
+            entidade_id=id,
+            descricao=f'{nivel_acesso.upper()} desbloqueou dia {data_bloqueada.strftime("%d/%m/%Y")} na área {area_bloqueada}'
+        )
+
+        flash('Bloqueio removido com sucesso!', 'success')
+        return redirect(url_for('teletrabalho.listar_bloqueios'))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao remover bloqueio: {str(e)}', 'danger')
+        return redirect(url_for('teletrabalho.listar_bloqueios'))
