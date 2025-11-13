@@ -31,8 +31,9 @@ def registrar_log(acao, entidade, entidade_id, descricao, dados_antigos=None, da
         if current_user.is_authenticated and hasattr(current_user, 'empregado'):
             empregado = current_user.empregado
             if empregado:
-                area = empregado.sgSuperintendencia
-                cargo = empregado.dsCargo
+                # Validação adicional para evitar erros se os atributos forem None ou inválidos
+                area = getattr(empregado, 'sgSuperintendencia', None)
+                cargo = getattr(empregado, 'dsCargo', None)
 
         # Criar log na estrutura existente
         log = AuditLog(
@@ -62,6 +63,8 @@ def registrar_log(acao, entidade, entidade_id, descricao, dados_antigos=None, da
 
         return True
     except Exception as e:
-        print(f"Erro ao registrar log: {str(e)}")
+        # Usar repr(e) em vez de str(e) para evitar problemas de codificação no console
+        # Alternativamente, use logging para evitar problemas de console
+        print(f"Erro ao registrar log: {repr(e)}")
         db.session.rollback()
         return False
