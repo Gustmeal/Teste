@@ -90,12 +90,14 @@
         }
     }
 
-    // Interceptar todos os cliques
+   // Interceptar todos os cliques
     document.addEventListener('click', (event) => {
         const element = event.target.closest('button, a, [role="button"], [type="submit"]');
 
         if (element) {
-            if (element.classList.contains('btn-close') ||
+            // ========== INÍCIO DA ALTERAÇÃO: Adicionada nova condição de exceção ==========
+            if (element.classList.contains('js-ignore-loading') || // <--- ESTA É A NOVA LINHA
+                element.classList.contains('btn-close') ||
                 element.getAttribute('data-bs-dismiss') ||
                 element.classList.contains('btn-secondary') ||
                 element.classList.contains('dropdown-toggle') ||
@@ -104,8 +106,9 @@
                 element.getAttribute('data-bs-toggle') === 'tab' ||
                 element.getAttribute('data-bs-toggle') === 'tooltip' ||
                 element.classList.contains('page-link') && element.closest('.pagination')) {
-                return;
+                return; // Ignora o clique se qualquer uma dessas condições for verdadeira
             }
+            // ========== FIM DA ALTERAÇÃO ==========
 
             const href = element.getAttribute('href');
             if (href && href !== '#' && !href.startsWith('javascript:')) {
@@ -117,7 +120,6 @@
             }
         }
     });
-
     // Interceptar submissões de formulário
     document.addEventListener('submit', () => {
         operationStarted();

@@ -184,31 +184,34 @@
 
 <script>
 async function downloadPdf(event, button) {
-    // 1. Impede que o navegador siga o link.
+    // ✅ CORREÇÃO: Impede a propagação para o auto-loading.js não interceptar
     event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
 
     const originalText = button.innerHTML;
     const downloadUrl = button.href;
     const filename = "SISCalculo_{{ imovel }}_{{ dt_atualizacao.strftime('%Y%m%d') }}.pdf";
 
-    // 2. Desabilita o botão para feedback visual.
+    // Desabilita o botão para feedback visual
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-cog fa-spin me-2"></i>Preparando...';
 
     try {
-        // 3. Busca o arquivo PDF em segundo plano, ADICIONANDO O HEADER ESPECIAL.
+        // Busca o arquivo PDF em segundo plano com header especial
         const response = await fetch(downloadUrl, {
             headers: {
-                'X-Silent-Request': 'true' // <-- ESTA É A LINHA MÁGICA
+                'X-Silent-Request': 'true'
             }
         });
 
         if (!response.ok) {
             throw new Error(`Erro na rede: ${response.statusText}`);
         }
+
         const blob = await response.blob();
 
-        // 4. Cria e clica no link fantasma para forçar o download.
+        // Cria e clica no link fantasma para forçar o download
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
@@ -217,7 +220,7 @@ async function downloadPdf(event, button) {
         document.body.appendChild(a);
         a.click();
 
-        // 5. Limpa a memória.
+        // Limpa a memória
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
 
@@ -225,7 +228,7 @@ async function downloadPdf(event, button) {
         console.error('Erro ao baixar o PDF:', error);
         alert('Ocorreu um erro ao tentar baixar o PDF. Por favor, tente novamente.');
     } finally {
-        // 6. Restaura o botão.
+        // Restaura o botão
         button.disabled = false;
         button.innerHTML = originalText;
     }
