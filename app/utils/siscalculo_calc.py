@@ -134,7 +134,8 @@ class CalculadorSiscalculo:
                         VR_JUROS=resultado_parcela['total_juros'],
                         VR_MULTA=resultado_parcela['total_multa'],
                         VR_DESCONTO=resultado_parcela['total_desconto'],
-                        VR_TOTAL=resultado_parcela['valor_total']
+                        VR_TOTAL=resultado_parcela['valor_total'],
+                        PERC_HONORARIOS = self.perc_honorarios
                     )
 
                     db.session.add(novo_calculo)

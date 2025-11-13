@@ -1,106 +1,118 @@
 {% extends "base.html" %}
 
-{% block title %}Resultados SISCalculo - Imóvel {{ imovel }}{% endblock %}
+{% block title %}Resultados do Cálculo - SISCalculo{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid">
     <!-- Cabeçalho -->
-    <div class="page-header mb-4">
-        <div class="row align-items-center">
-            <div class="col">
-                <h1 class="h3">
-                    <i class="fas fa-chart-line text-success me-2"></i>
-                    Proposta Negocial EMGEA
-                </h1>
-                <p class="text-muted mb-1" style="font-size: 0.9rem;">
-                    Quitação de todos os débitos exigíveis, mediante aceitação dos encargos, inclusive honorários, conforme critérios no rodapé - JUDICIAL
-                </p>
-                <div class="mt-2">
-                    {% if nome_condominio %}
-                    <div class="mb-1">
-                        <strong>Reclamante:</strong> {{ nome_condominio }}
-                    </div>
-                    {% endif %}
-
-                    {% if endereco_imovel %}
-                    <div class="mb-1">
-                        <strong>Endereço do Imóvel:</strong> {{ endereco_imovel }}
-                    </div>
-                    {% endif %}
-
-                    <div>
-                        <strong>Imóvel:</strong> {{ imovel }} |
-                        <strong>Data de Atualização:</strong> {{ dt_atualizacao.strftime('%d/%m/%Y') }}
-                        {% if indice %}
-                        | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
-                        {% endif %}
-                    </div>
-                    {% if periodo_prescricao %}
-                    <div class="alert alert-warning mt-2 mb-0" role="alert">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <strong>Período Prescrito Excluído:</strong> {{ periodo_prescricao }}
-                    </div>
-                    {% else %}
-                    <div class="alert alert-info mt-2 mb-0" role="alert">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>Período Prescrito:</strong> Nenhum
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-auto">
-                <a href="{{ url_for('siscalculo.index') }}" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-arrow-left me-2"></i>Voltar
+    <div class="row mb-3 page-header">
+        <div class="col">
+            <h1 class="h3">
+                <a href="{{ url_for('siscalculo.index') }}" class="text-decoration-none">
+                    <i class="fas fa-arrow-left text-secondary me-2"></i>
                 </a>
-
-                <!-- ✅ Botão de Exportar PDF COM download silencioso via iframe -->
-                <button class="btn btn-danger btn-sm" id="btnExportarPDF" onclick="exportarPDFSilencioso()" title="Exportar para PDF">
-                    <i class="fas fa-file-pdf me-2"></i>Exportar PDF
-                </button>
-
-                <button class="btn btn-success btn-sm" onclick="window.print()">
-                    <i class="fas fa-print me-2"></i>Imprimir
-                </button>
-            </div>
+                Resultados do Cálculo - SISCalculo
+            </h1>
+            <p class="text-muted mb-0">
+                <i class="fas fa-calendar-alt me-2"></i>Data de Atualização: {{ dt_atualizacao.strftime('%d/%m/%Y') }}
+                {% if indice %}
+                | <i class="fas fa-chart-line me-2"></i>Índice: {{ indice.DSC_INDICE_ECONOMICO }}
+                {% endif %}
+                {% if imovel %}
+                | <i class="fas fa-home me-2"></i>Imóvel: {{ imovel }}
+                {% endif %}
+            </p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios, periodo_prescricao=periodo_prescricao) }}"
+               class="btn btn-danger" id="btnExportarPDF" onclick="exportarPDFSilencioso(); return false;">
+                <i class="fas fa-file-pdf me-2"></i>Exportar PDF
+            </a>
+            <a href="{{ url_for('siscalculo.exportar_resultados', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), id_indice=indice.ID_INDICE_ECONOMICO if indice else '') }}"
+               class="btn btn-success">
+                <i class="fas fa-file-excel me-2"></i>Exportar Excel
+            </a>
+            <button onclick="window.print()" class="btn btn-secondary">
+                <i class="fas fa-print me-2"></i>Imprimir
+            </button>
         </div>
     </div>
 
-    <!-- Tabela Principal -->
+    <!-- Card de Informações do Imóvel -->
+    {% if nome_condominio or endereco_imovel %}
+    <div class="card shadow mb-3">
+        <div class="card-header bg-info text-white py-2">
+            <h6 class="mb-0"><i class="fas fa-building me-2"></i>Dados do Imóvel</h6>
+        </div>
+        <div class="card-body py-2">
+            {% if nome_condominio %}
+            <div class="row mb-2">
+                <div class="col-12">
+                    <p class="mb-0"><strong>Condomínio:</strong> {{ nome_condominio }}</p>
+                </div>
+            </div>
+            {% endif %}
+            {% if endereco_imovel %}
+            <div class="row">
+                <div class="col-12">
+                    <p class="mb-0"><strong>Endereço:</strong> {{ endereco_imovel }}</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Alerta de Prescrição -->
+    {% if periodo_prescricao %}
+    <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>Atenção:</strong> Foi aplicado filtro de prescrição no período <strong>{{ periodo_prescricao }}</strong>.
+        Parcelas fora deste período foram excluídas do cálculo.
+    </div>
+    {% endif %}
+
+    <!-- Tabela de Resultados -->
     <div class="card shadow">
+        <div class="card-header bg-primary text-white py-2">
+            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Detalhamento das Parcelas</h5>
+        </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-bordered table-sm mb-0" style="font-size: 0.85rem;">
-                    <thead style="background-color: #4a5568; color: white;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
                         <tr>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Data de<br>Vencimento</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Tempo de<br>Atraso em<br>Meses</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Valor da<br>Cota</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Percentual<br>de<br>Atualização</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Atualização<br>Monetária</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Juros</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Multa</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Desconto</th>
-                            <th class="text-center align-middle" style="background-color: #4a5568; color: white;">Soma</th>
+                            <th class="text-center" style="width: 10%;">Vencimento</th>
+                            <th class="text-center" style="width: 8%;">Meses Atraso</th>
+                            <th class="text-end" style="width: 11%;">Valor Original</th>
+                            <th class="text-end" style="width: 10%;">% Atualização</th>
+                            <th class="text-end" style="width: 11%;">ATM</th>
+                            <th class="text-end" style="width: 11%;">Juros</th>
+                            <th class="text-end" style="width: 11%;">Multa</th>
+                            <th class="text-end" style="width: 11%;">Desconto</th>
+                            <th class="text-end" style="width: 12%;">Total</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for parcela in parcelas %}
+                        {% for p in parcelas %}
                         <tr>
-                            <td class="text-center">{{ parcela.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
-                            <td class="text-center">{{ parcela.TEMPO_ATRASO }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:.4f}".format((parcela.PERC_ATUALIZACAO or 0) * 100) }}%</td>
-                            <td class="text-end">{{ "{:,.2f}".format(parcela.ATM or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_JUROS or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_MULTA or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_DESCONTO or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end"><strong>{{ "{:,.2f}".format(parcela.VR_TOTAL or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                            <td class="text-center">{{ p.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
+                            <td class="text-center">{{ p.TEMPO_ATRASO }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(p.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:.4f}".format(p.PERC_ATUALIZACAO * 100 if p.PERC_ATUALIZACAO else 0).replace('.', ',') }}%</td>
+                            <td class="text-end {% if p.ATM and p.ATM < 0 %}text-danger{% endif %}">
+                                {{ "{:,.2f}".format(p.ATM if p.ATM else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                            <td class="text-end">{{ "{:,.2f}".format(p.VR_JUROS if p.VR_JUROS else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(p.VR_MULTA if p.VR_MULTA else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(p.VR_DESCONTO if p.VR_DESCONTO else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end"><strong>{{ "{:,.2f}".format(p.VR_TOTAL if p.VR_TOTAL else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
                         <tr style="background-color: #e2e8f0;">
-                            <th colspan="2" class="text-center"><strong>Soma</strong></th>
+                            <th colspan="2" class="text-end">Total de Parcelas: {{ totais.quantidade }}</th>
                             <th class="text-end"><strong>{{ "{:,.2f}".format(totais.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
                             <th></th>
                             <th class="text-end"><strong>{{ "{:,.2f}".format(totais.atm).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
@@ -201,8 +213,8 @@ function exportarPDFSilencioso() {
     const btn = document.getElementById('btnExportarPDF');
     const originalHTML = btn.innerHTML;
 
-    // URL do PDF
-    const url = "{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios) }}";
+    // URL do PDF - AGORA COM ID_INDICE, PERC_HONORARIOS e PERIODO_PRESCRICAO
+    const url = "{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios, periodo_prescricao=periodo_prescricao) }}";
 
     // Mostrar feedback visual
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando PDF...';

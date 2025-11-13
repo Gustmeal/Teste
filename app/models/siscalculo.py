@@ -71,6 +71,7 @@ class SiscalculoCalculos(db.Model):
     VR_MULTA = db.Column(db.Numeric(18, 2), nullable=True)
     VR_DESCONTO = db.Column(db.Numeric(18, 2), nullable=True)
     VR_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
+    PERC_HONORARIOS = db.Column(db.Numeric(5, 2), nullable=True)  # ✅ NOVA COLUNA
 
     def __repr__(self):
         return f'<SiscalculoCalculo {self.DT_ATUALIZACAO} - Índice {self.ID_INDICE_ECONOMICO} - {self.IMOVEL}>'
@@ -109,41 +110,21 @@ class IndicadorEconomico(db.Model):
                     chDTInicio,
                     numIndicadorEconomico,
                     CAST((1 + (numIndicadorEconomico / 100.0)) AS DECIMAL(18,8)) AS FatorMensal,
-                    ROW_NUMBER() OVER (ORDER BY chDTInicio) AS NumMes
-                FROM DBPRDINDICADORECONOMICO.dbo.tblIndicadorEconomico
+                    ROW_NUMBER() OVER (ORDER BY chDTInicio) AS Sequencia
+                FROM [DBPRDINDICADORECONOMICO].[dbo].[tblIndicadorEconomico]
                 WHERE idTipoIndicadorEconomico = :id_tipo
-                AND chDTInicio >= :dt_inicio
-                AND chDTInicio <= :dt_fim
-                AND (:id_tipo != 2 OR (RIGHT(chDTInicio, 2) = '01' AND RIGHT(chDTFinal, 2) = '01'))
-            ),
-            CalculoAcumulado AS (
-                SELECT 
-                    NumMes, 
-                    FatorMensal,
-                    FatorMensal AS FatorAcumulado
-                FROM IndicesPeriodo
-                WHERE NumMes = 1
-
-                UNION ALL
-
-                SELECT 
-                    i.NumMes,
-                    i.FatorMensal,
-                    CAST(c.FatorAcumulado * i.FatorMensal AS DECIMAL(18,8)) AS FatorAcumulado
-                FROM IndicesPeriodo i
-                INNER JOIN CalculoAcumulado c ON i.NumMes = c.NumMes + 1
+                    AND chDTInicio >= :dt_inicio
+                    AND chDTInicio <= :dt_fim
             )
-            SELECT ISNULL(MAX(FatorAcumulado) - 1, 0) AS FatorAcumulado
-            FROM CalculoAcumulado
+            SELECT 
+                EXP(SUM(LOG(FatorMensal))) AS FatorAcumulado
+            FROM IndicesPeriodo
         """)
 
-        try:
-            result = db.session.execute(sql, {
-                'id_tipo': id_tipo,
-                'dt_inicio': dt_inicio.strftime('%Y%m%d'),
-                'dt_fim': dt_fim.strftime('%Y%m%d')
-            }).scalar()
-            return Decimal(str(result)) if result else Decimal('0')
-        except Exception as e:
-            print(f"Erro ao calcular fator acumulado: {e}")
-            return Decimal('0')
+        resultado = db.session.execute(sql, {
+            'id_tipo': id_tipo,
+            'dt_inicio': dt_inicio,
+            'dt_fim': dt_fim
+        }).fetchone()
+
+        return float(resultado[0]) if resultado and resultado[0] else 1.0
