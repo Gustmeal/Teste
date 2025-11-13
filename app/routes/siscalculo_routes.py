@@ -45,8 +45,9 @@ def index():
         SiscalculoCalculos.IMOVEL,
         SiscalculoCalculos.ID_INDICE_ECONOMICO,
         ParamIndicesEconomicos.DSC_INDICE_ECONOMICO,
-        db.func.sum(SiscalculoCalculos.VR_TOTAL).label('TOTAL'),
-        db.func.max(SiscalculoCalculos.PERC_HONORARIOS).label('PERC_HONORARIOS')  # ✅ BUSCAR PERCENTUAL
+        db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('qtd_registros'),  # ✅ CORRIGIDO
+        db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total'),  # ✅ CORRIGIDO
+        db.func.max(SiscalculoCalculos.PERC_HONORARIOS).label('PERC_HONORARIOS')
     ).join(
         ParamIndicesEconomicos,
         SiscalculoCalculos.ID_INDICE_ECONOMICO == ParamIndicesEconomicos.ID_INDICE_ECONOMICO
@@ -390,7 +391,7 @@ def resultados():
         dt_atualizacao_str = request.args.get('dt_atualizacao')
         id_indice = request.args.get('id_indice')
         imovel = request.args.get('imovel')
-        perc_honorarios_param = request.args.get('perc_honorarios')  # ✅ RENOMEADO
+        perc_honorarios_param = request.args.get('perc_honorarios')
         periodo_prescricao = request.args.get('periodo_prescricao', '')
 
         print(f"[DEBUG RESULTADOS] Parâmetros recebidos:")
@@ -449,14 +450,14 @@ def resultados():
             imovel = parcelas[0].IMOVEL
             print(f"[DEBUG RESULTADOS] Imóvel identificado: {imovel}")
 
-        # Buscar nome do condomínio
+        # ✅ BUSCAR NOME DO CONDOMÍNIO
         nome_condominio = ''
         if imovel:
             dado = SiscalculoDados.query.filter_by(IMOVEL=imovel).first()
             nome_condominio = dado.NOME_CONDOMINIO if dado and dado.NOME_CONDOMINIO else ''
             print(f"[DEBUG RESULTADOS] Nome do Condomínio: {nome_condominio}")
 
-        # Buscar endereço do imóvel na tabela SIFOB_ATUAL
+        # ✅ BUSCAR ENDEREÇO DO IMÓVEL NA TABELA SIFOB_ATUAL
         endereco_imovel = ''
         if imovel:
             try:
@@ -472,7 +473,7 @@ def resultados():
                         [CIDADE_IMO],
                         [UF_IMO]
                     FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL]
-                    WHERE [NU_IMO] = :numero_imovel
+                    WHERE [CTR] = :numero_imovel
                 """)
 
                 resultado_endereco = db.session.execute(sql_endereco, {'numero_imovel': imovel})
@@ -488,6 +489,8 @@ def resultados():
                     ]
                     endereco_imovel = ' - '.join([p for p in partes_endereco if p])
                     print(f"[DEBUG RESULTADOS] Endereço encontrado: {endereco_imovel}")
+                else:
+                    print(f"[DEBUG RESULTADOS] Nenhum endereço encontrado para o imóvel {imovel}")
 
             except Exception as e:
                 print(f"[ERRO] Erro ao buscar endereço: {str(e)}")
@@ -738,104 +741,54 @@ def exportar_pdf():
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
-    perc_honorarios_param = request.args.get('perc_honorarios')  # ✅ RENOMEADO
+    perc_honorarios_param = request.args.get('perc_honorarios')
     periodo_prescricao = request.args.get('periodo_prescricao', '')
 
-    if not dt_atualizacao:
-        flash('Data de atualização não informada.', 'danger')
+    if not all([dt_atualizacao, id_indice, imovel]):
+        flash('Informações insuficientes para gerar o PDF (Data, Imóvel e Índice são necessários).', 'danger')
         return redirect(url_for('siscalculo.index'))
 
     try:
-        # Converter parâmetros
         dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
 
-        # Buscar parcelas calculadas
-        if imovel and id_indice:
-            parcelas = SiscalculoCalculos.query.filter_by(
-                DT_ATUALIZACAO=dt_atualizacao_filtro,
-                ID_INDICE_ECONOMICO=int(id_indice),
-                IMOVEL=imovel
-            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
-        elif id_indice:
-            parcelas = SiscalculoCalculos.query.filter_by(
-                DT_ATUALIZACAO=dt_atualizacao_filtro,
-                ID_INDICE_ECONOMICO=int(id_indice)
-            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
-        else:
-            parcelas = SiscalculoCalculos.query.filter_by(
-                DT_ATUALIZACAO=dt_atualizacao_filtro
-            ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
+        parcelas = SiscalculoCalculos.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao_filtro,
+            IMOVEL=imovel,
+            ID_INDICE_ECONOMICO=int(id_indice)
+        ).order_by(SiscalculoCalculos.DT_VENCIMENTO).all()
 
         if not parcelas:
-            flash('Nenhum cálculo encontrado.', 'warning')
+            flash('Nenhum cálculo encontrado com os filtros especificados para gerar o PDF.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
-        # ✅ BUSCAR PERCENTUAL DO BANCO SE NÃO VEIO NOS PARÂMETROS
         if perc_honorarios_param:
             perc_honorarios = Decimal(perc_honorarios_param)
         else:
-            # Buscar do primeiro registro (todos têm o mesmo percentual)
             perc_honorarios = parcelas[0].PERC_HONORARIOS if parcelas[0].PERC_HONORARIOS else Decimal('10.00')
 
-        # Se não veio imóvel nos parâmetros, pegar da primeira parcela
-        if not imovel and parcelas:
-            imovel = parcelas[0].IMOVEL
+        dado = SiscalculoDados.query.filter_by(IMOVEL=imovel, DT_ATUALIZACAO=dt_atualizacao_filtro).first()
+        nome_condominio = dado.NOME_CONDOMINIO if dado else ''
 
-        # Buscar informações complementares
-        nome_condominio = ''
         endereco_imovel = ''
-        indice_nome = ''
+        try:
+            sql_endereco = text(
+                "SELECT TOP 1 [ABR_LOGR_IMO], [LOGR_IMO], [NU_IMO], [COMPL_IMO], [BAIR_IMO], [CIDADE_IMO], [UF_IMO] FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL] WHERE [CTR] = :numero_imovel")
+            resultado_endereco = db.session.execute(sql_endereco, {'numero_imovel': imovel}).fetchone()
+            if resultado_endereco:
+                partes = [f"{resultado_endereco[0]} {resultado_endereco[1]}" if all(resultado_endereco[:2]) else None,
+                          f"Nº {resultado_endereco[2]}" if resultado_endereco[2] else None, resultado_endereco[3],
+                          resultado_endereco[4],
+                          f"{resultado_endereco[5]}/{resultado_endereco[6]}" if all(resultado_endereco[5:7]) else None]
+                endereco_imovel = ' - '.join(filter(None, partes))
+        except Exception as e:
+            print(f"[ERRO PDF] Erro ao buscar endereço: {e}")
 
-        if imovel:
-            # Buscar nome do condomínio
-            dado = SiscalculoDados.query.filter_by(IMOVEL=imovel).first()
-            nome_condominio = dado.NOME_CONDOMINIO if dado and dado.NOME_CONDOMINIO else ''
+        indice = ParamIndicesEconomicos.query.get(int(id_indice))
+        indice_nome = indice.DSC_INDICE_ECONOMICO if indice else f'Índice {id_indice}'
 
-            # Buscar endereço do imóvel
-            try:
-                sql_endereco = text("""
-                    SELECT TOP 1
-                        [ABR_LOGR_IMO],
-                        [LOGR_IMO],
-                        [NU_IMO],
-                        [COMPL_IMO],
-                        [BAIR_IMO],
-                        [CIDADE_IMO],
-                        [UF_IMO]
-                    FROM [EMGEA_MENSAL].[dbo].[SIFOB_ATUAL]
-                    WHERE [NU_IMO] = :numero_imovel
-                """)
-
-                resultado_endereco = db.session.execute(sql_endereco, {'numero_imovel': imovel})
-                row = resultado_endereco.fetchone()
-
-                if row:
-                    partes_endereco = [
-                        f"{row[0]} {row[1]}" if row[0] and row[1] else None,
-                        f"Nº {row[2]}" if row[2] else None,
-                        row[3] if row[3] else None,
-                        row[4] if row[4] else None,
-                        f"{row[5]}/{row[6]}" if row[5] and row[6] else None
-                    ]
-                    endereco_imovel = ' - '.join([p for p in partes_endereco if p])
-            except Exception as e:
-                print(f"[ERRO] Erro ao buscar endereço: {str(e)}")
-
-        # Buscar nome do índice
-        if id_indice:
-            indice = ParamIndicesEconomicos.query.get(int(id_indice))
-            indice_nome = indice.DSC_INDICE_ECONOMICO if indice else f'Índice {id_indice}'
-
-        # Preparar dados para PDF
+        # --- INÍCIO DA CORREÇÃO ---
+        # Preparar dados para PDF de forma explícita para evitar erros.
         parcelas_pdf = []
-        total_quantidade = len(parcelas)
-        total_vr_cota = Decimal('0')
-        total_atm = Decimal('0')
-        total_juros = Decimal('0')
-        total_multa = Decimal('0')
-        total_desconto = Decimal('0')
-        total_geral = Decimal('0')
-
         for p in parcelas:
             parcelas_pdf.append({
                 'DT_VENCIMENTO': p.DT_VENCIMENTO,
@@ -848,67 +801,46 @@ def exportar_pdf():
                 'VR_DESCONTO': p.VR_DESCONTO,
                 'VR_TOTAL': p.VR_TOTAL
             })
+        # --- FIM DA CORREÇÃO ---
 
-            total_vr_cota += p.VR_COTA
-            total_atm += p.ATM if p.ATM else Decimal('0')
-            total_juros += p.VR_JUROS if p.VR_JUROS else Decimal('0')
-            total_multa += p.VR_MULTA if p.VR_MULTA else Decimal('0')
-            total_desconto += p.VR_DESCONTO if p.VR_DESCONTO else Decimal('0')
-            total_geral += p.VR_TOTAL if p.VR_TOTAL else Decimal('0')
-
-        # Calcular honorários e total final
+        total_geral = sum(p.VR_TOTAL or 0 for p in parcelas)
         honorarios = total_geral * (perc_honorarios / Decimal('100'))
-        total_final = total_geral + honorarios
 
-        # Montar dicionário de totais
         totais = {
-            'quantidade': total_quantidade,
-            'vr_cota': total_vr_cota,
-            'atm': total_atm,
-            'juros': total_juros,
-            'multa': total_multa,
-            'desconto': total_desconto,
+            'quantidade': len(parcelas),
+            'vr_cota': sum(p.VR_COTA for p in parcelas),
+            'atm': sum(p.ATM or 0 for p in parcelas),
+            'juros': sum(p.VR_JUROS or 0 for p in parcelas),
+            'multa': sum(p.VR_MULTA or 0 for p in parcelas),
+            'desconto': sum(p.VR_DESCONTO or 0 for p in parcelas),
             'total_geral': total_geral,
-            'perc_honorarios': perc_honorarios,
             'honorarios': honorarios,
-            'total_final': total_final
+            'total_final': total_geral + honorarios,
+            'perc_honorarios': perc_honorarios
         }
 
-        # Importar função de geração de PDF
         from app.utils.siscalculo_pdf import gerar_pdf_siscalculo
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo_emgea.png')
 
-        # Criar arquivo temporário
         import tempfile
         fd, caminho_pdf = tempfile.mkstemp(suffix='.pdf')
         os.close(fd)
 
-        # Gerar PDF
         gerar_pdf_siscalculo(
-            output_path=caminho_pdf,
-            parcelas=parcelas_pdf,
-            totais=totais,
-            nome_condominio=nome_condominio,
-            endereco_imovel=endereco_imovel,
-            imovel=imovel,
+            output_path=caminho_pdf, parcelas=parcelas_pdf, totais=totais,
+            nome_condominio=nome_condominio, endereco_imovel=endereco_imovel, imovel=imovel,
             data_atualizacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
-            indice_nome=indice_nome,
-            perc_honorarios=float(perc_honorarios),
-            periodo_prescricao=periodo_prescricao
+            indice_nome=indice_nome, perc_honorarios=float(perc_honorarios),
+            periodo_prescricao=periodo_prescricao, logo_path=logo_path if os.path.exists(logo_path) else None
         )
 
-        # Enviar arquivo
-        return send_file(
-            caminho_pdf,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name=f'SISCalculo_{imovel}_{dt_atualizacao_filtro.strftime("%Y%m%d")}.pdf'
-        )
+        return send_file(caminho_pdf, mimetype='application/pdf', as_attachment=True,
+                         download_name=f'SISCalculo_{imovel}_{dt_atualizacao_filtro.strftime("%Y%m%d")}.pdf')
 
     except Exception as e:
-        print(f"[ERRO] Erro ao gerar PDF: {str(e)}")
+        print(f"\n[ERRO PDF] Erro fatal ao gerar PDF: {str(e)}")
         import traceback
         traceback.print_exc()
-        flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
+        flash(f'Erro interno ao gerar o PDF: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
-
 

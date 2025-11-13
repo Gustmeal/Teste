@@ -128,12 +128,22 @@
         operationStarted();
     });
 
+    // ========== INÍCIO DO BLOCO MODIFICADO ==========
     // Interceptar Fetch API
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
+        const request = new Request(...args);
+
+        // VERIFICA SE A REQUISIÇÃO TEM O HEADER PARA SER IGNORADA
+        if (request.headers.has('X-Silent-Request')) {
+            // Se tiver o header, apenas executa o fetch original sem acionar o loading
+            return originalFetch(request);
+        }
+
+        // Para todas as outras requisições, o comportamento normal continua
         operationStarted();
 
-        return originalFetch.apply(this, args)
+        return originalFetch(request)
             .then(response => {
                 operationEnded();
                 return response;
@@ -143,6 +153,7 @@
                 throw error;
             });
     };
+    // ========== FIM DO BLOCO MODIFICADO ==========
 
     // Interceptar XMLHttpRequest
     const originalOpen = XMLHttpRequest.prototype.open;

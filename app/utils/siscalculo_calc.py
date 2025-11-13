@@ -91,17 +91,23 @@ class CalculadorSiscalculo:
                     'erro': 'Nenhum dado encontrado para processar'
                 }
 
-            # Mostrar imóvel
             imovel = dados[0].IMOVEL if dados else 'N/A'
             print(f"[1] Imóvel: {imovel}")
 
-            # Limpar cálculos anteriores
-            print(f"\n[2] Limpando cálculos anteriores...")
+            # --- INÍCIO DA CORREÇÃO ---
+            # A limpeza deve ser específica para a data de atualização, imóvel E índice.
+            # Isso impede que cálculos de outras datas ou para outros índices do mesmo
+            # imóvel sejam afetados ou se misturem nos resultados.
+            print(
+                f"\n[2] Limpando cálculos anteriores para DT: {self.dt_atualizacao}, Imóvel: {imovel}, Índice: {self.id_indice}...")
             registros_deletados = SiscalculoCalculos.query.filter_by(
+                DT_ATUALIZACAO=self.dt_atualizacao,
                 IMOVEL=imovel,
                 ID_INDICE_ECONOMICO=self.id_indice
             ).delete()
             print(f"[2] Registros deletados: {registros_deletados}")
+            # --- FIM DA CORREÇÃO ---
+
             db.session.commit()
 
             total_processado = Decimal('0')
@@ -109,19 +115,14 @@ class CalculadorSiscalculo:
 
             print(f"\n[3] Processando {len(dados)} parcelas...")
 
-            # Processar cada parcela
             for idx, dado in enumerate(dados, 1):
                 try:
                     print(f"\n[3.{idx}] Processando parcela {idx}/{len(dados)}: Vencimento {dado.DT_VENCIMENTO}")
-
-                    # Calcular a parcela
                     resultado_parcela = self.calcular_parcela_completa(dado)
-
                     if not resultado_parcela:
                         print(f"  [AVISO] Erro ao calcular parcela")
                         continue
 
-                    # Salvar registro consolidado da parcela
                     novo_calculo = SiscalculoCalculos(
                         IMOVEL=dado.IMOVEL or '',
                         DT_VENCIMENTO=dado.DT_VENCIMENTO,
@@ -130,18 +131,16 @@ class CalculadorSiscalculo:
                         ID_INDICE_ECONOMICO=self.id_indice,
                         TEMPO_ATRASO=resultado_parcela['meses_atraso_total'],
                         PERC_ATUALIZACAO=resultado_parcela['percentual_total'],
-                        ATM=resultado_parcela['atm'],  # MUDOU: agora é a DIFERENÇA
+                        ATM=resultado_parcela['atm'],
                         VR_JUROS=resultado_parcela['total_juros'],
                         VR_MULTA=resultado_parcela['total_multa'],
                         VR_DESCONTO=resultado_parcela['total_desconto'],
                         VR_TOTAL=resultado_parcela['valor_total'],
-                        PERC_HONORARIOS = self.perc_honorarios
+                        PERC_HONORARIOS=self.perc_honorarios
                     )
-
                     db.session.add(novo_calculo)
                     total_processado += resultado_parcela['valor_total']
                     registros_calculados += 1
-
                     print(f"  [RESULTADO] Total da parcela: R$ {resultado_parcela['valor_total']}")
 
                 except Exception as e:
@@ -150,7 +149,6 @@ class CalculadorSiscalculo:
                     traceback.print_exc()
                     continue
 
-            # Commit final
             print(f"\n[4] Realizando commit de {registros_calculados} registros...")
             try:
                 db.session.commit()
@@ -158,10 +156,7 @@ class CalculadorSiscalculo:
             except Exception as e:
                 print(f"[ERRO] Falha no commit: {str(e)}")
                 db.session.rollback()
-                return {
-                    'sucesso': False,
-                    'erro': f'Erro ao salvar cálculos: {str(e)}'
-                }
+                return {'sucesso': False, 'erro': f'Erro ao salvar cálculos: {str(e)}'}
 
             print("\n" + "=" * 80)
             print("PROCESSAMENTO CONCLUÍDO")
@@ -183,12 +178,8 @@ class CalculadorSiscalculo:
             import traceback
             traceback.print_exc()
             print("=" * 80)
-
             db.session.rollback()
-            return {
-                'sucesso': False,
-                'erro': f'Erro crítico: {str(e)}'
-            }
+            return {'sucesso': False, 'erro': f'Erro crítico: {str(e)}'}
 
     def calcular_parcela_completa(self, dado):
         """
@@ -298,14 +289,21 @@ class CalculadorSiscalculo:
         Retorna lista com os percentuais
 
         Exemplo de retorno: [0.45, 0.38, 0.42, 0.35, 0.40, 0.36]
+
+        IMPORTANTE: Aplica índices até o MÊS ANTERIOR à data de atualização
         """
         try:
             # Primeiro dia do mês de início
             dt_inicio_mes = date(dt_inicio.year, dt_inicio.month, 1)
-            dt_fim_mes = date(dt_fim.year, dt_fim.month, 1)
+
+            # ✅ CORREÇÃO: Primeiro dia do MÊS ANTERIOR à data de atualização
+            from dateutil.relativedelta import relativedelta
+            dt_fim_mes = date(dt_fim.year, dt_fim.month, 1) - relativedelta(months=1)
 
             dt_inicio_str = dt_inicio_mes.strftime('%Y%m%d')
             dt_fim_str = dt_fim_mes.strftime('%Y%m%d')
+
+            print(f"    [DEBUG ÍNDICES] Período: {dt_inicio_str} até {dt_fim_str}")
 
             sql = text("""
                 SELECT numIndicadorEconomico
@@ -329,6 +327,7 @@ class CalculadorSiscalculo:
             indices = [Decimal(str(row[0])) for row in resultado.fetchall()]
 
             if len(indices) > 0:
+                print(f"    [DEBUG] Total de índices: {len(indices)}")
                 print(f"    [DEBUG] Primeiros 3 índices: {indices[:3]}")
 
             return indices

@@ -13,52 +13,49 @@
                 </a>
                 Resultados do Cálculo - SISCalculo
             </h1>
-            <p class="text-muted mb-0">
-                <i class="fas fa-calendar-alt me-2"></i>Data de Atualização: {{ dt_atualizacao.strftime('%d/%m/%Y') }}
-                {% if indice %}
-                | <i class="fas fa-chart-line me-2"></i>Índice: {{ indice.DSC_INDICE_ECONOMICO }}
-                {% endif %}
-                {% if imovel %}
-                | <i class="fas fa-home me-2"></i>Imóvel: {{ imovel }}
-                {% endif %}
+            <p class="text-muted mb-0" style="font-size: 0.9rem;">
+                Quitação de todos os débitos exigíveis, mediante aceitação dos encargos, inclusive honorários, conforme critérios no rodapé - JUDICIAL
             </p>
         </div>
         <div class="col-auto">
+            <!-- Adicionada a classe 'btn-secondary' para que o script auto-loading.js ignore este botão -->
             <a href="{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios, periodo_prescricao=periodo_prescricao) }}"
-               class="btn btn-danger" id="btnExportarPDF" onclick="exportarPDFSilencioso(); return false;">
+               class="btn btn-danger btn-secondary"
+               id="btnExportarPDF"
+               onclick="downloadPdf(event, this)">
                 <i class="fas fa-file-pdf me-2"></i>Exportar PDF
             </a>
-            <a href="{{ url_for('siscalculo.exportar_resultados', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), id_indice=indice.ID_INDICE_ECONOMICO if indice else '') }}"
-               class="btn btn-success">
-                <i class="fas fa-file-excel me-2"></i>Exportar Excel
-            </a>
-            <button onclick="window.print()" class="btn btn-secondary">
-                <i class="fas fa-print me-2"></i>Imprimir
-            </button>
         </div>
     </div>
 
     <!-- Card de Informações do Imóvel -->
-    {% if nome_condominio or endereco_imovel %}
+    {% if nome_condominio or endereco_imovel or imovel %}
     <div class="card shadow mb-3">
         <div class="card-header bg-info text-white py-2">
             <h6 class="mb-0"><i class="fas fa-building me-2"></i>Dados do Imóvel</h6>
         </div>
-        <div class="card-body py-2">
-            {% if nome_condominio %}
-            <div class="row mb-2">
-                <div class="col-12">
-                    <p class="mb-0"><strong>Condomínio:</strong> {{ nome_condominio }}</p>
+        <div class="card-body py-3">
+            <div class="mt-1">
+                {% if nome_condominio %}
+                <div class="mb-2">
+                    <strong>Reclamante:</strong> {{ nome_condominio }}
+                </div>
+                {% endif %}
+
+                {% if endereco_imovel %}
+                <div class="mb-2">
+                    <strong>Endereço do Imóvel:</strong> {{ endereco_imovel }}
+                </div>
+                {% endif %}
+
+                <div>
+                    <strong>Imóvel:</strong> {{ imovel }} |
+                    <strong>Data de Atualização:</strong> {{ dt_atualizacao.strftime('%d/%m/%Y') }}
+                    {% if indice %}
+                    | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
+                    {% endif %}
                 </div>
             </div>
-            {% endif %}
-            {% if endereco_imovel %}
-            <div class="row">
-                <div class="col-12">
-                    <p class="mb-0"><strong>Endereço:</strong> {{ endereco_imovel }}</p>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
     {% endif %}
@@ -169,66 +166,69 @@
     </div>
 </div>
 
-<!-- ✅ iframe invisível para download silencioso -->
-<iframe id="downloadFrame" style="display:none;"></iframe>
-
 <style>
 @media print {
-    .btn, .page-header .col-auto {
-        display: none !important;
-    }
-
-    .card {
-        border: 1px solid #dee2e6 !important;
-        box-shadow: none !important;
-    }
-
-    .table {
-        font-size: 9pt;
-    }
-
-    .table th, .table td {
-        padding: 0.25rem !important;
-    }
+    .btn, .page-header .col-auto { display: none !important; }
+    .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
+    .table { font-size: 9pt; }
+    .table th, .table td { padding: 0.25rem !important; }
 }
-
 .table thead th {
     font-weight: 600;
     vertical-align: middle;
     padding: 0.5rem !important;
 }
-
-.table tbody tr:hover {
-    background-color: #f8f9fa;
-}
-
-.table tfoot tr {
-    font-weight: 600;
-}
+.table tbody tr:hover { background-color: #f8f9fa; }
+.table tfoot tr { font-weight: 600; }
 </style>
 
 <script>
-// ✅ SOLUÇÃO DEFINITIVA: Download via iframe sem auto-loading
-function exportarPDFSilencioso() {
-    const btn = document.getElementById('btnExportarPDF');
-    const originalHTML = btn.innerHTML;
+async function downloadPdf(event, button) {
+    // 1. Impede que o navegador siga o link.
+    event.preventDefault();
 
-    // URL do PDF - AGORA COM ID_INDICE, PERC_HONORARIOS e PERIODO_PRESCRICAO
-    const url = "{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios, periodo_prescricao=periodo_prescricao) }}";
+    const originalText = button.innerHTML;
+    const downloadUrl = button.href;
+    const filename = "SISCalculo_{{ imovel }}_{{ dt_atualizacao.strftime('%Y%m%d') }}.pdf";
 
-    // Mostrar feedback visual
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando PDF...';
-    btn.disabled = true;
+    // 2. Desabilita o botão para feedback visual.
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-cog fa-spin me-2"></i>Preparando...';
 
-    // Forçar download via iframe (não dispara auto-loading)
-    const iframe = document.getElementById('downloadFrame');
-    iframe.src = url;
+    try {
+        // 3. Busca o arquivo PDF em segundo plano, ADICIONANDO O HEADER ESPECIAL.
+        const response = await fetch(downloadUrl, {
+            headers: {
+                'X-Silent-Request': 'true' // <-- ESTA É A LINHA MÁGICA
+            }
+        });
 
-    // Restaurar botão após 2 segundos
-    setTimeout(function() {
-        btn.innerHTML = originalHTML;
-        btn.disabled = false;
-    }, 2000);
+        if (!response.ok) {
+            throw new Error(`Erro na rede: ${response.statusText}`);
+        }
+        const blob = await response.blob();
+
+        // 4. Cria e clica no link fantasma para forçar o download.
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+
+        // 5. Limpa a memória.
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+    } catch (error) {
+        console.error('Erro ao baixar o PDF:', error);
+        alert('Ocorreu um erro ao tentar baixar o PDF. Por favor, tente novamente.');
+    } finally {
+        // 6. Restaura o botão.
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
 }
 </script>
 {% endblock %}

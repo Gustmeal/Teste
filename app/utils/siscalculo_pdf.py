@@ -1,3 +1,4 @@
+# utils/siscalculo_pdf.py
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -19,7 +20,7 @@ class SiscalculoPDF:
 
     def _criar_cabecalho(self, nome_condominio, endereco_imovel, imovel,
                          data_atualizacao, indice_nome, periodo_prescricao=''):
-        """Cria o cabeçalho completo do PDF"""
+        """Cria o cabeçalho completo do PDF - IGUAL AO HTML"""
         elementos = []
 
         # Logo
@@ -38,7 +39,7 @@ class SiscalculoPDF:
             'Title',
             parent=styles['Normal'],
             fontSize=16,
-            textColor=colors.HexColor('#7c3aed'),
+            textColor=colors.HexColor('#198754'),  # ✅ Verde (text-success)
             alignment=TA_LEFT,
             fontName='Helvetica-Bold',
             spaceAfter=2 * mm
@@ -50,14 +51,14 @@ class SiscalculoPDF:
             'Subtitle',
             parent=styles['Normal'],
             fontSize=8,
-            textColor=colors.HexColor('#666666'),
+            textColor=colors.HexColor('#6c757d'),  # ✅ text-muted
             alignment=TA_LEFT,
-            spaceAfter=3 * mm
+            spaceAfter=4 * mm
         )
         subtitle = "Quitação de todos os débitos exigíveis, mediante aceitação dos encargos, inclusive honorários, conforme critérios no rodapé - JUDICIAL"
         elementos.append(Paragraph(subtitle, style_subtitle))
 
-        # Informações
+        # ✅ INFORMAÇÕES DO IMÓVEL - IGUAL AO HTML
         style_info = ParagraphStyle(
             'Info',
             parent=styles['Normal'],
@@ -67,55 +68,37 @@ class SiscalculoPDF:
             spaceAfter=1 * mm
         )
 
+        # Reclamante
         if nome_condominio:
             elementos.append(Paragraph(f"<b>Reclamante:</b> {nome_condominio}", style_info))
+
+        # Endereço do Imóvel
         if endereco_imovel:
             elementos.append(Paragraph(f"<b>Endereço do Imóvel:</b> {endereco_imovel}", style_info))
 
-        # Linha com Imóvel, Data e Índice
+        # Linha com Imóvel | Data | Índice
         info_linha = f"<b>Imóvel:</b> {imovel} | <b>Data de Atualização:</b> {data_atualizacao}"
         if indice_nome:
             info_linha += f" | <b>Índice:</b> {indice_nome}"
         elementos.append(Paragraph(info_linha, style_info))
 
-        # ✅ CORREÇÃO: Mostrar período de prescrição de forma clara
-        elementos.append(Spacer(1, 2 * mm))
-
-        if periodo_prescricao and periodo_prescricao.strip():
-            # Tem prescrição - mostrar em amarelo/warning
-            style_alert_warning = ParagraphStyle(
-                'AlertWarning',
+        # ✅ Alert de Período de Prescrição
+        if periodo_prescricao:
+            style_alert = ParagraphStyle(
+                'Alert',
                 parent=styles['Normal'],
                 fontSize=9,
-                textColor=colors.HexColor('#856404'),
-                backColor=colors.HexColor('#fff3cd'),
+                textColor=colors.HexColor('#856404'),  # Amarelo escuro
                 alignment=TA_LEFT,
                 spaceAfter=2 * mm,
-                leftIndent=3 * mm,
-                rightIndent=3 * mm,
-                spaceBefore=1 * mm
+                leftIndent=5 * mm,
+                backColor=colors.HexColor('#fff3cd')  # Fundo amarelo claro
             )
+            elementos.append(Spacer(1, 2 * mm))
             elementos.append(Paragraph(
-                f"<b>⚠️ Período Prescrito Excluído:</b> {periodo_prescricao}",
-                style_alert_warning
-            ))
-        else:
-            # Não tem prescrição - mostrar em azul/info
-            style_alert_info = ParagraphStyle(
-                'AlertInfo',
-                parent=styles['Normal'],
-                fontSize=9,
-                textColor=colors.HexColor('#004085'),
-                backColor=colors.HexColor('#cce5ff'),
-                alignment=TA_LEFT,
-                spaceAfter=2 * mm,
-                leftIndent=3 * mm,
-                rightIndent=3 * mm,
-                spaceBefore=1 * mm
-            )
-            elementos.append(Paragraph(
-                "<b>ℹ️ Período Prescrito:</b> Nenhum",
-                style_alert_info
+                f"<b>⚠️ Atenção:</b> Foi aplicado filtro de prescrição no período <b>{periodo_prescricao}</b>. "
+                f"Parcelas fora deste período foram excluídas do cálculo.",
+                style_alert
             ))
 
         elementos.append(Spacer(1, 5 * mm))
@@ -149,43 +132,35 @@ class SiscalculoPDF:
 
         # Adicionar parcelas
         for p in parcelas:
-            vr_cota = Decimal(str(p['VR_COTA']))
-            atm = Decimal(str(p['ATM'])) if p['ATM'] else Decimal('0')
-            vr_juros = Decimal(str(p['VR_JUROS'])) if p['VR_JUROS'] else Decimal('0')
-            vr_multa = Decimal(str(p['VR_MULTA'])) if p['VR_MULTA'] else Decimal('0')
-            vr_desconto = Decimal(str(p['VR_DESCONTO'])) if p['VR_DESCONTO'] else Decimal('0')
-            vr_total = Decimal(str(p['VR_TOTAL'])) if p['VR_TOTAL'] else Decimal('0')
+            vr_cota = Decimal(str(p['VR_COTA'])) if not isinstance(p['VR_COTA'], Decimal) else p['VR_COTA']
+            atm = Decimal(str(p['ATM'])) if not isinstance(p['ATM'], Decimal) else p['ATM']
+            juros = Decimal(str(p['VR_JUROS'])) if not isinstance(p['VR_JUROS'], Decimal) else p['VR_JUROS']
+            multa = Decimal(str(p['VR_MULTA'])) if not isinstance(p['VR_MULTA'], Decimal) else p['VR_MULTA']
+            desconto = Decimal(str(p['VR_DESCONTO'])) if not isinstance(p['VR_DESCONTO'], Decimal) else p['VR_DESCONTO']
+            vr_total = Decimal(str(p['VR_TOTAL'])) if not isinstance(p['VR_TOTAL'], Decimal) else p['VR_TOTAL']
 
-            # Formatar percentual de atualização
-            perc_atualizacao = p['PERC_ATUALIZACAO']
-            if perc_atualizacao:
-                perc_formatado = self._formatar_percentual(perc_atualizacao)
-            else:
-                perc_formatado = "0,0000%"
+            total_cota += vr_cota
+            total_atm += atm
+            total_juros += juros
+            total_multa += multa
+            total_desconto += desconto
+            total_soma += vr_total
 
             data.append([
-                p['DT_VENCIMENTO'].strftime('%d/%m/%Y') if p['DT_VENCIMENTO'] else '',
-                str(p['TEMPO_ATRASO']) if p['TEMPO_ATRASO'] else '0',
+                p['DT_VENCIMENTO'].strftime('%d/%m/%Y'),
+                str(p['TEMPO_ATRASO']),
                 self._formatar_moeda(vr_cota),
-                perc_formatado,
+                self._formatar_percentual(p['PERC_ATUALIZACAO']),
                 self._formatar_moeda(atm),
-                self._formatar_moeda(vr_juros),
-                self._formatar_moeda(vr_multa),
-                self._formatar_moeda(vr_desconto),
+                self._formatar_moeda(juros),
+                self._formatar_moeda(multa),
+                self._formatar_moeda(desconto),
                 self._formatar_moeda(vr_total)
             ])
 
-            # Acumular totais
-            total_cota += vr_cota
-            total_atm += atm
-            total_juros += vr_juros
-            total_multa += vr_multa
-            total_desconto += vr_desconto
-            total_soma += vr_total
-
-        # Linha de totais
+        # Linha de soma
         data.append([
-            'SOMA',
+            'Soma',
             '',
             self._formatar_moeda(total_cota),
             '',
@@ -196,13 +171,11 @@ class SiscalculoPDF:
             self._formatar_moeda(total_soma)
         ])
 
-        # Larguras das colunas (em mm)
-        col_widths = [18 * mm, 15 * mm, 20 * mm, 18 * mm, 20 * mm, 18 * mm, 18 * mm, 18 * mm, 20 * mm]
-
         # Criar tabela
+        col_widths = [20 * mm, 15 * mm, 20 * mm, 18 * mm, 20 * mm, 18 * mm, 18 * mm, 18 * mm, 20 * mm]
         table = Table(data, colWidths=col_widths, repeatRows=1)
 
-        # Estilo da tabela
+        # Estilo
         style = TableStyle([
             # Cabeçalho
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a5568')),
@@ -245,13 +218,11 @@ class SiscalculoPDF:
         elementos = []
         from decimal import Decimal
 
-        # ✅ CORREÇÃO: Garantir que usa o percentual correto
         if not isinstance(total_soma, Decimal):
             total_soma = Decimal(str(total_soma))
         if not isinstance(perc_honorarios, Decimal):
             perc_honorarios = Decimal(str(perc_honorarios))
 
-        # Calcular honorários COM O PERCENTUAL CORRETO
         honorarios = total_soma * (perc_honorarios / Decimal('100'))
         total_final = total_soma + honorarios
 
@@ -275,12 +246,13 @@ class SiscalculoPDF:
             # Linha de Total (verde claro)
             ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#c6f6d5')),
             ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 1), (-1, 1), 11),
+            ('FONTSIZE', (0, 1), (-1, 1), 12),
             ('ALIGN', (0, 1), (0, 1), 'RIGHT'),
             ('ALIGN', (1, 1), (1, 1), 'RIGHT'),
 
             # Bordas
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LINEABOVE', (0, 1), (-1, 1), 1.5, colors.black),
 
             # Padding
             ('TOPPADDING', (0, 0), (-1, -1), 4),
@@ -290,87 +262,69 @@ class SiscalculoPDF:
         ]))
 
         elementos.append(table_totais)
+        elementos.append(Spacer(1, 5 * mm))
 
         return elementos
 
     def _criar_informacoes_calculo(self, indice_nome, totais):
-        """Cria a seção de informações do cálculo"""
+        """Cria a seção de informações complementares"""
         elementos = []
         styles = getSampleStyleSheet()
 
-        elementos.append(Spacer(1, 5 * mm))
-
-        # Título da seção
-        style_section = ParagraphStyle(
-            'Section',
+        # Título
+        style_subtitle = ParagraphStyle(
+            'Subtitle',
             parent=styles['Normal'],
-            fontSize=10,
-            textColor=colors.black,
-            alignment=TA_LEFT,
+            fontSize=11,
             fontName='Helvetica-Bold',
-            spaceAfter=3 * mm
+            spaceAfter=2 * mm
         )
-        elementos.append(Paragraph("Informações do Cálculo", style_section))
+        elementos.append(Paragraph("Informações do Cálculo", style_subtitle))
 
-        # ✅ CORREÇÃO: Usar o percentual correto dos totais
-        perc_honorarios_valor = totais.get('perc_honorarios', 10)
-
-        # Texto dos critérios
-        criterios_text = f"""
-<b>Critérios Utilizados:</b><br/>
-• <b>Correção Monetária:</b> {indice_nome} (Juros Compostos)<br/>
-• <b>Valor Atualizado:</b> Valor da Cota × Fator Acumulado dos Índices<br/>
-• <b>ATM:</b> Diferença entre Valor Atualizado e Valor Original (pode ser negativa em caso de deflação)<br/>
-• <b>Juros de Mora:</b> Valor Atualizado × 1% × Meses de Atraso (Juros Simples)<br/>
-• <b>Multa:</b> Valor Atualizado × 2% (após 10/01/2003) ou 10% (antes)<br/>
-• <b>Honorários:</b> {float(perc_honorarios_valor):.2f}% sobre o total
-"""
-
-        resumo_text = f"""
-<b>Resumo:</b><br/>
-• <b>Total de Parcelas:</b> {totais.get('quantidade', 0)}<br/>
-• <b>Valor Original:</b> R$ {self._formatar_moeda(totais.get('vr_cota', 0))}<br/>
-• <b>Total de Encargos:</b> R$ {self._formatar_moeda(totais.get('atm', 0) + totais.get('juros', 0) + totais.get('multa', 0))}<br/>
-• <b>Total sem Honorários:</b> R$ {self._formatar_moeda(totais.get('total_geral', 0))}<br/>
-• <b>Honorários ({float(perc_honorarios_valor):.2f}%):</b> R$ {self._formatar_moeda(totais.get('honorarios', 0))}<br/>
-• <b>Total com Honorários:</b> R$ {self._formatar_moeda(totais.get('total_final', 0))}
-"""
-
-        style_box = ParagraphStyle(
-            'Box',
+        # Estilo para informações
+        style_info = ParagraphStyle(
+            'Info',
             parent=styles['Normal'],
             fontSize=8,
-            textColor=colors.black,
-            alignment=TA_LEFT,
-            leftIndent=2 * mm,
-            rightIndent=2 * mm
+            spaceAfter=1 * mm
         )
 
-        # Tabela com duas colunas
-        info_data = [[
-            Paragraph(criterios_text, style_box),
-            Paragraph(resumo_text, style_box)
-        ]]
+        # Critérios Utilizados
+        elementos.append(Paragraph("<b>Critérios Utilizados:</b>", style_info))
+        criterios = [
+            f"<b>Correção Monetária:</b> {indice_nome} (Juros Compostos)",
+            "<b>Valor Atualizado:</b> Valor da Cota × Fator Acumulado dos Índices",
+            "<b>ATM:</b> Diferença entre Valor Atualizado e Valor Original (pode ser negativa em caso de deflação)",
+            "<b>Juros de Mora:</b> Valor Atualizado × 1% × Meses de Atraso (Juros Simples)",
+            "<b>Multa:</b> Valor Atualizado × 2% (após 10/01/2003) ou 10% (antes)",
+            f"<b>Honorários:</b> {totais.get('perc_honorarios', 10):.2f}% sobre o total"
+        ]
 
-        info_table = Table(info_data, colWidths=[90 * mm, 90 * mm])
-        info_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f7fafc')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3 * mm),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3 * mm),
-            ('TOPPADDING', (0, 0), (-1, -1), 3 * mm),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3 * mm),
-            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ]))
+        for criterio in criterios:
+            elementos.append(Paragraph(f"• {criterio}", style_info))
 
-        elementos.append(info_table)
+        elementos.append(Spacer(1, 3 * mm))
+
+        # Resumo
+        elementos.append(Paragraph("<b>Resumo:</b>", style_info))
+        resumo = [
+            f"<b>Total de Parcelas:</b> {totais.get('quantidade', 0)}",
+            f"<b>Valor Original:</b> R$ {self._formatar_moeda(totais.get('vr_cota', 0))}",
+            f"<b>Total de Encargos:</b> R$ {self._formatar_moeda(totais.get('atm', 0) + totais.get('juros', 0) + totais.get('multa', 0))}",
+            f"<b>Total sem Honorários:</b> R$ {self._formatar_moeda(totais.get('total_geral', 0))}",
+            f"<b>Honorários ({totais.get('perc_honorarios', 10):.2f}%):</b> R$ {self._formatar_moeda(totais.get('honorarios', 0))}",
+            f"<b>Total com Honorários:</b> R$ {self._formatar_moeda(totais.get('total_final', 0))}"
+        ]
+
+        for item in resumo:
+            elementos.append(Paragraph(f"• {item}", style_info))
 
         return elementos
 
     def _formatar_moeda(self, valor):
         """Formata valor como moeda brasileira"""
         if valor is None:
-            valor = 0
+            return "R$ 0,00"
 
         from decimal import Decimal
         if isinstance(valor, Decimal):
@@ -379,9 +333,9 @@ class SiscalculoPDF:
             valor_float = float(valor)
 
         if valor_float < 0:
-            return f"{abs(valor_float):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            return f"-R$ {abs(valor_float):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
         else:
-            return f"{valor_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            return f"R$ {valor_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
     def _formatar_percentual(self, valor):
         """Formata valor como percentual"""
@@ -426,7 +380,7 @@ class SiscalculoPDF:
         # Totais
         elementos.extend(self._criar_totais(
             total_soma,
-            dados.get('perc_honorarios', 10)  # ✅ Usa o valor passado
+            dados.get('perc_honorarios', 10)
         ))
 
         # Informações do Cálculo
@@ -455,11 +409,9 @@ def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
         'data_atualizacao': data_atualizacao,
         'indice_nome': indice_nome,
         'parcelas': parcelas,
-        'perc_honorarios': perc_honorarios,  # ✅ Passa o valor correto
+        'perc_honorarios': perc_honorarios,
         'periodo_prescricao': periodo_prescricao,
         'totais': totais
     }
 
     return pdf_generator.gerar_pdf(output_path, dados)
-
-
