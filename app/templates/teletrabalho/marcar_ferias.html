@@ -11,6 +11,12 @@
             <i class="fas fa-umbrella-beach me-2"></i>
             Marcar Férias
         </h1>
+        <!-- ✅ ADICIONADO: Botão para gestores marcarem férias de funcionários -->
+        {% if eh_gestor %}
+        <a href="{{ url_for('teletrabalho.admin_marcar_ferias') }}" class="btn btn-warning">
+            <i class="fas fa-user-edit me-2"></i>Marcar Férias de Funcionários
+        </a>
+        {% endif %}
     </div>
 
     <div class="alert alert-info">

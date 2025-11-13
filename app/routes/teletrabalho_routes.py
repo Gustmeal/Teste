@@ -2093,7 +2093,7 @@ def mover_pessoa():
         return jsonify({'erro': f'Erro: {str(e)}'}), 500
 
 
-@teletrabalho_bp.route('/ferias', methods=['GET'])
+@teletrabalho_bp.route('/ferias')
 @login_required
 def marcar_ferias():
     """Página para marcar férias"""
@@ -2114,10 +2114,13 @@ def marcar_ferias():
             Teletrabalho.DELETED_AT.is_(None)
         ).order_by(Teletrabalho.DATA_TELETRABALHO).all()
 
+        # ✅ ADICIONADO: Verificar se é gestor para passar ao template
+        eh_gestor = eh_gestor_ou_admin(usuario)
+
         return render_template('teletrabalho/marcar_ferias.html',
                                periodos=periodos,
-                               ferias_marcadas=ferias_marcadas)
-
+                               ferias_marcadas=ferias_marcadas,
+                               eh_gestor=eh_gestor)  # ✅ NOVO PARÂMETRO
     except Exception as e:
         flash(f'Erro: {str(e)}', 'danger')
         return redirect(url_for('teletrabalho.index'))
