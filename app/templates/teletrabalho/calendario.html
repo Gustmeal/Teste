@@ -9,50 +9,69 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">
             <i class="fas fa-calendar-alt me-2"></i>
-            {{ nome_mes }}
+            Calendário - {{ nome_mes }}
         </h1>
-        <div class="text-end">
-            <span class="badge bg-info fs-6">{{ area }}</span>
-            <span class="badge bg-success fs-6">{{ limite }} vagas/dia</span>
+        <div>
+            <select id="selectPeriodo" class="form-select" onchange="mudarPeriodo()" style="width: 250px;">
+                {% for periodo in periodos_disponiveis %}
+                <option value="{{ periodo.valor }}" {% if periodo.valor == mes_referencia %}selected{% endif %}>
+                    {{ periodo.nome }}
+                </option>
+                {% endfor %}
+            </select>
         </div>
     </div>
 
-    <!-- Seletor de Período -->
+    <!-- Informações da Área -->
     <div class="card shadow mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Informações</h5>
+        </div>
         <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Mudar Período:</label>
-                    <select id="selectPeriodo" class="form-select" onchange="mudarPeriodo()">
-                        {% for periodo in periodos_disponiveis %}
-                        <option value="{{ periodo.mes_ref }}" {% if periodo.mes_ref == mes_referencia %}selected{% endif %}>
-                            {{ periodo.nome }}
-                        </option>
-                        {% endfor %}
-                    </select>
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <h6>Área</h6>
+                    <p class="mb-0 fw-bold text-primary">{{ area }}</p>
                 </div>
-                <div class="col-md-8 text-end">
-                    <a href="{{ url_for('teletrabalho.visualizacao_geral', mes_ref=mes_referencia, area=area) }}"
-                       class="btn btn-info">
-                        <i class="fas fa-eye me-2"></i>Visualização Geral
-                    </a>
+                <div class="col-md-3">
+                    <h6>Total de Pessoas</h6>
+                    <p class="mb-0">{{ total_pessoas }}</p>
+                </div>
+                <div class="col-md-3">
+                    <h6>Limite por Dia</h6>
+                    <p class="mb-0 fw-bold text-success">{{ limite }} pessoas</p>
+                </div>
+                <div class="col-md-3">
+                    <h6>Seus Dias Marcados</h6>
+                    <p class="mb-0 fw-bold">{{ meus_dias|length }}/5</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Resumo -->
-    <div class="row mb-4">
-        <div class="col-md-12">
-            <div class="alert alert-info d-flex justify-content-between align-items-center">
-                <div>
-                    <strong><i class="fas fa-users me-2"></i>Total de pessoas na área:</strong> {{ total_pessoas }}
-                    <span class="mx-3">|</span>
-                    <strong><i class="fas fa-percentage me-2"></i>Limite diário (30%):</strong> {{ limite }} pessoas
+    <!-- Legenda -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="legenda-container">
+                <div class="legenda-item">
+                    <div class="legenda-box" style="background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 3px solid #28a745;"></div>
+                    <span>Meus Dias Marcados</span>
                 </div>
-                <div>
-                    <strong><i class="fas fa-check-circle me-2"></i>Seus dias marcados:</strong>
-                    <span class="badge bg-success fs-6">{{ meus_dias|length }} / 5</span>
+                <div class="legenda-item">
+                    <div class="legenda-box" style="background: white; border: 2px solid #667eea;"></div>
+                    <span>Disponível</span>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-box" style="background: linear-gradient(135deg, #ffe6e6 0%, #ffcccc 100%);"></div>
+                    <span>Lotado</span>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-box" style="background: #f5f5f5;"></div>
+                    <span>Não Útil / Feriado</span>
+                </div>
+                <div class="legenda-item">
+                    <div class="legenda-box" style="background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); border: 2px solid #dc3545;"></div>
+                    <span>Bloqueado</span>
                 </div>
             </div>
         </div>
@@ -64,7 +83,7 @@
     {% else %}
     <div class="alert alert-warning">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        Visualização admin. Apenas usuários vinculados podem solicitar.
+        Apenas usuários vinculados podem solicitar.
     </div>
     <div style="pointer-events: none; opacity: 0.6;">
     {% endif %}
@@ -121,118 +140,86 @@
                         <!-- Dias do mês -->
                         {% for dia in dias %}
                         <div class="dia-cell
-                                    {% if not dia.eh_util %}nao-util{% endif %}
-                                    {% if dia.lotado %}lotado{% endif %}
+                                    {% if dia.bloqueado %}bloqueado{% endif %}
+                                    {% if not dia.eh_util and not dia.bloqueado %}nao-util{% endif %}
+                                    {% if dia.lotado and not dia.bloqueado %}lotado{% endif %}
                                     {% if dia.data in meus_dias %}meu-dia{% endif %}"
                              data-date="{{ dia.data }}">
 
                             <div class="dia-numero">{{ dia.dia }}</div>
 
-                            {% if dia.feriado %}
+                            {% if dia.bloqueado %}
+                            <!-- ✅ DIA BLOQUEADO -->
+                            <div class="dia-bloqueio-badge">
+                                <span class="badge bg-danger w-100 mb-2">
+                                    <i class="fas fa-ban me-1"></i>BLOQUEADO
+                                </span>
+                                {% if dia.motivo_bloqueio %}
+                                <small class="d-block text-danger fw-bold" style="font-size: 0.7rem;">
+                                    {{ dia.motivo_bloqueio }}
+                                </small>
+                                {% endif %}
+                                {% if dia.bloqueado_por %}
+                                <small class="d-block text-muted mt-1" style="font-size: 0.65rem;">
+                                    Por: {{ dia.bloqueado_por }}
+                                </small>
+                                {% endif %}
+                            </div>
+
+                            {% elif dia.feriado %}
                             <div class="dia-feriado">
                                 <i class="fas fa-flag"></i> {{ dia.feriado[:15] }}
                             </div>
+
                             {% elif not dia.eh_util %}
                             <div class="dia-info text-danger">
                                 <small>Não útil</small>
                             </div>
+
                             {% else %}
+                            <!-- Dia útil normal -->
                             <div class="dia-info">
-                                <small class="{% if dia.lotado %}text-danger{% else %}text-muted{% endif %}">
-                                    {{ dia.qtd_pessoas }}/{{ dia.limite }}
+                                <small class="{{ 'text-danger fw-bold' if dia.lotado else '' }}">
+                                    <i class="fas fa-users"></i> {{ dia.qtd_pessoas }}/{{ limite }}
                                 </small>
                             </div>
-                            {% endif %}
 
-                            {% if dia.eh_util and not dia.lotado and dia.data not in meus_dias %}
+                            {% if dia.lotado %}
+                            <div class="dia-badge">
+                                <span class="badge bg-danger">Lotado</span>
+                            </div>
+                            {% elif dia.data in meus_dias %}
+                            <div class="dia-badge">
+                                <span class="badge bg-success">Seu Dia</span>
+                            </div>
+                            {% else %}
                             <div class="dia-checkbox-container">
-                                <input class="form-check-input dia-checkbox"
-                                       type="checkbox"
-                                       name="datas[]"
-                                       value="{{ dia.data }}">
+                                <input type="checkbox" class="dia-checkbox" name="datas[]" value="{{ dia.data }}">
                             </div>
                             {% endif %}
 
-                            {% if dia.data in meus_dias %}
-                            <div class="dia-badge">
-                                <span class="badge bg-success w-100">SEU DIA</span>
-                            </div>
-                            {% elif dia.lotado %}
-                            <div class="dia-badge">
-                                <span class="badge bg-danger w-100">LOTADO</span>
-                            </div>
-                            {% endif %}
-
+                            <!-- Botão de pessoas (se houver) -->
                             {% if dia.pessoas %}
                             <button type="button" class="btn-pessoas"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#modalPessoas{{ loop.index }}">
-                                <i class="fas fa-users"></i> {{ dia.qtd_pessoas }}
+                                    onclick="mostrarPessoas('{{ dia.data }}', {{ dia.pessoas|tojson }})">
+                                <i class="fas fa-eye"></i> Ver
                             </button>
-
-                            <div class="modal fade" id="modalPessoas{{ loop.index }}" tabindex="-1">
-                                <div class="modal-dialog modal-dialog-centered">
-                                    <div class="modal-content">
-                                        <div class="modal-header bg-primary text-white">
-                                            <h5 class="modal-title">
-                                                Teletrabalho em {{ dia.dia }}/{{ mes_referencia[4:6] }}
-                                            </h5>
-                                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body">
-                                            <p class="text-muted mb-3">
-                                                <strong>{{ dia.qtd_pessoas }}</strong> pessoa(s):
-                                            </p>
-                                            <div class="list-group">
-                                                {% for pessoa in dia.pessoas %}
-                                                <div class="list-group-item d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <i class="fas fa-user me-2 text-primary"></i>
-                                                        {{ pessoa.usuario }}
-                                                    </div>
-                                                    {% if pessoa.usuario_id == current_user.id %}
-                                                    <form method="POST" action="{{ url_for('teletrabalho.cancelar', id=pessoa.id) }}"
-                                                          onsubmit="return confirm('Cancelar?');" style="margin:0;">
-                                                        <button type="submit" class="btn btn-sm btn-danger">
-                                                            <i class="fas fa-times"></i> Cancelar
-                                                        </button>
-                                                    </form>
-                                                    {% endif %}
-                                                </div>
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                             {% endif %}
+                            {% endif %}
+
                         </div>
                         {% endfor %}
                     </div>
                 </div>
-            </div>
-            <div class="card-footer bg-light">
-                <div class="row align-items-center">
-                    <div class="col-md-6">
-                        <div class="legenda-container">
-                            <span class="legenda-item">
-                                <span class="legenda-box bg-success"></span> Seu dia
-                            </span>
-                            <span class="legenda-item">
-                                <span class="legenda-box bg-danger"></span> Lotado
-                            </span>
-                            <span class="legenda-item">
-                                <span class="legenda-box bg-secondary"></span> Não útil
-                            </span>
-                            <span class="legenda-item">
-                                <span class="legenda-box bg-primary"></span> Disponível
-                            </span>
+
+                <!-- Botão de Submit -->
+                <div class="p-3 bg-light border-top">
+                    <div class="row">
+                        <div class="col-md-12 text-center">
+                            <button type="submit" class="btn btn-success btn-lg px-5" id="btnSolicitar" disabled>
+                                <i class="fas fa-check me-2"></i>Solicitar Teletrabalho
+                            </button>
                         </div>
-                    </div>
-                    <div class="col-md-6 text-end">
-                        <button type="submit" class="btn btn-success btn-lg" id="btnSolicitar" disabled>
-                            <i class="fas fa-check me-2"></i>Solicitar Teletrabalho
-                        </button>
                     </div>
                 </div>
             </div>
@@ -251,16 +238,19 @@
 .dia-semana-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 15px; font-weight: bold; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .dia-cell { background: white; border-radius: 12px; padding: 15px; min-height: 140px; position: relative; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
 .dia-cell.vazio { background: transparent; box-shadow: none; cursor: default; }
-.dia-cell:not(.nao-util):not(.lotado):not(.meu-dia):not(.vazio):hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(108, 99, 255, 0.3); background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); }
+.dia-cell:not(.nao-util):not(.lotado):not(.meu-dia):not(.vazio):not(.bloqueado):hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(108, 99, 255, 0.3); background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); }
 .dia-cell.nao-util { background: #f5f5f5; cursor: not-allowed; opacity: 0.6; }
 .dia-cell.lotado { background: linear-gradient(135deg, #ffe6e6 0%, #ffcccc 100%); cursor: not-allowed; }
 .dia-cell.meu-dia { background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border: 3px solid #28a745; box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4); }
+.dia-cell.bloqueado { background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); border: 2px solid #dc3545; cursor: not-allowed; opacity: 0.9; }
 .dia-numero { font-size: 1.8rem; font-weight: bold; color: #333; margin-bottom: 8px; }
 .dia-cell.nao-util .dia-numero { color: #999; }
+.dia-cell.bloqueado .dia-numero { color: #dc3545; }
 .dia-info { font-size: 0.85rem; margin-bottom: 8px; }
 .dia-feriado { font-size: 0.75rem; color: #dc3545; font-weight: 600; margin-bottom: 8px; text-align: center; }
+.dia-bloqueio-badge { text-align: center; margin-top: 5px; }
 .dia-checkbox-container { margin-top: auto; text-align: center; }
-.dia-checkbox { width: 25px; height: 25px; cursor: pointer; border: 2px solid #667eea; }
+.dia-checkbox { width: 25px; height: 25px; cursor: pointer; border: 2px solid #667eea; border-radius: 5px; }
 .dia-checkbox:checked { background-color: #667eea; border-color: #667eea; }
 .dia-badge { margin-top: auto; }
 .dia-badge .badge { font-size: 0.7rem; padding: 5px; }
@@ -285,7 +275,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const btnSolicitar = document.getElementById('btnSolicitar');
     const tipoPeriodo = document.getElementById('tipoPeriodo');
 
-    // Obter datas já marcadas pelo usuário neste mês (para validar consecutividade)
     const meusDiasMarcados = [{% for dia in meus_dias %}'{{ dia }}'{% if not loop.last %},{% endif %}{% endfor %}];
 
     function atualizarContador() {
@@ -301,143 +290,19 @@ document.addEventListener('DOMContentLoaded', function() {
             contadorDias.classList.add('bg-success');
         }
 
-        if (selecionados > 0 && tipoPeriodo.value) {
-            btnSolicitar.disabled = false;
-        } else {
-            btnSolicitar.disabled = true;
-        }
-
-        if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
-            contadorDias.textContent = `${selecionados} dia(s) - Selecione exatamente 5`;
-            btnSolicitar.disabled = true;
-        }
+        btnSolicitar.disabled = selecionados === 0 || !tipoPeriodo.value;
     }
 
-    // Função para verificar se uma data é consecutiva a outra
-    function saoConsecutivos(data1, data2) {
-        const d1 = new Date(data1);
-        const d2 = new Date(data2);
-        const diffTime = Math.abs(d2 - d1);
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays === 1;
-    }
-
-    // Função para obter o dia anterior/próximo útil
-    function getDiaUtil(data, direcao) {
-        const d = new Date(data);
-        let tentativas = 0;
-
-        while (tentativas < 7) {
-            d.setDate(d.getDate() + direcao);
-            const diaSemana = d.getDay();
-
-            // Pular finais de semana
-            if (diaSemana !== 0 && diaSemana !== 6) {
-                return d.toISOString().split('T')[0];
-            }
-            tentativas++;
-        }
-        return null;
-    }
-
-    // Validar se a seleção é válida
-    function validarSelecao(novaData, checked) {
-        const tipoSelecionado = tipoPeriodo.value;
-
-        // Se está desmarcando, sempre permitir
-        if (!checked) return true;
-
-        const diasSelecionados = Array.from(document.querySelectorAll('.dia-checkbox:checked'))
-            .map(cb => cb.value)
-            .filter(d => d !== novaData);
-
-        // MODO ALTERNADO (dias não consecutivos)
-        if (tipoSelecionado === 'ALTERNADO') {
-            // Só pode marcar 1 dia por vez neste modo
-            if (diasSelecionados.length >= 1) {
-                alert('⚠️ No modo "Dias Alternados", marque apenas 1 dia por vez!\n\nPara marcar 5 dias seguidos, selecione "5 Dias Corridos".');
-                return false;
-            }
-
-            // Verificar se o novo dia não é consecutivo aos dias já marcados anteriormente
-            for (let diaMarcado of meusDiasMarcados) {
-                const diaAnterior = getDiaUtil(novaData, -1);
-                const diaProximo = getDiaUtil(novaData, 1);
-
-                if (diaMarcado === diaAnterior || diaMarcado === diaProximo) {
-                    alert(`⚠️ Você já tem teletrabalho marcado no dia ${formatarData(diaMarcado)}.\n\nDias de teletrabalho devem ser alternados (não consecutivos).\n\nPara marcar 5 dias seguidos, selecione "5 Dias Corridos".`);
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        // MODO 5 DIAS CORRIDOS
-        if (tipoSelecionado === 'CINCO_DIAS_CORRIDOS') {
-            // Permitir até 5 dias
-            if (diasSelecionados.length >= 5) {
-                alert('⚠️ Você só pode selecionar 5 dias consecutivos!');
-                return false;
-            }
-            return true;
-        }
-
-        // Se não selecionou tipo ainda
-        if (!tipoSelecionado) {
-            alert('⚠️ Primeiro selecione o tipo de período (Alternado ou 5 Dias Corridos)');
-            return false;
-        }
-
-        return true;
-    }
-
-    function formatarData(dataStr) {
-        const [ano, mes, dia] = dataStr.split('-');
-        return `${dia}/${mes}/${ano}`;
-    }
-
-    checkboxes.forEach(cb => {
-        cb.addEventListener('change', function() {
-            const cell = this.closest('.dia-cell');
-            const dataCheckbox = this.value;
-            const isChecked = this.checked;
-
-            // Validar antes de marcar
-            if (isChecked && !validarSelecao(dataCheckbox, isChecked)) {
-                this.checked = false;
-                atualizarContador();
-                return;
-            }
-
-            // Atualizar visual
-            if (this.checked) {
-                cell.style.background = 'linear-gradient(135deg, #e3f2fd 0%, #90caf9 100%)';
-                cell.style.border = '2px solid #2196F3';
-            } else {
-                cell.style.background = 'white';
-                cell.style.border = 'none';
-            }
-
-            atualizarContador();
-        });
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', atualizarContador);
     });
 
-    tipoPeriodo.addEventListener('change', function() {
-        // Limpar seleção ao mudar tipo
-        checkboxes.forEach(cb => {
-            cb.checked = false;
-            const cell = cb.closest('.dia-cell');
-            cell.style.background = 'white';
-            cell.style.border = 'none';
-        });
-        atualizarContador();
-    });
+    tipoPeriodo.addEventListener('change', atualizarContador);
 
-    const form = document.getElementById('formTeletrabalho');
-    if (form) {
-        form.addEventListener('submit', function(e) {
+    if (btnSolicitar) {
+        document.getElementById('formTeletrabalho').addEventListener('submit', function(e) {
             const selecionados = document.querySelectorAll('.dia-checkbox:checked').length;
+            const tipo = tipoPeriodo.value;
 
             if (selecionados === 0) {
                 e.preventDefault();
@@ -467,6 +332,11 @@ document.addEventListener('DOMContentLoaded', function() {
 function mudarPeriodo() {
     const mes = document.getElementById('selectPeriodo').value;
     window.location.href = `/teletrabalho/calendario/${mes}`;
+}
+
+function mostrarPessoas(data, pessoas) {
+    const nomes = pessoas.map(p => p.usuario).join('\n');
+    alert(`Pessoas em teletrabalho em ${data}:\n\n${nomes}`);
 }
 </script>
 {% endblock %}

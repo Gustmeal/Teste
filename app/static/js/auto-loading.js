@@ -96,7 +96,7 @@
 
         if (element) {
             // ========== INÍCIO DA ALTERAÇÃO: Adicionada nova condição de exceção ==========
-            if (element.classList.contains('js-ignore-loading') || // <--- ESTA É A NOVA LINHA
+            if (element.classList.contains('js-ignore-loading') ||
                 element.classList.contains('btn-close') ||
                 element.getAttribute('data-bs-dismiss') ||
                 element.classList.contains('btn-secondary') ||
@@ -105,7 +105,8 @@
                 element.getAttribute('data-bs-toggle') === 'modal' ||
                 element.getAttribute('data-bs-toggle') === 'tab' ||
                 element.getAttribute('data-bs-toggle') === 'tooltip' ||
-                element.classList.contains('page-link') && element.closest('.pagination')) {
+                element.classList.contains('page-link') && element.closest('.pagination') ||
+                element.hasAttribute('download')) {  // <-- NOVA LINHA: Ignora links com atributo download
                 return; // Ignora o clique se qualquer uma dessas condições for verdadeira
             }
             // ========== FIM DA ALTERAÇÃO ==========
