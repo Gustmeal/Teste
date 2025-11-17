@@ -18,6 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 
+
 teletrabalho_bp = Blueprint('teletrabalho', __name__, url_prefix='/teletrabalho')
 
 
@@ -102,6 +103,56 @@ def calcular_limite_area(area, tipo_area, percentual=30.0):
     limite = (qtd * percentual) / 100.0
     return math.ceil(limite), qtd
 
+
+def calcular_resumo_pessoas(mes_ref, area, tipo_area):
+    """
+    Calcula resumo de pessoas e quantidade de dias de teletrabalho no mês
+
+    Retorna lista com:
+    - Nome da pessoa
+    - Quantidade de dias de teletrabalho no mês
+    - Lista com as datas específicas
+    """
+    try:
+        # Buscar todos os teletrabalhos aprovados da área no mês
+        teletrabalhos = Teletrabalho.query.join(
+            Usuario, Teletrabalho.USUARIO_ID == Usuario.ID
+        ).filter(
+            Teletrabalho.MES_REFERENCIA == mes_ref,
+            Teletrabalho.AREA == area,
+            Teletrabalho.TIPO_AREA == tipo_area,
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).order_by(Usuario.NOME).all()
+
+        # Agrupar por usuário
+        resumo = {}
+        for t in teletrabalhos:
+            usuario_id = t.USUARIO_ID
+            usuario_nome = t.usuario.NOME if t.usuario else "Desconhecido"
+
+            if usuario_id not in resumo:
+                resumo[usuario_id] = {
+                    'nome': usuario_nome,
+                    'quantidade': 0,
+                    'datas': []
+                }
+
+            resumo[usuario_id]['quantidade'] += 1
+            resumo[usuario_id]['datas'].append(t.DATA_TELETRABALHO)
+
+        # Converter para lista ordenada por nome
+        lista_resumo = sorted(resumo.values(), key=lambda x: x['nome'])
+
+        return lista_resumo
+
+    except Exception as e:
+        print(f"[ERRO] calcular_resumo_pessoas: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
 def obter_areas_disponiveis():
     """Retorna lista de áreas disponíveis"""
     areas = []
@@ -126,18 +177,20 @@ def obter_areas_disponiveis():
 
 
 def gerar_opcoes_periodo():
-    """Gera opções de ano e mês para seleção (ano atual até +2 anos)"""
-    hoje = date.today()
-    ano_atual = hoje.year
-
+    """Gera opções de ano e mês para seleção (a partir de outubro/2025)"""
     periodos = []
 
-    for ano in range(ano_atual, ano_atual + 3):  # 2025, 2026, 2027
-        for mes in range(1, 13):
-            # Só incluir meses futuros do ano atual
-            if ano == ano_atual and mes < hoje.month:
-                continue
+    # ✅ INÍCIO FIXO: Outubro de 2025
+    ano_inicio = 2025
+    mes_inicio = 10
 
+    # ✅ Gerar até 2 anos a frente (até 2027)
+    for ano in range(ano_inicio, ano_inicio + 3):  # 2025, 2026, 2027
+        # ✅ Se for 2025, começar do mês 10 (outubro)
+        # ✅ Se for 2026 ou 2027, começar do mês 1 (janeiro)
+        primeiro_mes = mes_inicio if ano == ano_inicio else 1
+
+        for mes in range(primeiro_mes, 13):
             data = date(ano, mes, 1)
             mes_ref = data.strftime('%Y%m')
             meses_pt = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -145,13 +198,14 @@ def gerar_opcoes_periodo():
             nome_mes = f"{meses_pt[mes - 1]}/{ano}"
 
             periodos.append({
-                'valor': mes_ref,  # ✅ CORREÇÃO: Mudei de 'mes_ref' para 'valor'
+                'valor': mes_ref,
                 'nome': nome_mes,
                 'ano': ano,
                 'mes': mes
             })
 
     return periodos
+
 
 
 @teletrabalho_bp.route('/')
@@ -436,7 +490,7 @@ def solicitar():
                 TIPO_MARCACAO='TELETRABALHO',
                 OBSERVACAO=observacao,
                 APROVADO_POR=current_user.id,
-                APROVADO_EM=datetime.utcnow()
+                APROVADO_EM=datetime.now()
             )
             db.session.add(teletrabalho)
 
@@ -629,37 +683,58 @@ def admin_cadastrar():
         return redirect(url_for('teletrabalho.index'))
 
 
-@teletrabalho_bp.route('/admin/obter_calendario/<int:usuario_id>/<mes_referencia>')
+@teletrabalho_bp.route('/admin/obter_calendario/<int:usuario_id>/<mes_referencia>', methods=['GET'])
 @login_required
 def admin_obter_calendario(usuario_id, mes_referencia):
-    """API para obter calendário do usuário selecionado"""
-    usuario = Usuario.query.get(current_user.id)
+    """Retorna dados do calendário para admin cadastrar"""
+    usuario_logado = Usuario.query.get(current_user.id)
 
-    # CORREÇÃO: Permitir admin, moderador E gerentes
-    if not eh_gestor_ou_admin(usuario):
-        return jsonify({'erro': 'Acesso negado'}), 403
+    if not eh_gestor_ou_admin(usuario_logado):
+        return jsonify({'erro': 'Sem permissão'}), 403
 
     try:
-        usuario_selecionado = Usuario.query.get_or_404(usuario_id)
-        empregado = usuario_selecionado.empregado
+        usuario = Usuario.query.get_or_404(usuario_id)
+        empregado = usuario.empregado
 
         if not empregado:
-            return jsonify({'erro': 'Usuário sem vínculo com empregado'}), 400
+            return jsonify({'erro': 'Usuário sem vínculo com empregado'}), 404
 
         area = empregado.sgSuperintendencia
         tipo_area = 'superintendencia'
 
-        limite, total_pessoas = calcular_limite_area(area, tipo_area)
+        # Validação de área para gerente
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario_logado)
+
+        if nivel_acesso == 'gerente':
+            if not usuario_logado.empregado:
+                return jsonify({'erro': 'Gerente sem vínculo de empregado'}), 403
+
+            area_gerente = usuario_logado.empregado.sgSuperintendencia
+
+            if area != area_gerente:
+                return jsonify({'erro': 'Você só pode cadastrar para usuários da sua área'}), 403
 
         ano = int(mes_referencia[:4])
         mes = int(mes_referencia[4:])
 
         primeiro_dia = date(ano, mes, 1)
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
-
         primeiro_dia_grid = (primeiro_dia.weekday() + 1) % 7
 
-        teletrabalhos = Teletrabalho.query.filter(
+        limite, total_pessoas = calcular_limite_area(area, tipo_area)
+
+        # Buscar dias já marcados pelo usuário
+        teletrabalhos_mes = Teletrabalho.query.filter(
+            Teletrabalho.USUARIO_ID == usuario_id,
+            Teletrabalho.MES_REFERENCIA == mes_referencia,
+            Teletrabalho.STATUS == 'APROVADO',
+            Teletrabalho.DELETED_AT.is_(None)
+        ).all()
+
+        dias_usuario_marcados = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos_mes]
+
+        # Buscar ocupação por dia
+        teletrabalhos_area = Teletrabalho.query.filter(
             Teletrabalho.MES_REFERENCIA == mes_referencia,
             Teletrabalho.AREA == area,
             Teletrabalho.TIPO_AREA == tipo_area,
@@ -668,25 +743,15 @@ def admin_obter_calendario(usuario_id, mes_referencia):
         ).all()
 
         dias_ocupados = {}
-        for tele in teletrabalhos:
-            data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+        for t in teletrabalhos_area:
+            data_str = t.DATA_TELETRABALHO.strftime('%Y-%m-%d')
             if data_str not in dias_ocupados:
                 dias_ocupados[data_str] = {'qtd': 0, 'usuarios': []}
+
             dias_ocupados[data_str]['qtd'] += 1
-            dias_ocupados[data_str]['usuarios'].append({
-                'nome': tele.usuario.NOME,
-                'eh_usuario_selecionado': tele.USUARIO_ID == usuario_id
-            })
+            dias_ocupados[data_str]['usuarios'].append(t.usuario.NOME if t.usuario else 'Desconhecido')
 
-        dias_usuario = Teletrabalho.query.filter(
-            Teletrabalho.USUARIO_ID == usuario_id,
-            Teletrabalho.MES_REFERENCIA == mes_referencia,
-            Teletrabalho.STATUS == 'APROVADO',
-            Teletrabalho.DELETED_AT.is_(None)
-        ).all()
-
-        dias_usuario_marcados = [d.DATA_TELETRABALHO.strftime('%Y-%m-%d') for d in dias_usuario]
-
+        # Montar lista de dias
         dias_calendario = []
         data_atual = primeiro_dia
 
@@ -720,7 +785,11 @@ def admin_obter_calendario(usuario_id, mes_referencia):
         })
 
     except Exception as e:
-        return jsonify({'erro': str(e)}), 500
+        # ✅ IMPORTANTE: Retornar JSON mesmo em caso de erro
+        print(f"[ERRO] admin_obter_calendario: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': f'Erro ao carregar calendário: {str(e)}'}), 500
 
 
 @teletrabalho_bp.route('/admin/cadastrar', methods=['POST'])
@@ -810,7 +879,7 @@ def admin_cadastrar_post():
                 TIPO_PERIODO=tipo_periodo,
                 OBSERVACAO=f'[{tipo_cadastrador}] {observacao}' if observacao else f'[{tipo_cadastrador}] Cadastrado por {tipo_cadastrador.lower()}',
                 APROVADO_POR=current_user.id,
-                APROVADO_EM=datetime.utcnow()
+                APROVADO_EM=datetime.now()
             )
             db.session.add(teletrabalho)
 
@@ -1333,7 +1402,7 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
                     TIPO_MARCACAO='TELETRABALHO',
                     OBSERVACAO=f'[SORTEIO AUTO] {datetime.now().strftime("%d/%m/%Y %H:%M")}',
                     APROVADO_POR=admin_id,
-                    APROVADO_EM=datetime.utcnow()
+                    APROVADO_EM=datetime.now()
                 )
                 db.session.add(teletrabalho)
                 total_dias_cadastrados += 1
@@ -1672,6 +1741,9 @@ def calendario_visual():
         usuario = Usuario.query.get(current_user.id)
         empregado = usuario.empregado
 
+        # Verificar nível de acesso
+        nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
+
         # Obter filtros
         mes_ref = request.args.get('mes_ref')
         area_filtro = request.args.get('area')
@@ -1682,23 +1754,41 @@ def calendario_visual():
             hoje = date.today()
             mes_ref = hoje.strftime('%Y%m')
 
-        # Área padrão
-        if not area_filtro:
-            if empregado:
-                area_filtro = empregado.sgSuperintendencia
-                tipo_area_filtro = 'superintendencia'
-            elif current_user.perfil == 'admin':
-                # Admin sem empregado - pegar primeira área disponível
-                primeira_area = db.session.query(
-                    Empregado.sgSuperintendencia
-                ).filter(
-                    Empregado.sgSuperintendencia.isnot(None),
-                    Empregado.fkStatus == 1
-                ).first()
+        # ✅ LÓGICA DE ÁREA POR PERFIL
+        if nivel_acesso == 'gerente':
+            # GERENTE: Só pode ver a própria área, ignora filtro
+            if not empregado:
+                flash('Gerente sem vínculo de empregado.', 'warning')
+                return redirect(url_for('teletrabalho.index'))
 
-                if primeira_area:
-                    area_filtro = primeira_area[0]
+            area_filtro = empregado.sgSuperintendencia
+            tipo_area_filtro = 'superintendencia'
+            pode_escolher_area = False
+
+        elif nivel_acesso in ['admin', 'moderador']:
+            # ADMIN/MODERADOR: Pode escolher qualquer área
+            pode_escolher_area = True
+
+            if not area_filtro:
+                if empregado:
+                    area_filtro = empregado.sgSuperintendencia
                     tipo_area_filtro = 'superintendencia'
+                else:
+                    # Pegar primeira área disponível
+                    primeira_area = db.session.query(
+                        Empregado.sgSuperintendencia
+                    ).filter(
+                        Empregado.sgSuperintendencia.isnot(None),
+                        Empregado.fkStatus == 1
+                    ).first()
+
+                    if primeira_area:
+                        area_filtro = primeira_area[0]
+                        tipo_area_filtro = 'superintendencia'
+        else:
+            # USUÁRIO COMUM: Não tem acesso a calendário visual
+            flash('Você não tem permissão para acessar esta página.', 'danger')
+            return redirect(url_for('teletrabalho.index'))
 
         if not area_filtro:
             flash('Área não identificada.', 'warning')
@@ -1730,48 +1820,48 @@ def calendario_visual():
 
         while data_atual <= ultimo_dia:
             data_str = data_atual.strftime('%Y-%m-%d')
+
+            # Verificar se é dia útil
+            eh_util = Feriado.eh_dia_util(data_atual)
+            feriado = None
+
+            if not eh_util:
+                feriado_obj = Feriado.obter_feriado(data_atual)
+                if feriado_obj:
+                    feriado = feriado_obj.DS_FERIADO
+
+            # Buscar teletrabalhos deste dia
+            pessoas_dia = []
+            for t in teletrabalhos:
+                if t.DATA_TELETRABALHO == data_atual:
+                    usuario_nome = t.usuario.NOME if t.usuario else "Desconhecido"
+
+                    # Abreviar nome
+                    partes = usuario_nome.split()
+                    if len(partes) > 1:
+                        primeiro = partes[0]
+                        sobrenome = partes[-1]
+                        nome_exibicao = f"{primeiro} {sobrenome}"
+                    else:
+                        nome_exibicao = partes[0] if partes else usuario_nome
+
+                    pessoas_dia.append({
+                        'id': t.ID,
+                        'usuario': usuario_nome,
+                        'nome_exibicao': nome_exibicao
+                    })
+
             dias_organizados[data_str] = {
-                'data': data_atual,
-                'dia': data_atual.day,
-                'eh_util': Feriado.eh_dia_util(data_atual),
-                'feriado': Feriado.obter_feriado(data_atual),
-                'pessoas': []
+                'numero': data_atual.day,
+                'eh_util': eh_util,
+                'feriado': feriado,
+                'pessoas': pessoas_dia
             }
+
             data_atual += timedelta(days=1)
 
-        # Adicionar pessoas aos dias
-        for tele in teletrabalhos:
-            data_str = tele.DATA_TELETRABALHO.strftime('%Y-%m-%d')
-            if data_str in dias_organizados:
-                nome_completo = tele.usuario.NOME if tele.usuario.NOME else 'Sem Nome'
-                partes_nome = nome_completo.split()
-
-                dias_organizados[data_str]['pessoas'].append({
-                    'id': tele.ID,
-                    'nome_completo': nome_completo,
-                    'nome_primeiro': partes_nome[0] if partes_nome else '',
-                    'nome_segundo': partes_nome[1] if len(partes_nome) > 1 else '',
-                    'usuario_id': tele.USUARIO_ID,
-                    'tipo_periodo': tele.TIPO_PERIODO,
-                    'observacao': tele.OBSERVACAO
-                })
-
-        # Processar nomes para evitar duplicatas no mesmo dia
-        for data_str, info in dias_organizados.items():
-            if info['pessoas']:
-                # Contar quantas vezes cada primeiro nome aparece
-                contagem_nomes = {}
-                for pessoa in info['pessoas']:
-                    primeiro = pessoa['nome_primeiro']
-                    contagem_nomes[primeiro] = contagem_nomes.get(primeiro, 0) + 1
-
-                # Se nome repetido, adicionar inicial do sobrenome
-                for pessoa in info['pessoas']:
-                    primeiro = pessoa['nome_primeiro']
-                    if contagem_nomes[primeiro] > 1 and pessoa['nome_segundo']:
-                        pessoa['nome_exibicao'] = f"{primeiro} {pessoa['nome_segundo'][0]}."
-                    else:
-                        pessoa['nome_exibicao'] = primeiro
+        # ✅ Calcular resumo de pessoas e quantidade de dias
+        resumo_pessoas = calcular_resumo_pessoas(mes_ref, area_filtro, tipo_area_filtro)
 
         # Calcular limite de pessoas por dia (30% da área)
         limite, total_pessoas = calcular_limite_area(area_filtro, tipo_area_filtro)
@@ -1780,9 +1870,7 @@ def calendario_visual():
         areas = obter_areas_disponiveis()
         periodos = gerar_opcoes_periodo()
 
-        # ✅ CORREÇÃO CRÍTICA: Verificar corretamente se é gestor
-        # A função eh_gestor_ou_admin() usa verificar_nivel_acesso_teletrabalho()
-        # que PRIORIZA GERENTE sobre moderador
+        # Verificar se é gestor
         eh_gestor = eh_gestor_ou_admin(usuario)
 
         return render_template('teletrabalho/calendario_visual.html',
@@ -1796,7 +1884,9 @@ def calendario_visual():
                                areas=areas,
                                periodos=periodos,
                                primeiro_dia_grid=primeiro_dia_grid,
-                               eh_gestor=eh_gestor)  # ✅ Passa corretamente
+                               eh_gestor=eh_gestor,
+                               resumo_pessoas=resumo_pessoas,
+                               pode_escolher_area=pode_escolher_area)  # ✅ Passa flag
 
     except Exception as e:
         flash(f'Erro ao carregar calendário: {str(e)}', 'danger')
@@ -2160,6 +2250,7 @@ def ferias_calendario(mes_referencia):
 
         primeiro_dia = date(ano, mes, 1)
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+        primeiro_dia_grid = (primeiro_dia.weekday() + 1) % 7
 
         # Buscar férias já marcadas
         ferias_marcadas = Teletrabalho.query.filter(
@@ -2176,37 +2267,41 @@ def ferias_calendario(mes_referencia):
             Teletrabalho.USUARIO_ID == current_user.id,
             Teletrabalho.MES_REFERENCIA == mes_referencia,
             Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.STATUS == 'APROVADO',
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
 
         datas_teletrabalho = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos]
 
-        # Montar dias
+        # Montar lista de dias
         dias = []
         data_atual = primeiro_dia
 
         while data_atual <= ultimo_dia:
             data_str = data_atual.strftime('%Y-%m-%d')
-            feriado_obj = Feriado.obter_feriado(data_atual)
+            eh_util = Feriado.eh_dia_util(data_atual)
+            feriado = Feriado.obter_feriado(data_atual)
 
             dias.append({
                 'data': data_str,
                 'dia': data_atual.day,
-                'eh_util': Feriado.eh_dia_util(data_atual),
-                'ja_marcado_ferias': data_str in datas_ferias,
-                'ja_marcado_teletrabalho': data_str in datas_teletrabalho,
-                'feriado': feriado_obj.DS_FERIADO if feriado_obj else None
+                'eh_util': eh_util,
+                'feriado': feriado.DS_FERIADO if feriado else None,
+                'ja_marcado': data_str in datas_ferias,
+                'tem_teletrabalho': data_str in datas_teletrabalho
             })
 
             data_atual += timedelta(days=1)
 
         return jsonify({
-            'sucesso': True,
             'dias': dias,
-            'primeiro_dia_grid': (primeiro_dia.weekday() + 1) % 7
+            'primeiro_dia_grid': primeiro_dia_grid
         })
 
     except Exception as e:
+        print(f"[ERRO] ferias_calendario: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
 
 
@@ -2268,7 +2363,7 @@ def salvar_ferias():
                     TIPO_MARCACAO='FERIAS',  # ✅ IMPORTANTE
                     OBSERVACAO='Férias marcadas pelo usuário',
                     APROVADO_POR=current_user.id,
-                    APROVADO_EM=datetime.utcnow()
+                    APROVADO_EM=datetime.now()
                 )
                 db.session.add(ferias)
 
@@ -2404,7 +2499,7 @@ def admin_ferias_calendario(usuario_id, mes_referencia):
 
         if nivel_acesso == 'gerente':
             if not usuario_logado.empregado:
-                return jsonify({'erro': 'Sem vínculo com empregado'}), 403
+                return jsonify({'erro': 'Gerente sem vínculo de empregado'}), 403
 
             area_gerente = usuario_logado.empregado.sgSuperintendencia
 
@@ -2416,6 +2511,7 @@ def admin_ferias_calendario(usuario_id, mes_referencia):
 
         primeiro_dia = date(ano, mes, 1)
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+        primeiro_dia_grid = (primeiro_dia.weekday() + 1) % 7
 
         # Buscar férias já marcadas
         ferias_marcadas = Teletrabalho.query.filter(
@@ -2427,44 +2523,48 @@ def admin_ferias_calendario(usuario_id, mes_referencia):
 
         datas_ferias = [f.DATA_TELETRABALHO.strftime('%Y-%m-%d') for f in ferias_marcadas]
 
-        # Buscar teletrabalhos
-        teletrabalhos = Teletrabalho.query.filter(
+        # Buscar teletrabalhos já marcados
+        teletrabalhos_marcados = Teletrabalho.query.filter(
             Teletrabalho.USUARIO_ID == usuario_id,
             Teletrabalho.MES_REFERENCIA == mes_referencia,
             Teletrabalho.TIPO_MARCACAO == 'TELETRABALHO',
+            Teletrabalho.STATUS == 'APROVADO',
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
 
-        datas_teletrabalho = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos]
+        datas_teletrabalho = [t.DATA_TELETRABALHO.strftime('%Y-%m-%d') for t in teletrabalhos_marcados]
 
-        # Montar dias
+        # Montar lista de dias
         dias = []
         data_atual = primeiro_dia
 
         while data_atual <= ultimo_dia:
             data_str = data_atual.strftime('%Y-%m-%d')
-            feriado_obj = Feriado.obter_feriado(data_atual)
+            eh_util = Feriado.eh_dia_util(data_atual)
+            feriado = Feriado.obter_feriado(data_atual)
 
             dias.append({
                 'data': data_str,
                 'dia': data_atual.day,
-                'eh_util': Feriado.eh_dia_util(data_atual),
+                'eh_util': eh_util,
+                'feriado': feriado.DS_FERIADO if feriado else None,
                 'ja_marcado_ferias': data_str in datas_ferias,
-                'ja_marcado_teletrabalho': data_str in datas_teletrabalho,
-                'feriado': feriado_obj.DS_FERIADO if feriado_obj else None
+                'ja_marcado_teletrabalho': data_str in datas_teletrabalho
             })
 
             data_atual += timedelta(days=1)
 
+        # ✅ IMPORTANTE: RETORNAR JSON COM SUCESSO
         return jsonify({
             'sucesso': True,
             'dias': dias,
-            'primeiro_dia_grid': (primeiro_dia.weekday() + 1) % 7,
-            'usuario_nome': usuario_alvo.NOME,
-            'area': empregado.sgSuperintendencia
+            'primeiro_dia_grid': primeiro_dia_grid
         })
 
     except Exception as e:
+        print(f"[ERRO] admin_ferias_calendario: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
 
 
@@ -2544,7 +2644,7 @@ def admin_salvar_ferias():
                     TIPO_MARCACAO='FERIAS',
                     OBSERVACAO=f'[{nivel_acesso.upper()}] Férias marcadas por {usuario_logado.NOME}',
                     APROVADO_POR=current_user.id,
-                    APROVADO_EM=datetime.utcnow()
+                    APROVADO_EM=datetime.now()
                 )
                 db.session.add(ferias)
 

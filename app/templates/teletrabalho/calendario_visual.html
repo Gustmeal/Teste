@@ -1,22 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="editais-container fade-in">
-    <a href="{{ url_for('teletrabalho.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
-
+<div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">
-            <i class="fas fa-calendar-day me-2"></i>
-            {{ nome_mes }} - {{ area }}
+        <h1 class="fw-bold">
+            <i class="fas fa-calendar-alt me-2"></i>
+            Calendário Visual - Teletrabalho
         </h1>
         <div>
-            <button class="btn btn-success" onclick="exportarImagem()">
-                <i class="fas fa-image me-2"></i>Exportar JPEG
+            <a href="{{ url_for('teletrabalho.index') }}" class="btn btn-secondary btn-back">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+            <button onclick="exportarImagem()" class="btn btn-success">
+                <i class="fas fa-image me-2"></i>Exportar Imagem
             </button>
-            <a href="{{ url_for('teletrabalho.exportar_excel', mes_ref=mes_ref, area=area, tipo_area=tipo_area) }}"
-               class="btn btn-primary">
+            <a href="{{ url_for('teletrabalho.exportar_excel', mes_ref=mes_ref) }}?area={{ area }}&tipo_area={{ tipo_area }}"
+               class="btn btn-success">
                 <i class="fas fa-file-excel me-2"></i>Exportar Excel
             </a>
         </div>
@@ -28,36 +27,55 @@
             <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros</h5>
         </div>
         <div class="card-body">
-            <form method="GET">
-                <div class="row">
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Período:</label>
-                        <select name="mes_ref" class="form-select">
+            <form method="GET" action="{{ url_for('teletrabalho.calendario_visual') }}">
+                <div class="row g-3">
+                    <div class="col-md-{% if pode_escolher_area %}4{% else %}6{% endif %}">
+                        <label class="form-label fw-bold">Mês/Ano</label>
+                        <select name="mes_ref" class="form-select" required>
                             {% for periodo in periodos %}
-                            <option value="{{ periodo.valor }}" {% if periodo.valor == mes_ref %}selected{% endif %}>
+                            <option value="{{ periodo.valor }}"
+                                    {% if periodo.valor == mes_ref %}selected{% endif %}>
                                 {{ periodo.nome }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
+
+                    <!-- ✅ SÓ MOSTRA FILTRO DE ÁREA PARA ADMIN/MODERADOR -->
+                    {% if pode_escolher_area %}
                     <div class="col-md-4">
-                        <label class="form-label fw-bold">Área:</label>
-                        <select name="area" class="form-select">
-                            {% for a in areas %}
-                            <option value="{{ a.area }}" {% if a.area == area %}selected{% endif %}>
-                                {{ a.area }}
+                        <label class="form-label fw-bold">Área</label>
+                        <select name="area" class="form-select" required>
+                            {% for area_item in areas %}
+                            <option value="{{ area_item }}"
+                                    {% if area_item == area %}selected{% endif %}>
+                                {{ area_item }}
                             </option>
                             {% endfor %}
                         </select>
                         <input type="hidden" name="tipo_area" value="{{ tipo_area }}">
                     </div>
-                    <div class="col-md-4 d-flex align-items-end">
+                    {% else %}
+                    <!-- Gerente: área fixa, não pode alterar -->
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Área (sua área)</label>
+                        <input type="text" class="form-control" value="{{ area }}" disabled>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Gerentes visualizam apenas sua própria área
+                        </small>
+                    </div>
+                    {% endif %}
+
+                    <div class="col-md-{% if pode_escolher_area %}4{% else %}12{% endif %} d-flex align-items-end">
                         <button type="submit" class="btn btn-primary me-2">
                             <i class="fas fa-search me-2"></i>Filtrar
                         </button>
+                        {% if pode_escolher_area %}
                         <a href="{{ url_for('teletrabalho.calendario_visual') }}" class="btn btn-secondary">
                             <i class="fas fa-times me-2"></i>Limpar
                         </a>
+                        {% endif %}
                     </div>
                 </div>
             </form>
@@ -70,6 +88,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         <i class="fas fa-hand-pointer me-2"></i>
         <strong>Modo Gestor:</strong> Arraste os nomes para mover entre os dias.
+        Clique no <strong>X</strong> para remover uma pessoa.
         As regras de teletrabalho serão validadas automaticamente.
     </div>
     {% endif %}
@@ -88,6 +107,77 @@
                 <span class="badge bg-secondary me-2">Não útil</span>
                 <span class="badge bg-danger">Lotado</span>
             </div>
+        </div>
+    </div>
+
+    <!-- ✅ TABELA RESUMO DE PESSOAS -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-list-ul me-2"></i>
+                Resumo do Mês - {{ nome_mes }}
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if resumo_pessoas %}
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th style="width: 5%">#</th>
+                            <th style="width: 50%">Nome</th>
+                            <th style="width: 15%" class="text-center">Qtd. Dias</th>
+                            <th style="width: 30%">Datas</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for pessoa in resumo_pessoas %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>
+                                <i class="fas fa-user me-2 text-primary"></i>
+                                <strong>{{ pessoa.nome }}</strong>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary rounded-pill fs-6">
+                                    {{ pessoa.quantidade }} dia(s)
+                                </span>
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {% for data in pessoa.datas | sort %}
+                                    <span class="badge bg-secondary me-1">
+                                        {{ data.strftime('%d/%m') }}
+                                    </span>
+                                    {% endfor %}
+                                </small>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td colspan="2" class="text-end fw-bold">
+                                <i class="fas fa-calculator me-2"></i>TOTAL DE PESSOAS:
+                            </td>
+                            <td class="text-center fw-bold">
+                                <span class="badge bg-success fs-6">
+                                    {{ resumo_pessoas | length }}
+                                </span>
+                            </td>
+                            <td class="text-muted">
+                                <small>Total de {{ resumo_pessoas | map(attribute='quantidade') | sum }} dias agendados</small>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Nenhum teletrabalho agendado para este mês nesta área.
+            </div>
+            {% endif %}
         </div>
     </div>
 
@@ -124,30 +214,31 @@
                      data-qtd="{{ info.pessoas|length }}"
                      data-limite="{{ limite }}">
 
-                    <div class="dia-visual-numero">{{ info.dia }}</div>
+                    <div class="dia-visual-numero">{{ info.numero }}</div>
 
                     {% if info.feriado %}
                     <div class="dia-visual-feriado">
-                        <i class="fas fa-flag"></i> {{ info.feriado.DS_FERIADO[:12] }}
+                        <i class="fas fa-flag"></i> {{ info.feriado[:15] }}
                     </div>
                     {% endif %}
 
-                    {% if info.pessoas %}
+                    {% if info.eh_util %}
                     <div class="dia-visual-pessoas">
                         {% for pessoa in info.pessoas %}
-                        <div class="pessoa-tag {{ 'draggable' if eh_gestor else '' }}"
+                        <div class="pessoa-tag {% if eh_gestor %}draggable{% endif %}"
                              {% if eh_gestor %}draggable="true"{% endif %}
                              data-teletrabalho-id="{{ pessoa.id }}"
-                             data-usuario-id="{{ pessoa.usuario_id }}"
-                             data-nome="{{ pessoa.nome_completo }}"
+                             data-usuario="{{ pessoa.usuario }}"
                              data-bs-toggle="tooltip"
-                             title="{{ pessoa.nome_completo }} - Arraste para mover">
-                            <i class="fas fa-grip-vertical me-1 drag-handle"></i>
+                             title="{{ pessoa.usuario }} - {% if eh_gestor %}Arraste para mover{% endif %}">
+                            {% if eh_gestor %}
+                            <i class="fas fa-grip-vertical drag-handle me-1"></i>
+                            {% endif %}
                             <span>{{ pessoa.nome_exibicao }}</span>
                             {% if eh_gestor %}
                             <button type="button"
                                     class="btn-remove-pessoa"
-                                    onclick="removerPessoa({{ pessoa.id }}, '{{ pessoa.nome_completo }}', '{{ info.dia }}')"
+                                    onclick="removerPessoa({{ pessoa.id }}, '{{ pessoa.usuario }}', '{{ info.numero }}')"
                                     title="Remover">
                                 <i class="fas fa-times"></i>
                             </button>
@@ -162,11 +253,9 @@
                         </span>
                     </div>
                     {% else %}
-                    {% if info.eh_util %}
                     <div class="dia-visual-vazio">
                         <small class="text-muted">Sem pessoas</small>
                     </div>
-                    {% endif %}
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -287,7 +376,7 @@
     padding: 6px 10px;
     border-radius: 20px;
     font-size: 0.85rem;
-    border: 1px solid #667eea;
+    border: 2px solid #667eea;
     color: #333;
     display: flex;
     align-items: center;
@@ -301,6 +390,7 @@
     transform: translateX(3px);
 }
 
+/* ✅ BOTÃO DE REMOVER */
 .btn-remove-pessoa {
     background: transparent;
     border: none;
@@ -349,26 +439,6 @@
         display: none !important;
     }
 }
-
-@media (max-width: 768px) {
-    .calendario-visual-grid {
-        gap: 6px;
-    }
-
-    .dia-visual {
-        min-height: 120px;
-        padding: 8px;
-    }
-
-    .dia-visual-numero {
-        font-size: 1.4rem;
-    }
-
-    .pessoa-tag {
-        font-size: 0.75rem;
-        padding: 4px 8px;
-    }
-}
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -391,144 +461,80 @@ document.addEventListener('DOMContentLoaded', function() {
  * Configura eventos de Drag & Drop
  */
 function configurarDragAndDrop() {
+    let elementoArrastado = null;
+
     const draggables = document.querySelectorAll('.pessoa-tag.draggable');
     const dropZones = document.querySelectorAll('.drop-zone');
 
-    // Elementos arrastáveis
-    draggables.forEach(draggable => {
-        draggable.addEventListener('dragstart', handleDragStart);
-        draggable.addEventListener('dragend', handleDragEnd);
+    draggables.forEach(item => {
+        item.addEventListener('dragstart', function(e) {
+            elementoArrastado = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        });
+
+        item.addEventListener('dragend', function() {
+            this.classList.remove('dragging');
+            dropZones.forEach(zone => {
+                zone.classList.remove('drag-over', 'drag-over-invalid');
+            });
+        });
     });
 
-    // Zonas de soltar
     dropZones.forEach(zone => {
-        zone.addEventListener('dragover', handleDragOver);
-        zone.addEventListener('dragenter', handleDragEnter);
-        zone.addEventListener('dragleave', handleDragLeave);
-        zone.addEventListener('drop', handleDrop);
+        zone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const ehUtil = this.dataset.util === 'true';
+            const qtdAtual = parseInt(this.dataset.qtd) || 0;
+            const limite = parseInt(this.dataset.limite);
+
+            if (ehUtil && qtdAtual < limite) {
+                this.classList.add('drag-over');
+                this.classList.remove('drag-over-invalid');
+            } else {
+                this.classList.add('drag-over-invalid');
+                this.classList.remove('drag-over');
+            }
+        });
+
+        zone.addEventListener('dragleave', function() {
+            this.classList.remove('drag-over', 'drag-over-invalid');
+        });
+
+        zone.addEventListener('drop', function(e) {
+            e.preventDefault();
+
+            if (!elementoArrastado) return;
+
+            const ehUtil = this.dataset.util === 'true';
+            const qtdAtual = parseInt(this.dataset.qtd) || 0;
+            const limite = parseInt(this.dataset.limite);
+
+            if (!ehUtil) {
+                mostrarToast('❌ Não é possível mover para dias não úteis!', 'danger');
+                return;
+            }
+
+            if (qtdAtual >= limite) {
+                mostrarToast('❌ Limite de pessoas atingido neste dia!', 'danger');
+                return;
+            }
+
+            const teletrabalhoId = elementoArrastado.dataset.teletrabalhoId;
+            const dataNova = this.dataset.date;
+
+            moverPessoa(teletrabalhoId, dataNova);
+        });
     });
-}
-
-let draggedElement = null;
-let draggedData = null;
-
-/**
- * Início do arrasto
- */
-function handleDragStart(e) {
-    draggedElement = this;
-    draggedData = {
-        teletrabalhoId: this.dataset.teletrabalhoId,
-        usuarioId: this.dataset.usuarioId,
-        nome: this.dataset.nome
-    };
-
-    this.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', this.innerHTML);
-}
-
-/**
- * Fim do arrasto
- */
-function handleDragEnd(e) {
-    this.classList.remove('dragging');
-
-    // Remover classes de todas as zonas
-    document.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.classList.remove('drag-over', 'drag-over-invalid');
-    });
-}
-
-/**
- * Sobre a zona (validação)
- */
-function handleDragOver(e) {
-    if (e.preventDefault) {
-        e.preventDefault();
-    }
-
-    e.dataTransfer.dropEffect = 'move';
-    return false;
-}
-
-/**
- * Entrada na zona
- */
-function handleDragEnter(e) {
-    const ehUtil = this.dataset.util === 'true';
-    const qtdAtual = parseInt(this.dataset.qtd);
-    const limite = parseInt(this.dataset.limite);
-    const dataAtual = this.dataset.date;
-
-    // Pegar data original
-    const diaOriginal = draggedElement.closest('.drop-zone').dataset.date;
-
-    // Validar se pode soltar
-    if (dataAtual === diaOriginal) {
-        // Mesma data, não precisa fazer nada
-        return;
-    }
-
-    if (!ehUtil) {
-        this.classList.add('drag-over-invalid');
-    } else if (qtdAtual >= limite) {
-        this.classList.add('drag-over-invalid');
-    } else {
-        this.classList.add('drag-over');
-    }
-}
-
-/**
- * Saída da zona
- */
-function handleDragLeave(e) {
-    this.classList.remove('drag-over', 'drag-over-invalid');
-}
-
-/**
- * Soltar elemento
- */
-function handleDrop(e) {
-    if (e.stopPropagation) {
-        e.stopPropagation();
-    }
-
-    this.classList.remove('drag-over', 'drag-over-invalid');
-
-    const dataNova = this.dataset.date;
-    const diaOriginal = draggedElement.closest('.drop-zone').dataset.date;
-
-    // Se for a mesma data, não faz nada
-    if (dataNova === diaOriginal) {
-        return false;
-    }
-
-    // Validar novamente
-    const ehUtil = this.dataset.util === 'true';
-    const qtdAtual = parseInt(this.dataset.qtd);
-    const limite = parseInt(this.dataset.limite);
-
-    if (!ehUtil) {
-        mostrarToast('❌ Data não é dia útil', 'danger');
-        return false;
-    }
-
-    if (qtdAtual >= limite) {
-        mostrarToast(`❌ Dia lotado (${qtdAtual}/${limite})`, 'danger');
-        return false;
-    }
-
-    // Enviar para backend
-    moverPessoaBackend(draggedData.teletrabalhoId, dataNova, draggedData.nome);
-
-    return false;
 }
 
 /**
  * Move pessoa via AJAX
  */
-function moverPessoaBackend(teletrabalhoId, dataNova, nome) {
+function moverPessoa(teletrabalhoId, dataNova) {
     const dataNovaBr = new Date(dataNova + 'T00:00:00').toLocaleDateString('pt-BR');
 
     mostrarToast('⏳ Movendo...', 'info');
@@ -546,7 +552,7 @@ function moverPessoaBackend(teletrabalhoId, dataNova, nome) {
     .then(response => response.json())
     .then(data => {
         if (data.sucesso) {
-            mostrarToast(`✅ ${nome} movido para ${dataNovaBr}`, 'success');
+            mostrarToast(`✅ Pessoa movida para ${dataNovaBr}`, 'success');
             setTimeout(() => location.reload(), 1500);
         } else {
             mostrarToast(`❌ ${data.erro}`, 'danger');
@@ -558,12 +564,14 @@ function moverPessoaBackend(teletrabalhoId, dataNova, nome) {
 }
 
 /**
- * Remove pessoa do dia
+ * ✅ REMOVE PESSOA DO DIA
  */
 function removerPessoa(teletrabalhoId, nomeCompleto, dia) {
     if (!confirm(`Remover ${nomeCompleto} do dia ${dia}?`)) {
         return;
     }
+
+    mostrarToast('⏳ Removendo...', 'info');
 
     fetch(`/teletrabalho/cancelar/${teletrabalhoId}`, {
         method: 'POST',
@@ -649,4 +657,3 @@ function exportarImagem() {
 }
 </script>
 {% endblock %}
-
