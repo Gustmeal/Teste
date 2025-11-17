@@ -139,7 +139,7 @@ class OcorrenciasMovItemServico(db.Model):
     @staticmethod
     def listar_itens_permitidos():
         """Lista apenas os itens de serviço permitidos"""
-        itens_permitidos = [32, 33, 35, 36, 66, 69, 34, 37, 42, 43, 45, 68, 73]
+        itens_permitidos = [32, 33, 35, 36, 38, 66, 69, 34, 37, 42, 43, 45, 68, 73]
         return OcorrenciasMovItemServico.query.filter(
             OcorrenciasMovItemServico.ID_ITEM_SERVICO.in_(itens_permitidos)
         ).order_by(OcorrenciasMovItemServico.DSC_ITEM_SERVICO).all()
