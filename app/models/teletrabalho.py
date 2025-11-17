@@ -153,52 +153,6 @@ class Teletrabalho(db.Model):
 
         return True, ""
 
-    # ADICIONAR ESTES MÉTODOS NA CLASSE Teletrabalho:
-
-    @staticmethod
-    def dia_esta_bloqueado(data, area, tipo_area):
-        """Verifica se um dia está bloqueado para teletrabalho"""
-        bloqueio = Teletrabalho.query.filter(
-            Teletrabalho.DATA_TELETRABALHO == data,
-            Teletrabalho.AREA == area,
-            Teletrabalho.TIPO_AREA == tipo_area,
-            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
-            Teletrabalho.DELETED_AT.is_(None)
-        ).first()
-        return bloqueio is not None, bloqueio
-
-    @staticmethod
-    def obter_bloqueio(data, area, tipo_area):
-        """Retorna o bloqueio de um dia específico"""
-        return Teletrabalho.query.filter(
-            Teletrabalho.DATA_TELETRABALHO == data,
-            Teletrabalho.AREA == area,
-            Teletrabalho.TIPO_AREA == tipo_area,
-            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
-            Teletrabalho.DELETED_AT.is_(None)
-        ).first()
-
-    @staticmethod
-    def listar_bloqueios_mes(mes_referencia, area, tipo_area):
-        """Lista todos os bloqueios de um mês específico"""
-        ano = int(mes_referencia[:4])
-        mes = int(mes_referencia[4:])
-
-        from datetime import date
-        import calendar
-
-        primeiro_dia = date(ano, mes, 1)
-        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
-
-        return Teletrabalho.query.filter(
-            Teletrabalho.DATA_TELETRABALHO >= primeiro_dia,
-            Teletrabalho.DATA_TELETRABALHO <= ultimo_dia,
-            Teletrabalho.AREA == area,
-            Teletrabalho.TIPO_AREA == tipo_area,
-            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
-            Teletrabalho.DELETED_AT.is_(None)
-        ).all()
-
     @staticmethod
     def contar_pessoas_dia_sem_bloqueio(data, area, tipo_area):
         """Conta pessoas em teletrabalho (excluindo bloqueios e férias)"""
@@ -298,3 +252,111 @@ class Feriado(db.Model):
             'eh_util': eh_util,
             'motivo_nao_util': 'Fim de semana' if dia_semana >= 5 else ('Feriado' if eh_feriado else None)
         }
+
+
+class BloqueioDia(db.Model):
+    """Model para bloqueio de dias de teletrabalho"""
+    __tablename__ = 'APK_TB008_BLOQUEIO_DIA_TELETRABALHO'
+    __table_args__ = {'schema': 'BDG', 'extend_existing': True}
+
+    ID = db.Column(db.Integer, primary_key=True)
+    DATA_BLOQUEIO = db.Column(db.Date, nullable=False)
+    MES_REFERENCIA = db.Column(db.String(6), nullable=False)
+    AREA = db.Column(db.String(50), nullable=False)
+    TIPO_AREA = db.Column(db.String(50), nullable=False, default='superintendencia')
+    MOTIVO = db.Column(db.String(500))
+    BLOQUEADO_POR = db.Column(db.Integer, db.ForeignKey('BDG.APK_TB002_USUARIOS.ID'), nullable=False)
+    BLOQUEADO_EM = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
+    UPDATED_AT = db.Column(db.DateTime, onupdate=datetime.utcnow)
+    DELETED_AT = db.Column(db.DateTime)
+
+    # Relacionamento com o usuário que bloqueou
+    bloqueador = db.relationship('Usuario', foreign_keys=[BLOQUEADO_POR])
+
+    def __repr__(self):
+        return f'<BloqueioDia {self.DATA_BLOQUEIO} - {self.AREA}>'
+
+    @staticmethod
+    def dia_esta_bloqueado(data, area, tipo_area):
+        """
+        Verifica se um dia específico está bloqueado para uma área
+
+        Args:
+            data: Data a verificar
+            area: Área (ex: SUPEC)
+            tipo_area: Tipo da área (ex: superintendencia)
+
+        Returns:
+            tuple: (bool, BloqueioDia ou None)
+        """
+        bloqueio = BloqueioDia.query.filter(
+            BloqueioDia.DATA_BLOQUEIO == data,
+            BloqueioDia.AREA == area,
+            BloqueioDia.TIPO_AREA == tipo_area,
+            BloqueioDia.DELETED_AT.is_(None)
+        ).first()
+
+        return bloqueio is not None, bloqueio
+
+    @staticmethod
+    def listar_bloqueios_mes(mes_referencia, area, tipo_area):
+        """
+        Lista todos os bloqueios de um mês específico
+
+        Args:
+            mes_referencia: Mês no formato YYYYMM (ex: 202601)
+            area: Área (ex: SUPEC)
+            tipo_area: Tipo da área (ex: superintendencia)
+
+        Returns:
+            list: Lista de objetos BloqueioDia
+        """
+        return BloqueioDia.query.filter(
+            BloqueioDia.MES_REFERENCIA == mes_referencia,
+            BloqueioDia.AREA == area,
+            BloqueioDia.TIPO_AREA == tipo_area,
+            BloqueioDia.DELETED_AT.is_(None)
+        ).order_by(BloqueioDia.DATA_BLOQUEIO).all()
+
+    @staticmethod
+    def listar_bloqueios_area(area, tipo_area=None):
+        """
+        Lista todos os bloqueios de uma área (não deletados)
+
+        Args:
+            area: Área (ex: SUPEC)
+            tipo_area: Tipo da área (opcional)
+
+        Returns:
+            list: Lista de objetos BloqueioDia
+        """
+        query = BloqueioDia.query.filter(
+            BloqueioDia.AREA == area,
+            BloqueioDia.DELETED_AT.is_(None)
+        )
+
+        if tipo_area:
+            query = query.filter(BloqueioDia.TIPO_AREA == tipo_area)
+
+        return query.order_by(BloqueioDia.DATA_BLOQUEIO.desc()).all()
+
+    @staticmethod
+    def obter_bloqueio(data, area, tipo_area):
+        """
+        Retorna o bloqueio de um dia específico
+
+        Args:
+            data: Data a buscar
+            area: Área (ex: SUPEC)
+            tipo_area: Tipo da área (ex: superintendencia)
+
+        Returns:
+            BloqueioDia ou None
+        """
+        return BloqueioDia.query.filter(
+            BloqueioDia.DATA_BLOQUEIO == data,
+            BloqueioDia.AREA == area,
+            BloqueioDia.TIPO_AREA == tipo_area,
+            BloqueioDia.DELETED_AT.is_(None)
+        ).first()

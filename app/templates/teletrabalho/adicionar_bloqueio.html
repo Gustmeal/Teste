@@ -112,7 +112,7 @@
                     </div>
 
                     <div class="mt-3">
-                        <div class="alert alert-secondary">
+                        <div class="alert alert-secondary" id="alertContador">
                             <strong>Dias selecionados:</strong> <span id="contadorDias">0 dia(s)</span>
                         </div>
                     </div>
@@ -177,6 +177,7 @@
     background: white;
     position: relative;
     transition: all 0.3s;
+    user-select: none;
 }
 
 .dia-bloqueio.vazio {
@@ -203,7 +204,7 @@
 }
 
 .dia-bloqueio.selecionavel {
-    cursor: pointer;
+    cursor: pointer !important;
 }
 
 .dia-bloqueio.selecionavel:hover {
@@ -246,11 +247,6 @@
 let diasSelecionados = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    const mesSelect = document.getElementById('mesSelect');
-    const areaSelect = document.getElementById('areaSelect');
-    const calendarioContainer = document.getElementById('calendarioContainer');
-    const btnBloquear = document.getElementById('btnBloquear');
-
     console.log('✅ Página carregada!');
 
     // Evento de submit do formulário
@@ -294,7 +290,7 @@ function manualCarregarCalendario() {
     const mes = mesSelect ? mesSelect.value : '';
     let area = '';
 
-    // ✅ CORRIGIDO: Tentar pegar área de várias formas
+    // Tentar pegar área de várias formas
     if (areaSelect && areaSelect.value) {
         area = areaSelect.value;
     } else if (areaHidden && areaHidden.value) {
@@ -304,9 +300,6 @@ function manualCarregarCalendario() {
     console.log('🔍 Tentando carregar calendário...');
     console.log('🔍 Mês selecionado:', mes);
     console.log('🔍 Área selecionada:', area);
-    console.log('🔍 mesSelect existe?', !!mesSelect);
-    console.log('🔍 areaSelect existe?', !!areaSelect);
-    console.log('🔍 areaHidden existe?', !!areaHidden);
 
     if (!mes || mes === '') {
         console.error('❌ Mês não selecionado!');
@@ -408,8 +401,10 @@ function renderizarCalendario(dias, primeiroDiaGrid, mesRef) {
         grid.appendChild(vazio);
     }
 
-    // Dias do mês
+    // ✅ CORREÇÃO PRINCIPAL: Contador de dias selecionáveis
     let diasSelecionaveis = 0;
+
+    // Dias do mês
     dias.forEach(dia => {
         const divDia = document.createElement('div');
         divDia.className = 'dia-bloqueio';
@@ -418,18 +413,20 @@ function renderizarCalendario(dias, primeiroDiaGrid, mesRef) {
         let html = `<div class="dia-numero">${dia.dia}</div>`;
 
         if (dia.ja_bloqueado) {
+            // Dia já bloqueado
             divDia.classList.add('ja-bloqueado');
             html += `<div class="dia-info">
                         <span class="badge bg-danger">JÁ BLOQUEADO</span><br>
                         <small class="text-muted">${dia.motivo_bloqueio || 'Sem motivo'}</small>
                      </div>`;
         } else if (!dia.eh_util) {
+            // Dia não útil (fim de semana ou feriado)
             divDia.classList.add('nao-util');
             html += `<div class="dia-info">
                         <span class="badge bg-secondary">${dia.feriado || 'Fim de semana'}</span>
                      </div>`;
         } else {
-            // Dia útil e não bloqueado - pode ser selecionado
+            // ✅ Dia útil e não bloqueado - PODE SER SELECIONADO
             divDia.classList.add('selecionavel');
             diasSelecionaveis++;
 
@@ -442,24 +439,30 @@ function renderizarCalendario(dias, primeiroDiaGrid, mesRef) {
             }
         }
 
-        // ✅ CORRIGIDO: Definir HTML PRIMEIRO
+        // ✅ CORREÇÃO: Definir HTML ANTES de adicionar ao grid
         divDia.innerHTML = html;
 
-        // ✅ DEPOIS adicionar ao grid
+        // ✅ CORREÇÃO: Adicionar ao grid
         grid.appendChild(divDia);
 
-        // ✅ E SÓ ENTÃO adicionar evento de click (se for selecionável)
+        // ✅ CORREÇÃO: Adicionar evento de click APENAS para dias selecionáveis
+        // Importante: fazer isso DEPOIS de adicionar ao grid
         if (divDia.classList.contains('selecionavel')) {
+            // Garantir cursor pointer via style inline (sobrescreve qualquer CSS)
             divDia.style.cursor = 'pointer';
-            divDia.addEventListener('click', function(e) {
-                console.log('🟢 Dia clicado:', dia.data);
-                toggleDia(dia.data, divDia);
+
+            // ✅ CORREÇÃO CRÍTICA: Usar dataset.data para capturar o valor correto
+            divDia.addEventListener('click', function() {
+                const dataClicada = this.dataset.data;
+                console.log('🟢 Dia clicado:', dataClicada);
+                toggleDia(dataClicada, this);
             });
         }
     });
 
     console.log('🔵 Total de dias selecionáveis:', diasSelecionaveis);
 
+    // ✅ Atualizar contador inicial (deve estar zerado)
     atualizarContador();
 }
 
@@ -467,13 +470,15 @@ function toggleDia(data, elemento) {
     console.log('🟡 toggleDia chamado para:', data);
     console.log('🟡 Array antes:', [...diasSelecionados]);
 
-    if (diasSelecionados.includes(data)) {
-        // Remover
-        diasSelecionados = diasSelecionados.filter(d => d !== data);
+    const index = diasSelecionados.indexOf(data);
+
+    if (index > -1) {
+        // Dia já está selecionado - REMOVER
+        diasSelecionados.splice(index, 1);
         elemento.classList.remove('selecionado');
         console.log('🔴 Dia removido:', data);
     } else {
-        // Adicionar
+        // Dia não está selecionado - ADICIONAR
         diasSelecionados.push(data);
         elemento.classList.add('selecionado');
         console.log('🟢 Dia adicionado:', data);
@@ -481,32 +486,37 @@ function toggleDia(data, elemento) {
 
     console.log('🟡 Array depois:', [...diasSelecionados]);
 
+    // ✅ SEMPRE atualizar o contador após mudança
     atualizarContador();
 }
 
 function atualizarContador() {
     const contador = document.getElementById('contadorDias');
     const btnBloquear = document.getElementById('btnBloquear');
+    const alertContador = document.getElementById('alertContador');
 
     console.log('🔵 Atualizando contador. Dias selecionados:', diasSelecionados.length);
 
+    // Atualizar texto do contador
     contador.textContent = diasSelecionados.length + ' dia(s)';
 
-    // ✅ CORRIGIDO: Garantir que o botão seja habilitado
+    // ✅ CORREÇÃO PRINCIPAL: Lógica de habilitação/desabilitação do botão
     if (diasSelecionados.length > 0) {
+        // HÁ DIAS SELECIONADOS - HABILITAR BOTÃO
         btnBloquear.disabled = false;
         btnBloquear.classList.remove('btn-secondary');
         btnBloquear.classList.add('btn-danger');
-        contador.parentElement.classList.remove('alert-secondary');
-        contador.parentElement.classList.add('alert-success');
-        console.log('✅ Botão HABILITADO');
+        alertContador.classList.remove('alert-secondary');
+        alertContador.classList.add('alert-success');
+        console.log('✅ Botão HABILITADO (vermelho)');
     } else {
+        // NÃO HÁ DIAS SELECIONADOS - DESABILITAR BOTÃO
         btnBloquear.disabled = true;
         btnBloquear.classList.remove('btn-danger');
         btnBloquear.classList.add('btn-secondary');
-        contador.parentElement.classList.remove('alert-success');
-        contador.parentElement.classList.add('alert-secondary');
-        console.log('❌ Botão DESABILITADO');
+        alertContador.classList.remove('alert-success');
+        alertContador.classList.add('alert-secondary');
+        console.log('❌ Botão DESABILITADO (cinza)');
     }
 }
 </script>

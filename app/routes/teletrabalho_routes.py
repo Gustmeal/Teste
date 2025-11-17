@@ -2,7 +2,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
-from app.models.teletrabalho import Teletrabalho, Feriado
+from app.models.teletrabalho import Teletrabalho, Feriado, BloqueioDia
 from app.models.usuario import Usuario, Empregado
 from app.utils.audit import registrar_log
 from datetime import datetime, timedelta, date
@@ -145,7 +145,7 @@ def gerar_opcoes_periodo():
             nome_mes = f"{meses_pt[mes - 1]}/{ano}"
 
             periodos.append({
-                'mes_ref': mes_ref,
+                'valor': mes_ref,  # ✅ CORREÇÃO: Mudei de 'mes_ref' para 'valor'
                 'nome': nome_mes,
                 'ano': ano,
                 'mes': mes
@@ -276,13 +276,13 @@ def calendario(mes_referencia):
             })
 
         # Buscar bloqueios do mês
-        bloqueios = Teletrabalho.listar_bloqueios_mes(mes_referencia, area, tipo_area)
+        bloqueios = BloqueioDia.listar_bloqueios_mes(mes_referencia, area, tipo_area)  # ✅ MUDANÇA
         dias_bloqueados = {}
         for bloq in bloqueios:
-            data_str = bloq.DATA_TELETRABALHO.strftime('%Y-%m-%d')
+            data_str = bloq.DATA_BLOQUEIO.strftime('%Y-%m-%d')  # ✅ MUDANÇA (era DATA_TELETRABALHO)
             dias_bloqueados[data_str] = {
-                'motivo': bloq.OBSERVACAO,
-                'bloqueado_por': bloq.aprovador.NOME if bloq.aprovador else 'Gestor'
+                'motivo': bloq.MOTIVO,  # ✅ MUDANÇA (era OBSERVACAO)
+                'bloqueado_por': bloq.bloqueador.NOME if bloq.bloqueador else 'Gestor'  # ✅ MUDANÇA
             }
 
         # Montar estrutura de dias do calendário
@@ -411,7 +411,7 @@ def solicitar():
                 return redirect(url_for('teletrabalho.calendario', mes_referencia=mes_referencia))
 
             # 2. ✅ NOVA VALIDAÇÃO - Verificar se o dia está bloqueado
-            bloqueado, bloqueio = Teletrabalho.dia_esta_bloqueado(data, area, tipo_area)
+            bloqueado, bloqueio = BloqueioDia.dia_esta_bloqueado(data, area, tipo_area)
             if bloqueado:
                 motivo_bloqueio = bloqueio.OBSERVACAO if bloqueio and bloqueio.OBSERVACAO else "bloqueado pelo gestor"
                 flash(f'A data {data.strftime("%d/%m/%Y")} está bloqueada: {motivo_bloqueio}', 'danger')
@@ -1124,6 +1124,7 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
     - NUNCA dias consecutivos
     - Respeita limite de 30% por dia
     - NÃO sorteia em dias de férias
+    - NÃO sorteia em dias bloqueados
     """
     import random
     from datetime import datetime, timedelta
@@ -1132,29 +1133,33 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
         ano = int(mes_referencia[:4])
         mes = int(mes_referencia[4:])
 
-        # 1. BUSCAR E SEPARAR PESSOAS POR CARGO
-        usuarios_query = db.session.query(
-            Usuario.ID,
-            Usuario.NOME,
-            Empregado.dsCargo
-        ).join(
+        # 1. Calcular primeiro e último dia
+        primeiro_dia = date(ano, mes, 1)
+        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+
+        # 2. Buscar pessoas elegíveis (gerentes e não-gerentes)
+        usuarios = db.session.query(Usuario, Empregado).join(
             Empregado, Usuario.FK_PESSOA == Empregado.pkPessoa
         ).filter(
             Usuario.ATIVO == True,
             Usuario.DELETED_AT.is_(None),
             Empregado.fkStatus == 1,
-            Empregado.sgSuperintendencia == area,
-            ~Empregado.dsCargo.ilike('%estagiário%'),
-            ~Empregado.dsCargo.ilike('%estagiaria%'),
-            ~Empregado.dsCargo.ilike('%superintendente%')
+            Empregado.sgSuperintendencia == area
         ).all()
 
-        if not usuarios_query:
-            return {'sucesso': False, 'erro': 'Nenhuma pessoa elegível'}
+        gerentes = []
+        nao_gerentes = []
 
-        # ✅ BUSCAR FÉRIAS DE TODOS OS USUÁRIOS DA ÁREA NESTE MÊS
-        print(f"[SORTEIO] Buscando férias do mês {mes_referencia} na área {area}...")
+        for usuario, empregado in usuarios:
+            if empregado.dsCargo and 'GERENTE' in empregado.dsCargo.upper():
+                gerentes.append(usuario)
+            else:
+                nao_gerentes.append(usuario)
 
+        if not usuarios:
+            return {'sucesso': False, 'erro': 'Nenhum usuário elegível encontrado'}
+
+        # 3. ✅ BUSCAR FÉRIAS E BLOQUEIOS DO MÊS
         ferias_mes = {}
         ferias_query = Teletrabalho.query.filter(
             Teletrabalho.MES_REFERENCIA == mes_referencia,
@@ -1163,92 +1168,96 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
             Teletrabalho.DELETED_AT.is_(None)
         ).all()
 
-        for f in ferias_query:
-            if f.USUARIO_ID not in ferias_mes:
-                ferias_mes[f.USUARIO_ID] = []
-            ferias_mes[f.USUARIO_ID].append(f.DATA_TELETRABALHO)
+        for feria in ferias_query:
+            if feria.USUARIO_ID not in ferias_mes:
+                ferias_mes[feria.USUARIO_ID] = []
+            ferias_mes[feria.USUARIO_ID].append(feria.DATA_TELETRABALHO)
 
-        print(f"[SORTEIO] Encontradas {len(ferias_query)} férias marcadas para {len(ferias_mes)} pessoas")
+        # ✅ NOVO: BUSCAR BLOQUEIOS DO MÊS
+        bloqueios_mes = []
+        bloqueios_query = BloqueioDia.query.filter(
+            BloqueioDia.MES_REFERENCIA == mes_referencia,
+            BloqueioDia.AREA == area,
+            BloqueioDia.DELETED_AT.is_(None)
+        ).all()
 
-        # Separar gerentes de não-gerentes
-        gerentes = []
-        nao_gerentes = []
+        for bloqueio in bloqueios_query:
+            bloqueios_mes.append(bloqueio.DATA_BLOQUEIO)
 
-        for u in usuarios_query:
-            if u.dsCargo and 'GERENTE' in u.dsCargo.upper():
-                gerentes.append(u)
-            else:
-                nao_gerentes.append(u)
+        print(f"[SORTEIO] Dias bloqueados encontrados: {len(bloqueios_mes)}")
 
-        # 2. CALCULAR LIMITE DIÁRIO
-        limite_diario, _ = calcular_limite_area(area, 'superintendencia')
-
-        # 3. ORGANIZAR DIAS DO MÊS POR SEMANA
-        primeiro_dia = date(ano, mes, 1)
-        ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
-
-        # Estrutura: {numero_semana: {dia_semana: [datas]}}
+        # 4. Organizar dias úteis por semana (EXCLUINDO BLOQUEIOS)
         semanas = {}
+        semana_atual = 0
         data_atual = primeiro_dia
 
         while data_atual <= ultimo_dia:
             if Feriado.eh_dia_util(data_atual):
-                num_semana = data_atual.isocalendar()[1]
-                dia_semana = data_atual.weekday()  # 0=SEG, 1=TER, 2=QUA, 3=QUI, 4=SEX
+                # ✅ NOVO: Verificar se não está bloqueado
+                if data_atual not in bloqueios_mes:
+                    dia_semana = data_atual.weekday()
+                    if dia_semana == 0:
+                        semana_atual += 1
 
-                if num_semana not in semanas:
-                    semanas[num_semana] = {0: [], 1: [], 2: [], 3: [], 4: []}
+                    if semana_atual not in semanas:
+                        semanas[semana_atual] = {}
 
-                semanas[num_semana][dia_semana].append(data_atual)
+                    if dia_semana not in semanas[semana_atual]:
+                        semanas[semana_atual][dia_semana] = []
+
+                    semanas[semana_atual][dia_semana].append(data_atual)
 
             data_atual += timedelta(days=1)
 
-        if len(semanas) < 2:
-            return {'sucesso': False, 'erro': 'Mês precisa ter pelo menos 2 semanas com dias úteis'}
+        # 5. Calcular limite (30%)
+        total_pessoas = len(usuarios)
+        limite_diario = math.ceil(total_pessoas * 0.30)
 
-        # 4. CONTROLE DE OCUPAÇÃO
+        # 6. CONTROLE DE OCUPAÇÃO (EXCLUINDO BLOQUEIOS)
         ocupacao_por_dia = {}
         data_atual = primeiro_dia
         while data_atual <= ultimo_dia:
-            if Feriado.eh_dia_util(data_atual):
+            # ✅ NOVO: Só incluir dias não bloqueados
+            if Feriado.eh_dia_util(data_atual) and data_atual not in bloqueios_mes:
                 ocupacao_por_dia[data_atual] = 0
             data_atual += timedelta(days=1)
 
         dias_por_usuario = {}
         avisos_ferias = []
 
-        # 5. SORTEAR PARA NÃO-GERENTES (5 dias: 3+2 alternados)
+        # 7. SORTEAR PARA NÃO-GERENTES (5 dias: 3+2 alternados)
         random.shuffle(nao_gerentes)
 
         for usuario in nao_gerentes:
             # ✅ PEGAR FÉRIAS DESTE USUÁRIO
             dias_ferias_usuario = ferias_mes.get(usuario.ID, [])
 
-            # ✅ CALCULAR QUANTOS DIAS ÚTEIS DISPONÍVEIS (excluindo férias)
+            # ✅ CALCULAR QUANTOS DIAS ÚTEIS DISPONÍVEIS (excluindo férias E bloqueios)
             dias_uteis_disponiveis = sum(
                 1 for d in ocupacao_por_dia.keys()
-                if d not in dias_ferias_usuario
+                if d not in dias_ferias_usuario and d not in bloqueios_mes
             )
 
             # ✅ AJUSTAR QUANTIDADE ESPERADA
             if dias_uteis_disponiveis < 5:
                 qtd_esperada = min(dias_uteis_disponiveis, 5)
                 avisos_ferias.append(
-                    f"{usuario.NOME}: {qtd_esperada} dias (férias: {len(dias_ferias_usuario)} dias)"
+                    f"{usuario.NOME}: {qtd_esperada} dias (férias: {len(dias_ferias_usuario)} dias, bloqueios: {len(bloqueios_mes)} dias)"
                 )
             else:
                 qtd_esperada = 5
 
             if qtd_esperada == 0:
-                avisos_ferias.append(f"{usuario.NOME}: NENHUM dia (mês todo de férias)")
+                avisos_ferias.append(f"{usuario.NOME}: NENHUM dia (sem dias disponíveis)")
                 continue
 
-            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS
+            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS E BLOQUEIOS
+            dias_excluir = list(set(dias_ferias_usuario + bloqueios_mes))
             dias_sorteados = sortear_5_dias_alternados(
                 semanas,
                 ocupacao_por_dia,
                 limite_diario,
-                excluir_datas=dias_ferias_usuario  # ✅ NOVO PARÂMETRO
+                excluir_datas=dias_excluir
             )
 
             if len(dias_sorteados) >= qtd_esperada:
@@ -1258,20 +1267,20 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
             else:
                 return {
                     'sucesso': False,
-                    'erro': f'Não conseguiu sortear {qtd_esperada} dias para {usuario.NOME} (tem {len(dias_ferias_usuario)} dias de férias)'
+                    'erro': f'Não conseguiu sortear {qtd_esperada} dias para {usuario.NOME}'
                 }
 
-        # 6. SORTEAR PARA GERENTES (1-2 dias, semanas diferentes)
+        # 8. SORTEAR PARA GERENTES (1-2 dias, semanas diferentes)
         random.shuffle(gerentes)
 
         for usuario in gerentes:
             # ✅ PEGAR FÉRIAS DESTE GERENTE
             dias_ferias_usuario = ferias_mes.get(usuario.ID, [])
 
-            # ✅ CALCULAR DIAS DISPONÍVEIS
+            # ✅ CALCULAR DIAS DISPONÍVEIS (excluindo férias E bloqueios)
             dias_uteis_disponiveis = sum(
                 1 for d in ocupacao_por_dia.keys()
-                if d not in dias_ferias_usuario
+                if d not in dias_ferias_usuario and d not in bloqueios_mes
             )
 
             # ✅ AJUSTAR QUANTIDADE (gerentes podem ter 1 ou 2 dias)
@@ -1279,22 +1288,23 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
                 qtd_dias_gerente = max(1, dias_uteis_disponiveis)
                 if qtd_dias_gerente > 0:
                     avisos_ferias.append(
-                        f"{usuario.NOME} (Gerente): {qtd_dias_gerente} dia (férias: {len(dias_ferias_usuario)} dias)"
+                        f"{usuario.NOME} (Gerente): {qtd_dias_gerente} dia (férias: {len(dias_ferias_usuario)} dias, bloqueios: {len(bloqueios_mes)} dias)"
                     )
             else:
                 qtd_dias_gerente = 2
 
             if qtd_dias_gerente == 0:
-                avisos_ferias.append(f"{usuario.NOME} (Gerente): NENHUM dia (mês todo de férias)")
+                avisos_ferias.append(f"{usuario.NOME} (Gerente): NENHUM dia (sem dias disponíveis)")
                 continue
 
-            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS
+            # ✅ SORTEAR EXCLUINDO DIAS DE FÉRIAS E BLOQUEIOS
+            dias_excluir = list(set(dias_ferias_usuario + bloqueios_mes))
             dias_sorteados = sortear_dias_gerente(
                 semanas,
                 ocupacao_por_dia,
                 limite_diario,
                 qtd_dias_gerente,
-                excluir_datas=dias_ferias_usuario  # ✅ NOVO PARÂMETRO
+                excluir_datas=dias_excluir
             )
 
             if len(dias_sorteados) >= qtd_dias_gerente:
@@ -1304,10 +1314,10 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
             else:
                 return {
                     'sucesso': False,
-                    'erro': f'Não conseguiu sortear dias para gerente {usuario.NOME} (tem {len(dias_ferias_usuario)} dias de férias)'
+                    'erro': f'Não conseguiu sortear dias para gerente {usuario.NOME}'
                 }
 
-        # 7. SALVAR NO BANCO
+        # 9. SALVAR NO BANCO
         total_dias_cadastrados = 0
 
         for usuario_id, dias in dias_por_usuario.items():
@@ -1320,7 +1330,7 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
                     TIPO_AREA='superintendencia',
                     STATUS='APROVADO',
                     TIPO_PERIODO='ALTERNADO',
-                    TIPO_MARCACAO='TELETRABALHO',  # ✅ IMPORTANTE: Marcar como TELETRABALHO
+                    TIPO_MARCACAO='TELETRABALHO',
                     OBSERVACAO=f'[SORTEIO AUTO] {datetime.now().strftime("%d/%m/%Y %H:%M")}',
                     APROVADO_POR=admin_id,
                     APROVADO_EM=datetime.utcnow()
@@ -1330,14 +1340,14 @@ def sortear_teletrabalho_automatico(area, mes_referencia, qtd_dias_por_pessoa, a
 
         db.session.commit()
 
-        # ✅ INCLUIR AVISOS DE FÉRIAS NO RESULTADO
+        # ✅ INCLUIR AVISOS DE FÉRIAS E BLOQUEIOS NO RESULTADO
         return {
             'sucesso': True,
             'total_sorteados': len(dias_por_usuario),
             'total_dias': total_dias_cadastrados,
             'gerentes': len(gerentes),
             'nao_gerentes': len(nao_gerentes),
-            'avisos_ferias': avisos_ferias  # ✅ NOVO
+            'avisos_ferias': avisos_ferias
         }
 
     except Exception as e:
@@ -2562,10 +2572,10 @@ def admin_salvar_ferias():
 
 # ==================== BLOQUEIO DE DIAS ====================
 
-@teletrabalho_bp.route('/bloqueios', methods=['GET'])
+@teletrabalho_bp.route('/bloqueios')
 @login_required
 def listar_bloqueios():
-    """Lista bloqueios de dias"""
+    """Lista todos os bloqueios de dias"""
     usuario = Usuario.query.get(current_user.id)
 
     if not eh_gestor_ou_admin(usuario):
@@ -2586,31 +2596,22 @@ def listar_bloqueios():
                     flash('Você não está vinculado a nenhuma área.', 'warning')
                     return redirect(url_for('teletrabalho.index'))
 
-        # Query base - bloqueios
-        query = Teletrabalho.query.filter(
-            Teletrabalho.TIPO_MARCACAO == 'BLOQUEIO',
-            Teletrabalho.DELETED_AT.is_(None)
+        # ✅ NOVA LÓGICA: Query na nova tabela
+        query = BloqueioDia.query.filter(
+            BloqueioDia.DELETED_AT.is_(None)
         )
 
         # Filtrar por área se for gerente
         if not pode_ver_todas_areas(usuario) and area_filtro:
-            query = query.filter(Teletrabalho.AREA == area_filtro)
+            query = query.filter(BloqueioDia.AREA == area_filtro)
         elif area_filtro:
-            query = query.filter(Teletrabalho.AREA == area_filtro)
+            query = query.filter(BloqueioDia.AREA == area_filtro)
 
         # Filtrar por mês se especificado
         if mes_ref:
-            ano = int(mes_ref[:4])
-            mes = int(mes_ref[4:])
-            primeiro_dia = date(ano, mes, 1)
-            ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
+            query = query.filter(BloqueioDia.MES_REFERENCIA == mes_ref)
 
-            query = query.filter(
-                Teletrabalho.DATA_TELETRABALHO >= primeiro_dia,
-                Teletrabalho.DATA_TELETRABALHO <= ultimo_dia
-            )
-
-        bloqueios = query.order_by(Teletrabalho.DATA_TELETRABALHO.desc()).all()
+        bloqueios = query.order_by(BloqueioDia.DATA_BLOQUEIO.desc()).all()
 
         # Buscar áreas disponíveis
         if pode_ver_todas_areas(usuario):
@@ -2681,26 +2682,22 @@ def adicionar_bloqueio():
             bloqueios_existentes = 0
 
             for data_bloqueio in datas:
-                # Verificar se já existe bloqueio
-                ja_bloqueado, _ = Teletrabalho.dia_esta_bloqueado(data_bloqueio, area, tipo_area)
+                # ✅ NOVA LÓGICA: Verificar se já existe bloqueio na nova tabela
+                ja_bloqueado, _ = BloqueioDia.dia_esta_bloqueado(data_bloqueio, area, tipo_area)
 
                 if ja_bloqueado:
                     bloqueios_existentes += 1
                     continue
 
-                # Criar bloqueio
-                bloqueio = Teletrabalho(
-                    USUARIO_ID=None,  # Bloqueio não tem usuário específico
-                    DATA_TELETRABALHO=data_bloqueio,
+                # ✅ NOVA LÓGICA: Criar bloqueio na tabela específica
+                bloqueio = BloqueioDia(
+                    DATA_BLOQUEIO=data_bloqueio,
                     MES_REFERENCIA=data_bloqueio.strftime('%Y%m'),
                     AREA=area,
                     TIPO_AREA=tipo_area,
-                    STATUS='APROVADO',
-                    TIPO_PERIODO='BLOQUEIO',
-                    TIPO_MARCACAO='BLOQUEIO',
-                    OBSERVACAO=motivo if motivo else 'Dia bloqueado pelo gestor',
-                    APROVADO_POR=current_user.id,
-                    APROVADO_EM=datetime.utcnow()
+                    MOTIVO=motivo if motivo else 'Dia bloqueado pelo gestor',
+                    BLOQUEADO_POR=current_user.id,
+                    BLOQUEADO_EM=datetime.utcnow()
                 )
                 db.session.add(bloqueio)
                 bloqueios_adicionados += 1
@@ -2726,7 +2723,7 @@ def adicionar_bloqueio():
             flash(f'Erro ao bloquear dias: {str(e)}', 'danger')
             return redirect(url_for('teletrabalho.adicionar_bloqueio'))
 
-    # GET - Exibir formulário
+    # GET - Exibir formulário (continua igual)
     try:
         nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
 
@@ -2787,9 +2784,9 @@ def bloqueios_calendario(mes_referencia):
         primeiro_dia = date(ano, mes, 1)
         ultimo_dia = date(ano, mes, calendar.monthrange(ano, mes)[1])
 
-        # Buscar bloqueios existentes
-        bloqueios = Teletrabalho.listar_bloqueios_mes(mes_referencia, area, tipo_area)
-        datas_bloqueadas = {b.DATA_TELETRABALHO.strftime('%Y-%m-%d'): b.OBSERVACAO for b in bloqueios}
+        # ✅ NOVA LÓGICA: Buscar bloqueios da nova tabela
+        bloqueios = BloqueioDia.listar_bloqueios_mes(mes_referencia, area, tipo_area)
+        datas_bloqueadas = {b.DATA_BLOQUEIO.strftime('%Y-%m-%d'): b.MOTIVO for b in bloqueios}
 
         # Buscar teletrabalhos já agendados (apenas TELETRABALHO, não férias nem bloqueios)
         teletrabalhos = Teletrabalho.query.filter(
@@ -2842,7 +2839,7 @@ def bloqueios_calendario(mes_referencia):
 @teletrabalho_bp.route('/bloqueios/excluir/<int:id>', methods=['POST'])
 @login_required
 def excluir_bloqueio(id):
-    """Remove bloqueio de dia"""
+    """Remove bloqueio de dia (soft delete)"""
     usuario = Usuario.query.get(current_user.id)
 
     if not eh_gestor_ou_admin(usuario):
@@ -2850,12 +2847,8 @@ def excluir_bloqueio(id):
         return redirect(url_for('teletrabalho.listar_bloqueios'))
 
     try:
-        bloqueio = Teletrabalho.query.get_or_404(id)
-
-        # Validar que é realmente um bloqueio
-        if bloqueio.TIPO_MARCACAO != 'BLOQUEIO':
-            flash('Este registro não é um bloqueio.', 'danger')
-            return redirect(url_for('teletrabalho.listar_bloqueios'))
+        # ✅ NOVA LÓGICA: Buscar na nova tabela
+        bloqueio = BloqueioDia.query.get_or_404(id)
 
         # Validar permissão para gerentes
         nivel_acesso = verificar_nivel_acesso_teletrabalho(usuario)
@@ -2870,7 +2863,7 @@ def excluir_bloqueio(id):
                 return redirect(url_for('teletrabalho.listar_bloqueios'))
 
         # Soft delete
-        data_bloqueada = bloqueio.DATA_TELETRABALHO
+        data_bloqueada = bloqueio.DATA_BLOQUEIO
         area_bloqueada = bloqueio.AREA
 
         bloqueio.DELETED_AT = datetime.utcnow()

@@ -34,7 +34,7 @@
                         <label class="form-label fw-bold">Período:</label>
                         <select name="mes_ref" class="form-select">
                             {% for periodo in periodos %}
-                            <option value="{{ periodo.mes_ref }}" {% if periodo.mes_ref == mes_ref %}selected{% endif %}>
+                            <option value="{{ periodo.valor }}" {% if periodo.valor == mes_ref %}selected{% endif %}>
                                 {{ periodo.nome }}
                             </option>
                             {% endfor %}
