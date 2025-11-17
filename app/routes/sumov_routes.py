@@ -240,6 +240,36 @@ def lista_despesas():
                            despesas=despesas)
 
 
+@sumov_bp.route('/despesas-pagamentos/verificar-duplicata', methods=['POST'])
+@login_required
+def verificar_duplicata_despesa():
+    """Verifica se já existe registro com os mesmos dados"""
+    try:
+        data = request.get_json()
+
+        nr_contrato = data.get('nr_contrato', '').strip()
+        id_item_servico = int(data.get('id_item_servico'))
+        dt_lancamento = data.get('dt_lancamento')
+        vr_despesa = data.get('vr_despesa', '0').replace(',', '.')
+
+        origem = DespesasAnalitico.verificar_registro_existente(
+            nr_contrato,
+            id_item_servico,
+            dt_lancamento,
+            vr_despesa
+        )
+
+        return jsonify({
+            'existe': origem is not None,
+            'origem': origem
+        })
+
+    except Exception as e:
+        return jsonify({
+            'erro': str(e)
+        }), 400
+
+
 @sumov_bp.route('/despesas-pagamentos/nova', methods=['GET', 'POST'])
 @login_required
 def nova_despesa():
@@ -252,10 +282,33 @@ def nova_despesa():
             dt_lancamento = datetime.strptime(request.form.get('dt_lancamento_pagamento'), '%Y-%m-%d')
             vr_despesa = Decimal(request.form.get('vr_despesa', '0').replace(',', '.'))
             dsc_tipo_forma_pgto = request.form.get('dsc_tipo_forma_pgto')
+            confirmar_sisgea = request.form.get('confirmar_sisgea') == 'true'
 
             # Validações
             if not nr_contrato:
                 flash('Por favor, informe o número do contrato.', 'danger')
+                return redirect(url_for('sumov.nova_despesa'))
+
+            # Verificar duplicata ANTES de prosseguir
+            origem_existente = DespesasAnalitico.verificar_registro_existente(
+                nr_contrato,
+                id_item_servico,
+                dt_lancamento,
+                vr_despesa
+            )
+
+            # Se já existe registro SUMOV, bloqueia totalmente
+            if origem_existente == 'SUMOV':
+                flash(
+                    'Este registro já foi inserido anteriormente pelo SUMOV com os mesmos dados (Contrato, Item de Serviço, Data de Pagamento e Valor).',
+                    'danger')
+                return redirect(url_for('sumov.nova_despesa'))
+
+            # Se existe registro SISGEA e usuário não confirmou, retorna para confirmação
+            if origem_existente == 'SISGEA' and not confirmar_sisgea:
+                # Isso nunca deve acontecer porque o JavaScript trata isso
+                # Mas deixamos como segurança
+                flash('Este contrato já possui registro no SISGEA. Por favor, confirme se deseja continuar.', 'warning')
                 return redirect(url_for('sumov.nova_despesa'))
 
             # Busca o item de serviço selecionado
@@ -287,11 +340,15 @@ def nova_despesa():
             db.session.commit()
 
             # Registrar log
+            msg_log = f'Novo pagamento registrado: Contrato {nr_contrato} - Ocorrência {nr_ocorrencia} - Valor R$ {vr_despesa}'
+            if origem_existente == 'SISGEA':
+                msg_log += ' (Confirmado apesar de existir no SISGEA)'
+
             registrar_log(
                 acao='criar',
                 entidade='despesa_pagamento',
                 entidade_id=nr_ocorrencia,
-                descricao=f'Novo pagamento registrado: Contrato {nr_contrato} - Ocorrência {nr_ocorrencia} - Valor R$ {vr_despesa}'
+                descricao=msg_log
             )
 
             flash('Pagamento registrado com sucesso!', 'success')
@@ -307,7 +364,6 @@ def nova_despesa():
 
     return render_template('sumov/despesas_pagamentos/nova.html',
                            itens_servico=itens_servico)
-
 
 @sumov_bp.route('/evidencias')
 @login_required

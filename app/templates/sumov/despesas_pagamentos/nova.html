@@ -162,17 +162,91 @@
         }
     });
 
-    // Validação do formulário
-    document.getElementById('formDespesa').addEventListener('submit', function(e) {
+    // Validação do formulário com verificação de duplicatas
+    document.getElementById('formDespesa').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
         const valor = document.getElementById('vr_despesa').value;
 
         if (!valor || valor === '0,00' || valor === '') {
-            e.preventDefault();
             alert('Por favor, informe um valor válido para a despesa!');
             return false;
         }
 
-        return true;
+        // Capturar dados do formulário
+        const nr_contrato = document.getElementById('nr_contrato').value.trim();
+        const id_item_servico = document.getElementById('id_item_servico').value;
+        const dt_lancamento = document.getElementById('dt_lancamento_pagamento').value;
+        const vr_despesa = document.getElementById('vr_despesa').value;
+
+        // Validar campos obrigatórios
+        if (!nr_contrato || !id_item_servico || !dt_lancamento) {
+            alert('Por favor, preencha todos os campos obrigatórios!');
+            return false;
+        }
+
+        try {
+            // Verificar duplicata via AJAX
+            const response = await fetch('{{ url_for("sumov.verificar_duplicata_despesa") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    nr_contrato: nr_contrato,
+                    id_item_servico: id_item_servico,
+                    dt_lancamento: dt_lancamento,
+                    vr_despesa: vr_despesa
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.existe) {
+                if (data.origem === 'SUMOV') {
+                    // Bloqueia totalmente se já existe no SUMOV
+                    alert('❌ Este registro já foi inserido anteriormente pelo SUMOV com os mesmos dados:\n\n' +
+                          '• Contrato: ' + nr_contrato + '\n' +
+                          '• Item de Serviço: ' + document.getElementById('id_item_servico').options[document.getElementById('id_item_servico').selectedIndex].text + '\n' +
+                          '• Data de Pagamento: ' + new Date(dt_lancamento).toLocaleDateString('pt-BR') + '\n' +
+                          '• Valor: R$ ' + vr_despesa + '\n\n' +
+                          'Por favor, verifique os dados antes de continuar.');
+                    return false;
+                } else if (data.origem === 'SISGEA') {
+                    // Pergunta se quer continuar mesmo com registro no SISGEA
+                    const confirmar = confirm('⚠️ ATENÇÃO!\n\n' +
+                                             'Este contrato já possui um registro no SISGEA com os mesmos dados:\n\n' +
+                                             '• Contrato: ' + nr_contrato + '\n' +
+                                             '• Item de Serviço: ' + document.getElementById('id_item_servico').options[document.getElementById('id_item_servico').selectedIndex].text + '\n' +
+                                             '• Data de Pagamento: ' + new Date(dt_lancamento).toLocaleDateString('pt-BR') + '\n' +
+                                             '• Valor: R$ ' + vr_despesa + '\n\n' +
+                                             'Deseja continuar mesmo assim?');
+
+                    if (confirmar) {
+                        // Adiciona campo hidden para confirmar
+                        const inputConfirmar = document.createElement('input');
+                        inputConfirmar.type = 'hidden';
+                        inputConfirmar.name = 'confirmar_sisgea';
+                        inputConfirmar.value = 'true';
+                        this.appendChild(inputConfirmar);
+
+                        // Submete o formulário
+                        this.submit();
+                    }
+                    return false;
+                }
+            }
+
+            // Se não existe duplicata ou passou pelas validações, submete
+            this.submit();
+
+        } catch (error) {
+            console.error('Erro ao verificar duplicata:', error);
+            alert('Erro ao verificar duplicata. Por favor, tente novamente.');
+            return false;
+        }
+
+        return false;
     });
 
     // Define a data máxima como hoje

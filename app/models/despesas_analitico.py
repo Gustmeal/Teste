@@ -86,6 +86,42 @@ class DespesasAnalitico(db.Model):
             DespesasAnalitico.NR_OCORRENCIA.desc()
         ).all()
 
+    @staticmethod
+    def verificar_registro_existente(nr_contrato, id_item_servico, dt_lancamento, vr_despesa):
+        """
+        Verifica se já existe um registro com os mesmos dados.
+        Retorna:
+            - None: se não existir registro duplicado
+            - 'SUMOV': se existir registro com origem SUMOV
+            - 'SISGEA': se existir registro com origem SISGEA
+        """
+        from datetime import date
+
+        # Converter dt_lancamento para date se for datetime
+        if isinstance(dt_lancamento, str):
+            dt_lancamento = datetime.strptime(dt_lancamento, '%Y-%m-%d').date()
+        elif hasattr(dt_lancamento, 'date'):
+            dt_lancamento = dt_lancamento.date()
+
+        # Converter valor para Decimal
+        if isinstance(vr_despesa, str):
+            vr_despesa = Decimal(vr_despesa.replace(',', '.'))
+        elif not isinstance(vr_despesa, Decimal):
+            vr_despesa = Decimal(str(vr_despesa))
+
+        # Buscar registro duplicado
+        registro = DespesasAnalitico.query.filter_by(
+            NR_CONTRATO=nr_contrato,
+            ID_ITEM_SERVICO=id_item_servico,
+            DT_LANCAMENTO_PAGAMENTO=dt_lancamento,
+            VR_DESPESA=vr_despesa
+        ).first()
+
+        if registro:
+            return registro.NO_ORIGEM_REGISTRO
+
+        return None
+
 
 class OcorrenciasMovItemServico(db.Model):
     """Modelo para a tabela PAR_TB015_OCORRENCIAS_MOV_ITEM_SERVICO"""
