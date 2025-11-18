@@ -91,14 +91,22 @@ def inclusao():
             # NU_CONTRATO_2 sempre NULL
             novo_deposito.NU_CONTRATO_2 = None
 
-            # Eventos contábeis
-            evento_anterior = request.form.get('evento_contabil_anterior')
-            if evento_anterior:
-                novo_deposito.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
+            # Eventos contábeis (Preenchimento automático)
+            # EVENTO_CONTABIL_ANTERIOR sempre 22607
+            novo_deposito.EVENTO_CONTABIL_ANTERIOR = 22607
 
-            evento_atual = request.form.get('evento_contabil_atual')
-            if evento_atual:
-                novo_deposito.EVENTO_CONTABIL_ATUAL = int(evento_atual)
+            # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO
+            id_centro_int = int(id_centro) # id_centro já foi validado e convertido para int
+            mapeamento_eventos = {
+                1: 22611,
+                2: 22612,
+                3: 22610,
+                4: 22611,
+                5: 22613,
+                6: 22607,
+                7: 22710
+            }
+            novo_deposito.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_int)
 
             # Observação
             novo_deposito.OBS = request.form.get('obs')
@@ -548,17 +556,16 @@ def editar(nu_linha):
 
                 estorno.NU_CONTRATO_2 = None
 
-                evento_anterior = request.form.get('evento_contabil_anterior')
-                if evento_anterior:
-                    estorno.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
-                else:
-                    estorno.EVENTO_CONTABIL_ANTERIOR = None
+                                # Eventos contábeis (Preenchimento automático)
+                # EVENTO_CONTABIL_ANTERIOR sempre 22607
+                estorno.EVENTO_CONTABIL_ANTERIOR = 22607
 
-                evento_atual = request.form.get('evento_contabil_atual')
-                if evento_atual:
-                    estorno.EVENTO_CONTABIL_ATUAL = int(evento_atual)
-                else:
-                    estorno.EVENTO_CONTABIL_ATUAL = None
+                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Antiga)
+                id_centro_antigo_int = centro_antigo
+                mapeamento_eventos = {
+                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
+                }
+                estorno.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_antigo_int)
 
                 estorno.OBS = request.form.get('obs')
                 estorno.IC_APROPRIADO = None
@@ -627,15 +634,16 @@ def editar(nu_linha):
 
                 nova_linha.NU_CONTRATO_2 = None
 
-                if evento_anterior:
-                    nova_linha.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
-                else:
-                    nova_linha.EVENTO_CONTABIL_ANTERIOR = None
+                                # Eventos contábeis (Preenchimento automático)
+                # EVENTO_CONTABIL_ANTERIOR sempre 22607
+                nova_linha.EVENTO_CONTABIL_ANTERIOR = 22607
 
-                if evento_atual:
-                    nova_linha.EVENTO_CONTABIL_ATUAL = int(evento_atual)
-                else:
-                    nova_linha.EVENTO_CONTABIL_ATUAL = None
+                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Nova)
+                id_centro_novo_int = novo_centro
+                mapeamento_eventos = {
+                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
+                }
+                nova_linha.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_novo_int)
 
                 nova_linha.OBS = request.form.get('obs')
                 nova_linha.IC_APROPRIADO = None
@@ -722,17 +730,16 @@ def editar(nu_linha):
 
                 deposito_obj.NU_CONTRATO_2 = None
 
-                evento_anterior = request.form.get('evento_contabil_anterior')
-                if evento_anterior:
-                    deposito_obj.EVENTO_CONTABIL_ANTERIOR = int(evento_anterior)
-                else:
-                    deposito_obj.EVENTO_CONTABIL_ANTERIOR = None
+                                # Eventos contábeis (Preenchimento automático)
+                # EVENTO_CONTABIL_ANTERIOR sempre 22607
+                deposito_obj.EVENTO_CONTABIL_ANTERIOR = 22607
 
-                evento_atual = request.form.get('evento_contabil_atual')
-                if evento_atual:
-                    deposito_obj.EVENTO_CONTABIL_ATUAL = int(evento_atual)
-                else:
-                    deposito_obj.EVENTO_CONTABIL_ATUAL = None
+                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Atual)
+                id_centro_atual_int = novo_centro
+                mapeamento_eventos = {
+                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
+                }
+                deposito_obj.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_atual_int)
 
                 deposito_obj.OBS = request.form.get('obs')
                 deposito_obj.IC_APROPRIADO = None

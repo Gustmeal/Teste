@@ -145,24 +145,12 @@
                                value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
                     </div>
 
-                    <!-- Quarta Linha -->
-                    <div class="col-md-3">
-                        <label for="evento_contabil_anterior" class="form-label">Evento Contábil Anterior</label>
-                        <input type="number" class="form-control" id="evento_contabil_anterior" name="evento_contabil_anterior"
-                               value="{{ deposito.EVENTO_CONTABIL_ANTERIOR or '' }}">
-                    </div>
-
-                    <div class="col-md-3">
-                        <label for="evento_contabil_atual" class="form-label">Evento Contábil Atual</label>
-                        <input type="number" class="form-control" id="evento_contabil_atual" name="evento_contabil_atual"
-                               value="{{ deposito.EVENTO_CONTABIL_ATUAL or '' }}">
-                    </div>
-
-                    <div class="col-md-6">
-                        <label for="obs" class="form-label">Observação</label>
-                        <input type="text" class="form-control" id="obs" name="obs"
-                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Observações adicionais">
-                    </div>
+<!-- Quarta Linha -->
+	                    <div class="col-md-12">
+	                        <label for="obs" class="form-label">Observação</label>
+	                        <input type="text" class="form-control" id="obs" name="obs"
+	                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Observações adicionais">
+	                    </div>
                 </div>
 
                 <hr class="my-4">
