@@ -645,3 +645,150 @@ def evidencias_excluir(id):
         flash(f'Erro ao excluir evidência: {str(e)}', 'danger')
 
     return redirect(url_for('sumov.evidencias_lista'))
+
+
+@sumov_bp.route('/despesas-pagamentos/analise', methods=['GET'])
+@login_required
+def analise_pagamentos():
+    """Página de análise de pagamentos por mês/ano e item de serviço"""
+    # Buscar todos os itens de serviço permitidos
+    itens_servico = OcorrenciasMovItemServico.listar_itens_permitidos()
+
+    # Buscar todas as datas distintas de DT_LANCAMENTO_PAGAMENTO para montar o select de mês/ano
+    datas_disponiveis = db.session.query(
+        db.func.year(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO).label('ano'),
+        db.func.month(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO).label('mes')
+    ).filter(
+        DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO.isnot(None)
+    ).distinct().order_by(
+        db.text('ano DESC, mes DESC')
+    ).all()
+
+    # Formatar datas para exibição
+    meses_anos = []
+    meses_nomes = {
+        1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+        5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+        9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+    }
+
+    for data in datas_disponiveis:
+        meses_anos.append({
+            'ano': data.ano,
+            'mes': data.mes,
+            'label': f"{meses_nomes[data.mes]} de {data.ano}"
+        })
+
+    return render_template('sumov/despesas_pagamentos/analise_pagamentos.html',
+                           itens_servico=itens_servico,
+                           meses_anos=meses_anos)
+
+
+@sumov_bp.route('/despesas-pagamentos/analise/buscar', methods=['POST'])
+@login_required
+def buscar_analise_pagamentos():
+    """Busca dados de pagamentos filtrados por mês/ano e itens de serviço"""
+    try:
+        data = request.get_json()
+
+        mes = int(data.get('mes'))
+        ano = int(data.get('ano'))
+        itens_selecionados = data.get('itens', [])
+
+        if not itens_selecionados:
+            return jsonify({'erro': 'Selecione pelo menos um item de serviço'}), 400
+
+        # Converter itens para inteiros
+        itens_selecionados = [int(item) for item in itens_selecionados]
+
+        # Buscar registros SUMOV usando DT_LANCAMENTO_PAGAMENTO
+        registros_sumov = DespesasAnalitico.query.filter(
+            db.func.year(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO) == ano,
+            db.func.month(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO) == mes,
+            DespesasAnalitico.ID_ITEM_SERVICO.in_(itens_selecionados),
+            DespesasAnalitico.NO_ORIGEM_REGISTRO == 'SUMOV'
+        ).all()
+
+        # Buscar registros SISGEA usando DT_LANCAMENTO_PAGAMENTO
+        registros_sisgea = DespesasAnalitico.query.filter(
+            db.func.year(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO) == ano,
+            db.func.month(DespesasAnalitico.DT_LANCAMENTO_PAGAMENTO) == mes,
+            DespesasAnalitico.ID_ITEM_SERVICO.in_(itens_selecionados),
+            DespesasAnalitico.NO_ORIGEM_REGISTRO == 'SISGEA'
+        ).all()
+
+        # Calcular estatísticas SUMOV
+        total_sumov = Decimal('0')
+        contratos_unicos_sumov = set()
+        itens_agrupados_sumov = {}
+
+        for registro in registros_sumov:
+            valor = registro.VR_DESPESA if registro.VR_DESPESA else Decimal('0')
+            total_sumov += valor
+            contratos_unicos_sumov.add(registro.NR_CONTRATO)
+
+            # Agrupar por item de serviço
+            item = registro.DSC_ITEM_SERVICO or 'Sem descrição'
+            if item not in itens_agrupados_sumov:
+                itens_agrupados_sumov[item] = {'quantidade': 0, 'valor_total': Decimal('0')}
+            itens_agrupados_sumov[item]['quantidade'] += 1
+            itens_agrupados_sumov[item]['valor_total'] += valor
+
+        # Calcular estatísticas SISGEA
+        total_sisgea = Decimal('0')
+        contratos_unicos_sisgea = set()
+        itens_agrupados_sisgea = {}
+
+        for registro in registros_sisgea:
+            valor = registro.VR_DESPESA if registro.VR_DESPESA else Decimal('0')
+            total_sisgea += valor
+            contratos_unicos_sisgea.add(registro.NR_CONTRATO)
+
+            # Agrupar por item de serviço
+            item = registro.DSC_ITEM_SERVICO or 'Sem descrição'
+            if item not in itens_agrupados_sisgea:
+                itens_agrupados_sisgea[item] = {'quantidade': 0, 'valor_total': Decimal('0')}
+            itens_agrupados_sisgea[item]['quantidade'] += 1
+            itens_agrupados_sisgea[item]['valor_total'] += valor
+
+        # Formatar itens agrupados SUMOV
+        itens_formatados_sumov = []
+        for item, dados in itens_agrupados_sumov.items():
+            itens_formatados_sumov.append({
+                'item': item,
+                'quantidade': dados['quantidade'],
+                'valor_total': float(dados['valor_total']),
+                'valor_total_formatado': f"R$ {dados['valor_total']:,.2f}".replace(",", "X").replace(".", ",").replace(
+                    "X", ".")
+            })
+
+        # Formatar itens agrupados SISGEA
+        itens_formatados_sisgea = []
+        for item, dados in itens_agrupados_sisgea.items():
+            itens_formatados_sisgea.append({
+                'item': item,
+                'quantidade': dados['quantidade'],
+                'valor_total': float(dados['valor_total']),
+                'valor_total_formatado': f"R$ {dados['valor_total']:,.2f}".replace(",", "X").replace(".", ",").replace(
+                    "X", ".")
+            })
+
+        return jsonify({
+            'sumov': {
+                'total': float(total_sumov),
+                'total_formatado': f"R$ {total_sumov:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                'quantidade_registros': len(registros_sumov),
+                'quantidade_contratos': len(contratos_unicos_sumov),
+                'itens': itens_formatados_sumov
+            },
+            'sisgea': {
+                'total': float(total_sisgea),
+                'total_formatado': f"R$ {total_sisgea:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                'quantidade_registros': len(registros_sisgea),
+                'quantidade_contratos': len(contratos_unicos_sisgea),
+                'itens': itens_formatados_sisgea
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500

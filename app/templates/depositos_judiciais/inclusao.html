@@ -63,9 +63,14 @@
                         <select class="form-select" id="id_area" name="id_area">
                             <option value="">Selecione uma área...</option>
                             {% for area in areas %}
-                            <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
+                            <option value="{{ area.ID_AREA }}" {% if area.ID_AREA == 8 %}selected{% endif %}>
+                                {{ area.NO_AREA }}
+                            </option>
                             {% endfor %}
                         </select>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> SUJUR é selecionado por padrão, mas você pode alterar
+                        </small>
                     </div>
 
                     <div class="col-md-6">
