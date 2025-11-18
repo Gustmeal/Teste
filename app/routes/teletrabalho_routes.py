@@ -795,7 +795,7 @@ def admin_obter_calendario(usuario_id, mes_referencia):
 @teletrabalho_bp.route('/admin/cadastrar', methods=['POST'])
 @login_required
 def admin_cadastrar_post():
-    """Processa cadastro de teletrabalho pelo admin/moderador/gerente"""
+    """Processa o cadastro de teletrabalho por administradores/gestores"""
     usuario_logado = Usuario.query.get(current_user.id)
 
     # CORREÇÃO: Permitir admin, moderador E gerentes
@@ -822,15 +822,24 @@ def admin_cadastrar_post():
 
         limite, total_pessoas = calcular_limite_area(area, tipo_area)
 
+        # ====================================================================
+        # ✅ MODIFICAÇÃO SOLICITADA: Limite de dias alternados passa a ser 6
+        # ====================================================================
+        LIMITE_DIAS_MANUAL = 6
+        # O sorteio automático continua limitado a 5, mas essa rota usa 6.
+
         qtd_dias_mes = Teletrabalho.contar_dias_mes(usuario_id, mes_referencia)
 
-        if qtd_dias_mes >= 5:
-            flash(f'{usuario.NOME} já atingiu o limite de 5 dias neste mês.', 'warning')
+        if qtd_dias_mes >= LIMITE_DIAS_MANUAL:
+            flash(f'{usuario.NOME} já atingiu o limite de {LIMITE_DIAS_MANUAL} dias neste mês.', 'warning')
             return redirect(url_for('teletrabalho.admin_cadastrar'))
 
-        if len(datas_str) + qtd_dias_mes > 5:
-            flash(f'{usuario.NOME} só pode marcar mais {5 - qtd_dias_mes} dia(s) neste mês.', 'warning')
+        if len(datas_str) + qtd_dias_mes > LIMITE_DIAS_MANUAL:
+            flash(f'{usuario.NOME} só pode marcar mais {LIMITE_DIAS_MANUAL - qtd_dias_mes} dia(s) neste mês.', 'warning')
             return redirect(url_for('teletrabalho.admin_cadastrar'))
+        # ====================================================================
+        # FIM DA MODIFICAÇÃO
+        # ====================================================================
 
         datas = [datetime.strptime(d, '%Y-%m-%d').date() for d in datas_str]
 
