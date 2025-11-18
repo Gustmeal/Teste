@@ -5,7 +5,7 @@ from datetime import datetime
 class DepositosSufin(db.Model):
     """Modelo para a tabela de Depósitos Judiciais SUFIN"""
     __tablename__ = 'DPJ_TB004_DEPOSITOS_SUFIN'
-    __table_args__ = {'schema': 'DEV'}
+    __table_args__ = {'schema': 'BDG'}
 
     NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)
     LANCAMENTO_RM = db.Column(db.String(15))
