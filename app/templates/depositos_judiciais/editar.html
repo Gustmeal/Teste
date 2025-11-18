@@ -76,7 +76,7 @@
                     <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
                         <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
-                               required value="{{ deposito.VR_RATEIO }}" placeholder="0,00">
+                               required value="{{ '%.2f'|format(deposito.VR_RATEIO)|replace('.', ',') }}" placeholder="0,00">
                     </div>
 
                     <!-- Segunda Linha -->

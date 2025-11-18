@@ -43,8 +43,9 @@ def inclusao():
             # Corrigir conversão do valor rateio
             vr_rateio = request.form.get('vr_rateio')
             # Remove pontos de milhar e substitui vírgula por ponto
-            vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
-            novo_deposito.VR_RATEIO = float(vr_rateio_limpo)
+            vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
+            if vr_rateio_numeros:
+                novo_deposito.VR_RATEIO = Decimal(vr_rateio_numeros) / 100
 
             novo_deposito.MEMO_SUFIN = request.form.get('memo_sufin')
 
@@ -508,8 +509,9 @@ def editar(nu_linha):
 
                 # Valor NEGATIVO para estorno
                 vr_rateio = request.form.get('vr_rateio')
-                vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
-                estorno.VR_RATEIO = -abs(float(vr_rateio_limpo))
+                vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
+                if vr_rateio_numeros:
+                    estorno.VR_RATEIO = -abs(Decimal(vr_rateio_numeros) / 100)
 
                 estorno.MEMO_SUFIN = request.form.get('memo_sufin')
 
@@ -591,7 +593,8 @@ def editar(nu_linha):
                 nova_linha.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
                 # Valor POSITIVO
-                nova_linha.VR_RATEIO = abs(float(vr_rateio_limpo))
+                if vr_rateio_numeros:
+                    nova_linha.VR_RATEIO = abs(Decimal(vr_rateio_numeros) / 100)
 
                 nova_linha.MEMO_SUFIN = request.form.get('memo_sufin')
 
@@ -677,8 +680,9 @@ def editar(nu_linha):
 
                 # Corrigir conversão do valor rateio
                 vr_rateio = request.form.get('vr_rateio')
-                vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
-                deposito_obj.VR_RATEIO = float(vr_rateio_limpo)
+                vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
+                if vr_rateio_numeros:
+                    deposito_obj.VR_RATEIO = Decimal(vr_rateio_numeros) / 100
 
                 deposito_obj.MEMO_SUFIN = request.form.get('memo_sufin')
 
