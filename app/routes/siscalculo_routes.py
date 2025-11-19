@@ -6,7 +6,8 @@ from app.models.siscalculo import (
     ParamIndicesEconomicos,
     SiscalculoDados,
     SiscalculoCalculos,
-    IndicadorEconomico
+    IndicadorEconomico,
+    SiscalculoPrescricoes
 )
 from app.utils.siscalculo_calc import CalculadorSiscalculo
 from app.utils.audit import registrar_log
@@ -187,7 +188,8 @@ def processar():
             return redirect(url_for('siscalculo.index'))
 
         # ✅ CORREÇÃO PRINCIPAL: Limpar dados anteriores por IMOVEL + DT_ATUALIZACAO + ID_INDICE
-        print(f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel} com dt_atualizacao {dt_atualizacao} e índice {id_indice}...")
+        print(
+            f"\n[DEBUG 5] Limpando dados anteriores do imóvel {numero_imovel} com dt_atualizacao {dt_atualizacao} e índice {id_indice}...")
         try:
             # ✅ Limpar SiscalculoDados (dados temporários) - APENAS para este imóvel e data
             deletados_dados = SiscalculoDados.query.filter_by(
@@ -202,9 +204,17 @@ def processar():
                 ID_INDICE_ECONOMICO=id_indice
             ).delete()
 
+            # ✅ NOVO: Limpar prescrições anteriores deste mesmo processamento
+            deletados_prescricoes = SiscalculoPrescricoes.query.filter_by(
+                IMOVEL=numero_imovel,
+                DT_ATUALIZACAO=dt_atualizacao,
+                ID_INDICE_ECONOMICO=id_indice
+            ).delete()
+
             db.session.commit()
             print(f"[DEBUG 5] ✅ {deletados_dados} registros deletados em SiscalculoDados")
             print(f"[DEBUG 5] ✅ {deletados_calculos} registros deletados em SiscalculoCalculos (índice {id_indice})")
+            print(f"[DEBUG 5] ✅ {deletados_prescricoes} registros deletados em SiscalculoPrescricoes")
         except Exception as e:
             print(f"[ERRO 5] Erro ao limpar dados: {str(e)}")
             db.session.rollback()
@@ -248,10 +258,26 @@ def processar():
                     chave_fim = ano_fim * 100 + mes_fim
 
                     if chave_inicio <= chave_venc <= chave_fim:
+                        # ✅ NOVO: SALVAR A PARCELA PRESCRITA NA TABELA ANTES DE EXCLUÍ-LA
+                        parcela_prescrita = SiscalculoPrescricoes(
+                            IMOVEL=numero_imovel,
+                            NOME_CONDOMINIO=nome_condominio,
+                            DT_VENCIMENTO=data_vencimento,
+                            VR_COTA=Decimal(str(valor)),
+                            DT_ATUALIZACAO=dt_atualizacao,
+                            ID_INDICE_ECONOMICO=id_indice,
+                            PERIODO_PRESCRICAO=periodo_prescricao,
+                            USUARIO=current_user.nome
+                        )
+
+                        db.session.add(parcela_prescrita)
+
                         if idx < 3 or registros_excluidos_prescricao < 5:
-                            print(f"  [PRESCRIÇÃO] Data {data_vencimento} ({mes_venc:02d}/{ano_venc}) - EXCLUÍDA")
+                            print(
+                                f"  [PRESCRIÇÃO] Data {data_vencimento} ({mes_venc:02d}/{ano_venc}) - SALVA E EXCLUÍDA DO CÁLCULO")
+
                         registros_excluidos_prescricao += 1
-                        continue
+                        continue  # ✅ MANTÉM A LÓGICA: NÃO INCLUI NO CÁLCULO
 
                 # Criar registro
                 novo_dado = SiscalculoDados(
@@ -279,8 +305,8 @@ def processar():
         print(f"  Total linhas Excel: {len(df)}")
         if aplicar_prescricao:
             print(f"  ✅ Período prescrição: {periodo_prescricao}")
-        print(f"  ✅ EXCLUÍDOS (prescritos): {registros_excluidos_prescricao}")
-        print(f"  ✅ INSERIDOS (válidos): {registros_inseridos}")
+        print(f"  ✅ SALVOS NA TABELA PRESCRIÇÕES: {registros_excluidos_prescricao}")
+        print(f"  ✅ INSERIDOS (válidos para cálculo): {registros_inseridos}")
         print(f"  Erros: {erros_insercao}")
 
         # Commit dos dados importados
@@ -299,7 +325,7 @@ def processar():
         if registros_inseridos == 0:
             if registros_excluidos_prescricao > 0:
                 flash(
-                    f'Atenção: Todos os {registros_excluidos_prescricao} registros estavam prescritos e foram excluídos.',
+                    f'Atenção: Todos os {registros_excluidos_prescricao} registros estavam prescritos e foram salvos na tabela de prescrições.',
                     'warning')
             else:
                 flash('Nenhum registro válido encontrado.', 'warning')
@@ -307,7 +333,7 @@ def processar():
 
         # Mensagem sobre prescrição
         if registros_excluidos_prescricao > 0:
-            flash(f'✅ {registros_excluidos_prescricao} registro(s) excluídos por prescrição ({periodo_prescricao}).', 'info')
+            flash(f'✅ {registros_excluidos_prescricao} registro(s) prescritos salvos ({periodo_prescricao}).', 'info')
 
         # Executar cálculos
         print("\n[DEBUG 9] Executando cálculos...")
@@ -350,7 +376,7 @@ def processar():
             mensagem_sucesso = f'Processamento concluído com sucesso! '
             mensagem_sucesso += f'{registros_inseridos} parcela(s) processada(s). '
             if registros_excluidos_prescricao > 0:
-                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) excluída(s) por prescrição ({periodo_prescricao}). '
+                mensagem_sucesso += f'{registros_excluidos_prescricao} parcela(s) prescrita(s) salva(s) ({periodo_prescricao}). '
             mensagem_sucesso += f'Total: R$ {resultado.get("total_processado", 0):,.2f}'
 
             flash(mensagem_sucesso, 'success')
@@ -376,7 +402,6 @@ def processar():
         traceback.print_exc()
         flash(f'Erro no processamento: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
-
 
 @siscalculo_bp.route('/resultados')
 @login_required

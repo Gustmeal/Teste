@@ -128,3 +128,47 @@ class IndicadorEconomico(db.Model):
         }).fetchone()
 
         return float(resultado[0]) if resultado and resultado[0] else 1.0
+
+
+class SiscalculoPrescricoes(db.Model):
+    """Tabela para armazenar parcelas prescritas excluídas do cálculo"""
+    __tablename__ = 'MOV_TB032_SISCALCULO_PRESCRICOES'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID_PRESCRICAO = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    IMOVEL = db.Column(db.String(50), nullable=False)
+    NOME_CONDOMINIO = db.Column(db.String(255), nullable=True)
+    DT_VENCIMENTO = db.Column(db.Date, nullable=False)
+    VR_COTA = db.Column(db.Numeric(18, 2), nullable=False)
+    DT_ATUALIZACAO = db.Column(db.Date, nullable=False)
+    ID_INDICE_ECONOMICO = db.Column(db.Integer, nullable=False)
+    PERIODO_PRESCRICAO = db.Column(db.String(50), nullable=False)
+    DT_PROCESSAMENTO = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    USUARIO = db.Column(db.String(100), nullable=True)
+
+    def __repr__(self):
+        return f'<SiscalculoPrescricao {self.IMOVEL} - {self.DT_VENCIMENTO} - Período: {self.PERIODO_PRESCRICAO}>'
+
+    @staticmethod
+    def obter_prescricoes_por_imovel(imovel, dt_atualizacao=None):
+        """Busca prescrições de um imóvel"""
+        query = SiscalculoPrescricoes.query.filter_by(IMOVEL=imovel)
+
+        if dt_atualizacao:
+            query = query.filter_by(DT_ATUALIZACAO=dt_atualizacao)
+
+        return query.order_by(SiscalculoPrescricoes.DT_VENCIMENTO).all()
+
+    @staticmethod
+    def limpar_prescricoes_anteriores(imovel, dt_atualizacao, id_indice):
+        """Remove prescrições anteriores para o mesmo processamento"""
+        try:
+            SiscalculoPrescricoes.query.filter_by(
+                IMOVEL=imovel,
+                DT_ATUALIZACAO=dt_atualizacao,
+                ID_INDICE_ECONOMICO=id_indice
+            ).delete()
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Erro ao limpar prescrições anteriores: {e}")
