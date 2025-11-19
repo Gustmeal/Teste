@@ -320,6 +320,14 @@ def nova_despesa():
             # Gera o número de ocorrência
             nr_ocorrencia = DespesasAnalitico.obter_proximo_numero_ocorrencia(nr_contrato)
 
+            # NOVA LÓGICA: Determina o ID_ITEM_SISCOR baseado no ID_ITEM_SERVICO
+            if id_item_servico in [32, 33, 66]:
+                id_item_siscor = 1491
+            elif id_item_servico in [35, 36, 69]:
+                id_item_siscor = 1490
+            else:
+                id_item_siscor = 1159
+
             # Cria o novo registro
             nova_despesa = DespesasAnalitico(
                 DT_REFERENCIA=datetime.now().date(),
@@ -329,7 +337,7 @@ def nova_despesa():
                 DT_LANCAMENTO_PAGAMENTO=dt_lancamento.date(),
                 VR_DESPESA=vr_despesa,
                 estadoLancamento='Pagamento Efetuado',
-                ID_ITEM_SISCOR=1410,
+                ID_ITEM_SISCOR=id_item_siscor,  # Agora usa a variável determinada pela lógica
                 ID_ITEM_SERVICO=id_item_servico,
                 NR_CTR_ORIGINAL_TABELA=nr_contrato,
                 DSC_TIPO_FORMA_PGTO=dsc_tipo_forma_pgto,
@@ -340,7 +348,7 @@ def nova_despesa():
             db.session.commit()
 
             # Registrar log
-            msg_log = f'Novo pagamento registrado: Contrato {nr_contrato} - Ocorrência {nr_ocorrencia} - Valor R$ {vr_despesa}'
+            msg_log = f'Novo pagamento registrado: Contrato {nr_contrato} - Ocorrência {nr_ocorrencia} - Valor R$ {vr_despesa} - ID_ITEM_SISCOR: {id_item_siscor}'
             if origem_existente == 'SISGEA':
                 msg_log += ' (Confirmado apesar de existir no SISGEA)'
 
