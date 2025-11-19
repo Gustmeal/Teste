@@ -597,11 +597,18 @@ def resultados():
 @siscalculo_bp.route('/exportar_resultados')
 @login_required
 def exportar_resultados():
-    """Exporta os resultados para Excel"""
+    """
+    Exporta os resultados para Excel
+
+    MODIFICAÇÃO: Agora aceita parâmetro opcional 'imovel' para filtrar por contrato específico.
+    - COM imovel: exporta apenas um contrato específico
+    - SEM imovel: exporta todos os contratos da data (comportamento antigo)
+    """
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
+    imovel = request.args.get('imovel')  # ✅ NOVO: Parâmetro opcional
 
-    # ✅ NOVA LINHA ADICIONADA - Capturar percentual de honorários
+    # Capturar percentual de honorários
     perc_honorarios = request.args.get('perc_honorarios', '10.00')
     perc_honorarios = Decimal(perc_honorarios)
 
@@ -613,18 +620,26 @@ def exportar_resultados():
         # Converter data
         dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
 
-        # Buscar dados
+        # Buscar dados com filtros
         query = SiscalculoCalculos.query.filter_by(DT_ATUALIZACAO=dt_atualizacao)
 
         if id_indice:
             query = query.filter_by(ID_INDICE_ECONOMICO=int(id_indice))
+            print(f"[EXPORTAR] Filtrando por índice: {id_indice}")
+
+        # ✅ NOVO: Filtrar por imóvel se fornecido (retrocompatível)
+        if imovel:
+            query = query.filter_by(IMOVEL=imovel)
+            print(f"[EXPORTAR] Filtrando por imóvel: {imovel}")
+        else:
+            print(f"[EXPORTAR] Exportando TODOS os contratos da data {dt_atualizacao}")
 
         calculos = query.all()
 
         if not calculos:
             flash('Nenhum resultado encontrado para exportar.', 'warning')
             return redirect(url_for('siscalculo.resultados',
-                                    dt_atualizacao=dt_atualizacao))
+                                    dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d')))
 
         # Criar DataFrame
         dados = []
@@ -650,6 +665,7 @@ def exportar_resultados():
 
         # Criar arquivo Excel
         output = io.BytesIO()
+
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             # Aba de detalhamento
             df.to_excel(writer, sheet_name='Detalhamento', index=False)
@@ -664,10 +680,8 @@ def exportar_resultados():
                 'Total': 'sum'
             }).round(2)
 
-            # ✅ CORREÇÃO APLICADA AQUI - Linhas modificadas
-            # ❌ ANTES: resumo['Honorários'] = (resumo['Total'] * 0.10).round(2)  # HARDCODED em 10%
-            # ✅ DEPOIS: Usar o percentual correto capturado da URL
-            percentual_decimal = float(perc_honorarios) / 100.0  # Converter % para decimal (ex: 15% = 0.15)
+            # ✅ Usar o percentual correto capturado da URL
+            percentual_decimal = float(perc_honorarios) / 100.0  # Converter % para decimal
             resumo['Honorários'] = (resumo['Total'] * percentual_decimal).round(2)
             resumo['Total Final'] = resumo['Total'] + resumo['Honorários']
 
@@ -691,8 +705,11 @@ def exportar_resultados():
 
         output.seek(0)
 
-        # Nome do arquivo
-        nome_arquivo = f'siscalculo_{dt_atualizacao.strftime("%Y%m%d")}.xlsx'
+        # Nome do arquivo (incluir imóvel se filtrado)
+        if imovel:
+            nome_arquivo = f'siscalculo_{imovel}_{dt_atualizacao.strftime("%Y%m%d")}.xlsx'
+        else:
+            nome_arquivo = f'siscalculo_{dt_atualizacao.strftime("%Y%m%d")}.xlsx'
 
         return send_file(
             output,
@@ -702,6 +719,9 @@ def exportar_resultados():
         )
 
     except Exception as e:
+        print(f"[ERRO EXPORTAR] {str(e)}")
+        import traceback
+        traceback.print_exc()
         flash(f'Erro ao exportar resultados: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
 
@@ -709,8 +729,15 @@ def exportar_resultados():
 @siscalculo_bp.route('/comparar_indices')
 @login_required
 def comparar_indices():
-    """Compara resultados entre diferentes índices"""
+    """
+    Compara resultados entre diferentes índices
+
+    MODIFICAÇÃO: Agora aceita parâmetro opcional 'imovel' para filtrar por contrato específico.
+    - COM imovel: compara índices de um contrato específico
+    - SEM imovel: compara índices de todos os contratos processados na data (comportamento antigo)
+    """
     dt_atualizacao = request.args.get('dt_atualizacao')
+    imovel = request.args.get('imovel')  # ✅ NOVO: Parâmetro opcional
 
     if not dt_atualizacao:
         flash('Data de atualização não informada.', 'danger')
@@ -720,7 +747,7 @@ def comparar_indices():
         dt_atualizacao = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
 
         # Buscar todos os índices calculados para esta data
-        comparacao = db.session.query(
+        query = db.session.query(
             SiscalculoCalculos.ID_INDICE_ECONOMICO,
             ParamIndicesEconomicos.DSC_INDICE_ECONOMICO,
             db.func.sum(SiscalculoCalculos.VR_COTA).label('total_cotas'),
@@ -733,7 +760,16 @@ def comparar_indices():
             SiscalculoCalculos.ID_INDICE_ECONOMICO == ParamIndicesEconomicos.ID_INDICE_ECONOMICO
         ).filter(
             SiscalculoCalculos.DT_ATUALIZACAO == dt_atualizacao
-        ).group_by(
+        )
+
+        # ✅ NOVO: Filtrar por imóvel se fornecido (retrocompatível)
+        if imovel:
+            query = query.filter(SiscalculoCalculos.IMOVEL == imovel)
+            print(f"[COMPARAR ÍNDICES] Filtrando por imóvel: {imovel}")
+        else:
+            print(f"[COMPARAR ÍNDICES] Comparando TODOS os contratos da data {dt_atualizacao}")
+
+        comparacao = query.group_by(
             SiscalculoCalculos.ID_INDICE_ECONOMICO,
             ParamIndicesEconomicos.DSC_INDICE_ECONOMICO
         ).order_by(
@@ -752,7 +788,8 @@ def comparar_indices():
                                comparacao=comparacao,
                                melhor_indice=melhor_indice,
                                pior_indice=pior_indice,
-                               dt_atualizacao=dt_atualizacao)
+                               dt_atualizacao=dt_atualizacao,
+                               imovel=imovel)  # ✅ NOVO: Passar imovel para o template
 
     except Exception as e:
         flash(f'Erro ao comparar índices: {str(e)}', 'danger')

@@ -41,16 +41,34 @@ class SiscalculoDados(db.Model):
         return f'<SiscalculoDados {self.IMOVEL} - {self.DT_VENCIMENTO}>'
 
     @staticmethod
-    def limpar_dados_temporarios(dt_atualizacao):
-        """Remove dados anteriores para a mesma data de atualização"""
+    def limpar_dados_temporarios(dt_atualizacao, imovel=None):
+        """
+        Remove dados anteriores para a mesma data de atualização
+
+        Args:
+            dt_atualizacao: Data do processamento
+            imovel: Número do imóvel/contrato (opcional). Se None, limpa TODOS do dia
+        """
         try:
-            SiscalculoDados.query.filter_by(
-                DT_ATUALIZACAO=dt_atualizacao
-            ).delete()
+            if imovel:
+                # Limpar apenas dados deste imóvel específico
+                SiscalculoDados.query.filter_by(
+                    DT_ATUALIZACAO=dt_atualizacao,
+                    IMOVEL=imovel
+                ).delete()
+                print(f"[LIMPEZA] Dados temporários removidos para imóvel {imovel} na data {dt_atualizacao}")
+            else:
+                # CUIDADO: Limpa TODOS os dados do dia (usar apenas se necessário)
+                SiscalculoDados.query.filter_by(
+                    DT_ATUALIZACAO=dt_atualizacao
+                ).delete()
+                print(f"[LIMPEZA] TODOS os dados temporários removidos para data {dt_atualizacao}")
+
             db.session.commit()
         except Exception as e:
             db.session.rollback()
             print(f"Erro ao limpar dados temporários: {e}")
+            raise
 
 
 class SiscalculoCalculos(db.Model):
@@ -77,11 +95,22 @@ class SiscalculoCalculos(db.Model):
         return f'<SiscalculoCalculo {self.DT_ATUALIZACAO} - Índice {self.ID_INDICE_ECONOMICO} - {self.IMOVEL}>'
 
     @staticmethod
-    def obter_calculos_por_data(dt_atualizacao):
-        """Busca cálculos por data de atualização"""
-        return SiscalculoCalculos.query.filter_by(
+    def obter_calculos_por_data(dt_atualizacao, imovel=None):
+        """
+        Busca cálculos por data de atualização
+
+        Args:
+            dt_atualizacao: Data do processamento
+            imovel: (OPCIONAL) Filtrar por imóvel específico
+        """
+        query = SiscalculoCalculos.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao
-        ).order_by(
+        )
+
+        if imovel:
+            query = query.filter_by(IMOVEL=imovel)
+
+        return query.order_by(
             SiscalculoCalculos.ID_INDICE_ECONOMICO,
             SiscalculoCalculos.DT_VENCIMENTO
         ).all()

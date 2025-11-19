@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-plus text-success me-2"></i> Nova Deliberação de Pagamento
+        </h1>
+    </div>
+
+    <!-- Formulário -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-edit me-2"></i>
+                Parte 1 - Dados Básicos do Imóvel
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" id="formDeliberacao">
+                <div class="row">
+                    <!-- Coluna Esquerda -->
+                    <div class="col-md-6">
+                        <!-- Contrato/Imóvel (ID) -->
+                        <div class="mb-3">
+                            <label for="contrato" class="form-label fw-bold">
+                                <i class="fas fa-hashtag text-primary me-1"></i>
+                                ID (Contrato/Imóvel) <span class="text-danger">*</span>
+                            </label>
+                            <div class="input-group">
+                                <input type="text"
+                                       class="form-control"
+                                       id="contrato"
+                                       name="contrato"
+                                       placeholder="Ex: 992200006294"
+                                       required>
+                                <button class="btn btn-primary"
+                                        type="button"
+                                        id="btnBuscarDados"
+                                        onclick="buscarDadosContrato()">
+                                    <i class="fas fa-search me-1"></i> Buscar
+                                </button>
+                            </div>
+                            <small class="text-muted">Digite o número do contrato/imóvel e clique em Buscar</small>
+                        </div>
+
+                        <!-- Analista (automático) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-user text-success me-1"></i>
+                                Analista Responsável
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   value="{{ current_user.nome.split()[0] }}"
+                                   readonly>
+                            <small class="text-muted">Preenchido automaticamente</small>
+                        </div>
+
+                        <!-- Data da Análise (automático) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-calendar text-info me-1"></i>
+                                Data da Análise
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   value="{{ datetime.now().strftime('%d/%m/%Y') }}"
+                                   readonly>
+                            <small class="text-muted">Data atual do sistema</small>
+                        </div>
+
+                        <!-- Matrícula (manual) -->
+                        <div class="mb-3">
+                            <label for="matricula" class="form-label fw-bold">
+                                <i class="fas fa-id-card text-warning me-1"></i>
+                                Matrícula (Caixa / Emgea)
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="matricula"
+                                   name="matricula"
+                                   placeholder="Ex: 18.133 - Emgea">
+                            <small class="text-muted">Informe a matrícula do imóvel</small>
+                        </div>
+
+                        <!-- Data de arrematação/aquisição (manual) -->
+                        <div class="mb-3">
+                            <label for="dt_arrematacao" class="form-label fw-bold">
+                                <i class="fas fa-calendar-day text-primary me-1"></i>
+                                Data da Arrematação/Aquisição (RM)
+                            </label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="dt_arrematacao"
+                                   name="dt_arrematacao">
+                            <small class="text-muted">Data da arrematação ou aquisição do imóvel</small>
+                        </div>
+                    </div>
+
+                    <!-- Coluna Direita -->
+                    <div class="col-md-6">
+                        <!-- Data de Entrada no Estoque (automático) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-warehouse text-success me-1"></i>
+                                Data de Entrada no Estoque
+                            </label>
+                            <input type="date"
+                                   class="form-control bg-light"
+                                   id="dt_entrada_estoque"
+                                   name="dt_entrada_estoque"
+                                   readonly>
+                            <small class="text-muted">
+                                <span id="msgEstoque">Será preenchido automaticamente após buscar o contrato</span>
+                            </small>
+                        </div>
+
+                        <!-- Período prescrito (automático) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-exclamation-triangle text-warning me-1"></i>
+                                Período Prescrito
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   id="periodo_prescricao"
+                                   name="periodo_prescricao"
+                                   readonly>
+                            <small class="text-muted">
+                                <span id="msgPrescricao">Será preenchido automaticamente após buscar o contrato</span>
+                            </small>
+                        </div>
+
+                        <!-- Valor Inicial da Dívida (automático) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-dollar-sign text-info me-1"></i>
+                                Valor Inicial da Dívida (Soma das Cotas)
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   id="vr_divida_inicial"
+                                   name="vr_divida_inicial"
+                                   readonly>
+                            <small class="text-muted">
+                                <span id="msgValorInicial">Soma de todas as cotas do SISCalculo</span>
+                            </small>
+                        </div>
+
+                        <!-- Seleção do Índice Econômico -->
+                        <div class="mb-3" id="divIndices" style="display: none;">
+                            <label for="indice_economico" class="form-label fw-bold">
+                                <i class="fas fa-chart-line text-primary me-1"></i>
+                                Índice Econômico <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select"
+                                    id="indice_economico"
+                                    name="indice_economico"
+                                    onchange="selecionarIndice()">
+                                <option value="">Selecione o índice...</option>
+                            </select>
+                            <small class="text-muted">Selecione o índice de atualização monetária</small>
+                        </div>
+
+                        <!-- Valor Calculado (após escolher índice) -->
+                        <div class="mb-3" id="divValorCalculado" style="display: none;">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-calculator text-success me-1"></i>
+                                Valor Calculado (com Honorários)
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   id="vr_divida_calculado"
+                                   name="vr_divida_calculado"
+                                   readonly>
+                            <small class="text-muted">
+                                <span id="msgValorCalculado">Valor atualizado pelo índice selecionado</span>
+                            </small>
+                        </div>
+
+                        <!-- NOVO: Valor dos Honorários -->
+                        <div class="mb-3" id="divHonorarios" style="display: none;">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-balance-scale text-warning me-1"></i>
+                                Honorários Advocatícios
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-light"
+                                   id="vr_honorarios"
+                                   name="vr_honorarios"
+                                   readonly>
+                            <small class="text-muted">
+                                <span id="msgHonorarios">Valor e percentual dos honorários</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Informações adicionais -->
+                <div class="alert alert-info" id="alertDadosContrato" style="display: none;">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-info-circle me-2"></i>Informações do Contrato
+                    </h6>
+                    <div id="dadosAdicionais"></div>
+                </div>
+
+                <!-- Botões de ação -->
+                <div class="d-flex justify-content-between mt-4">
+                    <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save me-2"></i>Salvar e Continuar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Variável global para armazenar os índices disponíveis
+let indicesDisponiveis = [];
+
+// Função para formatar valor como moeda brasileira
+function formatarMoeda(valor) {
+    return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+    }).format(valor);
+}
+
+// Função para buscar dados do contrato
+function buscarDadosContrato() {
+    const contrato = document.getElementById('contrato').value.trim();
+
+    if (!contrato) {
+        alert('Por favor, informe o Contrato/Imóvel');
+        return;
+    }
+
+    // Bloquear campo de contrato após buscar
+    document.getElementById('contrato').readOnly = true;
+    document.getElementById('btnBuscarDados').disabled = true;
+    document.getElementById('btnBuscarDados').innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Buscando...';
+
+    // Fazer requisição AJAX
+    fetch('{{ url_for("sumov.buscar_dados_contrato") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ contrato: contrato })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 1. Preencher Data de Entrada no Estoque
+            if (data.dt_entrada_estoque) {
+                document.getElementById('dt_entrada_estoque').value = data.dt_entrada_estoque;
+                document.getElementById('msgEstoque').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
+            } else {
+                document.getElementById('msgEstoque').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            }
+
+            // 2. Preencher Período de Prescrição
+            if (data.periodo_prescricao) {
+                document.getElementById('periodo_prescricao').value = data.periodo_prescricao;
+                document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
+            } else {
+                document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            }
+
+            // 3. Preencher Valor Inicial
+            if (data.valor_inicial > 0) {
+                document.getElementById('vr_divida_inicial').value = formatarMoeda(data.valor_inicial);
+                document.getElementById('msgValorInicial').innerHTML =
+                    `<i class="fas fa-check text-success me-1"></i>${data.qtd_parcelas_inicial} parcela(s) encontrada(s)`;
+            } else {
+                document.getElementById('msgValorInicial').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            }
+
+            // 4. Preencher Select de Índices
+            if (data.indices_disponiveis && data.indices_disponiveis.length > 0) {
+                indicesDisponiveis = data.indices_disponiveis;
+
+                const selectIndice = document.getElementById('indice_economico');
+                selectIndice.innerHTML = '<option value="">Selecione o índice...</option>';
+
+                data.indices_disponiveis.forEach((indice, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `${indice.nome_indice} - ${formatarMoeda(indice.valor_com_honorarios)} (${indice.perc_honorarios}% honorários)`;
+                    selectIndice.appendChild(option);
+                });
+
+                document.getElementById('divIndices').style.display = 'block';
+            } else {
+                alert('Nenhum cálculo encontrado no SISCalculo para este contrato. Por favor, processe os cálculos primeiro.');
+            }
+
+            // 5. Mostrar informações adicionais
+            if (data.status_imovel || data.vr_avaliacao || data.nome_condominio) {
+                let infoHtml = '<ul class="mb-0">';
+                if (data.nome_condominio) {
+                    infoHtml += `<li><strong>Condomínio:</strong> ${data.nome_condominio}</li>`;
+                }
+                if (data.status_imovel) {
+                    infoHtml += `<li><strong>Status do Imóvel:</strong> ${data.status_imovel}</li>`;
+                }
+                if (data.vr_avaliacao) {
+                    infoHtml += `<li><strong>Valor de Avaliação:</strong> ${formatarMoeda(data.vr_avaliacao)}</li>`;
+                }
+                infoHtml += '</ul>';
+
+                document.getElementById('dadosAdicionais').innerHTML = infoHtml;
+                document.getElementById('alertDadosContrato').style.display = 'block';
+            }
+
+            if (data.message) {
+                alert(data.message);
+            }
+        } else {
+            alert(data.message || 'Erro ao buscar dados do contrato');
+            // Desbloquear para tentar novamente
+            document.getElementById('contrato').readOnly = false;
+        }
+
+        // Reativar botão
+        document.getElementById('btnBuscarDados').disabled = false;
+        document.getElementById('btnBuscarDados').innerHTML = '<i class="fas fa-search me-1"></i> Buscar';
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao buscar dados do contrato');
+        document.getElementById('contrato').readOnly = false;
+        document.getElementById('btnBuscarDados').disabled = false;
+        document.getElementById('btnBuscarDados').innerHTML = '<i class="fas fa-search me-1"></i> Buscar';
+    });
+}
+
+// Função chamada quando o usuário seleciona um índice
+function selecionarIndice() {
+    const selectIndice = document.getElementById('indice_economico');
+    const indexSelecionado = selectIndice.value;
+
+    if (indexSelecionado === '') {
+        document.getElementById('divValorCalculado').style.display = 'none';
+        document.getElementById('divHonorarios').style.display = 'none';
+        return;
+    }
+
+    const indiceSelecionado = indicesDisponiveis[indexSelecionado];
+
+    // Calcular valor dos honorários
+    const valorSemHonorarios = indiceSelecionado.valor_sem_honorarios;
+    const valorComHonorarios = indiceSelecionado.valor_com_honorarios;
+    const percHonorarios = indiceSelecionado.perc_honorarios;
+    const valorHonorarios = valorComHonorarios - valorSemHonorarios;
+
+    // Preencher valor calculado
+    document.getElementById('vr_divida_calculado').value = formatarMoeda(valorComHonorarios);
+
+    // Atualizar mensagem
+    document.getElementById('msgValorCalculado').innerHTML =
+        `<i class="fas fa-check text-success me-1"></i>` +
+        `${indiceSelecionado.nome_indice} - Atualizado em ${indiceSelecionado.dt_atualizacao}`;
+
+    // ✅ NOVO: Preencher campo de honorários
+    document.getElementById('vr_honorarios').value = formatarMoeda(valorHonorarios);
+
+    // ✅ NOVO: Atualizar mensagem dos honorários
+    document.getElementById('msgHonorarios').innerHTML =
+        `<i class="fas fa-info-circle text-warning me-1"></i>` +
+        `${percHonorarios}% sobre o valor total (${formatarMoeda(valorSemHonorarios)})`;
+
+    // Mostrar campos
+    document.getElementById('divValorCalculado').style.display = 'block';
+    document.getElementById('divHonorarios').style.display = 'block';
+}
+
+// Permitir buscar com Enter
+document.getElementById('contrato').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        buscarDadosContrato();
+    }
+});
+</script>
+{% endblock %}

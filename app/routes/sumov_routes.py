@@ -800,3 +800,150 @@ def buscar_analise_pagamentos():
 
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
+
+# ==================== DELIBERAÇÃO DE PAGAMENTO ====================
+
+@sumov_bp.route('/deliberacao-pagamento')
+@login_required
+def deliberacao_pagamento():
+    """Dashboard do sistema de Deliberação de Pagamento"""
+    return render_template('sumov/deliberacao_pagamento/index.html')
+
+
+@sumov_bp.route('/deliberacao-pagamento/nova', methods=['GET', 'POST'])
+@login_required
+def deliberacao_pagamento_nova():
+    """Criar nova Deliberação de Pagamento"""
+    if request.method == 'POST':
+        try:
+            # Captura dados do formulário
+            contrato = request.form.get('contrato', '').strip()
+            matricula = request.form.get('matricula', '').strip()
+            dt_arrematacao = request.form.get('dt_arrematacao', '').strip()
+            vr_divida = request.form.get('vr_divida', '0').strip().replace('.', '').replace(',', '.')
+
+            # Validações básicas
+            if not contrato:
+                flash('Por favor, informe o Contrato/Imóvel.', 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # Aqui você pode processar os dados ou gerar o Word
+            # Por enquanto, apenas confirma o recebimento
+            flash(f'Deliberação de Pagamento para contrato {contrato} registrada com sucesso!', 'success')
+            return redirect(url_for('sumov.deliberacao_pagamento'))
+
+        except Exception as e:
+            flash(f'Erro ao processar deliberação: {str(e)}', 'danger')
+            return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+    # GET - Carregar página do formulário
+    return render_template('sumov/deliberacao_pagamento/nova.html')
+
+
+@sumov_bp.route('/deliberacao-pagamento/buscar-dados-contrato', methods=['POST'])
+@login_required
+def buscar_dados_contrato():
+    """Busca dados do contrato nas tabelas do banco"""
+    try:
+        data = request.get_json()
+        contrato = data.get('contrato', '').strip()
+
+        if not contrato:
+            return jsonify({'success': False, 'message': 'Contrato não informado'})
+
+        # ===== BUSCA 1: Data de Entrada no Estoque =====
+        sql_estoque = text("""
+            SELECT TOP 1 
+                [DT_ENTRADA_ESTOQUE],
+                [NR_CONTRATO],
+                [VR_AVALIACAO],
+                [DSC_STATUS_IMOVEL]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
+            WHERE [NR_CONTRATO] = :contrato
+        """)
+
+        result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
+
+        # ===== BUSCA 2: Período de Prescrição =====
+        sql_prescricao = text("""
+            SELECT TOP 1
+                [PERIODO_PRESCRICAO],
+                [DT_VENCIMENTO],
+                [VR_COTA]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+            WHERE [IMOVEL] = :contrato
+            ORDER BY [DT_VENCIMENTO] DESC
+        """)
+
+        result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
+
+        # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA) =====
+        sql_valor_inicial = text("""
+            SELECT 
+                SUM([VR_COTA]) as VALOR_INICIAL,
+                COUNT(*) as QTD_PARCELAS,
+                MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+            WHERE [IMOVEL] = :contrato
+        """)
+
+        result_valor_inicial = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
+
+        # ===== BUSCA 4: Valores Calculados por Índice (com Honorários) =====
+        sql_indices = text("""
+            SELECT 
+                C.ID_INDICE_ECONOMICO,
+                I.DSC_INDICE_ECONOMICO,
+                SUM(C.VR_TOTAL) as VALOR_SEM_HONORARIOS,
+                MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
+                SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) as VALOR_COM_HONORARIOS,
+                MAX(C.DT_ATUALIZACAO) as DT_ATUALIZACAO,
+                COUNT(*) as QTD_PARCELAS
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
+            INNER JOIN [BDDASHBOARDBI].[BDG].[PAR023_INDICES_ECONOMICOS] I 
+                ON C.ID_INDICE_ECONOMICO = I.ID_INDICE_ECONOMICO
+            WHERE C.IMOVEL = :contrato
+            GROUP BY C.ID_INDICE_ECONOMICO, I.DSC_INDICE_ECONOMICO
+            ORDER BY C.ID_INDICE_ECONOMICO
+        """)
+
+        result_indices = db.session.execute(sql_indices, {'contrato': contrato}).fetchall()
+
+        # ===== Montar lista de índices para o select =====
+        indices_disponiveis = []
+        for idx in result_indices:
+            indices_disponiveis.append({
+                'id_indice': idx[0],
+                'nome_indice': idx[1],
+                'valor_sem_honorarios': float(idx[2]) if idx[2] else 0,
+                'perc_honorarios': float(idx[3]) if idx[3] else 0,
+                'valor_com_honorarios': float(idx[4]) if idx[4] else 0,
+                'dt_atualizacao': idx[5].strftime('%d/%m/%Y') if idx[5] else None,
+                'qtd_parcelas': idx[6]
+            })
+
+        # ===== Montar resposta =====
+        dados = {
+            'success': True,
+            'dt_entrada_estoque': result_estoque[0].strftime('%Y-%m-%d') if result_estoque and result_estoque[
+                0] else None,
+            'vr_avaliacao': float(result_estoque[2]) if result_estoque and result_estoque[2] else None,
+            'status_imovel': result_estoque[3] if result_estoque and result_estoque[3] else None,
+            'periodo_prescricao': result_prescricao[0] if result_prescricao and result_prescricao[0] else None,
+            'valor_inicial': float(result_valor_inicial[0]) if result_valor_inicial and result_valor_inicial[0] else 0,
+            'qtd_parcelas_inicial': result_valor_inicial[1] if result_valor_inicial else 0,
+            'nome_condominio': result_valor_inicial[2] if result_valor_inicial else None,
+            'indices_disponiveis': indices_disponiveis
+        }
+
+        if not result_estoque and not result_prescricao and not result_valor_inicial:
+            dados['message'] = 'Nenhum dado encontrado para este contrato nas tabelas consultadas.'
+
+        return jsonify(dados)
+
+    except Exception as e:
+        import traceback
+        print(f"Erro ao buscar dados do contrato: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro ao buscar dados: {str(e)}'})

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao SUMOV
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-gavel text-warning me-2"></i> Deliberação de Pagamento
+        </h1>
+        <div>
+            <a href="{{ url_for('sumov.deliberacao_pagamento_nova') }}" class="btn btn-success">
+                <i class="fas fa-plus"></i> Nova Deliberação
+            </a>
+        </div>
+    </div>
+
+    <!-- Cards de estatísticas -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-warning bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-file-contract text-warning fs-3"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Sistema</h6>
+                            <h5 class="mb-0">GEADI</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-info bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-calendar-check text-info fs-3"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Data de Hoje</h6>
+                            <h5 class="mb-0">{{ datetime.now().strftime('%d/%m/%Y') }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <div class="bg-success bg-opacity-10 p-3 rounded">
+                                <i class="fas fa-user-check text-success fs-3"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <h6 class="text-muted mb-1">Analista</h6>
+                            <h5 class="mb-0">{{ current_user.nome.split()[0] }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Informações sobre o módulo -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">
+                <i class="fas fa-info-circle text-primary me-2"></i>
+                Sobre o Sistema de Deliberação de Pagamento
+            </h5>
+            <p class="card-text text-muted mb-3">
+                Este módulo permite criar relatórios automatizados de deliberação de pagamento para análise da GEADI.
+                Os dados são extraídos automaticamente das tabelas do sistema e organizados em formato padronizado.
+            </p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <h6 class="text-primary">
+                        <i class="fas fa-check-circle me-2"></i>Funcionalidades
+                    </h6>
+                    <ul class="text-muted">
+                        <li>Busca automática de dados do contrato/imóvel</li>
+                        <li>Preenchimento automático da data de entrada no estoque</li>
+                        <li>Identificação automática de períodos prescritos</li>
+                        <li>Geração de relatório padronizado em Word</li>
+                    </ul>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="text-primary">
+                        <i class="fas fa-database me-2"></i>Fontes de Dados
+                    </h6>
+                    <ul class="text-muted">
+                        <li>MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE</li>
+                        <li>MOV_TB032_SISCALCULO_PRESCRICOES</li>
+                        <li>Dados informados pelo analista</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
