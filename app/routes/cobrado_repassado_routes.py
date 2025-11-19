@@ -43,13 +43,15 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('cobrado_repassado.consultar'))
 
-            # ✅ FILTRO ADICIONADO: DEVEDOR = 'CAIXA' e VR_FALHA > 0
+            # ✅ FILTRO ADICIONADO: DEVEDOR = 'CAIXA' e VR_FALHA > 0 com select_from EXPLÍCITO
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
                 PenOcorrencias.DSC_OCORRENCIA,
                 PenStatusOcorrencia.DSC_STATUS,
                 PenOficios.DT_OFICIO
+            ).select_from(
+                PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base do FROM
             ).outerjoin(
                 PenCarteiras,
                 PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
@@ -154,13 +156,15 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # ✅ Query RIGOROSA com filtros específicos
+        # ✅ Query RIGOROSA com filtros específicos e select_from EXPLÍCITO
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
             PenOcorrencias.DSC_OCORRENCIA,
             PenStatusOcorrencia.DSC_STATUS,
             PenOficios.DT_OFICIO
+        ).select_from(
+            PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base do FROM
         ).join(
             PenCarteiras,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
@@ -197,11 +201,13 @@ def listar_contratos():
             print(
                 f"   Contrato: {c.PenDetalhamento.NU_CONTRATO} | DEVEDOR: '{c.PenDetalhamento.DEVEDOR}' | VR_FALHA: {c.PenDetalhamento.VR_FALHA}")
 
-        # ✅ Buscar carteiras únicas COM MESMOS FILTROS
+        # ✅ Buscar carteiras únicas COM MESMOS FILTROS e select_from EXPLÍCITO
         carteiras_unicas = db.session.query(
             PenCarteiras.DSC_CARTEIRA
+        ).select_from(
+            PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base
         ).join(
-            PenDetalhamento,
+            PenCarteiras,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
             PenDetalhamento.VR_FALHA > 0,  # ✅ MESMOS FILTROS
@@ -218,7 +224,7 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO,
             AexAnalitico.NU_CONTRATO
         ).select_from(
-            PenRelacionaVlrRepassado
+            PenRelacionaVlrRepassado  # ✅ ADICIONADO: Tabela base para vinculações
         ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRepassado.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO
@@ -430,6 +436,8 @@ def listar_vinculacoes():
             PenStatusOcorrencia.DSC_STATUS,
             PenOficios.NU_OFICIO,
             PenOficios.DT_OFICIO
+        ).select_from(
+            PenRelacionaVlrRepassado  # ✅ ADICIONADO: Define explicitamente a tabela base
         ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRepassado.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO

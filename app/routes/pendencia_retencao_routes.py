@@ -43,13 +43,15 @@ def consultar():
                 flash('Número de contrato inválido.', 'danger')
                 return redirect(url_for('pendencia_retencao.consultar'))
 
-            # ✅ FILTRO ADICIONADO: DEVEDOR = 'EMGEA'
+            # ✅ FILTRO ADICIONADO: DEVEDOR = 'EMGEA' com select_from EXPLÍCITO
             pendencias = db.session.query(
                 PenDetalhamento,
                 PenCarteiras.DSC_CARTEIRA,
                 PenOcorrencias.DSC_OCORRENCIA,
                 PenStatusOcorrencia.DSC_STATUS,
                 PenOficios.DT_OFICIO
+            ).select_from(
+                PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base do FROM
             ).outerjoin(
                 PenCarteiras,
                 PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
@@ -153,13 +155,15 @@ def listar_contratos():
         # Pegar filtro de carteira da query string
         carteira_filtro = request.args.get('carteira', '')
 
-        # ✅ Query base com DEVEDOR = 'EMGEA'
+        # ✅ Query base com DEVEDOR = 'EMGEA' e select_from EXPLÍCITO
         query = db.session.query(
             PenDetalhamento,
             PenCarteiras.DSC_CARTEIRA,
             PenOcorrencias.DSC_OCORRENCIA,
             PenStatusOcorrencia.DSC_STATUS,
             PenOficios.DT_OFICIO
+        ).select_from(
+            PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base do FROM
         ).join(
             PenCarteiras,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
@@ -184,11 +188,13 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO.desc()
         ).all()
 
-        # ✅ Buscar lista de carteiras únicas (também filtrando por DEVEDOR = 'EMGEA')
+        # ✅ Buscar lista de carteiras únicas (também filtrando por DEVEDOR = 'EMGEA') com select_from EXPLÍCITO
         carteiras_unicas = db.session.query(
             PenCarteiras.DSC_CARTEIRA
+        ).select_from(
+            PenDetalhamento  # ✅ ADICIONADO: Define explicitamente a tabela base
         ).join(
-            PenDetalhamento,
+            PenCarteiras,
             PenDetalhamento.ID_CARTEIRA == PenCarteiras.ID_CARTEIRA
         ).filter(
             PenDetalhamento.DEVEDOR == 'EMGEA'  # ✅ FILTRO
@@ -203,7 +209,7 @@ def listar_contratos():
             PenDetalhamento.NU_CONTRATO,
             AexAnalitico.NU_CONTRATO
         ).select_from(
-            PenRelacionaVlrRetido
+            PenRelacionaVlrRetido  # ✅ ADICIONADO: Tabela base para vinculações
         ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRetido.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO
@@ -410,6 +416,8 @@ def listar_vinculacoes():
             PenStatusOcorrencia.DSC_STATUS,
             PenOficios.NU_OFICIO,
             PenOficios.DT_OFICIO
+        ).select_from(
+            PenRelacionaVlrRetido  # ✅ ADICIONADO: Define explicitamente a tabela base
         ).outerjoin(
             PenDetalhamento,
             PenRelacionaVlrRetido.ID_PENDENCIA == PenDetalhamento.ID_DETALHAMENTO
