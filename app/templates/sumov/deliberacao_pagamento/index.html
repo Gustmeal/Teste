@@ -12,7 +12,7 @@
         </h1>
         <div>
             <a href="{{ url_for('sumov.deliberacao_pagamento_nova') }}" class="btn btn-success">
-                <i class="fas fa-plus"></i> Nova Deliberação
+                <i class="fas fa-plus me-2"></i>Nova Deliberação
             </a>
         </div>
     </div>
@@ -29,8 +29,8 @@
                             </div>
                         </div>
                         <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Sistema</h6>
-                            <h5 class="mb-0">GEADI</h5>
+                            <h6 class="text-muted mb-1">Total Deliberações</h6>
+                            <h5 class="mb-0">{{ deliberacoes|length }}</h5>
                         </div>
                     </div>
                 </div>
@@ -48,7 +48,7 @@
                         </div>
                         <div class="flex-grow-1 ms-3">
                             <h6 class="text-muted mb-1">Data de Hoje</h6>
-                            <h5 class="mb-0">{{ datetime.now().strftime('%d/%m/%Y') }}</h5>
+                            <h5 class="mb-0">{{ data_hoje }}</h5>
                         </div>
                     </div>
                 </div>
@@ -74,6 +74,102 @@
         </div>
     </div>
 
+    <!-- Tabela de Deliberações Salvas -->
+    {% if deliberacoes %}
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-list me-2"></i>Deliberações Salvas
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0" id="tabelaDeliberacoes">
+                    <thead class="table-light">
+                        <tr>
+                            <th><i class="fas fa-file-contract me-1"></i>Contrato</th>
+                            <th><i class="fas fa-calendar me-1"></i>Data Análise</th>
+                            <th><i class="fas fa-user me-1"></i>Analista</th>
+                            <th><i class="fas fa-chart-line me-1"></i>Índice</th>
+                            <th><i class="fas fa-dollar-sign me-1"></i>Valor Calculado</th>
+                            <th><i class="fas fa-info-circle me-1"></i>Status</th>
+                            <th class="text-center"><i class="fas fa-cog me-1"></i>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for deliberacao in deliberacoes %}
+                        <tr>
+                            <td class="fw-bold">{{ deliberacao.NU_CONTRATO }}</td>
+                            <td>
+                                {% if deliberacao.DT_ANALISE %}
+                                    {{ deliberacao.DT_ANALISE.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ deliberacao.COLABORADOR_ANALISOU or '-' }}</td>
+                            <td>
+                                <small class="text-muted">{{ deliberacao.INDICE_DEBITO_EMGEA or '-' }}</small>
+                            </td>
+                            <td>
+                                {% if deliberacao.VR_DEBITO_CALCULADO_EMGEA %}
+                                    <span class="text-success fw-bold">
+                                        R$ {{ "{:,.2f}".format(deliberacao.VR_DEBITO_CALCULADO_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    </span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% set status = deliberacao.STATUS_DOCUMENTO or 'RASCUNHO' %}
+                                {% if status == 'RASCUNHO' %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-pencil-alt me-1"></i>Rascunho
+                                    </span>
+                                {% elif status == 'EM_ANALISE' %}
+                                    <span class="badge bg-warning">
+                                        <i class="fas fa-clock me-1"></i>Em Análise
+                                    </span>
+                                {% elif status == 'APROVADO' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check me-1"></i>Aprovado
+                                    </span>
+                                {% elif status == 'REJEITADO' %}
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-times me-1"></i>Rejeitado
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <div class="btn-group" role="group">
+                                    <a href="{{ url_for('sumov.deliberacao_pagamento_editar', contrato=deliberacao.NU_CONTRATO) }}"
+                                       class="btn btn-sm btn-primary"
+                                       title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <button type="button"
+                                            class="btn btn-sm btn-success"
+                                            onclick="baixarPDF('{{ deliberacao.NU_CONTRATO }}')"
+                                            title="Baixar PDF">
+                                        <i class="fas fa-file-pdf"></i>
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-danger"
+                                            onclick="confirmarExclusao('{{ deliberacao.NU_CONTRATO }}')"
+                                            title="Excluir">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Informações sobre o módulo -->
     <div class="card border-0 shadow-sm">
         <div class="card-body">
@@ -93,9 +189,10 @@
                     </h6>
                     <ul class="text-muted">
                         <li>Busca automática de dados do contrato/imóvel</li>
-                        <li>Preenchimento automático da data de entrada no estoque</li>
+                        <li>Preenchimento automático de dados do estoque</li>
                         <li>Identificação automática de períodos prescritos</li>
-                        <li>Geração de relatório padronizado em Word</li>
+                        <li>Busca de processos judiciais e débitos</li>
+                        <li>Salvamento e edição de deliberações</li>
                     </ul>
                 </div>
                 <div class="col-md-6">
@@ -105,7 +202,10 @@
                     <ul class="text-muted">
                         <li>MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE</li>
                         <li>MOV_TB032_SISCALCULO_PRESCRICOES</li>
-                        <li>Dados informados pelo analista</li>
+                        <li>MOV_TB031_SISCALCULO_CALCULOS</li>
+                        <li>SISJUD - tblProcessoCredito e tblProcessoEmgea</li>
+                        <li>MOV_TB017_DESPESAS_MANUTENCAO (SISDEX)</li>
+                        <li>MOV_TB004_DESPESAS_ANALITICO (SISGEA)</li>
                     </ul>
                 </div>
             </div>
@@ -113,4 +213,69 @@
     </div>
 
 </div>
+
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="modalExcluir" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir a deliberação do contrato <strong id="contratoExcluir"></strong>?</p>
+                <p class="text-muted small mb-0">Esta ação não pode ser desfeita.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+                <form method="POST" id="formExcluir" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="fas fa-trash me-2"></i>Excluir
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+// Função para baixar PDF
+function baixarPDF(contrato) {
+    // Mostrar indicador de carregamento no botão
+    const botoes = document.querySelectorAll(`button[onclick="baixarPDF('${contrato}')"]`);
+    botoes.forEach(btn => {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    });
+
+    // Criar elemento <a> temporário para download
+    const link = document.createElement('a');
+    link.href = `/sumov/deliberacao-pagamento/pdf/${contrato}`;
+    link.download = `Deliberacao_${contrato}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Restaurar botão após 2 segundos
+    setTimeout(() => {
+        botoes.forEach(btn => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-file-pdf"></i>';
+        });
+    }, 2000);
+}
+// Confirmar exclusão
+function confirmarExclusao(contrato) {
+    document.getElementById('contratoExcluir').textContent = contrato;
+    document.getElementById('formExcluir').action = `/sumov/deliberacao-pagamento/excluir/${contrato}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('modalExcluir'));
+    modal.show();
+}
+</script>
 {% endblock %}

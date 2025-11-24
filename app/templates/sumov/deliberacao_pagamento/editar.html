@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar para Lista
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-edit text-warning me-2"></i> Editar Deliberação - Contrato {{ deliberacao.NU_CONTRATO }}
+        </h1>
+        <a href="{{ url_for('sumov.deliberacao_pagamento_pdf', contrato=deliberacao.NU_CONTRATO) }}"
+           class="btn btn-success"
+           target="_blank">
+            <i class="fas fa-file-pdf me-2"></i>Baixar PDF
+        </a>
+    </div>
+
+    <!-- Card do Formulário -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-gradient-warning text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-edit me-2"></i>Edição de Deliberação - GEADI
+            </h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST" action="{{ url_for('sumov.deliberacao_pagamento_nova') }}">
+
+                <!-- Contrato (readonly em edição) -->
+                <input type="hidden" name="contrato" value="{{ deliberacao.NU_CONTRATO }}">
+                <input type="hidden" name="indice_economico" value="0">
+
+                <!-- ==== SEÇÃO: IDENTIFICAÇÃO ==== -->
+                <div class="border-bottom pb-3 mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-id-card me-2"></i>Identificação
+                    </h5>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-file-contract text-primary me-1"></i>
+                            Contrato/Imóvel
+                        </label>
+                        <input type="text" class="form-control bg-light" value="{{ deliberacao.NU_CONTRATO }}" readonly>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="matricula" class="form-label fw-bold">
+                            <i class="fas fa-id-badge text-secondary me-1"></i>
+                            Matrícula (Caixa/Emgea)
+                        </label>
+                        <input type="text" class="form-control" id="matricula" name="matricula"
+                               value="{{ deliberacao.MATRICULA_CAIXA_EMGEA or '' }}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="dt_arrematacao" class="form-label fw-bold">
+                            <i class="fas fa-calendar-plus text-warning me-1"></i>
+                            Data da Arrematação/Aquisição
+                        </label>
+                        <input type="date" class="form-control" id="dt_arrematacao" name="dt_arrematacao"
+                               value="{% if deliberacao.DT_ARREMATACAO_AQUISICAO %}{{ deliberacao.DT_ARREMATACAO_AQUISICAO.strftime('%Y-%m-%d') }}{% endif %}">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="dt_registro" class="form-label fw-bold">
+                            <i class="fas fa-edit text-primary me-1"></i>
+                            Data do Registro <span class="text-danger">*</span>
+                        </label>
+                        <input type="date" class="form-control" id="dt_registro" name="dt_registro"
+                               value="{% if deliberacao.DT_REGISTRO %}{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') }}{% endif %}"
+                               required>
+                    </div>
+                </div>
+
+                <!-- ==== SEÇÃO: AÇÕES E PROCESSOS ==== -->
+                <div class="border-bottom pb-3 mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-balance-scale me-2"></i>Ações e Processos
+                    </h5>
+
+                    <div class="mb-3">
+                        <label for="gravame_matricula" class="form-label fw-bold">
+                            <i class="fas fa-file-signature text-danger me-1"></i>
+                            Gravame na Matrícula
+                        </label>
+                        <textarea class="form-control" id="gravame_matricula" name="gravame_matricula"
+                                  rows="3">{{ deliberacao.GRAVAME_MATRICULA or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="acoes_negociais_administrativas" class="form-label fw-bold">
+                            <i class="fas fa-handshake text-success me-1"></i>
+                            Ações Negociais Administrativas
+                        </label>
+                        <textarea class="form-control" id="acoes_negociais_administrativas"
+                                  name="acoes_negociais_administrativas"
+                                  rows="3">{{ deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="relatorio_assessoria_juridica" class="form-label fw-bold">
+                            <i class="fas fa-file-alt text-secondary me-1"></i>
+                            Relatório da Assessoria Jurídica
+                        </label>
+                        <textarea class="form-control" id="relatorio_assessoria_juridica"
+                                  name="relatorio_assessoria_juridica"
+                                  rows="5">{{ deliberacao.RELATORIO_ASSESSORIA_JURIDICA or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="penalidade_ans_caixa" class="form-label fw-bold">
+                            <i class="fas fa-exclamation-triangle text-danger me-1"></i>
+                            Penalidade de ANS - CAIXA
+                        </label>
+                        <textarea class="form-control" id="penalidade_ans_caixa"
+                                  name="penalidade_ans_caixa"
+                                  rows="3">{{ deliberacao.PENALIDADE_ANS_CAIXA or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="prejuizo_financeiro_caixa" class="form-label fw-bold">
+                            <i class="fas fa-chart-line text-danger me-1"></i>
+                            Prejuízo Financeiro - CAIXA
+                        </label>
+                        <textarea class="form-control" id="prejuizo_financeiro_caixa"
+                                  name="prejuizo_financeiro_caixa"
+                                  rows="3">{{ deliberacao.PREJUIZO_FINANCEIRO_CAIXA or '' }}</textarea>
+                    </div>
+                </div>
+
+                <!-- ==== SEÇÃO: CONSIDERAÇÕES ==== -->
+                <div class="mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-comments me-2"></i>Considerações Finais
+                    </h5>
+
+                    <div class="mb-3">
+                        <label for="consideracoes_analista" class="form-label fw-bold">
+                            <i class="fas fa-user-edit text-info me-1"></i>
+                            Considerações da Analista GEADI
+                        </label>
+                        <textarea class="form-control" id="consideracoes_analista"
+                                  name="consideracoes_analista"
+                                  rows="5">{{ deliberacao.CONSIDERACOES_ANALISTA_GEADI or '' }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="consideracoes_gestor" class="form-label fw-bold">
+                            <i class="fas fa-user-tie text-success me-1"></i>
+                            Considerações Finais do Gestor da GEADI
+                        </label>
+                        <textarea class="form-control" id="consideracoes_gestor"
+                                  name="consideracoes_gestor"
+                                  rows="5">{{ deliberacao.CONSIDERACOES_GESTOR_GEADI or '' }}</textarea>
+                    </div>
+                </div>
+
+                <!-- Botões de Ação -->
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success btn-lg">
+                        <i class="fas fa-save me-2"></i>Salvar Alterações
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

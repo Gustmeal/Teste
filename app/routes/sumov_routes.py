@@ -9,9 +9,18 @@ from app.models.despesas_analitico import DespesasAnalitico, OcorrenciasMovItemS
 from decimal import Decimal
 from app.models.evidencias_sumov import EvidenciasSumov
 from datetime import datetime, date
+from app.models.deliberacao_pagamento import DeliberacaoPagamento
+from flask import send_file
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
+@sumov_bp.context_processor
+def inject_current_year():
+    from datetime import datetime
+    return {
+        'current_year': datetime.utcnow().year,
+        'data_hoje': datetime.now().strftime('%d/%m/%Y')  # ADICIONE ESTA LINHA
+    }
 
 @sumov_bp.context_processor
 def inject_datetime():
@@ -21,6 +30,7 @@ def inject_datetime():
         'current_year': datetime.utcnow().year
     }
 @sumov_bp.route('/')
+
 @login_required
 def index():
     """Dashboard principal do SUMOV"""
@@ -807,33 +817,353 @@ def buscar_analise_pagamentos():
 @sumov_bp.route('/deliberacao-pagamento')
 @login_required
 def deliberacao_pagamento():
-    """Dashboard do sistema de Deliberação de Pagamento"""
-    return render_template('sumov/deliberacao_pagamento/index.html')
+    """Dashboard do sistema de Deliberação de Pagamento com lista de deliberações"""
+    try:
+        from datetime import datetime
+
+        # Buscar todas as deliberações salvas
+        deliberacoes = DeliberacaoPagamento.query.filter(
+            DeliberacaoPagamento.DELETED_AT.is_(None)
+        ).order_by(
+            DeliberacaoPagamento.CREATED_AT.desc()
+        ).all()
+
+        return render_template('sumov/deliberacao_pagamento/index.html',
+                               deliberacoes=deliberacoes,
+                               data_hoje=datetime.now().strftime('%d/%m/%Y'))
+    except Exception as e:
+        from datetime import datetime
+        flash(f'Erro ao carregar deliberações: {str(e)}', 'danger')
+        return render_template('sumov/deliberacao_pagamento/index.html',
+                               deliberacoes=[],
+                               data_hoje=datetime.now().strftime('%d/%m/%Y'))
 
 
 @sumov_bp.route('/deliberacao-pagamento/nova', methods=['GET', 'POST'])
 @login_required
 def deliberacao_pagamento_nova():
-    """Criar nova Deliberação de Pagamento"""
+    """Criar nova Deliberação de Pagamento seguindo estrutura do Word"""
     if request.method == 'POST':
         try:
-            # Captura dados do formulário
+            # ===== CAPTURA DADOS DO FORMULÁRIO =====
             contrato = request.form.get('contrato', '').strip()
-            matricula = request.form.get('matricula', '').strip()
-            dt_arrematacao = request.form.get('dt_arrematacao', '').strip()
-            vr_divida = request.form.get('vr_divida', '0').strip().replace('.', '').replace(',', '.')
+            matricula = request.form.get('matricula', '').strip() or None
+            dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
+            indice_selecionado_idx = request.form.get('indice_economico', '').strip()
+            dt_registro_str = request.form.get('dt_registro', '').strip()
 
-            # Validações básicas
+            # Campos da parte final
+            gravame_matricula = request.form.get('gravame_matricula', '').strip() or None
+            acoes_negociais_adm = request.form.get('acoes_negociais_administrativas', '').strip() or None
+            nr_processos = request.form.get('nr_processos_judiciais', '').strip() or None
+            vara_processo = request.form.get('vara_processo', '').strip() or None
+            fase_processo = request.form.get('fase_processo', '').strip() or None
+            relatorio_assessoria = request.form.get('relatorio_assessoria_juridica', '').strip() or None
+            penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
+            prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
+            consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
+            consideracoes_gestor = request.form.get('consideracoes_gestor', '').strip() or None
+
+            # Validação básica obrigatória
             if not contrato:
                 flash('Por favor, informe o Contrato/Imóvel.', 'danger')
                 return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            # Aqui você pode processar os dados ou gerar o Word
-            # Por enquanto, apenas confirma o recebimento
-            flash(f'Deliberação de Pagamento para contrato {contrato} registrada com sucesso!', 'success')
-            return redirect(url_for('sumov.deliberacao_pagamento'))
+            if not indice_selecionado_idx:
+                flash('Por favor, selecione o Índice Econômico.', 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            if not dt_registro_str:
+                flash('Por favor, informe a Data do Registro.', 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # Converter datas
+            dt_arrematacao = None
+            if dt_arrematacao_str:
+                try:
+                    dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de arrematação inválida.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            dt_registro = None
+            if dt_registro_str:
+                try:
+                    dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data do registro inválida.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # ===== BUSCA 1: Data de Entrada no Estoque =====
+            sql_estoque = text("""
+                SELECT TOP 1 
+                    [DT_ENTRADA_ESTOQUE]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
+            dt_entrada_estoque = result_estoque[0] if result_estoque else None
+
+            # ===== BUSCA 2: Período de Prescrição =====
+            sql_prescricao = text("""
+                SELECT TOP 1
+                    [PERIODO_PRESCRICAO]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                WHERE [IMOVEL] = :contrato
+                ORDER BY [DT_VENCIMENTO] DESC
+            """)
+            result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
+            periodo_prescrito = result_prescricao[0] if result_prescricao else None
+
+            # ===== BUSCA 3: Valor Inicial =====
+            sql_valor_inicial = text("""
+                SELECT 
+                    SUM([VR_COTA]) as VALOR_INICIAL,
+                    MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+                WHERE [IMOVEL] = :contrato
+            """)
+            result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
+
+            vr_divida_inicial = result_valor[0] if result_valor and result_valor[0] else Decimal('0')
+            nome_condominio = result_valor[1] if result_valor and result_valor[1] else None
+
+            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
+            sql_valor_prescrito = text("""
+                            SELECT 
+                                SUM([VR_COTA]) as VALOR_PRESCRITO
+                            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                            WHERE [IMOVEL] = :contrato
+                            AND [ID_INDICE_ECONOMICO] = (
+                                SELECT MIN([ID_INDICE_ECONOMICO])
+                                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                                WHERE [IMOVEL] = :contrato
+                                AND [DT_ATUALIZACAO] = (
+                                    SELECT MAX([DT_ATUALIZACAO])
+                                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                                    WHERE [IMOVEL] = :contrato
+                                )
+                            )
+                            AND [DT_ATUALIZACAO] = (
+                                SELECT MAX([DT_ATUALIZACAO])
+                                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                                WHERE [IMOVEL] = :contrato
+                            )
+                        """)
+            result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
+            vr_debito_excluido_prescritas = result_prescrito[0] if result_prescrito and result_prescrito[
+                0] else Decimal('0')
+
+            # ===== BUSCA 5: Cálculos do SISCalculo =====
+            sql_calculos = text("""
+                SELECT 
+                    ID_INDICE_ECONOMICO,
+                    SUM(VR_TOTAL) AS VR_TOTAL_SEM_HONORARIOS,
+                    MAX(PERC_HONORARIOS) AS PERC_HONORARIOS,
+                    SUM(VR_TOTAL) * MAX(PERC_HONORARIOS) / 100.0 AS VR_HONORARIOS,
+                    SUM(VR_TOTAL) + (SUM(VR_TOTAL) * MAX(PERC_HONORARIOS) / 100.0) AS VR_TOTAL_COM_HONORARIOS
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+                WHERE [IMOVEL] = :contrato
+                AND [DT_ATUALIZACAO] = (
+                    SELECT MAX([DT_ATUALIZACAO])
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+                    WHERE [IMOVEL] = :contrato
+                )
+                GROUP BY ID_INDICE_ECONOMICO
+                ORDER BY ID_INDICE_ECONOMICO
+            """)
+            result_calculos = db.session.execute(sql_calculos, {'contrato': contrato}).fetchall()
+
+            if not result_calculos:
+                flash('Nenhum cálculo encontrado no SISCalculo para este contrato. Processe os cálculos primeiro.',
+                      'warning')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # Pegar o índice selecionado
+            try:
+                idx = int(indice_selecionado_idx)
+                calculo = result_calculos[idx]
+            except (ValueError, IndexError):
+                flash('Índice econômico inválido.', 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            id_indice = calculo[0]
+            vr_divida_calculada = calculo[1]
+            perc_honorarios_emgea = calculo[2]
+            vr_honorarios = calculo[3]
+            vr_debito_calculado_emgea = calculo[4]
+
+            # Buscar nome do índice
+            from app.models.siscalculo import ParamIndicesEconomicos
+            indice_obj = ParamIndicesEconomicos.query.get(id_indice)
+            indice_debito_emgea = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
+
+            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
+            sql_avaliacao = text("""
+                SELECT TOP 1
+                    [VR_LAUDO_AVALIACAO],
+                    [DT_LAUDO]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
+
+            vr_avaliacao = result_avaliacao[0] if result_avaliacao and result_avaliacao[0] else None
+            dt_laudo = result_avaliacao[1] if result_avaliacao and result_avaliacao[1] else None
+
+            # ===== BUSCA 7: Status do Imóvel =====
+            sql_status = text("""
+                SELECT TOP 1
+                    [DSC_SITUACAO]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB020_IMOVEIS_RM_TOTVS]
+                WHERE [IMOVEL] = :contrato
+            """)
+            result_status = db.session.execute(sql_status, {'contrato': contrato}).fetchone()
+            status_imovel = result_status[0] if result_status else None
+
+            # ===== BUSCA 8: Dados de Venda =====
+            sql_venda = text("""
+                SELECT TOP 1
+                    [VR_VENDA],
+                    [DT_VENDA],
+                    [NO_COMPRADOR]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
+                WHERE [NU_IMOVEL] = :contrato
+                ORDER BY [DT_VENDA] DESC
+            """)
+            result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
+
+            vr_venda = result_venda[0] if result_venda and result_venda[0] else None
+            dt_venda = result_venda[1] if result_venda and result_venda[1] else None
+            nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
+
+            # ===== BUSCA 9: Débitos Pagos =====
+            sql_sisdex = text("""
+                SELECT SUM([VR_PAGO]) as TOTAL_SISDEX
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB017_DESPESAS_MANUTENCAO]
+                WHERE [NU_CONTRATO] = :contrato
+            """)
+            result_sisdex = db.session.execute(sql_sisdex, {'contrato': contrato}).fetchone()
+            vr_debitos_sisdex = result_sisdex[0] if result_sisdex and result_sisdex[0] else Decimal('0')
+
+            sql_sisgea = text("""
+                SELECT SUM([VR_DESPESA]) as TOTAL_SISGEA
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB004_DESPESAS_ANALITICO]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
+            vr_debitos_sisgea = result_sisgea[0] if result_sisgea and result_sisgea[0] else Decimal('0')
+
+            vr_debitos_total = vr_debitos_sisdex + vr_debitos_sisgea
+
+            # ===== VERIFICAR SE JÁ EXISTE REGISTRO =====
+            deliberacao_existente = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
+            if deliberacao_existente:
+                # ATUALIZAR registro existente
+                deliberacao_existente.COLABORADOR_ANALISOU = current_user.nome
+                deliberacao_existente.DT_ANALISE = datetime.now().date()
+                deliberacao_existente.MATRICULA_CAIXA_EMGEA = matricula
+                deliberacao_existente.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
+                deliberacao_existente.DT_ENTRADA_ESTOQUE = dt_entrada_estoque
+                deliberacao_existente.PERIODO_PRESCRITO = periodo_prescrito
+                deliberacao_existente.VR_DIVIDA_CONDOMINIO_1 = vr_divida_inicial
+                deliberacao_existente.VR_DEBITO_EXCLUIDO_PRESCRITAS = vr_debito_excluido_prescritas
+                deliberacao_existente.VR_DEBITO_CALCULADO_EMGEA = vr_debito_calculado_emgea
+                deliberacao_existente.INDICE_DEBITO_EMGEA = indice_debito_emgea
+                deliberacao_existente.PERC_HONORARIOS_EMGEA = perc_honorarios_emgea
+                deliberacao_existente.VR_HONORARIOS_EMGEA = vr_honorarios
+                deliberacao_existente.DT_CALCULO_EMGEA = datetime.now().date()
+                deliberacao_existente.VR_AVALIACAO = vr_avaliacao
+                deliberacao_existente.DT_LAUDO = dt_laudo
+                deliberacao_existente.STATUS_IMOVEL = status_imovel
+                deliberacao_existente.VR_VENDA = vr_venda
+                deliberacao_existente.DT_VENDA = dt_venda
+                deliberacao_existente.NOME_COMPRADOR = nome_comprador
+                deliberacao_existente.DT_REGISTRO = dt_registro
+                deliberacao_existente.VR_DEBITOS_SISDEX = vr_debitos_sisdex
+                deliberacao_existente.VR_DEBITOS_SISGEA = vr_debitos_sisgea
+                deliberacao_existente.VR_DEBITOS_TOTAL = vr_debitos_total
+                # Parte final
+                deliberacao_existente.GRAVAME_MATRICULA = gravame_matricula
+                deliberacao_existente.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
+                deliberacao_existente.NR_PROCESSOS_JUDICIAIS = nr_processos
+                deliberacao_existente.VARA_PROCESSO = vara_processo
+                deliberacao_existente.FASE_PROCESSO = fase_processo
+                deliberacao_existente.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
+                deliberacao_existente.PENALIDADE_ANS_CAIXA = penalidade_ans
+                deliberacao_existente.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
+                deliberacao_existente.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
+                deliberacao_existente.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
+                deliberacao_existente.USUARIO_ATUALIZACAO = current_user.nome
+                deliberacao_existente.UPDATED_AT = datetime.utcnow()
+
+                deliberacao = deliberacao_existente
+                acao_log = 'editar'
+                mensagem = 'Deliberação de Pagamento atualizada com sucesso!'
+            else:
+                # CRIAR novo registro
+                deliberacao = DeliberacaoPagamento(
+                    NU_CONTRATO=contrato,
+                    COLABORADOR_ANALISOU=current_user.nome,
+                    DT_ANALISE=datetime.now().date(),
+                    MATRICULA_CAIXA_EMGEA=matricula,
+                    DT_ARREMATACAO_AQUISICAO=dt_arrematacao,
+                    DT_ENTRADA_ESTOQUE=dt_entrada_estoque,
+                    PERIODO_PRESCRITO=periodo_prescrito,
+                    VR_DIVIDA_CONDOMINIO_1=vr_divida_inicial,
+                    VR_DEBITO_EXCLUIDO_PRESCRITAS=vr_debito_excluido_prescritas,
+                    VR_DEBITO_CALCULADO_EMGEA=vr_debito_calculado_emgea,
+                    INDICE_DEBITO_EMGEA=indice_debito_emgea,
+                    PERC_HONORARIOS_EMGEA=perc_honorarios_emgea,
+                    VR_HONORARIOS_EMGEA=vr_honorarios,
+                    DT_CALCULO_EMGEA=datetime.now().date(),
+                    VR_AVALIACAO=vr_avaliacao,
+                    DT_LAUDO=dt_laudo,
+                    STATUS_IMOVEL=status_imovel,
+                    VR_VENDA=vr_venda,
+                    DT_VENDA=dt_venda,
+                    NOME_COMPRADOR=nome_comprador,
+                    DT_REGISTRO=dt_registro,
+                    VR_DEBITOS_SISDEX=vr_debitos_sisdex,
+                    VR_DEBITOS_SISGEA=vr_debitos_sisgea,
+                    VR_DEBITOS_TOTAL=vr_debitos_total,
+                    # Parte final
+                    GRAVAME_MATRICULA=gravame_matricula,
+                    ACOES_NEGOCIAIS_ADMINISTRATIVAS=acoes_negociais_adm,
+                    NR_PROCESSOS_JUDICIAIS=nr_processos,
+                    VARA_PROCESSO=vara_processo,
+                    FASE_PROCESSO=fase_processo,
+                    RELATORIO_ASSESSORIA_JURIDICA=relatorio_assessoria,
+                    PENALIDADE_ANS_CAIXA=penalidade_ans,
+                    PREJUIZO_FINANCEIRO_CAIXA=prejuizo_financeiro,
+                    CONSIDERACOES_ANALISTA_GEADI=consideracoes_analista,
+                    CONSIDERACOES_GESTOR_GEADI=consideracoes_gestor,
+                    STATUS_DOCUMENTO='RASCUNHO',
+                    USUARIO_CRIACAO=current_user.nome,
+                    CREATED_AT=datetime.utcnow()
+                )
+
+                acao_log = 'criar'
+                mensagem = 'Deliberação de Pagamento criada com sucesso!'
+
+            # ===== SALVAR NO BANCO =====
+            if deliberacao.salvar():
+                registrar_log(
+                    acao=acao_log,
+                    entidade='deliberacao_pagamento',
+                    entidade_id=contrato,
+                    descricao=f'Deliberação de Pagamento para contrato {contrato}: {indice_debito_emgea}'
+                )
+
+                flash(mensagem, 'success')
+                return redirect(url_for('sumov.deliberacao_pagamento'))
+            else:
+                flash('Erro ao salvar deliberação no banco de dados.', 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
         except Exception as e:
+            db.session.rollback()
             flash(f'Erro ao processar deliberação: {str(e)}', 'danger')
             return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
@@ -855,28 +1185,23 @@ def buscar_dados_contrato():
         # ===== BUSCA 1: Data de Entrada no Estoque =====
         sql_estoque = text("""
             SELECT TOP 1 
-                [DT_ENTRADA_ESTOQUE],
-                [NR_CONTRATO],
-                [VR_AVALIACAO],
-                [DSC_STATUS_IMOVEL]
+                [DT_ENTRADA_ESTOQUE]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
             WHERE [NR_CONTRATO] = :contrato
         """)
-
         result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
+        dt_entrada_estoque = result_estoque[0].strftime('%Y-%m-%d') if result_estoque and result_estoque[0] else None
 
         # ===== BUSCA 2: Período de Prescrição =====
         sql_prescricao = text("""
             SELECT TOP 1
-                [PERIODO_PRESCRICAO],
-                [DT_VENCIMENTO],
-                [VR_COTA]
+                [PERIODO_PRESCRICAO]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
             WHERE [IMOVEL] = :contrato
             ORDER BY [DT_VENCIMENTO] DESC
         """)
-
         result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
+        periodo_prescricao = result_prescricao[0] if result_prescricao else None
 
         # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA) =====
         sql_valor_inicial = text("""
@@ -887,63 +1212,667 @@ def buscar_dados_contrato():
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
             WHERE [IMOVEL] = :contrato
         """)
+        result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
 
-        result_valor_inicial = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
+        valor_inicial = float(result_valor[0]) if result_valor and result_valor[0] else 0
+        qtd_parcelas_inicial = result_valor[1] if result_valor and result_valor[1] else 0
+        nome_condominio = result_valor[2] if result_valor and result_valor[2] else None
 
-        # ===== BUSCA 4: Valores Calculados por Índice (com Honorários) =====
+        # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas (DE UM ÚNICO ÍNDICE) =====
+        sql_valor_prescrito = text("""
+                    SELECT 
+                        SUM([VR_COTA]) as VALOR_PRESCRITO,
+                        COUNT(*) as QTD_PRESCRITO
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                    WHERE [IMOVEL] = :contrato
+                    AND [ID_INDICE_ECONOMICO] = (
+                        SELECT MIN([ID_INDICE_ECONOMICO])
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                        WHERE [IMOVEL] = :contrato
+                        AND [DT_ATUALIZACAO] = (
+                            SELECT MAX([DT_ATUALIZACAO])
+                            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                            WHERE [IMOVEL] = :contrato
+                        )
+                    )
+                    AND [DT_ATUALIZACAO] = (
+                        SELECT MAX([DT_ATUALIZACAO])
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                        WHERE [IMOVEL] = :contrato
+                    )
+                """)
+        result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
+
+        valor_prescrito = float(result_prescrito[0]) if result_prescrito and result_prescrito[0] else 0
+        qtd_prescrito = result_prescrito[1] if result_prescrito and result_prescrito[1] else 0
+
+        # ===== BUSCA 5: Índices Disponíveis com Cálculos =====
         sql_indices = text("""
             SELECT 
                 C.ID_INDICE_ECONOMICO,
-                I.DSC_INDICE_ECONOMICO,
-                SUM(C.VR_TOTAL) as VALOR_SEM_HONORARIOS,
-                MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
-                SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) as VALOR_COM_HONORARIOS,
-                MAX(C.DT_ATUALIZACAO) as DT_ATUALIZACAO,
-                COUNT(*) as QTD_PARCELAS
+                SUM(C.VR_TOTAL) AS VR_TOTAL_SEM_HONORARIOS,
+                MAX(C.PERC_HONORARIOS) AS PERC_HONORARIOS,
+                SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0 AS VR_HONORARIOS,
+                SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) AS VR_TOTAL_COM_HONORARIOS
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
-            INNER JOIN [BDDASHBOARDBI].[BDG].[PAR023_INDICES_ECONOMICOS] I 
-                ON C.ID_INDICE_ECONOMICO = I.ID_INDICE_ECONOMICO
-            WHERE C.IMOVEL = :contrato
-            GROUP BY C.ID_INDICE_ECONOMICO, I.DSC_INDICE_ECONOMICO
+            WHERE C.[IMOVEL] = :contrato
+            AND C.[DT_ATUALIZACAO] = (
+                SELECT MAX([DT_ATUALIZACAO])
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+                WHERE [IMOVEL] = :contrato
+            )
+            GROUP BY C.ID_INDICE_ECONOMICO
             ORDER BY C.ID_INDICE_ECONOMICO
         """)
-
         result_indices = db.session.execute(sql_indices, {'contrato': contrato}).fetchall()
 
-        # ===== Montar lista de índices para o select =====
         indices_disponiveis = []
-        for idx in result_indices:
-            indices_disponiveis.append({
-                'id_indice': idx[0],
-                'nome_indice': idx[1],
-                'valor_sem_honorarios': float(idx[2]) if idx[2] else 0,
-                'perc_honorarios': float(idx[3]) if idx[3] else 0,
-                'valor_com_honorarios': float(idx[4]) if idx[4] else 0,
-                'dt_atualizacao': idx[5].strftime('%d/%m/%Y') if idx[5] else None,
-                'qtd_parcelas': idx[6]
-            })
+        if result_indices:
+            from app.models.siscalculo import ParamIndicesEconomicos
 
-        # ===== Montar resposta =====
-        dados = {
+            for idx, row in enumerate(result_indices):
+                id_indice = row[0]
+                vr_total_sem_honorarios = float(row[1]) if row[1] else 0
+                perc_honorarios = float(row[2]) if row[2] else 0
+                vr_honorarios = float(row[3]) if row[3] else 0
+                vr_total_com_honorarios = float(row[4]) if row[4] else 0
+
+                indice_obj = ParamIndicesEconomicos.query.get(id_indice)
+                nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
+
+                indices_disponiveis.append({
+                    'id_indice': id_indice,
+                    'nome_indice': nome_indice,
+                    'valor_divida': vr_total_sem_honorarios,
+                    'valor_honorarios': vr_honorarios,
+                    'perc_honorarios': perc_honorarios,
+                    'valor_com_honorarios': vr_total_com_honorarios
+                })
+
+        # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
+        sql_avaliacao = text("""
+            SELECT TOP 1
+                [VR_LAUDO_AVALIACAO],
+                [DT_LAUDO]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
+            WHERE [NR_CONTRATO] = :contrato
+        """)
+        result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
+
+        vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
+        dt_laudo = result_avaliacao[1].strftime('%Y-%m-%d') if result_avaliacao and result_avaliacao[1] else None
+
+        # ===== BUSCA 7: Status do Imóvel =====
+        sql_status = text("""
+            SELECT TOP 1
+                [DSC_SITUACAO]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB020_IMOVEIS_RM_TOTVS]
+            WHERE [IMOVEL] = :contrato
+        """)
+        result_status = db.session.execute(sql_status, {'contrato': contrato}).fetchone()
+        status_imovel = result_status[0] if result_status else None
+
+        # ===== BUSCA 8: Dados de Venda =====
+        sql_venda = text("""
+            SELECT TOP 1
+                [VR_VENDA],
+                [DT_VENDA],
+                [NO_COMPRADOR]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
+            WHERE [NU_IMOVEL] = :contrato
+            ORDER BY [DT_VENDA] DESC
+        """)
+        result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
+
+        vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
+        dt_venda = result_venda[1].strftime('%Y-%m-%d') if result_venda and result_venda[1] else None
+        nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
+
+        # ===== BUSCA 9: Processos Judiciais =====
+        # ===== BUSCA 9: Processos Judiciais =====
+        # Tentar primeiro por nrContrato (string), se não funcionar tenta por fkContratoSISCTR
+        sql_processos = text("""
+                    SELECT [nrProcessoCnj]
+                    FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
+                    WHERE [nrContrato] = :contrato
+                """)
+        result_processos = db.session.execute(sql_processos, {'contrato': contrato}).fetchall()
+
+        # Se não encontrar por nrContrato, tentar por fkContratoSISCTR com CAST
+        if not result_processos:
+            try:
+                sql_processos_alt = text("""
+                            SELECT [nrProcessoCnj]
+                            FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
+                            WHERE CAST([fkContratoSISCTR] AS VARCHAR(50)) = :contrato
+                        """)
+                result_processos = db.session.execute(sql_processos_alt, {'contrato': contrato}).fetchall()
+            except:
+                result_processos = []
+
+        processos_judiciais = []
+        if result_processos:
+            for processo in result_processos:
+                nr_processo = processo[0]
+
+                # Buscar detalhes do processo
+                sql_detalhes = text("""
+                            SELECT 
+                                [dsComarca],
+                                [dsLocal],
+                                [dsFaseProcessual]
+                            FROM [BDEMGEAODS].[SISJUD].[tblProcessoEmgea]
+                            WHERE [nrProcessoCnj] = :nr_processo
+                        """)
+                result_detalhes = db.session.execute(sql_detalhes, {'nr_processo': nr_processo}).fetchone()
+
+                if result_detalhes:
+                    comarca = result_detalhes[0] if result_detalhes[0] else ''
+                    local = result_detalhes[1] if result_detalhes[1] else ''
+                    fase = result_detalhes[2] if result_detalhes[2] else ''
+
+                    vara = f"{comarca}-{local}" if comarca and local else comarca or local or 'Não informado'
+
+                    processos_judiciais.append({
+                        'numero': nr_processo,
+                        'vara': vara,
+                        'fase': fase
+                    })
+
+        # ===== BUSCA 10: Débitos Pagos - SISDEX =====
+        sql_sisdex = text("""
+            SELECT SUM([VR_PAGO]) as TOTAL_SISDEX
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB017_DESPESAS_MANUTENCAO]
+            WHERE [NU_CONTRATO] = :contrato
+        """)
+        result_sisdex = db.session.execute(sql_sisdex, {'contrato': contrato}).fetchone()
+        vr_sisdex = float(result_sisdex[0]) if result_sisdex and result_sisdex[0] else 0
+
+        # ===== BUSCA 11: Débitos Pagos - SISGEA =====
+        sql_sisgea = text("""
+            SELECT SUM([VR_DESPESA]) as TOTAL_SISGEA
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB004_DESPESAS_ANALITICO]
+            WHERE [NR_CONTRATO] = :contrato
+        """)
+        result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
+        vr_sisgea = float(result_sisgea[0]) if result_sisgea and result_sisgea[0] else 0
+
+        vr_total_debitos = vr_sisdex + vr_sisgea
+
+        # ===== RETORNAR TODOS OS DADOS =====
+        return jsonify({
             'success': True,
-            'dt_entrada_estoque': result_estoque[0].strftime('%Y-%m-%d') if result_estoque and result_estoque[
-                0] else None,
-            'vr_avaliacao': float(result_estoque[2]) if result_estoque and result_estoque[2] else None,
-            'status_imovel': result_estoque[3] if result_estoque and result_estoque[3] else None,
-            'periodo_prescricao': result_prescricao[0] if result_prescricao and result_prescricao[0] else None,
-            'valor_inicial': float(result_valor_inicial[0]) if result_valor_inicial and result_valor_inicial[0] else 0,
-            'qtd_parcelas_inicial': result_valor_inicial[1] if result_valor_inicial else 0,
-            'nome_condominio': result_valor_inicial[2] if result_valor_inicial else None,
-            'indices_disponiveis': indices_disponiveis
-        }
-
-        if not result_estoque and not result_prescricao and not result_valor_inicial:
-            dados['message'] = 'Nenhum dado encontrado para este contrato nas tabelas consultadas.'
-
-        return jsonify(dados)
+            'dt_entrada_estoque': dt_entrada_estoque,
+            'periodo_prescricao': periodo_prescricao,
+            'valor_inicial': valor_inicial,
+            'qtd_parcelas_inicial': qtd_parcelas_inicial,
+            'nome_condominio': nome_condominio,
+            'valor_prescrito': valor_prescrito,
+            'qtd_parcelas_prescrito': qtd_prescrito,
+            'indices_disponiveis': indices_disponiveis,
+            'vr_avaliacao': vr_avaliacao,
+            'dt_laudo': dt_laudo,
+            'status_imovel': status_imovel,
+            'vr_venda': vr_venda,
+            'dt_venda': dt_venda,
+            'nome_comprador': nome_comprador,
+            'processos_judiciais': processos_judiciais,
+            'vr_debitos_sisdex': vr_sisdex,
+            'vr_debitos_sisgea': vr_sisgea,
+            'vr_debitos_total': vr_total_debitos
+        })
 
     except Exception as e:
         import traceback
-        print(f"Erro ao buscar dados do contrato: {str(e)}")
         traceback.print_exc()
-        return jsonify({'success': False, 'message': f'Erro ao buscar dados: {str(e)}'})
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao buscar dados: {str(e)}'
+        }), 500
+
+
+@sumov_bp.route('/deliberacao-pagamento/editar/<contrato>')
+@login_required
+def deliberacao_pagamento_editar(contrato):
+    """Editar uma Deliberação de Pagamento existente"""
+    try:
+        deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
+        if not deliberacao:
+            flash('Deliberação não encontrada.', 'warning')
+            return redirect(url_for('sumov.deliberacao_pagamento'))
+
+        return render_template(
+            'sumov/deliberacao_pagamento/editar.html',
+            deliberacao=deliberacao
+        )
+
+    except Exception as e:
+        flash(f'Erro ao carregar deliberação: {str(e)}', 'danger')
+        return redirect(url_for('sumov.deliberacao_pagamento'))
+
+
+@sumov_bp.route('/deliberacao-pagamento/excluir/<contrato>', methods=['POST'])
+@login_required
+def deliberacao_pagamento_excluir(contrato):
+    """Excluir (soft delete) uma Deliberação de Pagamento"""
+    try:
+        deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
+        if not deliberacao:
+            flash('Deliberação não encontrada.', 'warning')
+            return redirect(url_for('sumov.deliberacao_pagamento'))
+
+        # Soft delete
+        deliberacao.DELETED_AT = datetime.utcnow()
+        deliberacao.USUARIO_ATUALIZACAO = current_user.nome
+        deliberacao.UPDATED_AT = datetime.utcnow()
+
+        if deliberacao.salvar():
+            registrar_log(
+                acao='excluir',
+                entidade='deliberacao_pagamento',
+                entidade_id=contrato,
+                descricao=f'Deliberação de Pagamento excluída: {contrato}'
+            )
+            flash('Deliberação excluída com sucesso!', 'success')
+        else:
+            flash('Erro ao excluir deliberação.', 'danger')
+
+        return redirect(url_for('sumov.deliberacao_pagamento'))
+
+    except Exception as e:
+        flash(f'Erro ao excluir deliberação: {str(e)}', 'danger')
+        return redirect(url_for('sumov.deliberacao_pagamento'))
+
+
+@sumov_bp.route('/deliberacao-pagamento/pdf/<contrato>')
+@login_required
+def deliberacao_pagamento_pdf(contrato):
+    """Gerar PDF da Deliberação de Pagamento"""
+    try:
+        from io import BytesIO
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
+        from reportlab.pdfgen import canvas
+        from datetime import datetime
+        import html
+
+        # Buscar deliberação
+        deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
+        if not deliberacao:
+            flash('Deliberação não encontrada.', 'warning')
+            return redirect(url_for('sumov.deliberacao_pagamento'))
+
+        # Criar buffer de memória para o PDF
+        buffer = BytesIO()
+
+        # Configurar documento
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=A4,
+            rightMargin=2 * cm,
+            leftMargin=2 * cm,
+            topMargin=2 * cm,
+            bottomMargin=2 * cm,
+            title=f'Deliberação de Pagamento - {contrato}'
+        )
+
+        # Estilos
+        styles = getSampleStyleSheet()
+
+        # Estilo para título principal
+        titulo_principal = ParagraphStyle(
+            'TituloPrincipal',
+            parent=styles['Heading1'],
+            fontSize=16,
+            textColor=colors.HexColor('#1a5490'),
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+
+        # Estilo para subtítulos de seção
+        titulo_secao = ParagraphStyle(
+            'TituloSecao',
+            parent=styles['Heading2'],
+            fontSize=12,
+            textColor=colors.HexColor('#1a5490'),
+            spaceAfter=10,
+            spaceBefore=15,
+            fontName='Helvetica-Bold',
+            borderWidth=0,
+            borderColor=colors.HexColor('#1a5490'),
+            borderPadding=5,
+            backColor=colors.HexColor('#e8f4f8')
+        )
+
+        # Estilo para labels
+        label_style = ParagraphStyle(
+            'Label',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#666666'),
+            fontName='Helvetica-Bold'
+        )
+
+        # Estilo para valores
+        valor_style = ParagraphStyle(
+            'Valor',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor=colors.black,
+            fontName='Helvetica'
+        )
+
+        # Estilo para textos longos
+        texto_style = ParagraphStyle(
+            'Texto',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.black,
+            fontName='Helvetica',
+            alignment=TA_JUSTIFY,
+            leading=14,
+            spaceBefore=2,
+            spaceAfter=2
+        )
+
+        # === FUNÇÕES AUXILIARES ===
+        def formatar_moeda(valor):
+            if valor is None:
+                return "R$ 0,00"
+            return f"R$ {float(valor):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+        def formatar_data(data):
+            if data is None:
+                return "-"
+            return data.strftime('%d/%m/%Y')
+
+        def limpar_texto(texto):
+            """Limpa e formata texto mantendo quebras de linha"""
+            if texto is None or str(texto).strip() == '':
+                return "-"
+
+            # Converter para string e fazer escape HTML
+            texto = str(texto).strip()
+            texto = html.escape(texto)
+
+            # Substituir quebras de linha por tags <br/>
+            texto = texto.replace('\r\n', '<br/>')  # Windows
+            texto = texto.replace('\n', '<br/>')  # Unix/Mac
+            texto = texto.replace('\r', '<br/>')  # Old Mac
+
+            # Substituir múltiplas quebras por uma única
+            while '<br/><br/><br/>' in texto:
+                texto = texto.replace('<br/><br/><br/>', '<br/><br/>')
+
+            return texto
+
+        def criar_paragrafo_texto(texto, style):
+            """Cria um ou mais parágrafos mantendo formatação"""
+            if not texto or texto == "-":
+                return [Paragraph("-", style)]
+
+            # Se o texto tiver quebras de linha, processa mantendo formatação
+            texto_formatado = limpar_texto(texto)
+            return [Paragraph(texto_formatado, style)]
+
+        # Construir conteúdo do PDF
+        story = []
+
+        # === CABEÇALHO ===
+        story.append(Paragraph("DELIBERAÇÃO DE PAGAMENTO", titulo_principal))
+        story.append(Paragraph("Gerência de Administração de Imóveis - GEADI",
+                               ParagraphStyle('Subtitulo', parent=styles['Normal'],
+                                              fontSize=10, alignment=TA_CENTER,
+                                              textColor=colors.HexColor('#666666'))))
+        story.append(Spacer(1, 0.5 * cm))
+
+        # === LINHA DE IDENTIFICAÇÃO ===
+        data_atual = datetime.now().strftime('%d/%m/%Y %H:%M')
+        identificacao_data = [
+            [Paragraph(f"<b>Contrato/Imóvel:</b> {deliberacao.NU_CONTRATO}", valor_style),
+             Paragraph(f"<b>Gerado em:</b> {data_atual}",
+                       ParagraphStyle('DataDir', parent=valor_style, alignment=TA_RIGHT))]
+        ]
+
+        table_identificacao = Table(identificacao_data, colWidths=[10 * cm, 7 * cm])
+        table_identificacao.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+            ('PADDING', (0, 0), (-1, -1), 8),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ]))
+        story.append(table_identificacao)
+        story.append(Spacer(1, 0.5 * cm))
+
+        # === SEÇÃO 1: IDENTIFICAÇÃO ===
+        story.append(Paragraph("1. IDENTIFICAÇÃO", titulo_secao))
+
+        dados_identificacao = [
+            ["Colaborador que Analisou:", limpar_texto(deliberacao.COLABORADOR_ANALISOU)],
+            ["Data da Análise:", formatar_data(deliberacao.DT_ANALISE)],
+            ["Matrícula (Caixa/Emgea):", limpar_texto(deliberacao.MATRICULA_CAIXA_EMGEA)],
+            ["Data de Arrematação/Aquisição:", formatar_data(deliberacao.DT_ARREMATACAO_AQUISICAO)],
+            ["Data de Entrada no Estoque:", formatar_data(deliberacao.DT_ENTRADA_ESTOQUE)],
+        ]
+
+        table_identificacao_dados = Table(dados_identificacao, colWidths=[6 * cm, 11 * cm])
+        table_identificacao_dados.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
+            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
+            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ]))
+        story.append(table_identificacao_dados)
+        story.append(Spacer(1, 0.3 * cm))
+
+        # === SEÇÃO 2: COBRANÇA E DÍVIDA ===
+        story.append(Paragraph("2. COBRANÇA E DÍVIDA", titulo_secao))
+
+        dados_cobranca = [
+            ["Período Prescrito:", limpar_texto(deliberacao.PERIODO_PRESCRITO)],
+            ["Valor Inicial da Dívida:", formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
+            ["Valor Débito Excluídos Prescritas:", formatar_moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS)],
+            ["Índice Econômico:", limpar_texto(deliberacao.INDICE_DEBITO_EMGEA)],
+            ["Percentual de Honorários:",
+             f"{deliberacao.PERC_HONORARIOS_EMGEA}%" if deliberacao.PERC_HONORARIOS_EMGEA else "-"],
+            ["Valor dos Honorários:", formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
+            ["Valor Débito Calculado (EMGEA):", formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)],
+            ["Data do Cálculo:", formatar_data(deliberacao.DT_CALCULO_EMGEA)],
+        ]
+
+        table_cobranca = Table(dados_cobranca, colWidths=[6 * cm, 11 * cm])
+        table_cobranca.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
+            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
+            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ]))
+        story.append(table_cobranca)
+        story.append(Spacer(1, 0.3 * cm))
+
+        # === SEÇÃO 3: AVALIAÇÃO E VENDA ===
+        story.append(Paragraph("3. AVALIAÇÃO E VENDA DO IMÓVEL", titulo_secao))
+
+        dados_avaliacao = [
+            ["Valor de Avaliação:", formatar_moeda(deliberacao.VR_AVALIACAO)],
+            ["Data do Laudo:", formatar_data(deliberacao.DT_LAUDO)],
+            ["Status do Imóvel:", limpar_texto(deliberacao.STATUS_IMOVEL)],
+            ["Valor de Venda:", formatar_moeda(deliberacao.VR_VENDA)],
+            ["Data da Venda:", formatar_data(deliberacao.DT_VENDA)],
+            ["Nome do Adquirente:", limpar_texto(deliberacao.NOME_COMPRADOR)],
+            ["Data do Registro:", formatar_data(deliberacao.DT_REGISTRO)],
+        ]
+
+        table_avaliacao = Table(dados_avaliacao, colWidths=[6 * cm, 11 * cm])
+        table_avaliacao.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
+            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
+            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+        ]))
+        story.append(table_avaliacao)
+        story.append(Spacer(1, 0.3 * cm))
+
+        # === SEÇÃO 4: AÇÕES E PROCESSOS JUDICIAIS ===
+        story.append(Paragraph("4. AÇÕES E PROCESSOS JUDICIAIS", titulo_secao))
+
+        # Gravame
+        if deliberacao.GRAVAME_MATRICULA and str(deliberacao.GRAVAME_MATRICULA).strip():
+            story.append(Paragraph("<b>Gravame na Matrícula:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.GRAVAME_MATRICULA, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Ações Negociais Administrativas
+        if deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS and str(deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS).strip():
+            story.append(Paragraph("<b>Ações Negociais Administrativas:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Processos Judiciais
+        if deliberacao.NR_PROCESSOS_JUDICIAIS and str(deliberacao.NR_PROCESSOS_JUDICIAIS).strip():
+            story.append(Paragraph("<b>Número dos Processos Judiciais:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.NR_PROCESSOS_JUDICIAIS, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Vara
+        if deliberacao.VARA_PROCESSO and str(deliberacao.VARA_PROCESSO).strip():
+            story.append(Paragraph("<b>Vara do Processo:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.VARA_PROCESSO, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Fase
+        if deliberacao.FASE_PROCESSO and str(deliberacao.FASE_PROCESSO).strip():
+            story.append(Paragraph("<b>Fase do Processo:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.FASE_PROCESSO, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Relatório Assessoria
+        if deliberacao.RELATORIO_ASSESSORIA_JURIDICA and str(deliberacao.RELATORIO_ASSESSORIA_JURIDICA).strip():
+            story.append(Paragraph("<b>Relatório da Assessoria Jurídica:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.RELATORIO_ASSESSORIA_JURIDICA, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # === SEÇÃO 5: DÉBITOS E PENALIDADES ===
+        story.append(Paragraph("5. DÉBITOS E PENALIDADES", titulo_secao))
+
+        dados_debitos = [
+            ["Débitos Pagos - SISDEX:", formatar_moeda(deliberacao.VR_DEBITOS_SISDEX)],
+            ["Débitos Pagos - SISGEA:", formatar_moeda(deliberacao.VR_DEBITOS_SISGEA)],
+            ["Total de Débitos Pagos:", formatar_moeda(deliberacao.VR_DEBITOS_TOTAL)],
+        ]
+
+        table_debitos = Table(dados_debitos, colWidths=[6 * cm, 11 * cm])
+        table_debitos.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
+            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
+            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#fff3cd')),
+        ]))
+        story.append(table_debitos)
+        story.append(Spacer(1, 0.3 * cm))
+
+        # Penalidades ANS
+        if deliberacao.PENALIDADE_ANS_CAIXA and str(deliberacao.PENALIDADE_ANS_CAIXA).strip():
+            story.append(Paragraph("<b>Penalidade de ANS - CAIXA:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.PENALIDADE_ANS_CAIXA, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # Prejuízo Financeiro
+        if deliberacao.PREJUIZO_FINANCEIRO_CAIXA and str(deliberacao.PREJUIZO_FINANCEIRO_CAIXA).strip():
+            story.append(Paragraph("<b>Prejuízo Financeiro - CAIXA:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.PREJUIZO_FINANCEIRO_CAIXA, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.3 * cm))
+
+        # === SEÇÃO 6: CONSIDERAÇÕES FINAIS ===
+        story.append(Paragraph("6. CONSIDERAÇÕES FINAIS", titulo_secao))
+
+        if deliberacao.CONSIDERACOES_ANALISTA_GEADI and str(deliberacao.CONSIDERACOES_ANALISTA_GEADI).strip():
+            story.append(Paragraph("<b>Considerações da Analista GEADI:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.CONSIDERACOES_ANALISTA_GEADI, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.4 * cm))
+
+        if deliberacao.CONSIDERACOES_GESTOR_GEADI and str(deliberacao.CONSIDERACOES_GESTOR_GEADI).strip():
+            story.append(Paragraph("<b>Considerações Finais do Gestor da GEADI:</b>", label_style))
+            for p in criar_paragrafo_texto(deliberacao.CONSIDERACOES_GESTOR_GEADI, texto_style):
+                story.append(p)
+            story.append(Spacer(1, 0.4 * cm))
+
+        # === RODAPÉ ===
+        story.append(Spacer(1, 1 * cm))
+
+        rodape_data = [
+            [Paragraph("___________________________",
+                       ParagraphStyle('Assinatura', parent=valor_style, alignment=TA_CENTER)),
+             Paragraph("___________________________",
+                       ParagraphStyle('Assinatura', parent=valor_style, alignment=TA_CENTER))],
+            [Paragraph("<b>Analista GEADI</b>",
+                       ParagraphStyle('Cargo', parent=valor_style, alignment=TA_CENTER, fontSize=8)),
+             Paragraph("<b>Gestor GEADI</b>",
+                       ParagraphStyle('Cargo', parent=valor_style, alignment=TA_CENTER, fontSize=8))]
+        ]
+
+        table_rodape = Table(rodape_data, colWidths=[8.5 * cm, 8.5 * cm])
+        table_rodape.setStyle(TableStyle([
+            ('PADDING', (0, 0), (-1, -1), 10),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(table_rodape)
+
+        # === INFORMAÇÕES DO SISTEMA ===
+        story.append(Spacer(1, 0.5 * cm))
+        info_sistema = Paragraph(
+            f"<font size=7 color='#999999'>Documento gerado automaticamente pelo Portal GEINC em {data_atual} | "
+            f"Usuário: {current_user.nome} | Contrato: {contrato}</font>",
+            ParagraphStyle('InfoSistema', parent=valor_style, alignment=TA_CENTER, fontSize=7,
+                           textColor=colors.HexColor('#999999'))
+        )
+        story.append(info_sistema)
+
+        # Construir PDF
+        doc.build(story)
+
+        # Retornar PDF
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f'Deliberacao_Pagamento_{contrato}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf',
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
+        return redirect(url_for('sumov.deliberacao_pagamento'))
