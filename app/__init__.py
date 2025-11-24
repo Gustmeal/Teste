@@ -42,6 +42,7 @@ def create_app():
         from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
         from app.models.deliberacao_pagamento import DeliberacaoPagamento
 
+
         db.create_all()
 
     # Registrar blueprint para a página principal do GEINC

@@ -1876,3 +1876,74 @@ def deliberacao_pagamento_pdf(contrato):
         traceback.print_exc()
         flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
         return redirect(url_for('sumov.deliberacao_pagamento'))
+
+
+# ==================== DIFERENÇA DESPESAS X SISCOR ====================
+
+from app.models.diferenca_despesas_siscor import DiferencaDespesasSiscor
+
+
+@sumov_bp.route('/despesas-pagamentos/diferenca-siscor')
+@login_required
+def diferenca_despesas_siscor():
+    """Página de análise de diferenças entre Despesas e SISCOR"""
+
+    # Buscar datas já formatadas em uma única operação
+    datas_formatadas = DiferencaDespesasSiscor.listar_datas_disponiveis_formatadas()
+
+    return render_template('sumov/despesas_pagamentos/diferenca_siscor.html',
+                           datas_disponiveis=datas_formatadas)
+
+
+@sumov_bp.route('/despesas-pagamentos/diferenca-siscor/buscar', methods=['POST'])
+@login_required
+def buscar_diferenca_siscor():
+    """API para buscar diferenças com filtros"""
+    try:
+        data = request.get_json()
+
+        # Obter filtros do request
+        datas_selecionadas = data.get('datas', [])
+        id_item = data.get('id_item', None)
+
+        # Converter id_item para int se fornecido
+        if id_item:
+            try:
+                id_item = int(id_item)
+            except (ValueError, TypeError):
+                id_item = None
+
+        # Buscar registros com filtros
+        registros = DiferencaDespesasSiscor.buscar_por_filtros(
+            datas=datas_selecionadas if len(datas_selecionadas) > 0 else None,
+            id_item=id_item
+        )
+
+        # Calcular totais
+        totais = DiferencaDespesasSiscor.calcular_totais(registros)
+
+        # Formatar registros para JSON
+        registros_formatados = []
+        for r in registros:
+            registros_formatados.append({
+                'dt_despesa': r.DT_DESPESA,
+                'dt_despesa_formatada': DiferencaDespesasSiscor.formatar_data_mesano(r.DT_DESPESA),
+                'id_item': r.ID_ITEM,
+                'vr_siscor': float(r.VR_SISCOR) if r.VR_SISCOR else 0,
+                'vr_despesa': float(r.VR_DESPESA) if r.VR_DESPESA else 0,
+                'dif': float(r.DIF) if r.DIF else 0
+            })
+
+        # Retornar dados
+        return jsonify({
+            'success': True,
+            'registros': registros_formatados,
+            'totais': totais,
+            'quantidade': len(registros_formatados)
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'erro': str(e)
+        }), 500

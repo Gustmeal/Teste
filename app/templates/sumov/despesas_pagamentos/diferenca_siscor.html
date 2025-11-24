@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('sumov.lista_despesas') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-calculator me-2"></i>
+            Diferença: Despesas Registradas vs SISCOR
+        </h1>
+    </div>
+
+    <!-- Card de Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i>
+                Filtros de Análise
+            </h5>
+        </div>
+        <div class="card-body">
+            <form id="formFiltros">
+                <div class="row g-3">
+                    <!-- Checkboxes de Datas -->
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-calendar-alt me-2"></i>
+                            Selecione os Períodos
+                        </label>
+
+                        <!-- Checkbox Marcar Todos -->
+                        <div class="card border-primary mb-3">
+                            <div class="card-body py-2 bg-light">
+                                <div class="form-check">
+                                    <input class="form-check-input"
+                                           type="checkbox"
+                                           id="checkMarcarTodos"
+                                           onchange="marcarDesmarcarTodos()">
+                                    <label class="form-check-label fw-bold text-primary" for="checkMarcarTodos">
+                                        <i class="fas fa-check-double me-2"></i>
+                                        Marcar / Desmarcar Todos
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Container de Checkboxes com Scroll -->
+                        <div class="card border-secondary" style="max-height: 300px; overflow-y: auto;">
+                            <div class="card-body" id="containerCheckboxes">
+                                {% for data in datas_disponiveis %}
+                                <div class="form-check py-2 border-bottom">
+                                    <input class="form-check-input checkbox-data"
+                                           type="checkbox"
+                                           value="{{ data.valor }}"
+                                           id="check{{ data.valor }}"
+                                           onchange="verificarCheckboxes()">
+                                    <label class="form-check-label" for="check{{ data.valor }}">
+                                        <i class="fas fa-calendar me-2 text-muted"></i>
+                                        {{ data.label }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <small class="text-muted mt-2 d-block">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Marque os períodos desejados ou use "Marcar Todos".
+                            Deixe vazio para incluir todas as datas.
+                        </small>
+
+                        <!-- Contador de Selecionados -->
+                        <div class="alert alert-info mt-3 mb-0" id="alertContador" style="display: none;">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong id="textoContador">0 períodos selecionados</strong>
+                        </div>
+                    </div>
+
+                    <!-- Filtro Opcional por ID_ITEM -->
+                    <div class="col-md-4">
+                        <label for="inputIdItem" class="form-label fw-bold">
+                            <i class="fas fa-tag me-2"></i>
+                            ID Item (Opcional)
+                        </label>
+                        <input type="number"
+                               class="form-control"
+                               id="inputIdItem"
+                               placeholder="Digite o ID do item"
+                               min="1">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Deixe vazio para incluir todos os itens
+                        </small>
+
+                        <!-- Botões -->
+                        <div class="mt-4">
+                            <button type="button" class="btn btn-primary w-100 mb-2" onclick="buscarDados()">
+                                <i class="fas fa-search me-2"></i>
+                                Buscar Dados
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary w-100"
+                                    onclick="limparFiltros()">
+                                <i class="fas fa-eraser me-2"></i>
+                                Limpar Filtros
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Card de Totais -->
+    <div id="cardTotais" class="row g-3 mb-4" style="display: none;">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">
+                        <i class="fas fa-database me-2"></i>
+                        Total SISCOR
+                    </h6>
+                    <h3 class="text-primary mb-0" id="totalSiscor">R$ 0,00</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">
+                        <i class="fas fa-money-bill-wave me-2"></i>
+                        Total Despesas
+                    </h6>
+                    <h3 class="text-success mb-0" id="totalDespesa">R$ 0,00</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-warning">
+                <div class="card-body text-center">
+                    <h6 class="text-muted mb-2">
+                        <i class="fas fa-calculator me-2"></i>
+                        Diferença Total
+                    </h6>
+                    <h3 class="text-warning mb-0" id="totalDif">R$ 0,00</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card de Resultados -->
+    <div id="cardResultados" class="card shadow" style="display: none;">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-table me-2"></i>
+                Resultados da Análise
+                <span class="badge bg-light text-dark ms-2" id="badgeQuantidade">0 registros</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th class="text-center">Período</th>
+                            <th class="text-center">ID Item</th>
+                            <th class="text-end">Valor SISCOR</th>
+                            <th class="text-end">Valor Despesa</th>
+                            <th class="text-end">Diferença</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaResultados">
+                        <!-- Linhas serão inseridas dinamicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mensagem de Sem Resultados -->
+    <div id="semResultados" class="card shadow" style="display: none;">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-search fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Nenhum resultado encontrado</h5>
+            <p class="text-muted">
+                Tente ajustar os filtros ou selecionar outros períodos.
+            </p>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Carregando...</span>
+        </div>
+        <p class="mt-3 text-muted">Processando dados...</p>
+    </div>
+</div>
+
+<style>
+    /* Estilo para checkboxes maiores e mais visíveis */
+    .form-check-input {
+        width: 1.2em;
+        height: 1.2em;
+        cursor: pointer;
+    }
+
+    .form-check-label {
+        cursor: pointer;
+        font-size: 0.95rem;
+    }
+
+    .form-check:hover {
+        background-color: rgba(108, 99, 255, 0.05);
+    }
+
+    /* Scroll suave para container de checkboxes */
+    #containerCheckboxes {
+        scrollbar-width: thin;
+        scrollbar-color: #6c63ff #f1f1f1;
+    }
+
+    #containerCheckboxes::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    #containerCheckboxes::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+    }
+
+    #containerCheckboxes::-webkit-scrollbar-thumb {
+        background: #6c63ff;
+        border-radius: 4px;
+    }
+
+    #containerCheckboxes::-webkit-scrollbar-thumb:hover {
+        background: #5b52e5;
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: rgba(108, 99, 255, 0.1);
+        cursor: pointer;
+    }
+
+    .badge {
+        font-size: 0.875rem;
+        padding: 0.5em 0.75em;
+    }
+
+    .card-header {
+        font-weight: 500;
+    }
+
+    /* Animação suave para cards */
+    .fade-in-up {
+        animation: fadeInUp 0.5s ease-out;
+    }
+
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* Destaque para diferenças positivas e negativas */
+    .dif-positiva {
+        color: #28a745;
+        font-weight: bold;
+    }
+
+    .dif-negativa {
+        color: #dc3545;
+        font-weight: bold;
+    }
+
+    .dif-zero {
+        color: #6c757d;
+    }
+
+    /* Destaque para bordas dos últimos checkboxes */
+    .form-check:last-child {
+        border-bottom: none !important;
+    }
+</style>
+
+<script>
+    // Função para formatar moeda brasileira
+    function formatarMoeda(valor) {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(valor);
+    }
+
+    // Marcar/Desmarcar todos os checkboxes
+    function marcarDesmarcarTodos() {
+        const checkMarcarTodos = document.getElementById('checkMarcarTodos');
+        const checkboxesDatas = document.querySelectorAll('.checkbox-data');
+
+        checkboxesDatas.forEach(checkbox => {
+            checkbox.checked = checkMarcarTodos.checked;
+        });
+
+        verificarCheckboxes();
+    }
+
+    // Verificar estado dos checkboxes
+    function verificarCheckboxes() {
+        const checkboxesDatas = document.querySelectorAll('.checkbox-data');
+        const checkboxesMarcados = document.querySelectorAll('.checkbox-data:checked');
+        const checkMarcarTodos = document.getElementById('checkMarcarTodos');
+        const alertContador = document.getElementById('alertContador');
+        const textoContador = document.getElementById('textoContador');
+
+        // Atualizar estado do "Marcar Todos"
+        if (checkboxesMarcados.length === checkboxesDatas.length) {
+            checkMarcarTodos.checked = true;
+            checkMarcarTodos.indeterminate = false;
+        } else if (checkboxesMarcados.length > 0) {
+            checkMarcarTodos.checked = false;
+            checkMarcarTodos.indeterminate = true;
+        } else {
+            checkMarcarTodos.checked = false;
+            checkMarcarTodos.indeterminate = false;
+        }
+
+        // Mostrar/esconder contador
+        if (checkboxesMarcados.length > 0) {
+            const texto = checkboxesMarcados.length === 1
+                ? '1 período selecionado'
+                : `${checkboxesMarcados.length} períodos selecionados`;
+            textoContador.textContent = texto;
+            alertContador.style.display = 'block';
+        } else {
+            alertContador.style.display = 'none';
+        }
+    }
+
+    // Limpar filtros
+    function limparFiltros() {
+        // Desmarcar todos os checkboxes
+        document.getElementById('checkMarcarTodos').checked = false;
+        document.querySelectorAll('.checkbox-data').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+
+        // Limpar ID Item
+        document.getElementById('inputIdItem').value = '';
+
+        // Atualizar contador
+        verificarCheckboxes();
+
+        // Esconder resultados
+        document.getElementById('cardTotais').style.display = 'none';
+        document.getElementById('cardResultados').style.display = 'none';
+        document.getElementById('semResultados').style.display = 'none';
+    }
+
+    // Função para buscar dados (chamada pelo botão diretamente)
+    function buscarDados() {
+        // Obter datas selecionadas dos checkboxes
+        const checkboxesMarcados = document.querySelectorAll('.checkbox-data:checked');
+        const datasSelecionadas = Array.from(checkboxesMarcados).map(cb => cb.value);
+
+        // Obter ID_ITEM opcional
+        const idItem = document.getElementById('inputIdItem').value.trim();
+
+        // Montar payload
+        const payload = {
+            datas: datasSelecionadas,
+            id_item: idItem ? parseInt(idItem) : null
+        };
+
+        // Mostrar loading LOCAL
+        document.getElementById('loadingSpinner').style.display = 'block';
+        document.getElementById('cardTotais').style.display = 'none';
+        document.getElementById('cardResultados').style.display = 'none';
+        document.getElementById('semResultados').style.display = 'none';
+
+        // Fazer requisição usando XMLHttpRequest
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '{{ url_for("sumov.buscar_diferenca_siscor") }}', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+
+        xhr.onload = function() {
+            // Esconder loading local
+            document.getElementById('loadingSpinner').style.display = 'none';
+
+            if (xhr.status === 200) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+
+                    if (data.success) {
+                        if (data.quantidade > 0) {
+                            // Mostrar totais
+                            document.getElementById('totalSiscor').textContent = formatarMoeda(data.totais.total_siscor);
+                            document.getElementById('totalDespesa').textContent = formatarMoeda(data.totais.total_despesa);
+                            document.getElementById('totalDif').textContent = formatarMoeda(data.totais.total_dif);
+                            document.getElementById('cardTotais').style.display = 'flex';
+                            document.getElementById('cardTotais').classList.add('fade-in-up');
+
+                            // Preencher tabela
+                            const tbody = document.getElementById('tabelaResultados');
+                            tbody.innerHTML = '';
+
+                            data.registros.forEach(reg => {
+                                const tr = document.createElement('tr');
+
+                                // Determinar classe CSS para diferença
+                                let difClasse = 'dif-zero';
+                                if (reg.dif > 0) difClasse = 'dif-positiva';
+                                else if (reg.dif < 0) difClasse = 'dif-negativa';
+
+                                tr.innerHTML = `
+                                    <td class="text-center">${reg.dt_despesa_formatada}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-secondary">${reg.id_item}</span>
+                                    </td>
+                                    <td class="text-end">${formatarMoeda(reg.vr_siscor)}</td>
+                                    <td class="text-end">${formatarMoeda(reg.vr_despesa)}</td>
+                                    <td class="text-end ${difClasse}">${formatarMoeda(reg.dif)}</td>
+                                `;
+
+                                tbody.appendChild(tr);
+                            });
+
+                            // Atualizar badge de quantidade
+                            document.getElementById('badgeQuantidade').textContent =
+                                `${data.quantidade} registro${data.quantidade !== 1 ? 's' : ''}`;
+
+                            // Mostrar tabela
+                            document.getElementById('cardResultados').style.display = 'block';
+                            document.getElementById('cardResultados').classList.add('fade-in-up');
+
+                        } else {
+                            // Sem resultados
+                            document.getElementById('semResultados').style.display = 'block';
+                            document.getElementById('semResultados').classList.add('fade-in-up');
+                        }
+
+                    } else {
+                        alert('Erro ao buscar dados: ' + data.erro);
+                    }
+                } catch (e) {
+                    console.error('Erro ao processar resposta:', e);
+                    alert('Erro ao processar resposta do servidor');
+                }
+            } else {
+                alert('Erro na requisição: Status ' + xhr.status);
+            }
+        };
+
+        xhr.onerror = function() {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            alert('Erro na requisição de rede');
+        };
+
+        // Enviar requisição
+        xhr.send(JSON.stringify(payload));
+    }
+
+    // Inicializar verificação dos checkboxes ao carregar página
+    document.addEventListener('DOMContentLoaded', function() {
+        verificarCheckboxes();
+    });
+
+    // Permitir Enter no input de ID_ITEM para buscar
+    document.getElementById('inputIdItem').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buscarDados();
+        }
+    });
+</script>
+{% endblock %}
