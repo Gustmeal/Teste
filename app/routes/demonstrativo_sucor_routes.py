@@ -66,7 +66,7 @@ def comparar_demonstrativos():
         mes_coluna1 = MESES[mes_periodo1]
         mes_coluna2 = MESES[mes_periodo2]
 
-        # Query SQL para buscar todos os registros e valores
+        # Query SQL com colchetes nas colunas de mês para evitar conflito com palavras reservadas
         sql = text("""
             WITH base_demonstrativos AS (
                 SELECT DISTINCT 
@@ -80,7 +80,7 @@ def comparar_demonstrativos():
                 SELECT 
                     CO_DEMONSTRATIVO,
                     ORDEM,
-                    """ + mes_coluna1 + """ as valor_periodo1
+                    [""" + mes_coluna1 + """] as valor_periodo1
                 FROM BDG.COR_DEM_TB005_DEMONSTRATIVOS_MESES
                 WHERE NO_DEMONSTRATIVO = :tipo_demonstrativo
                 AND ANO = :ano_periodo1
@@ -89,7 +89,7 @@ def comparar_demonstrativos():
                 SELECT 
                     CO_DEMONSTRATIVO,
                     ORDEM,
-                    """ + mes_coluna2 + """ as valor_periodo2
+                    [""" + mes_coluna2 + """] as valor_periodo2
                 FROM BDG.COR_DEM_TB005_DEMONSTRATIVOS_MESES
                 WHERE NO_DEMONSTRATIVO = :tipo_demonstrativo
                 AND ANO = :ano_periodo2
@@ -132,8 +132,7 @@ def comparar_demonstrativos():
                 'valor_periodo1': float(row.valor_periodo1 or 0),
                 'valor_periodo2': float(row.valor_periodo2 or 0),
                 'variacao': float(row.variacao or 0),
-                'variacao_justificada': float(justificativa.VARIACAO_DEM) if justificativa else float(
-                    row.variacao or 0),
+                'variacao_justificada': float(justificativa.VARIACAO_DEM) if justificativa else float(row.variacao or 0),
                 'tem_justificativa': justificativa is not None,
                 'descricao_justificativa': justificativa.DESCRICAO if justificativa else None
             })
