@@ -342,7 +342,8 @@ def processar():
                 dt_atualizacao=dt_atualizacao,
                 id_indice=id_indice,
                 usuario=current_user.nome,
-                perc_honorarios=perc_honorarios
+                perc_honorarios=perc_honorarios,
+                imovel=numero_imovel
             )
 
             resultado = calculador.executar_calculos()

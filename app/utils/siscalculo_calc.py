@@ -59,11 +59,12 @@ class CalculadorSiscalculo:
     MULTA_NOVA = Decimal('2.00')  # 2% após 11/01/2003
     DATA_MUDANCA_MULTA = date(2003, 1, 10)
 
-    def __init__(self, dt_atualizacao, id_indice, usuario, perc_honorarios=Decimal('10.00')):
+    def __init__(self, dt_atualizacao, id_indice, usuario, perc_honorarios=Decimal('10.00'), imovel=None):
         self.dt_atualizacao = dt_atualizacao
         self.id_indice = id_indice
         self.usuario = usuario
         self.perc_honorarios = perc_honorarios  # NOVO: Percentual de honorários personalizável
+        self.imovel = imovel
         self.dados_processados = []
 
     def executar_calculos(self):
@@ -78,9 +79,16 @@ class CalculadorSiscalculo:
 
             # Buscar dados importados (cada registro = uma parcela)
             print("\n[1] Buscando parcelas importadas...")
-            dados = SiscalculoDados.query.filter_by(
+            query = SiscalculoDados.query.filter_by(
                 DT_ATUALIZACAO=self.dt_atualizacao
-            ).order_by(SiscalculoDados.DT_VENCIMENTO).all()
+            )
+
+            # ✅ NOVO: Filtrar por imóvel se informado
+            if self.imovel:
+                query = query.filter_by(IMOVEL=self.imovel)
+                print(f"[1] Filtrando por imóvel: {self.imovel}")
+
+            dados = query.order_by(SiscalculoDados.DT_VENCIMENTO).all()
 
             print(f"[1] Total de parcelas encontradas: {len(dados)}")
 

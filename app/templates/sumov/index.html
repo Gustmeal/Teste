@@ -4,133 +4,49 @@
 {% block title %}SUMOV - Sistema Unificado de Gestão{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <!-- Cabeçalho -->
-    <div class="page-header mb-4">
-        <div class="row align-items-center">
-            <div class="col">
-                <h1 class="h2">
-                    <i class="fas fa-building text-primary me-2"></i>
-                    SUMOV - Sistema Unificado de Movimentação
-                </h1>
-                <p class="text-muted mb-0">
-                    Gestão integrada de contratos, imóveis e processos administrativos
-                </p>
-            </div>
-            <div class="col-auto">
-                <div class="btn-group" role="group">
-                    <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
-                        <i class="fas fa-home me-2"></i>Início
-                    </a>
-                </div>
-            </div>
+<div class="container py-5">
+    <!-- Cabeçalho Principal -->
+    <div class="text-center mb-5">
+        <div class="header-icon mb-4">
+            <i class="fas fa-building"></i>
         </div>
+        <h1 class="display-5 fw-bold text-dark mb-3">
+            SUMOV
+        </h1>
+        <p class="lead text-muted mx-auto" style="max-width: 600px;">
+            Sistema Unificado de Movimentação para gestão integrada de contratos, imóveis e processos administrativos
+        </p>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-primary btn-lg mt-3">
+            <i class="fas fa-home me-2"></i>Voltar ao Início
+        </a>
     </div>
 
-    <!-- Cards de Estatísticas -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Total de Vinculações
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">
-                                {{ total_vinculacoes }}
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-link fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Divisor -->
+    <hr class="my-5">
 
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Vinculações no Mês
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">
-                                {{ vinculacoes_mes }}
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-calendar-check fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Módulos Ativos
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">5</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-th fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Última Atualização
-                            </div>
-                            <div class="h6 mb-0 font-weight-bold text-gray-800">
-                                {{ datetime.now().strftime('%d/%m/%Y') }}
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-sync fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- Título da Seção de Módulos -->
+    <div class="text-center mb-5">
+        <h2 class="fw-semibold text-dark">
+            <i class="fas fa-th-large me-2 text-primary"></i>Módulos Disponíveis
+        </h2>
+        <p class="text-muted">Selecione um módulo para começar</p>
     </div>
 
     <!-- Módulos do Sistema -->
-    <div class="row">
-        <div class="col-12">
-            <h4 class="mb-3">
-                <i class="fas fa-th-large me-2"></i>Módulos Disponíveis
-            </h4>
-        </div>
-    </div>
-
-    <div class="row g-4">
+    <div class="row g-4 justify-content-center">
         <!-- Relação Imóvel/Contrato -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-primary bg-gradient text-white mb-3">
-                        <i class="fas fa-home fa-3x"></i>
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-primary mb-4">
+                        <i class="fas fa-home fa-2x"></i>
                     </div>
-                    <h5 class="card-title">Relação Imóvel/Contrato</h5>
-                    <p class="card-text text-muted">
-                        Vincular imóveis a contratos e gerenciar parcelamentos
+                    <h5 class="card-title fw-bold mb-3">Relação Imóvel/Contrato</h5>
+                    <p class="card-text text-muted mb-4">
+                        Vincular imóveis a contratos e gerenciar parcelamentos de forma integrada
                     </p>
                     <a href="{{ url_for('sumov.relacao_imovel_contrato') }}"
-                       class="btn btn-primary">
+                       class="btn btn-primary btn-lg w-100">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
@@ -138,18 +54,18 @@
         </div>
 
         <!-- Despesas e Pagamentos -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-success bg-gradient text-white mb-3">
-                        <i class="fas fa-money-check-alt fa-3x"></i>
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-success mb-4">
+                        <i class="fas fa-money-check-alt fa-2x"></i>
                     </div>
-                    <h5 class="card-title">Despesas e Pagamentos</h5>
-                    <p class="card-text text-muted">
-                        Registro e controle de despesas administrativas
+                    <h5 class="card-title fw-bold mb-3">Despesas e Pagamentos</h5>
+                    <p class="card-text text-muted mb-4">
+                        Registro e controle completo de despesas administrativas
                     </p>
                     <a href="{{ url_for('sumov.despesas_pagamentos') }}"
-                       class="btn btn-success">
+                       class="btn btn-success btn-lg w-100">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
@@ -157,40 +73,38 @@
         </div>
 
         <!-- Evidências -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-info bg-gradient text-white mb-3">
-                        <i class="fas fa-file-invoice fa-3x"></i>
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-info mb-4">
+                        <i class="fas fa-file-invoice fa-2x"></i>
                     </div>
-                    <h5 class="card-title">Evidências SUMOV</h5>
-                    <p class="card-text text-muted">
-                        Gestão de evidências e documentos comprobatórios
+                    <h5 class="card-title fw-bold mb-3">Evidências SUMOV</h5>
+                    <p class="card-text text-muted mb-4">
+                        Gestão de evidências e documentos comprobatórios do sistema
                     </p>
                     <a href="{{ url_for('sumov.evidencias_index') }}"
-                       class="btn btn-info">
+                       class="btn btn-info btn-lg w-100 text-white">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
             </div>
         </div>
 
-        <!-- NOVO: SISCalculo -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover border-warning">
-                <div class="ribbon ribbon-top-right">
-                    <span class="bg-warning text-dark">NOVO</span>
-                </div>
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-warning bg-gradient text-white mb-3">
-                        <i class="fas fa-calculator fa-3x"></i>
+        <!-- SISCalculo -->
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0 card-new">
+                <div class="badge-new">NOVO</div>
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-warning mb-4">
+                        <i class="fas fa-calculator fa-2x"></i>
                     </div>
-                    <h5 class="card-title">SISCalculo</h5>
-                    <p class="card-text text-muted">
-                        Cálculo de correção monetária com índices econômicos
+                    <h5 class="card-title fw-bold mb-3">SISCalculo</h5>
+                    <p class="card-text text-muted mb-4">
+                        Cálculo de correção monetária com índices econômicos atualizados
                     </p>
                     <a href="{{ url_for('siscalculo.index') }}"
-                       class="btn btn-warning text-dark">
+                       class="btn btn-warning btn-lg w-100 text-dark">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
@@ -198,220 +112,271 @@
         </div>
 
         <!-- Deliberação de Pagamento -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-warning bg-gradient text-white mb-3">
-                        <i class="fas fa-gavel fa-3x"></i>
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-purple mb-4">
+                        <i class="fas fa-gavel fa-2x"></i>
                     </div>
-                    <h5 class="card-title">Deliberação de Pagamento</h5>
-                    <p class="card-text text-muted">
-                        Análise e deliberação de pagamentos GEADI
+                    <h5 class="card-title fw-bold mb-3">Deliberação de Pagamento</h5>
+                    <p class="card-text text-muted mb-4">
+                        Análise e deliberação de pagamentos GEADI com eficiência
                     </p>
                     <a href="{{ url_for('sumov.deliberacao_pagamento') }}"
-                       class="btn btn-warning">
+                       class="btn btn-purple btn-lg w-100">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
             </div>
         </div>
-
-        <!-- Relatórios -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-secondary bg-gradient text-white mb-3">
-                        <i class="fas fa-chart-bar fa-3x"></i>
-                    </div>
-                    <h5 class="card-title">Relatórios</h5>
-                    <p class="card-text text-muted">
-                        Relatórios gerenciais e operacionais
-                    </p>
-                    <a href="#" class="btn btn-secondary disabled">
-                        <i class="fas fa-lock me-2"></i>Em Breve
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Configurações -->
-        <div class="col-lg-3 col-md-6">
-            <div class="card h-100 shadow card-hover">
-                <div class="card-body text-center p-4">
-                    <div class="feature-icon bg-dark bg-gradient text-white mb-3">
-                        <i class="fas fa-cogs fa-3x"></i>
-                    </div>
-                    <h5 class="card-title">Configurações</h5>
-                    <p class="card-text text-muted">
-                        Parâmetros e configurações do sistema
-                    </p>
-                    <a href="#" class="btn btn-dark disabled">
-                        <i class="fas fa-lock me-2"></i>Em Breve
-                    </a>
-                </div>
-            </div>
-        </div>
     </div>
 
-    <!-- Últimas Atividades -->
-    {% if ultimas_vinculacoes %}
-    <div class="card shadow mt-5">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">
-                <i class="fas fa-clock me-2"></i>Últimas Vinculações
-            </h6>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-bordered table-hover">
-                    <thead>
-                        <tr>
-                            <th>Data/Hora</th>
-                            <th>Contrato</th>
-                            <th>Imóvel</th>
-                            <th>Tipo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for vinculacao in ultimas_vinculacoes %}
-                        <tr>
-                            <td>
-                                {{ vinculacao.CREATED_AT.strftime('%d/%m/%Y %H:%M') if vinculacao.CREATED_AT else 'N/A' }}
-                            </td>
-                            <td>{{ vinculacao.NR_CONTRATO }}</td>
-                            <td>{{ vinculacao.NR_IMOVEL }}</td>
-                            <td>
-                                <span class="badge bg-info">
-                                    {{ vinculacao.TIPO_PARCELAMENTO }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+    <!-- Footer -->
+    <div class="text-center mt-5 pt-4">
+        <p class="text-muted small">
+            <i class="fas fa-shield-alt me-1"></i>
+            SUMOV © {{ datetime.now().strftime('%Y') }} - Todos os direitos reservados
+        </p>
     </div>
-    {% endif %}
 </div>
 
 <!-- Estilos customizados -->
 <style>
-    .feature-icon {
+    /* Header Icon */
+    .header-icon {
         width: 100px;
         height: 100px;
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto;
+        box-shadow: 0 10px 40px rgba(78, 115, 223, 0.3);
     }
 
-    .card-hover {
-        transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
-    }
-
-    .card-hover:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.15) !important;
-    }
-
-    .border-left-primary {
-        border-left: 4px solid #4e73df;
-    }
-
-    .border-left-success {
-        border-left: 4px solid #1cc88a;
-    }
-
-    .border-left-info {
-        border-left: 4px solid #36b9cc;
-    }
-
-    .border-left-warning {
-        border-left: 4px solid #f6c23e;
-    }
-
-    .text-xs {
-        font-size: .7rem;
-    }
-
-    .text-gray-300 {
-        color: #dddfeb;
-    }
-
-    .text-gray-800 {
-        color: #5a5c69;
-    }
-
-    .font-weight-bold {
-        font-weight: 700;
-    }
-
-    .text-uppercase {
-        text-transform: uppercase;
-    }
-
-    /* Ribbon para indicar módulo novo */
-    .ribbon {
-        position: absolute;
-        right: -5px;
-        top: -5px;
-        z-index: 1;
-        overflow: hidden;
-        width: 75px;
-        height: 75px;
-        text-align: right;
-    }
-
-    .ribbon span {
-        font-size: 10px;
-        font-weight: bold;
+    . header-icon i {
+        font-size: 2. 5rem;
         color: white;
-        text-transform: uppercase;
-        text-align: center;
-        line-height: 20px;
-        transform: rotate(45deg);
-        width: 100px;
-        display: block;
-        position: absolute;
-        top: 19px;
-        right: -21px;
     }
 
-    .ribbon span::before {
-        content: "";
-        position: absolute;
-        left: 0px;
-        top: 100%;
-        z-index: -1;
-        border-left: 3px solid #f6c23e;
-        border-right: 3px solid transparent;
-        border-bottom: 3px solid transparent;
-        border-top: 3px solid #f6c23e;
+    /* Module Cards */
+    . module-card {
+        background: #ffffff;
+        border-radius: 20px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
+        overflow: hidden;
     }
 
-    .ribbon span::after {
-        content: "";
+    . module-card::before {
+        content: '';
         position: absolute;
-        right: 0px;
-        top: 100%;
-        z-index: -1;
-        border-left: 3px solid transparent;
-        border-right: 3px solid #f6c23e;
-        border-bottom: 3px solid transparent;
-        border-top: 3px solid #f6c23e;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, transparent, rgba(78, 115, 223, 0. 5), transparent);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .module-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    . module-card:hover::before {
+        opacity: 1;
+    }
+
+    /* Icon Wrappers */
+    .icon-wrapper {
+        width: 90px;
+        height: 90px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        transition: transform 0. 3s ease;
+    }
+
+    . module-card:hover . icon-wrapper {
+        transform: scale(1.1);
+    }
+
+    . icon-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(78, 115, 223, 0. 35);
+    }
+
+    .icon-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(28, 200, 138, 0.35);
+    }
+
+    .icon-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(54, 185, 204, 0.35);
+    }
+
+    .icon-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(246, 194, 62, 0.35);
+    }
+
+    .icon-purple {
+        background: linear-gradient(135deg, #6f42c1 0%, #4a2c82 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(111, 66, 193, 0.35);
+    }
+
+    /* Buttons */
+    .btn-lg {
+        padding: 12px 24px;
+        font-weight: 600;
+        border-radius: 12px;
+        transition: all 0. 3s ease;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        border: none;
+    }
+
+    .btn-primary:hover {
+        background: linear-gradient(135deg, #224abe 0%, #1a3a8f 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(78, 115, 223, 0.4);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%);
+        border: none;
+    }
+
+    .btn-success:hover {
+        background: linear-gradient(135deg, #13855c 0%, #0e6647 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(28, 200, 138, 0.4);
+    }
+
+    .btn-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
+        border: none;
+    }
+
+    .btn-info:hover {
+        background: linear-gradient(135deg, #258391 0%, #1a5c66 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(54, 185, 204, 0.4);
+    }
+
+    .btn-warning {
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+        border: none;
+    }
+
+    .btn-warning:hover {
+        background: linear-gradient(135deg, #dda20a 0%, #b88508 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(246, 194, 62, 0.4);
+    }
+
+    . btn-purple {
+        background: linear-gradient(135deg, #6f42c1 0%, #4a2c82 100%);
+        border: none;
+        color: white;
+    }
+
+    . btn-purple:hover {
+        background: linear-gradient(135deg, #4a2c82 0%, #3a2266 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(111, 66, 193, 0.4);
+        color: white;
+    }
+
+    /* New Badge */
+    .card-new {
+        border: 2px solid #f6c23e ! important;
+    }
+
+    .badge-new {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: linear-gradient(135deg, #f6c23e 0%, #dda20a 100%);
+        color: #1a1a1a;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        box-shadow: 0 4px 15px rgba(246, 194, 62, 0. 4);
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.05);
+        }
+    }
+
+    /* Divider */
+    hr {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #dee2e6, transparent);
+    }
+
+    /* Responsive Adjustments */
+    @media (max-width: 768px) {
+        .header-icon {
+            width: 80px;
+            height: 80px;
+        }
+
+        .header-icon i {
+            font-size: 2rem;
+        }
+
+        .icon-wrapper {
+            width: 70px;
+            height: 70px;
+        }
+
+        .icon-wrapper i {
+            font-size: 1.5rem ! important;
+        }
+
+        .module-card . card-body {
+            padding: 2rem ! important;
+        }
     }
 </style>
 
 <script>
-    // Adicionar tooltip nos cards
+    // Animação suave ao carregar os cards
     document.addEventListener('DOMContentLoaded', function() {
-        const cards = document.querySelectorAll('.card-hover');
-        cards.forEach(card => {
-            card.addEventListener('mouseenter', function() {
-                this.style.cursor = 'pointer';
-            });
+        const cards = document.querySelectorAll('.module-card');
+        cards. forEach((card, index) => {
+            card. style.opacity = '0';
+            card.style. transform = 'translateY(30px)';
+
+            setTimeout(() => {
+                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                card. style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, 100 * index);
         });
     });
 </script>
