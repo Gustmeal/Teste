@@ -3,157 +3,548 @@
 {% block content %}
 <div class="container-fluid fade-in">
     <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar para Lista
+        <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">
             <i class="fas fa-edit text-warning me-2"></i> Editar Deliberação - Contrato {{ deliberacao.NU_CONTRATO }}
         </h1>
-        <a href="{{ url_for('sumov.deliberacao_pagamento_pdf', contrato=deliberacao.NU_CONTRATO) }}"
-           class="btn btn-success"
-           target="_blank">
+        <button type="button"
+                class="btn btn-success"
+                onclick="baixarPDFDetalhado('{{ deliberacao.NU_CONTRATO }}', this)">
             <i class="fas fa-file-pdf me-2"></i>Baixar PDF
-        </a>
+        </button>
     </div>
 
     <!-- Card do Formulário -->
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-gradient-warning text-white">
             <h5 class="mb-0">
-                <i class="fas fa-edit me-2"></i>Edição de Deliberação - GEADI
+                <i class="fas fa-edit me-2"></i>Dados da Deliberação
             </h5>
         </div>
         <div class="card-body p-4">
             <form method="POST" action="{{ url_for('sumov.deliberacao_pagamento_nova') }}">
 
-                <!-- Contrato (readonly em edição) -->
+                <!-- Campo Hidden: Contrato -->
                 <input type="hidden" name="contrato" value="{{ deliberacao.NU_CONTRATO }}">
-                <input type="hidden" name="indice_economico" value="0">
 
-                <!-- ==== SEÇÃO: IDENTIFICAÇÃO ==== -->
+                <!-- ==== SEÇÃO 1: IDENTIFICAÇÃO ==== -->
                 <div class="border-bottom pb-3 mb-4">
                     <h5 class="text-primary mb-3">
                         <i class="fas fa-id-card me-2"></i>Identificação
                     </h5>
 
+                    <!-- Contrato/Imóvel (readonly) -->
                     <div class="mb-3">
                         <label class="form-label fw-bold">
                             <i class="fas fa-file-contract text-primary me-1"></i>
-                            Contrato/Imóvel
+                            Contrato/Imóvel (ID)
                         </label>
-                        <input type="text" class="form-control bg-light" value="{{ deliberacao.NU_CONTRATO }}" readonly>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.NU_CONTRATO }}"
+                               readonly>
                     </div>
 
+                    <!-- Analista (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-user text-success me-1"></i>
+                            Colaborador que Analisou
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.COLABORADOR_ANALISOU or current_user.nome }}"
+                               readonly>
+                    </div>
+
+                    <!-- Data da Análise (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-calendar text-info me-1"></i>
+                            Data da Análise
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.DT_ANALISE.strftime('%d/%m/%Y') if deliberacao.DT_ANALISE else '' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Matrícula (editável) -->
                     <div class="mb-3">
                         <label for="matricula" class="form-label fw-bold">
                             <i class="fas fa-id-badge text-secondary me-1"></i>
                             Matrícula (Caixa/Emgea)
                         </label>
-                        <input type="text" class="form-control" id="matricula" name="matricula"
-                               value="{{ deliberacao.MATRICULA_CAIXA_EMGEA or '' }}">
+                        <input type="text"
+                               class="form-control"
+                               id="matricula"
+                               name="matricula"
+                               value="{{ deliberacao.MATRICULA_CAIXA_EMGEA or '' }}"
+                               placeholder="Ex: 18.133 - Emgea">
                     </div>
 
+                    <!-- Data de Arrematação (editável) -->
                     <div class="mb-3">
                         <label for="dt_arrematacao" class="form-label fw-bold">
                             <i class="fas fa-calendar-plus text-warning me-1"></i>
-                            Data da Arrematação/Aquisição
+                            Data da Arrematação/Aquisição (RM)
                         </label>
-                        <input type="date" class="form-control" id="dt_arrematacao" name="dt_arrematacao"
-                               value="{% if deliberacao.DT_ARREMATACAO_AQUISICAO %}{{ deliberacao.DT_ARREMATACAO_AQUISICAO.strftime('%Y-%m-%d') }}{% endif %}">
+                        <input type="date"
+                               class="form-control"
+                               id="dt_arrematacao"
+                               name="dt_arrematacao"
+                               value="{{ deliberacao.DT_ARREMATACAO_AQUISICAO.strftime('%Y-%m-%d') if deliberacao.DT_ARREMATACAO_AQUISICAO else '' }}">
                     </div>
 
+                    <!-- Data de Entrada no Estoque (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-warehouse text-primary me-1"></i>
+                            Data de Entrada no Estoque
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.DT_ENTRADA_ESTOQUE.strftime('%d/%m/%Y') if deliberacao.DT_ENTRADA_ESTOQUE else '-' }}"
+                               readonly>
+                    </div>
+                </div>
+
+                <!-- ==== SEÇÃO 2: COBRANÇA E DÍVIDA ==== -->
+                <div class="border-bottom pb-3 mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-file-invoice-dollar me-2"></i>Cobrança e Dívida
+                    </h5>
+
+                    <!-- Período Prescrito (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-clock text-danger me-1"></i>
+                            Período Prescrito
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.PERIODO_PRESCRITO or '-' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Valor Inicial da Dívida (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-dollar-sign text-info me-1"></i>
+                            Valor Inicial da Dívida (Soma das Cotas)
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DIVIDA_CONDOMINIO_1).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DIVIDA_CONDOMINIO_1 else 'R$ 0,00' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Valor de débito excluídos as cotas prescritas (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-minus-circle text-danger me-1"></i>
+                            Valor de Débito Excluídos as Cotas Prescritas
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS else 'R$ 0,00' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Índice Econômico (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-chart-line text-primary me-1"></i>
+                            Índice Econômico
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.INDICE_DEBITO_EMGEA or '-' }}"
+                               readonly>
+                    </div>
+
+                    <!-- CARD COM DETALHES DO CÁLCULO -->
+                    <div class="card bg-light border-primary mb-3">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-calculator me-2"></i>Detalhes do Cálculo
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- Percentual de Honorários -->
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-percent me-1"></i>
+                                        Percentual de Honorários
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           value="{{ '{:,.2f}%'.format(deliberacao.PERC_HONORARIOS_EMGEA).replace('.', ',') if deliberacao.PERC_HONORARIOS_EMGEA else '0,00%' }}"
+                                           readonly>
+                                </div>
+
+                                <!-- Valor dos Honorários -->
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold text-warning">
+                                        <i class="fas fa-gavel me-1"></i>
+                                        Valor dos Honorários
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white border-warning"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_HONORARIOS_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_HONORARIOS_EMGEA else 'R$ 0,00' }}"
+                                           readonly>
+                                </div>
+
+                                <!-- Valor TOTAL COM Honorários -->
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label fw-bold text-success">
+                                        <i class="fas fa-money-bill-wave me-1"></i>
+                                        VALOR TOTAL (com Honorários)
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white border-success fw-bold"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITO_CALCULADO_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITO_CALCULADO_EMGEA else 'R$ 0,00' }}"
+                                           readonly>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden field para POST -->
+                    <input type="hidden" name="indice_economico" value="0">
+                </div>
+
+                <!-- ==== SEÇÃO 3: AVALIAÇÃO E VENDA ==== -->
+                <div class="border-bottom pb-3 mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-home me-2"></i>Avaliação e Venda
+                    </h5>
+
+                    <!-- Valor de avaliação (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-home text-primary me-1"></i>
+                            Valor de Avaliação
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_AVALIACAO).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_AVALIACAO else 'R$ 0,00' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Data do laudo (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-calendar-alt text-info me-1"></i>
+                            Data do Laudo
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.DT_LAUDO.strftime('%d/%m/%Y') if deliberacao.DT_LAUDO else '-' }}"
+                               readonly>
+                    </div>
+
+                    <!-- Status do imóvel (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-info-circle text-warning me-1"></i>
+                            Status do Imóvel
+                        </label>
+                        <input type="text"
+                               class="form-control bg-light"
+                               value="{{ deliberacao.STATUS_IMOVEL or '-' }}"
+                               readonly>
+                    </div>
+
+                    <!-- SEÇÃO CONDICIONAL - APARECE SE STATUS = VENDIDO -->
+                    {% if deliberacao.STATUS_IMOVEL and 'VENDIDO' in deliberacao.STATUS_IMOVEL.upper() %}
+                    <div class="card border-success mb-3">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-check-circle me-2"></i>Imóvel Vendido - Informações da Venda
+                            </h6>
+                        </div>
+                        <hr>
+
+                        <!-- Valor de venda -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-dollar-sign text-success me-1"></i>
+                                Valor de Venda
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-white"
+                                   value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_VENDA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_VENDA else 'R$ 0,00' }}"
+                                   readonly>
+                        </div>
+
+                        <!-- Data da venda -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-calendar-check text-success me-1"></i>
+                                Data da Venda
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-white"
+                                   value="{{ deliberacao.DT_VENDA.strftime('%d/%m/%Y') if deliberacao.DT_VENDA else '-' }}"
+                                   readonly>
+                        </div>
+
+                        <!-- Nome do adquirente -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-user text-info me-1"></i>
+                                Nome do Adquirente
+                            </label>
+                            <input type="text"
+                                   class="form-control bg-white"
+                                   value="{{ deliberacao.NOME_COMPRADOR or '-' }}"
+                                   readonly>
+                        </div>
+
+                        <!-- NOVO: Tipo de Pagamento -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-credit-card text-primary me-1"></i>
+                                Tipo de Pagamento
+                            </label>
+                            <div class="form-control bg-white" style="min-height: 38px;">
+                                {% if deliberacao.TIPO_PAGAMENTO_VENDA == 'A_VISTA' %}
+                                    <i class="fas fa-money-bill-wave text-success me-2"></i>
+                                    <span class="badge bg-success">À Vista</span>
+                                {% elif deliberacao.TIPO_PAGAMENTO_VENDA == 'PARCELADO' %}
+                                    <i class="fas fa-credit-card text-primary me-2"></i>
+                                    <span class="badge bg-primary">Parcelado</span>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Data do registro (editável) -->
                     <div class="mb-3">
                         <label for="dt_registro" class="form-label fw-bold">
                             <i class="fas fa-edit text-primary me-1"></i>
                             Data do Registro <span class="text-danger">*</span>
                         </label>
-                        <input type="date" class="form-control" id="dt_registro" name="dt_registro"
-                               value="{% if deliberacao.DT_REGISTRO %}{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') }}{% endif %}"
+                        <input type="date"
+                               class="form-control"
+                               id="dt_registro"
+                               name="dt_registro"
+                               value="{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') if deliberacao.DT_REGISTRO else '' }}"
                                required>
                     </div>
                 </div>
 
-                <!-- ==== SEÇÃO: AÇÕES E PROCESSOS ==== -->
+                <!-- ==== SEÇÃO 4: PARTE FINAL - AÇÕES E PROCESSOS ==== -->
                 <div class="border-bottom pb-3 mb-4">
                     <h5 class="text-primary mb-3">
-                        <i class="fas fa-balance-scale me-2"></i>Ações e Processos
+                        <i class="fas fa-balance-scale me-2"></i>Ações e Processos Judiciais
                     </h5>
 
+                    <!-- Gravame na matrícula (editável) -->
                     <div class="mb-3">
                         <label for="gravame_matricula" class="form-label fw-bold">
                             <i class="fas fa-file-signature text-danger me-1"></i>
                             Gravame na Matrícula
                         </label>
-                        <textarea class="form-control" id="gravame_matricula" name="gravame_matricula"
-                                  rows="3">{{ deliberacao.GRAVAME_MATRICULA or '' }}</textarea>
+                        <textarea class="form-control"
+                                  id="gravame_matricula"
+                                  name="gravame_matricula"
+                                  rows="3"
+                                  placeholder="Descreva o gravame na matrícula do imóvel">{{ deliberacao.GRAVAME_MATRICULA or '' }}</textarea>
                     </div>
 
+                    <!-- Ações negociais administrativas (editável) -->
                     <div class="mb-3">
                         <label for="acoes_negociais_administrativas" class="form-label fw-bold">
                             <i class="fas fa-handshake text-success me-1"></i>
                             Ações Negociais Administrativas
                         </label>
-                        <textarea class="form-control" id="acoes_negociais_administrativas"
+                        <textarea class="form-control"
+                                  id="acoes_negociais_administrativas"
                                   name="acoes_negociais_administrativas"
-                                  rows="3">{{ deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS or '' }}</textarea>
+                                  rows="3"
+                                  placeholder="Descreva as ações negociais administrativas">{{ deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS or '' }}</textarea>
                     </div>
 
+                    <!-- Número dos processos judiciais (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-gavel text-warning me-1"></i>
+                            Nº da Ação Judicial - Ações Negociais Judiciais
+                        </label>
+                        <textarea class="form-control bg-light"
+                                  rows="3"
+                                  readonly>{{ deliberacao.NR_PROCESSOS_JUDICIAIS or '-' }}</textarea>
+                    </div>
+
+                    <!-- Vara do processo (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-landmark text-primary me-1"></i>
+                            Vara do Processo
+                        </label>
+                        <textarea class="form-control bg-light"
+                                  rows="3"
+                                  readonly>{{ deliberacao.VARA_PROCESSO or '-' }}</textarea>
+                    </div>
+
+                    <!-- Fase do processo (readonly) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-tasks text-info me-1"></i>
+                            Fase do Processo
+                        </label>
+                        <textarea class="form-control bg-light"
+                                  rows="3"
+                                  readonly>{{ deliberacao.FASE_PROCESSO or '-' }}</textarea>
+                    </div>
+
+                    <!-- Relatório da assessoria jurídica (editável) -->
                     <div class="mb-3">
                         <label for="relatorio_assessoria_juridica" class="form-label fw-bold">
                             <i class="fas fa-file-alt text-secondary me-1"></i>
                             Relatório da Assessoria Jurídica
                         </label>
-                        <textarea class="form-control" id="relatorio_assessoria_juridica"
+                        <textarea class="form-control"
+                                  id="relatorio_assessoria_juridica"
                                   name="relatorio_assessoria_juridica"
-                                  rows="5">{{ deliberacao.RELATORIO_ASSESSORIA_JURIDICA or '' }}</textarea>
+                                  rows="5"
+                                  placeholder="Digite o relatório da assessoria jurídica sobre os processos">{{ deliberacao.RELATORIO_ASSESSORIA_JURIDICA or '' }}</textarea>
+                    </div>
+                </div>
+
+                <!-- ==== SEÇÃO 5: DÉBITOS E PENALIDADES ==== -->
+                <div class="border-bottom pb-3 mb-4">
+                    <h5 class="text-primary mb-3">
+                        <i class="fas fa-money-check-alt me-2"></i>Débitos e Penalidades
+                    </h5>
+
+                    <!-- Demais débitos pagos -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-header bg-secondary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-receipt me-2"></i>Demais Débitos Pagos para o Imóvel
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- Sisdex -->
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-file-invoice-dollar text-primary me-1"></i>
+                                        Sisdex
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITOS_SISDEX).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITOS_SISDEX else 'R$ 0,00' }}"
+                                           readonly>
+                                </div>
+
+                                <!-- Sisgea -->
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-file-invoice-dollar text-success me-1"></i>
+                                        Sisgea
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITOS_SISGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITOS_SISGEA else 'R$ 0,00' }}"
+                                           readonly>
+                                </div>
+
+                                <!-- Total -->
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-calculator text-warning me-1"></i>
+                                        Total
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white border-warning fw-bold"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITOS_TOTAL).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITOS_TOTAL else 'R$ 0,00' }}"
+                                           readonly>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
+                    <!-- Penalidade de ANS - CAIXA (editável) -->
                     <div class="mb-3">
                         <label for="penalidade_ans_caixa" class="form-label fw-bold">
                             <i class="fas fa-exclamation-triangle text-danger me-1"></i>
                             Penalidade de ANS - CAIXA
                         </label>
-                        <textarea class="form-control" id="penalidade_ans_caixa"
+                        <textarea class="form-control"
+                                  id="penalidade_ans_caixa"
                                   name="penalidade_ans_caixa"
-                                  rows="3">{{ deliberacao.PENALIDADE_ANS_CAIXA or '' }}</textarea>
+                                  rows="3"
+                                  placeholder="Descreva as penalidades de ANS aplicadas pela CAIXA">{{ deliberacao.PENALIDADE_ANS_CAIXA or '' }}</textarea>
                     </div>
 
+                    <!-- Prejuízo Financeiro - CAIXA (editável) -->
                     <div class="mb-3">
                         <label for="prejuizo_financeiro_caixa" class="form-label fw-bold">
                             <i class="fas fa-chart-line text-danger me-1"></i>
                             Prejuízo Financeiro - CAIXA
                         </label>
-                        <textarea class="form-control" id="prejuizo_financeiro_caixa"
+                        <textarea class="form-control"
+                                  id="prejuizo_financeiro_caixa"
                                   name="prejuizo_financeiro_caixa"
-                                  rows="3">{{ deliberacao.PREJUIZO_FINANCEIRO_CAIXA or '' }}</textarea>
+                                  rows="3"
+                                  placeholder="Descreva o prejuízo financeiro da CAIXA">{{ deliberacao.PREJUIZO_FINANCEIRO_CAIXA or '' }}</textarea>
                     </div>
                 </div>
 
-                <!-- ==== SEÇÃO: CONSIDERAÇÕES ==== -->
+                <!-- ==== SEÇÃO 6: CONSIDERAÇÕES FINAIS ==== -->
                 <div class="mb-4">
                     <h5 class="text-primary mb-3">
                         <i class="fas fa-comments me-2"></i>Considerações Finais
                     </h5>
 
+                    <!-- Considerações da analista Geadi (editável) -->
                     <div class="mb-3">
                         <label for="consideracoes_analista" class="form-label fw-bold">
                             <i class="fas fa-user-edit text-info me-1"></i>
                             Considerações da Analista GEADI
                         </label>
-                        <textarea class="form-control" id="consideracoes_analista"
+                        <textarea class="form-control"
+                                  id="consideracoes_analista"
                                   name="consideracoes_analista"
-                                  rows="5">{{ deliberacao.CONSIDERACOES_ANALISTA_GEADI or '' }}</textarea>
+                                  rows="5"
+                                  placeholder="Digite as considerações da analista GEADI">{{ deliberacao.CONSIDERACOES_ANALISTA_GEADI or '' }}</textarea>
                     </div>
 
+                    <!-- Considerações finais do gestor da Geadi (editável) -->
                     <div class="mb-3">
                         <label for="consideracoes_gestor" class="form-label fw-bold">
                             <i class="fas fa-user-tie text-success me-1"></i>
                             Considerações Finais do Gestor da GEADI
                         </label>
-                        <textarea class="form-control" id="consideracoes_gestor"
+                        <textarea class="form-control"
+                                  id="consideracoes_gestor"
                                   name="consideracoes_gestor"
-                                  rows="5">{{ deliberacao.CONSIDERACOES_GESTOR_GEADI or '' }}</textarea>
+                                  rows="5"
+                                  placeholder="Digite as considerações finais do gestor GEADI">{{ deliberacao.CONSIDERACOES_GESTOR_GEADI or '' }}</textarea>
+                    </div>
+
+                    <!-- NOVO: Considerações finais do gestor da SUMOV (editável) -->
+                    <div class="mb-3">
+                        <label for="consideracoes_gestor_sumov" class="form-label fw-bold">
+                            <i class="fas fa-user-tie text-warning me-1"></i>
+                            Considerações Finais do Gestor da SUMOV
+                        </label>
+                        <textarea class="form-control"
+                                  id="consideracoes_gestor_sumov"
+                                  name="consideracoes_gestor_sumov"
+                                  rows="5"
+                                  placeholder="Digite as considerações finais do gestor SUMOV">{{ deliberacao.CONSIDERACOES_GESTOR_SUMOV or '' }}</textarea>
                     </div>
                 </div>
 
@@ -171,4 +562,30 @@
         </div>
     </div>
 </div>
+
+<script>
+// Função para baixar PDF com feedback visual
+function baixarPDFDetalhado(contrato, botao) {
+    // Salvar conteúdo original do botão
+    const conteudoOriginal = botao.innerHTML;
+
+    // Alterar botão para estado de carregamento
+    botao.disabled = true;
+    botao.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando PDF...';
+
+    // Criar elemento <a> temporário para download
+    const link = document.createElement('a');
+    link.href = `/sumov/deliberacao-pagamento/pdf/${contrato}`;
+    link.download = `Deliberacao_Pagamento_${contrato}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Restaurar botão após 3 segundos
+    setTimeout(() => {
+        botao.disabled = false;
+        botao.innerHTML = conteudoOriginal;
+    }, 3000);
+}
+</script>
 {% endblock %}

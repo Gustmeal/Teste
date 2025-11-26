@@ -863,6 +863,8 @@ def deliberacao_pagamento_nova():
             prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
             consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
             consideracoes_gestor = request.form.get('consideracoes_gestor', '').strip() or None
+            consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
+            tipo_pagamento_venda = request.form.get('tipo_pagamento_venda', '').strip() or None
 
             # Validação básica obrigatória
             if not contrato:
@@ -915,41 +917,46 @@ def deliberacao_pagamento_nova():
             result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
             periodo_prescrito = result_prescricao[0] if result_prescricao else None
 
-            # ===== BUSCA 3: Valor Inicial =====
+            # ===== BUSCA 3: Valor Inicial (DA ÚLTIMA ATUALIZAÇÃO) =====
             sql_valor_inicial = text("""
                 SELECT 
                     SUM([VR_COTA]) as VALOR_INICIAL,
                     MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
                 WHERE [IMOVEL] = :contrato
+                AND [DT_ATUALIZACAO] = (
+                    SELECT MAX([DT_ATUALIZACAO])
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+                    WHERE [IMOVEL] = :contrato
+                )
             """)
             result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
 
             vr_divida_inicial = result_valor[0] if result_valor and result_valor[0] else Decimal('0')
             nome_condominio = result_valor[1] if result_valor and result_valor[1] else None
 
-            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
+            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas (DE UM ÚNICO ÍNDICE) =====
             sql_valor_prescrito = text("""
-                            SELECT 
-                                SUM([VR_COTA]) as VALOR_PRESCRITO
-                            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                            WHERE [IMOVEL] = :contrato
-                            AND [ID_INDICE_ECONOMICO] = (
-                                SELECT MIN([ID_INDICE_ECONOMICO])
-                                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                                WHERE [IMOVEL] = :contrato
-                                AND [DT_ATUALIZACAO] = (
-                                    SELECT MAX([DT_ATUALIZACAO])
-                                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                                    WHERE [IMOVEL] = :contrato
-                                )
-                            )
-                            AND [DT_ATUALIZACAO] = (
-                                SELECT MAX([DT_ATUALIZACAO])
-                                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                                WHERE [IMOVEL] = :contrato
-                            )
-                        """)
+                SELECT 
+                    SUM([VR_COTA]) as VALOR_PRESCRITO
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                WHERE [IMOVEL] = :contrato
+                AND [ID_INDICE_ECONOMICO] = (
+                    SELECT MIN([ID_INDICE_ECONOMICO])
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                    WHERE [IMOVEL] = :contrato
+                    AND [DT_ATUALIZACAO] = (
+                        SELECT MAX([DT_ATUALIZACAO])
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                        WHERE [IMOVEL] = :contrato
+                    )
+                )
+                AND [DT_ATUALIZACAO] = (
+                    SELECT MAX([DT_ATUALIZACAO])
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                    WHERE [IMOVEL] = :contrato
+                )
+            """)
             result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
             vr_debito_excluido_prescritas = result_prescrito[0] if result_prescrito and result_prescrito[
                 0] else Decimal('0')
@@ -1095,6 +1102,8 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
                 deliberacao_existente.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
                 deliberacao_existente.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
+                deliberacao_existente.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
+                deliberacao_existente.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
                 deliberacao_existente.USUARIO_ATUALIZACAO = current_user.nome
                 deliberacao_existente.UPDATED_AT = datetime.utcnow()
 
@@ -1139,6 +1148,8 @@ def deliberacao_pagamento_nova():
                     PREJUIZO_FINANCEIRO_CAIXA=prejuizo_financeiro,
                     CONSIDERACOES_ANALISTA_GEADI=consideracoes_analista,
                     CONSIDERACOES_GESTOR_GEADI=consideracoes_gestor,
+                    CONSIDERACOES_GESTOR_SUMOV=consideracoes_gestor_sumov,
+                    TIPO_PAGAMENTO_VENDA=tipo_pagamento_venda,
                     STATUS_DOCUMENTO='RASCUNHO',
                     USUARIO_CRIACAO=current_user.nome,
                     CREATED_AT=datetime.utcnow()
@@ -1203,7 +1214,7 @@ def buscar_dados_contrato():
         result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
         periodo_prescricao = result_prescricao[0] if result_prescricao else None
 
-        # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA) =====
+        # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA - DA ÚLTIMA ATUALIZAÇÃO) =====
         sql_valor_inicial = text("""
             SELECT 
                 SUM([VR_COTA]) as VALOR_INICIAL,
@@ -1211,6 +1222,11 @@ def buscar_dados_contrato():
                 MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
             WHERE [IMOVEL] = :contrato
+            AND [DT_ATUALIZACAO] = (
+                SELECT MAX([DT_ATUALIZACAO])
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+                WHERE [IMOVEL] = :contrato
+            )
         """)
         result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
 
@@ -1220,27 +1236,27 @@ def buscar_dados_contrato():
 
         # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas (DE UM ÚNICO ÍNDICE) =====
         sql_valor_prescrito = text("""
-                    SELECT 
-                        SUM([VR_COTA]) as VALOR_PRESCRITO,
-                        COUNT(*) as QTD_PRESCRITO
+            SELECT 
+                SUM([VR_COTA]) as VALOR_PRESCRITO,
+                COUNT(*) as QTD_PRESCRITO
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+            WHERE [IMOVEL] = :contrato
+            AND [ID_INDICE_ECONOMICO] = (
+                SELECT MIN([ID_INDICE_ECONOMICO])
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                WHERE [IMOVEL] = :contrato
+                AND [DT_ATUALIZACAO] = (
+                    SELECT MAX([DT_ATUALIZACAO])
                     FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
                     WHERE [IMOVEL] = :contrato
-                    AND [ID_INDICE_ECONOMICO] = (
-                        SELECT MIN([ID_INDICE_ECONOMICO])
-                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                        WHERE [IMOVEL] = :contrato
-                        AND [DT_ATUALIZACAO] = (
-                            SELECT MAX([DT_ATUALIZACAO])
-                            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                            WHERE [IMOVEL] = :contrato
-                        )
-                    )
-                    AND [DT_ATUALIZACAO] = (
-                        SELECT MAX([DT_ATUALIZACAO])
-                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                        WHERE [IMOVEL] = :contrato
-                    )
-                """)
+                )
+            )
+            AND [DT_ATUALIZACAO] = (
+                SELECT MAX([DT_ATUALIZACAO])
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+                WHERE [IMOVEL] = :contrato
+            )
+        """)
         result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
 
         valor_prescrito = float(result_prescrito[0]) if result_prescrito and result_prescrito[0] else 0
@@ -1312,12 +1328,13 @@ def buscar_dados_contrato():
         result_status = db.session.execute(sql_status, {'contrato': contrato}).fetchone()
         status_imovel = result_status[0] if result_status else None
 
-        # ===== BUSCA 8: Dados de Venda =====
+        # ===== BUSCA 8: Dados de Venda + TIPO DE PAGAMENTO =====
         sql_venda = text("""
             SELECT TOP 1
                 [VR_VENDA],
                 [DT_VENDA],
-                [NO_COMPRADOR]
+                [NO_COMPRADOR],
+                [VR_SD_DEVEDOR]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
             WHERE [NU_IMOVEL] = :contrato
             ORDER BY [DT_VENDA] DESC
@@ -1328,24 +1345,31 @@ def buscar_dados_contrato():
         dt_venda = result_venda[1].strftime('%Y-%m-%d') if result_venda and result_venda[1] else None
         nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
 
+        # NOVO: Determinar tipo de pagamento
+        tipo_pagamento_venda = None
+        if result_venda and result_venda[3] is not None:
+            vr_sd_devedor = float(result_venda[3])
+            if vr_sd_devedor > 0:
+                tipo_pagamento_venda = "PARCELADO"
+            else:
+                tipo_pagamento_venda = "A_VISTA"
+
         # ===== BUSCA 9: Processos Judiciais =====
-        # ===== BUSCA 9: Processos Judiciais =====
-        # Tentar primeiro por nrContrato (string), se não funcionar tenta por fkContratoSISCTR
         sql_processos = text("""
-                    SELECT [nrProcessoCnj]
-                    FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
-                    WHERE [nrContrato] = :contrato
-                """)
+            SELECT [nrProcessoCnj]
+            FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
+            WHERE [nrContrato] = :contrato
+        """)
         result_processos = db.session.execute(sql_processos, {'contrato': contrato}).fetchall()
 
         # Se não encontrar por nrContrato, tentar por fkContratoSISCTR com CAST
         if not result_processos:
             try:
                 sql_processos_alt = text("""
-                            SELECT [nrProcessoCnj]
-                            FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
-                            WHERE CAST([fkContratoSISCTR] AS VARCHAR(50)) = :contrato
-                        """)
+                    SELECT [nrProcessoCnj]
+                    FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
+                    WHERE CAST([fkContratoSISCTR] AS VARCHAR(50)) = :contrato
+                """)
                 result_processos = db.session.execute(sql_processos_alt, {'contrato': contrato}).fetchall()
             except:
                 result_processos = []
@@ -1357,13 +1381,13 @@ def buscar_dados_contrato():
 
                 # Buscar detalhes do processo
                 sql_detalhes = text("""
-                            SELECT 
-                                [dsComarca],
-                                [dsLocal],
-                                [dsFaseProcessual]
-                            FROM [BDEMGEAODS].[SISJUD].[tblProcessoEmgea]
-                            WHERE [nrProcessoCnj] = :nr_processo
-                        """)
+                    SELECT 
+                        [dsComarca],
+                        [dsLocal],
+                        [dsFaseProcessual]
+                    FROM [BDEMGEAODS].[SISJUD].[tblProcessoEmgea]
+                    WHERE [nrProcessoCnj] = :nr_processo
+                """)
                 result_detalhes = db.session.execute(sql_detalhes, {'nr_processo': nr_processo}).fetchone()
 
                 if result_detalhes:
@@ -1407,8 +1431,6 @@ def buscar_dados_contrato():
             'valor_inicial': valor_inicial,
             'qtd_parcelas_inicial': qtd_parcelas_inicial,
             'nome_condominio': nome_condominio,
-            'valor_prescrito': valor_prescrito,
-            'qtd_parcelas_prescrito': qtd_prescrito,
             'indices_disponiveis': indices_disponiveis,
             'vr_avaliacao': vr_avaliacao,
             'dt_laudo': dt_laudo,
@@ -1416,6 +1438,7 @@ def buscar_dados_contrato():
             'vr_venda': vr_venda,
             'dt_venda': dt_venda,
             'nome_comprador': nome_comprador,
+            'tipo_pagamento_venda': tipo_pagamento_venda,
             'processos_judiciais': processos_judiciais,
             'vr_debitos_sisdex': vr_sisdex,
             'vr_debitos_sisgea': vr_sisgea,
@@ -1509,26 +1532,25 @@ def deliberacao_pagamento_pdf(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # Criar buffer de memória para o PDF
+        # Criar buffer
         buffer = BytesIO()
 
-        # Configurar documento
+        # Criar documento
         doc = SimpleDocTemplate(
             buffer,
             pagesize=A4,
             rightMargin=2 * cm,
             leftMargin=2 * cm,
-            topMargin=2 * cm,
-            bottomMargin=2 * cm,
-            title=f'Deliberação de Pagamento - {contrato}'
+            topMargin=2.5 * cm,
+            bottomMargin=2 * cm
         )
 
         # Estilos
         styles = getSampleStyleSheet()
 
-        # Estilo para título principal
-        titulo_principal = ParagraphStyle(
-            'TituloPrincipal',
+        # Estilo para título
+        style_titulo = ParagraphStyle(
+            'CustomTitle',
             parent=styles['Heading1'],
             fontSize=16,
             textColor=colors.HexColor('#1a5490'),
@@ -1537,338 +1559,296 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica-Bold'
         )
 
-        # Estilo para subtítulos de seção
-        titulo_secao = ParagraphStyle(
-            'TituloSecao',
+        # Estilo para subtítulos
+        style_subtitulo = ParagraphStyle(
+            'CustomSubtitle',
             parent=styles['Heading2'],
             fontSize=12,
             textColor=colors.HexColor('#1a5490'),
-            spaceAfter=10,
+            spaceAfter=12,
             spaceBefore=15,
-            fontName='Helvetica-Bold',
-            borderWidth=0,
-            borderColor=colors.HexColor('#1a5490'),
-            borderPadding=5,
-            backColor=colors.HexColor('#e8f4f8')
+            fontName='Helvetica-Bold'
+        )
+
+        # Estilo para texto normal
+        style_normal = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=TA_JUSTIFY,
+            spaceAfter=8,
+            fontName='Helvetica'
         )
 
         # Estilo para labels
-        label_style = ParagraphStyle(
-            'Label',
+        style_label = ParagraphStyle(
+            'CustomLabel',
             parent=styles['Normal'],
             fontSize=9,
             textColor=colors.HexColor('#666666'),
+            spaceAfter=2,
             fontName='Helvetica-Bold'
         )
 
         # Estilo para valores
-        valor_style = ParagraphStyle(
-            'Valor',
+        style_valor = ParagraphStyle(
+            'CustomValor',
             parent=styles['Normal'],
             fontSize=10,
-            textColor=colors.black,
+            spaceAfter=10,
             fontName='Helvetica'
         )
 
-        # Estilo para textos longos
-        texto_style = ParagraphStyle(
-            'Texto',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=colors.black,
-            fontName='Helvetica',
-            alignment=TA_JUSTIFY,
-            leading=14,
-            spaceBefore=2,
-            spaceAfter=2
-        )
+        # Helper para escapar HTML
+        def escape_text(text):
+            if not text:
+                return '-'
+            return html.escape(str(text))
 
-        # === FUNÇÕES AUXILIARES ===
-        def formatar_moeda(valor):
-            if valor is None:
-                return "R$ 0,00"
-            return f"R$ {float(valor):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
+        # Helper para formatar datas
         def formatar_data(data):
-            if data is None:
-                return "-"
+            if not data:
+                return '-'
+            if isinstance(data, str):
+                return data
             return data.strftime('%d/%m/%Y')
 
-        def limpar_texto(texto):
-            """Limpa e formata texto mantendo quebras de linha"""
-            if texto is None or str(texto).strip() == '':
-                return "-"
+        # Helper para formatar valores monetários
+        def formatar_moeda(valor):
+            if not valor:
+                return 'R$ 0,00'
+            return 'R$ {:,.2f}'.format(float(valor)).replace(',', 'X').replace('.', ',').replace('X', '.')
 
-            # Converter para string e fazer escape HTML
-            texto = str(texto).strip()
-            texto = html.escape(texto)
+        # Helper para formatar percentual
+        def formatar_percentual(valor):
+            if not valor:
+                return '0,00%'
+            return '{:,.2f}%'.format(float(valor)).replace('.', ',')
 
-            # Substituir quebras de linha por tags <br/>
-            texto = texto.replace('\r\n', '<br/>')  # Windows
-            texto = texto.replace('\n', '<br/>')  # Unix/Mac
-            texto = texto.replace('\r', '<br/>')  # Old Mac
+        # Elementos do PDF
+        elements = []
 
-            # Substituir múltiplas quebras por uma única
-            while '<br/><br/><br/>' in texto:
-                texto = texto.replace('<br/><br/><br/>', '<br/><br/>')
+        # ===== CABEÇALHO =====
+        elements.append(Paragraph('DELIBERAÇÃO DE PAGAMENTO', style_titulo))
+        elements.append(Paragraph(f'Contrato/Imóvel: {escape_text(deliberacao.NU_CONTRATO)}', style_normal))
+        elements.append(Spacer(1, 0.5 * cm))
 
-            return texto
-
-        def criar_paragrafo_texto(texto, style):
-            """Cria um ou mais parágrafos mantendo formatação"""
-            if not texto or texto == "-":
-                return [Paragraph("-", style)]
-
-            # Se o texto tiver quebras de linha, processa mantendo formatação
-            texto_formatado = limpar_texto(texto)
-            return [Paragraph(texto_formatado, style)]
-
-        # Construir conteúdo do PDF
-        story = []
-
-        # === CABEÇALHO ===
-        story.append(Paragraph("DELIBERAÇÃO DE PAGAMENTO", titulo_principal))
-        story.append(Paragraph("Gerência de Administração de Imóveis - GEADI",
-                               ParagraphStyle('Subtitulo', parent=styles['Normal'],
-                                              fontSize=10, alignment=TA_CENTER,
-                                              textColor=colors.HexColor('#666666'))))
-        story.append(Spacer(1, 0.5 * cm))
-
-        # === LINHA DE IDENTIFICAÇÃO ===
-        data_atual = datetime.now().strftime('%d/%m/%Y %H:%M')
-        identificacao_data = [
-            [Paragraph(f"<b>Contrato/Imóvel:</b> {deliberacao.NU_CONTRATO}", valor_style),
-             Paragraph(f"<b>Gerado em:</b> {data_atual}",
-                       ParagraphStyle('DataDir', parent=valor_style, alignment=TA_RIGHT))]
-        ]
-
-        table_identificacao = Table(identificacao_data, colWidths=[10 * cm, 7 * cm])
-        table_identificacao.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
-            ('PADDING', (0, 0), (-1, -1), 8),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
-        ]))
-        story.append(table_identificacao)
-        story.append(Spacer(1, 0.5 * cm))
-
-        # === SEÇÃO 1: IDENTIFICAÇÃO ===
-        story.append(Paragraph("1. IDENTIFICAÇÃO", titulo_secao))
+        # ===== SEÇÃO 1: IDENTIFICAÇÃO =====
+        elements.append(Paragraph('1. IDENTIFICAÇÃO', style_subtitulo))
 
         dados_identificacao = [
-            ["Colaborador que Analisou:", limpar_texto(deliberacao.COLABORADOR_ANALISOU)],
-            ["Data da Análise:", formatar_data(deliberacao.DT_ANALISE)],
-            ["Matrícula (Caixa/Emgea):", limpar_texto(deliberacao.MATRICULA_CAIXA_EMGEA)],
-            ["Data de Arrematação/Aquisição:", formatar_data(deliberacao.DT_ARREMATACAO_AQUISICAO)],
-            ["Data de Entrada no Estoque:", formatar_data(deliberacao.DT_ENTRADA_ESTOQUE)],
+            ['Colaborador que Analisou:', escape_text(deliberacao.COLABORADOR_ANALISOU)],
+            ['Data da Análise:', formatar_data(deliberacao.DT_ANALISE)],
+            ['Matrícula (Caixa/Emgea):', escape_text(deliberacao.MATRICULA_CAIXA_EMGEA)],
+            ['Data da Arrematação/Aquisição:', formatar_data(deliberacao.DT_ARREMATACAO_AQUISICAO)],
+            ['Data de Entrada no Estoque:', formatar_data(deliberacao.DT_ENTRADA_ESTOQUE)]
         ]
 
-        table_identificacao_dados = Table(dados_identificacao, colWidths=[6 * cm, 11 * cm])
-        table_identificacao_dados.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
-            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
-            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
-            ('PADDING', (0, 0), (-1, -1), 6),
+        tabela_identificacao = Table(dados_identificacao, colWidths=[7 * cm, 10 * cm])
+        tabela_identificacao.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a5490')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
-        story.append(table_identificacao_dados)
-        story.append(Spacer(1, 0.3 * cm))
+        elements.append(tabela_identificacao)
+        elements.append(Spacer(1, 0.5 * cm))
 
-        # === SEÇÃO 2: COBRANÇA E DÍVIDA ===
-        story.append(Paragraph("2. COBRANÇA E DÍVIDA", titulo_secao))
+        # ===== SEÇÃO 2: COBRANÇA E DÍVIDA =====
+        elements.append(Paragraph('2. COBRANÇA E DÍVIDA', style_subtitulo))
 
         dados_cobranca = [
-            ["Período Prescrito:", limpar_texto(deliberacao.PERIODO_PRESCRITO)],
-            ["Valor Inicial da Dívida:", formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
-            ["Valor Débito Excluídos Prescritas:", formatar_moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS)],
-            ["Índice Econômico:", limpar_texto(deliberacao.INDICE_DEBITO_EMGEA)],
-            ["Percentual de Honorários:",
-             f"{deliberacao.PERC_HONORARIOS_EMGEA}%" if deliberacao.PERC_HONORARIOS_EMGEA else "-"],
-            ["Valor dos Honorários:", formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
-            ["Valor Débito Calculado (EMGEA):", formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)],
-            ["Data do Cálculo:", formatar_data(deliberacao.DT_CALCULO_EMGEA)],
+            ['Período Prescrito:', escape_text(deliberacao.PERIODO_PRESCRITO)],
+            ['Valor Inicial da Dívida:', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
+            ['Valor Excluídos Cotas Prescritas:', formatar_moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS)],
+            ['Índice Econômico:', escape_text(deliberacao.INDICE_DEBITO_EMGEA)],
+            ['Percentual de Honorários:', formatar_percentual(deliberacao.PERC_HONORARIOS_EMGEA)],
+            ['Valor dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
+            ['VALOR TOTAL (com Honorários):', formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)]
         ]
 
-        table_cobranca = Table(dados_cobranca, colWidths=[6 * cm, 11 * cm])
-        table_cobranca.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
-            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
-            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
-            ('PADDING', (0, 0), (-1, -1), 6),
+        tabela_cobranca = Table(dados_cobranca, colWidths=[7 * cm, 10 * cm])
+        tabela_cobranca.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a5490')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            # Destacar última linha (VALOR TOTAL)
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#D4EDDA')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 10),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
-        story.append(table_cobranca)
-        story.append(Spacer(1, 0.3 * cm))
+        elements.append(tabela_cobranca)
+        elements.append(Spacer(1, 0.5 * cm))
 
-        # === SEÇÃO 3: AVALIAÇÃO E VENDA ===
-        story.append(Paragraph("3. AVALIAÇÃO E VENDA DO IMÓVEL", titulo_secao))
+        # ===== SEÇÃO 3: AVALIAÇÃO E VENDA =====
+        elements.append(Paragraph('3. AVALIAÇÃO E VENDA', style_subtitulo))
 
         dados_avaliacao = [
-            ["Valor de Avaliação:", formatar_moeda(deliberacao.VR_AVALIACAO)],
-            ["Data do Laudo:", formatar_data(deliberacao.DT_LAUDO)],
-            ["Status do Imóvel:", limpar_texto(deliberacao.STATUS_IMOVEL)],
-            ["Valor de Venda:", formatar_moeda(deliberacao.VR_VENDA)],
-            ["Data da Venda:", formatar_data(deliberacao.DT_VENDA)],
-            ["Nome do Adquirente:", limpar_texto(deliberacao.NOME_COMPRADOR)],
-            ["Data do Registro:", formatar_data(deliberacao.DT_REGISTRO)],
+            ['Valor de Avaliação:', formatar_moeda(deliberacao.VR_AVALIACAO)],
+            ['Data do Laudo:', formatar_data(deliberacao.DT_LAUDO)],
+            ['Status do Imóvel:', escape_text(deliberacao.STATUS_IMOVEL)],
         ]
 
-        table_avaliacao = Table(dados_avaliacao, colWidths=[6 * cm, 11 * cm])
-        table_avaliacao.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
-            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
-            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
-            ('PADDING', (0, 0), (-1, -1), 6),
+        # NOVO: Se vendido, adicionar informações da venda
+        if deliberacao.STATUS_IMOVEL and 'VENDIDO' in deliberacao.STATUS_IMOVEL.upper():
+            dados_avaliacao.extend([
+                ['Valor de Venda:', formatar_moeda(deliberacao.VR_VENDA)],
+                ['Data da Venda:', formatar_data(deliberacao.DT_VENDA)],
+                ['Nome do Adquirente:', escape_text(deliberacao.NOME_COMPRADOR)],
+            ])
+
+            # NOVO: Adicionar tipo de pagamento
+            tipo_pagamento_texto = '-'
+            if deliberacao.TIPO_PAGAMENTO_VENDA:
+                if deliberacao.TIPO_PAGAMENTO_VENDA == 'A_VISTA':
+                    tipo_pagamento_texto = 'À Vista'
+                elif deliberacao.TIPO_PAGAMENTO_VENDA == 'PARCELADO':
+                    tipo_pagamento_texto = 'Parcelado'
+
+            dados_avaliacao.append(['Tipo de Pagamento:', tipo_pagamento_texto])
+
+        dados_avaliacao.append(['Data do Registro:', formatar_data(deliberacao.DT_REGISTRO)])
+
+        tabela_avaliacao = Table(dados_avaliacao, colWidths=[7 * cm, 10 * cm])
+        tabela_avaliacao.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a5490')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
-        story.append(table_avaliacao)
-        story.append(Spacer(1, 0.3 * cm))
+        elements.append(tabela_avaliacao)
+        elements.append(Spacer(1, 0.5 * cm))
 
-        # === SEÇÃO 4: AÇÕES E PROCESSOS JUDICIAIS ===
-        story.append(Paragraph("4. AÇÕES E PROCESSOS JUDICIAIS", titulo_secao))
+        # ===== SEÇÃO 4: AÇÕES E PROCESSOS JUDICIAIS =====
+        elements.append(Paragraph('4. AÇÕES E PROCESSOS JUDICIAIS', style_subtitulo))
 
-        # Gravame
-        if deliberacao.GRAVAME_MATRICULA and str(deliberacao.GRAVAME_MATRICULA).strip():
-            story.append(Paragraph("<b>Gravame na Matrícula:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.GRAVAME_MATRICULA, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.GRAVAME_MATRICULA:
+            elements.append(Paragraph('<b>Gravame na Matrícula:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.GRAVAME_MATRICULA), style_valor))
 
-        # Ações Negociais Administrativas
-        if deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS and str(deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS).strip():
-            story.append(Paragraph("<b>Ações Negociais Administrativas:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS:
+            elements.append(Paragraph('<b>Ações Negociais Administrativas:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS), style_valor))
 
-        # Processos Judiciais
-        if deliberacao.NR_PROCESSOS_JUDICIAIS and str(deliberacao.NR_PROCESSOS_JUDICIAIS).strip():
-            story.append(Paragraph("<b>Número dos Processos Judiciais:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.NR_PROCESSOS_JUDICIAIS, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.NR_PROCESSOS_JUDICIAIS:
+            elements.append(Paragraph('<b>Nº da Ação Judicial:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.NR_PROCESSOS_JUDICIAIS), style_valor))
 
-        # Vara
-        if deliberacao.VARA_PROCESSO and str(deliberacao.VARA_PROCESSO).strip():
-            story.append(Paragraph("<b>Vara do Processo:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.VARA_PROCESSO, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.VARA_PROCESSO:
+            elements.append(Paragraph('<b>Vara do Processo:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.VARA_PROCESSO), style_valor))
 
-        # Fase
-        if deliberacao.FASE_PROCESSO and str(deliberacao.FASE_PROCESSO).strip():
-            story.append(Paragraph("<b>Fase do Processo:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.FASE_PROCESSO, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.FASE_PROCESSO:
+            elements.append(Paragraph('<b>Fase do Processo:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.FASE_PROCESSO), style_valor))
 
-        # Relatório Assessoria
-        if deliberacao.RELATORIO_ASSESSORIA_JURIDICA and str(deliberacao.RELATORIO_ASSESSORIA_JURIDICA).strip():
-            story.append(Paragraph("<b>Relatório da Assessoria Jurídica:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.RELATORIO_ASSESSORIA_JURIDICA, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.RELATORIO_ASSESSORIA_JURIDICA:
+            elements.append(Paragraph('<b>Relatório da Assessoria Jurídica:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.RELATORIO_ASSESSORIA_JURIDICA), style_valor))
 
-        # === SEÇÃO 5: DÉBITOS E PENALIDADES ===
-        story.append(Paragraph("5. DÉBITOS E PENALIDADES", titulo_secao))
+        elements.append(Spacer(1, 0.3 * cm))
+
+        # ===== SEÇÃO 5: DÉBITOS E PENALIDADES =====
+        elements.append(Paragraph('5. DÉBITOS E PENALIDADES', style_subtitulo))
 
         dados_debitos = [
-            ["Débitos Pagos - SISDEX:", formatar_moeda(deliberacao.VR_DEBITOS_SISDEX)],
-            ["Débitos Pagos - SISGEA:", formatar_moeda(deliberacao.VR_DEBITOS_SISGEA)],
-            ["Total de Débitos Pagos:", formatar_moeda(deliberacao.VR_DEBITOS_TOTAL)],
+            ['Débitos Sisdex:', formatar_moeda(deliberacao.VR_DEBITOS_SISDEX)],
+            ['Débitos Sisgea:', formatar_moeda(deliberacao.VR_DEBITOS_SISGEA)],
+            ['TOTAL de Débitos:', formatar_moeda(deliberacao.VR_DEBITOS_TOTAL)]
         ]
 
-        table_debitos = Table(dados_debitos, colWidths=[6 * cm, 11 * cm])
-        table_debitos.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f8f9fa')),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#495057')),
-            ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 9),
-            ('FONT', (1, 0), (1, -1), 'Helvetica', 10),
-            ('PADDING', (0, 0), (-1, -1), 6),
+        tabela_debitos = Table(dados_debitos, colWidths=[7 * cm, 10 * cm])
+        tabela_debitos.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#E8F4F8')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1a5490')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-            ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#fff3cd')),
+            # Destacar última linha (TOTAL)
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FFF3CD')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
-        story.append(table_debitos)
-        story.append(Spacer(1, 0.3 * cm))
+        elements.append(tabela_debitos)
+        elements.append(Spacer(1, 0.3 * cm))
 
-        # Penalidades ANS
-        if deliberacao.PENALIDADE_ANS_CAIXA and str(deliberacao.PENALIDADE_ANS_CAIXA).strip():
-            story.append(Paragraph("<b>Penalidade de ANS - CAIXA:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.PENALIDADE_ANS_CAIXA, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.PENALIDADE_ANS_CAIXA:
+            elements.append(Paragraph('<b>Penalidade de ANS - CAIXA:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.PENALIDADE_ANS_CAIXA), style_valor))
 
-        # Prejuízo Financeiro
-        if deliberacao.PREJUIZO_FINANCEIRO_CAIXA and str(deliberacao.PREJUIZO_FINANCEIRO_CAIXA).strip():
-            story.append(Paragraph("<b>Prejuízo Financeiro - CAIXA:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.PREJUIZO_FINANCEIRO_CAIXA, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.3 * cm))
+        if deliberacao.PREJUIZO_FINANCEIRO_CAIXA:
+            elements.append(Paragraph('<b>Prejuízo Financeiro - CAIXA:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.PREJUIZO_FINANCEIRO_CAIXA), style_valor))
 
-        # === SEÇÃO 6: CONSIDERAÇÕES FINAIS ===
-        story.append(Paragraph("6. CONSIDERAÇÕES FINAIS", titulo_secao))
+        elements.append(Spacer(1, 0.3 * cm))
 
-        if deliberacao.CONSIDERACOES_ANALISTA_GEADI and str(deliberacao.CONSIDERACOES_ANALISTA_GEADI).strip():
-            story.append(Paragraph("<b>Considerações da Analista GEADI:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.CONSIDERACOES_ANALISTA_GEADI, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.4 * cm))
+        # ===== SEÇÃO 6: CONSIDERAÇÕES FINAIS =====
+        elements.append(Paragraph('6. CONSIDERAÇÕES FINAIS', style_subtitulo))
 
-        if deliberacao.CONSIDERACOES_GESTOR_GEADI and str(deliberacao.CONSIDERACOES_GESTOR_GEADI).strip():
-            story.append(Paragraph("<b>Considerações Finais do Gestor da GEADI:</b>", label_style))
-            for p in criar_paragrafo_texto(deliberacao.CONSIDERACOES_GESTOR_GEADI, texto_style):
-                story.append(p)
-            story.append(Spacer(1, 0.4 * cm))
+        if deliberacao.CONSIDERACOES_ANALISTA_GEADI:
+            elements.append(Paragraph('<b>Considerações da Analista GEADI:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.CONSIDERACOES_ANALISTA_GEADI), style_valor))
+            elements.append(Spacer(1, 0.3 * cm))
 
-        # === RODAPÉ ===
-        story.append(Spacer(1, 1 * cm))
+        if deliberacao.CONSIDERACOES_GESTOR_GEADI:
+            elements.append(Paragraph('<b>Considerações Finais do Gestor da GEADI:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.CONSIDERACOES_GESTOR_GEADI), style_valor))
+            elements.append(Spacer(1, 0.3 * cm))
 
-        rodape_data = [
-            [Paragraph("___________________________",
-                       ParagraphStyle('Assinatura', parent=valor_style, alignment=TA_CENTER)),
-             Paragraph("___________________________",
-                       ParagraphStyle('Assinatura', parent=valor_style, alignment=TA_CENTER))],
-            [Paragraph("<b>Analista GEADI</b>",
-                       ParagraphStyle('Cargo', parent=valor_style, alignment=TA_CENTER, fontSize=8)),
-             Paragraph("<b>Gestor GEADI</b>",
-                       ParagraphStyle('Cargo', parent=valor_style, alignment=TA_CENTER, fontSize=8))]
-        ]
+        # NOVO: Considerações do Gestor da SUMOV
+        if deliberacao.CONSIDERACOES_GESTOR_SUMOV:
+            elements.append(Paragraph('<b>Considerações Finais do Gestor da SUMOV:</b>', style_label))
+            elements.append(Paragraph(escape_text(deliberacao.CONSIDERACOES_GESTOR_SUMOV), style_valor))
+            elements.append(Spacer(1, 0.3 * cm))
 
-        table_rodape = Table(rodape_data, colWidths=[8.5 * cm, 8.5 * cm])
-        table_rodape.setStyle(TableStyle([
-            ('PADDING', (0, 0), (-1, -1), 10),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ]))
-        story.append(table_rodape)
-
-        # === INFORMAÇÕES DO SISTEMA ===
-        story.append(Spacer(1, 0.5 * cm))
-        info_sistema = Paragraph(
-            f"<font size=7 color='#999999'>Documento gerado automaticamente pelo Portal GEINC em {data_atual} | "
-            f"Usuário: {current_user.nome} | Contrato: {contrato}</font>",
-            ParagraphStyle('InfoSistema', parent=valor_style, alignment=TA_CENTER, fontSize=7,
-                           textColor=colors.HexColor('#999999'))
-        )
-        story.append(info_sistema)
+        # ===== RODAPÉ COM DATA DE GERAÇÃO =====
+        elements.append(Spacer(1, 1 * cm))
+        elements.append(Paragraph(
+            f'<i>Documento gerado em {datetime.now().strftime("%d/%m/%Y às %H:%M")}</i>',
+            ParagraphStyle('Rodape', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
+        ))
 
         # Construir PDF
-        doc.build(story)
+        doc.build(elements)
 
         # Retornar PDF
         buffer.seek(0)
-
         return send_file(
             buffer,
+            mimetype='application/pdf',
             as_attachment=True,
-            download_name=f'Deliberacao_Pagamento_{contrato}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf',
-            mimetype='application/pdf'
+            download_name=f'Deliberacao_Pagamento_{contrato}.pdf'
         )
 
     except Exception as e:

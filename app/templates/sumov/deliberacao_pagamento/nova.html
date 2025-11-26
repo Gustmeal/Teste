@@ -10,6 +10,9 @@
         <h1 class="fw-bold header-with-back">
             <i class="fas fa-gavel text-warning me-2"></i> Nova Deliberação de Pagamento
         </h1>
+        <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-info">
+            <i class="fas fa-list me-2"></i>Ver Deliberações Salvas
+        </a>
     </div>
 
     <!-- Card do Formulário -->
@@ -53,7 +56,7 @@
 
                     <div id="loadingBusca" class="text-center mb-3" style="display: none;">
                         <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Buscando...</span>
+                            <span class="visually-hidden">Buscando... </span>
                         </div>
                         <p class="text-muted mt-2">Buscando dados do contrato...</p>
                     </div>
@@ -189,7 +192,7 @@
                                 id="indice_economico"
                                 name="indice_economico"
                                 required>
-                            <option value="">Selecione o índice...</option>
+                            <option value="">Selecione o índice... </option>
                         </select>
                         <small class="text-muted">
                             Selecione o índice econômico para o cálculo
@@ -314,52 +317,70 @@
                         </small>
                     </div>
 
-                    <!-- Valor de venda -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-dollar-sign text-success me-1"></i>
-                            Valor de Venda
-                        </label>
-                        <input type="text"
-                               class="form-control bg-light"
-                               id="vr_venda"
-                               name="vr_venda"
-                               readonly>
-                        <small class="text-muted">
-                            <span id="msgVenda">Busca automática (se houver venda)</span>
-                        </small>
-                    </div>
+                    <!-- SEÇÃO CONDICIONAL - APARECE SE STATUS = VENDIDO -->
+                    <div id="divVendaDetalhes" class="mb-3" style="display: none;">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-check-circle me-2"></i>Imóvel Vendido - Informações da Venda
+                                </h6>
+                            </div>
+                            <div class="card-body bg-light">
+                                <!-- Valor de venda -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-dollar-sign text-success me-1"></i>
+                                        Valor de Venda
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           id="vr_venda"
+                                           name="vr_venda"
+                                           readonly>
+                                </div>
 
-                    <!-- Data da venda -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-calendar-check text-success me-1"></i>
-                            Data da Venda
-                        </label>
-                        <input type="date"
-                               class="form-control bg-light"
-                               id="dt_venda"
-                               name="dt_venda"
-                               readonly>
-                        <small class="text-muted">
-                            <span id="msgDtVenda">Busca automática (se houver venda)</span>
-                        </small>
-                    </div>
+                                <!-- Data da venda -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-calendar-check text-success me-1"></i>
+                                        Data da Venda
+                                    </label>
+                                    <input type="date"
+                                           class="form-control bg-white"
+                                           id="dt_venda"
+                                           name="dt_venda"
+                                           readonly>
+                                </div>
 
-                    <!-- Nome do adquirente -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-user text-info me-1"></i>
-                            Nome do Adquirente
-                        </label>
-                        <input type="text"
-                               class="form-control bg-light"
-                               id="nome_comprador"
-                               name="nome_comprador"
-                               readonly>
-                        <small class="text-muted">
-                            <span id="msgComprador">Busca automática (se houver venda)</span>
-                        </small>
+                                <!-- Nome do adquirente -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-user text-info me-1"></i>
+                                        Nome do Adquirente
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           id="nome_comprador"
+                                           name="nome_comprador"
+                                           readonly>
+                                </div>
+
+                                <!-- Tipo de Pagamento -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-credit-card text-primary me-1"></i>
+                                        Tipo de Pagamento
+                                    </label>
+                                    <input type="hidden" id="tipo_pagamento_venda" name="tipo_pagamento_venda">
+                                    <div class="form-control bg-white" id="tipo_pagamento_display" style="min-height: 38px;">
+                                        -
+                                    </div>
+                                    <small class="text-muted">
+                                        <span id="msgTipoPagamento">Busca automática</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Data do registro (INPUT MANUAL) -->
@@ -598,6 +619,19 @@
                                   rows="5"
                                   placeholder="Digite as considerações finais do gestor GEADI"></textarea>
                     </div>
+
+                    <!-- NOVO: Considerações finais do gestor da SUMOV -->
+                    <div class="mb-3">
+                        <label for="consideracoes_gestor_sumov" class="form-label fw-bold">
+                            <i class="fas fa-user-tie text-warning me-1"></i>
+                            Considerações Finais do Gestor da SUMOV
+                        </label>
+                        <textarea class="form-control"
+                                  id="consideracoes_gestor_sumov"
+                                  name="consideracoes_gestor_sumov"
+                                  rows="5"
+                                  placeholder="Digite as considerações finais do gestor SUMOV"></textarea>
+                    </div>
                 </div>
 
                 <!-- Botões de Ação -->
@@ -624,7 +658,7 @@ let processosJudiciais = [];
 document.addEventListener('DOMContentLoaded', function() {
     const hoje = new Date();
     const dia = String(hoje.getDate()).padStart(2, '0');
-    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const mes = String(hoje.getMonth() + 1). padStart(2, '0');
     const ano = hoje.getFullYear();
     const dataFormatada = `${dia}/${mes}/${ano}`;
 
@@ -636,7 +670,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Função para formatar valores monetários
 function formatarMoeda(valor) {
-    if (!valor) return 'R$ 0,00';
+    if (! valor) return 'R$ 0,00';
     return 'R$ ' + parseFloat(valor).toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -645,8 +679,8 @@ function formatarMoeda(valor) {
 
 // Função para formatar percentual
 function formatarPercentual(valor) {
-    if (!valor) return '0,00%';
-    return parseFloat(valor).toLocaleString('pt-BR', {
+    if (! valor) return '0,00%';
+    return parseFloat(valor). toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     }) + '%';
@@ -654,9 +688,9 @@ function formatarPercentual(valor) {
 
 // Evento do botão Buscar
 document.getElementById('btnBuscar').addEventListener('click', function() {
-    const contrato = document.getElementById('contrato').value.trim();
+    const contrato = document.getElementById('contrato').value. trim();
 
-    if (!contrato) {
+    if (! contrato) {
         alert('Por favor, informe o número do contrato.');
         return;
     }
@@ -671,7 +705,7 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ contrato: contrato })
+        body: JSON. stringify({ contrato: contrato })
     })
     .then(response => response.json())
     .then(data => {
@@ -679,7 +713,7 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
         document.getElementById('loadingBusca').style.display = 'none';
         document.getElementById('btnBuscar').disabled = false;
 
-        if (!data.success) {
+        if (! data.success) {
             alert(data.message || 'Erro ao buscar dados do contrato.');
             return;
         }
@@ -692,47 +726,36 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
             document.getElementById('msgEstoque').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 2. Preencher Período de Prescrição
+        // 2.  Preencher Período de Prescrição
         if (data.periodo_prescricao) {
-            document.getElementById('periodo_prescricao').value = data.periodo_prescricao;
-            document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
+            document.getElementById('periodo_prescricao').value = data. periodo_prescricao;
+            document. getElementById('msgPrescricao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
         } else {
-            document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            document.getElementById('msgPrescricao'). innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
         // 3. Preencher Valor Inicial
         if (data.valor_inicial > 0) {
             document.getElementById('vr_divida_inicial').value = formatarMoeda(data.valor_inicial);
-            document.getElementById('msgValorInicial').innerHTML =
+            document. getElementById('msgValorInicial').innerHTML =
                 `<i class="fas fa-check text-success me-1"></i>${data.qtd_parcelas_inicial} parcela(s) encontrada(s)`;
         } else {
             document.getElementById('msgValorInicial').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 4. Preencher Valor de Débito Excluído Prescritas
-        if (data.valor_prescrito > 0) {
-            document.getElementById('vr_debito_excluido_prescritas').value = formatarMoeda(data.valor_prescrito);
-            document.getElementById('msgDebitoExcluido').innerHTML =
-                `<i class="fas fa-check text-success me-1"></i>${data.qtd_parcelas_prescrito} parcela(s) prescrita(s)`;
-        } else {
-            document.getElementById('vr_debito_excluido_prescritas').value = 'R$ 0,00';
-            document.getElementById('msgDebitoExcluido').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Nenhuma parcela prescrita';
-        }
-
-        // 5. Preencher Valor de Avaliação
+        // 4. Preencher Valor de Avaliação
         if (data.vr_avaliacao) {
-            document.getElementById('vr_avaliacao').value = formatarMoeda(data.vr_avaliacao);
-            document.getElementById('msgAvaliacao').innerHTML =
+            document. getElementById('vr_avaliacao').value = formatarMoeda(data.vr_avaliacao);
+            document. getElementById('msgAvaliacao').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
         } else {
             document.getElementById('msgAvaliacao').innerHTML =
                 '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 6. Preencher Data do Laudo
+        // 5. Preencher Data do Laudo
         if (data.dt_laudo) {
-            document.getElementById('dt_laudo').value = data.dt_laudo;
+            document.getElementById('dt_laudo').value = data. dt_laudo;
             document.getElementById('msgDtLaudo').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
         } else {
@@ -740,68 +763,100 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
                 '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 7. Preencher Status do Imóvel
-        if (data.status_imovel) {
+        // 6. Preencher Status do Imóvel e controlar seção de venda
+        const divVendaDetalhes = document.getElementById('divVendaDetalhes');
+
+        if (data. status_imovel) {
             document.getElementById('status_imovel').value = data.status_imovel;
             document.getElementById('msgStatus').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
+
+            // Verificar se status contém VENDIDO
+            const isVendido = data.status_imovel. toUpperCase(). includes('VENDIDO');
+
+            if (isVendido) {
+                // Mostrar seção de venda e manter visível
+                divVendaDetalhes.style.display = 'block';
+
+                // Preencher dados de venda
+                if (data.vr_venda) {
+                    document. getElementById('vr_venda').value = formatarMoeda(data.vr_venda);
+                }
+                if (data.dt_venda) {
+                    document.getElementById('dt_venda').value = data. dt_venda;
+                }
+                if (data.nome_comprador) {
+                    document.getElementById('nome_comprador').value = data.nome_comprador;
+                }
+
+                // Preencher tipo de pagamento
+                if (data.tipo_pagamento_venda) {
+                    document.getElementById('tipo_pagamento_venda').value = data.tipo_pagamento_venda;
+
+                    let tipoPagamentoDisplay = '';
+                    let icone = '';
+                    let cor = '';
+
+                    if (data.tipo_pagamento_venda === 'A_VISTA') {
+                        tipoPagamentoDisplay = 'À Vista';
+                        icone = '<i class="fas fa-money-bill-wave text-success me-2"></i>';
+                        cor = 'success';
+                    } else if (data. tipo_pagamento_venda === 'PARCELADO') {
+                        tipoPagamentoDisplay = 'Parcelado';
+                        icone = '<i class="fas fa-credit-card text-primary me-2"></i>';
+                        cor = 'primary';
+                    }
+
+                    document. getElementById('tipo_pagamento_display').innerHTML =
+                        `${icone}<span class="badge bg-${cor}">${tipoPagamentoDisplay}</span>`;
+                    document.getElementById('msgTipoPagamento').innerHTML =
+                        '<i class="fas fa-check text-success me-1"></i>Detectado automaticamente';
+                } else {
+                    document.getElementById('tipo_pagamento_display').innerHTML = '-';
+                    document.getElementById('msgTipoPagamento'). innerHTML =
+                        '<i class="fas fa-times text-danger me-1"></i>Não foi possível determinar';
+                }
+            } else {
+                // Ocultar seção se NÃO for vendido
+                divVendaDetalhes. style.display = 'none';
+
+                // Limpar campos de venda
+                document.getElementById('vr_venda'). value = '';
+                document.getElementById('dt_venda').value = '';
+                document.getElementById('nome_comprador').value = '';
+                document. getElementById('tipo_pagamento_venda'). value = '';
+                document.getElementById('tipo_pagamento_display').innerHTML = '-';
+            }
         } else {
+            document. getElementById('status_imovel'). value = '';
             document.getElementById('msgStatus').innerHTML =
                 '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+
+            // Ocultar seção se não houver status
+            divVendaDetalhes.style.display = 'none';
         }
 
-        // 8. Preencher Valor de Venda
-        if (data.vr_venda) {
-            document.getElementById('vr_venda').value = formatarMoeda(data.vr_venda);
-            document.getElementById('msgVenda').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Venda encontrada';
-        } else {
-            document.getElementById('vr_venda').value = '';
-            document.getElementById('msgVenda').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Imóvel não vendido';
-        }
-
-        // 9. Preencher Data da Venda
-        if (data.dt_venda) {
-            document.getElementById('dt_venda').value = data.dt_venda;
-            document.getElementById('msgDtVenda').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
-        } else {
-            document.getElementById('msgDtVenda').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Não aplicável';
-        }
-
-        // 10. Preencher Nome do Comprador
-        if (data.nome_comprador) {
-            document.getElementById('nome_comprador').value = data.nome_comprador;
-            document.getElementById('msgComprador').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
-        } else {
-            document.getElementById('msgComprador').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Não aplicável';
-        }
-
-        // 11. Preencher Select de Índices
+        // 7. Preencher Select de Índices
         if (data.indices_disponiveis && data.indices_disponiveis.length > 0) {
             indicesDisponiveis = data.indices_disponiveis;
 
             const selectIndice = document.getElementById('indice_economico');
-            selectIndice.innerHTML = '<option value="">Selecione o índice...</option>';
+            selectIndice.innerHTML = '<option value="">Selecione o índice... </option>';
 
             data.indices_disponiveis.forEach((indice, index) => {
                 const option = document.createElement('option');
                 option.value = index;
-                option.textContent = `${indice.nome_indice} - ${formatarMoeda(indice.valor_com_honorarios)}`;
+                option.textContent = `${indice. nome_indice} - ${formatarMoeda(indice.valor_com_honorarios)}`;
                 selectIndice.appendChild(option);
             });
 
             document.getElementById('divIndices').style.display = 'block';
         } else {
-            alert('Nenhum cálculo encontrado no SISCalculo para este contrato. Por favor, processe os cálculos primeiro.');
+            alert('Nenhum cálculo encontrado no SISCalculo para este contrato.  Por favor, processe os cálculos primeiro.');
         }
 
-        // 12. Preencher Processos Judiciais
-        if (data.processos_judiciais && data.processos_judiciais.length > 0) {
+        // 8.  Preencher Processos Judiciais
+        if (data.processos_judiciais && data. processos_judiciais.length > 0) {
             processosJudiciais = data.processos_judiciais;
 
             let nrProcessos = [];
@@ -811,7 +866,7 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
 
             data.processos_judiciais.forEach(processo => {
                 nrProcessos.push(processo.numero);
-                varas.push(`${processo.numero}: ${processo.vara}`);
+                varas. push(`${processo.numero}: ${processo.vara}`);
                 fases.push(`${processo.numero}: ${processo.fase}`);
                 listaProcessos.push(`<li><strong>${processo.numero}</strong> - Vara: ${processo.vara} - Fase: ${processo.fase}</li>`);
             });
@@ -829,29 +884,29 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
 
             // Mostrar lista de processos no relatório
             document.getElementById('infoProcessosRelatorio').style.display = 'block';
-            document.getElementById('listaProcessosRelatorio').innerHTML = listaProcessos.join('');
+            document.getElementById('listaProcessosRelatorio').innerHTML = listaProcessos. join('');
         } else {
             document.getElementById('nr_processos_judiciais').value = '';
-            document.getElementById('vara_processo').value = '';
+            document. getElementById('vara_processo').value = '';
             document.getElementById('fase_processo').value = '';
             document.getElementById('msgProcessos').innerHTML =
                 '<i class="fas fa-info text-info me-1"></i>Nenhum processo encontrado';
-            document.getElementById('msgVara').innerHTML =
+            document. getElementById('msgVara').innerHTML =
                 '<i class="fas fa-info text-info me-1"></i>Não aplicável';
-            document.getElementById('msgFase').innerHTML =
+            document. getElementById('msgFase').innerHTML =
                 '<i class="fas fa-info text-info me-1"></i>Não aplicável';
             document.getElementById('infoProcessosRelatorio').style.display = 'none';
         }
 
-        // 13. Preencher Débitos
-        if (data.vr_debitos_sisdex !== undefined) {
+        // 9. Preencher Débitos
+        if (data. vr_debitos_sisdex !== undefined) {
             document.getElementById('vr_debitos_sisdex').value = formatarMoeda(data.vr_debitos_sisdex);
             document.getElementById('msgSisdex').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
 
         if (data.vr_debitos_sisgea !== undefined) {
-            document.getElementById('vr_debitos_sisgea').value = formatarMoeda(data.vr_debitos_sisgea);
+            document.getElementById('vr_debitos_sisgea'). value = formatarMoeda(data. vr_debitos_sisgea);
             document.getElementById('msgSisgea').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
@@ -871,25 +926,25 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
 });
 
 // Evento ao selecionar índice - MOSTRAR DETALHES DOS HONORÁRIOS
-document.getElementById('indice_economico').addEventListener('change', function() {
+document.getElementById('indice_economico'). addEventListener('change', function() {
     const idx = parseInt(this.value);
 
-    if (!isNaN(idx) && indicesDisponiveis[idx]) {
+    if (! isNaN(idx) && indicesDisponiveis[idx]) {
         const indice = indicesDisponiveis[idx];
 
         // Preencher campo hidden para enviar no POST
-        document.getElementById('vr_debito_calculado_emgea').value = indice.valor_com_honorarios;
+        document. getElementById('vr_debito_calculado_emgea').value = indice.valor_com_honorarios;
 
         // Mostrar card com detalhes
         document.getElementById('divDetalhesCalculo').style.display = 'block';
 
         // Preencher nome do índice
-        document.getElementById('nomeIndiceDetalhes').textContent = indice.nome_indice;
+        document. getElementById('nomeIndiceDetalhes').textContent = indice. nome_indice;
 
         // Preencher valores
         document.getElementById('vr_divida_sem_honorarios').value = formatarMoeda(indice.valor_divida);
-        document.getElementById('perc_honorarios_display').value = formatarPercentual(indice.perc_honorarios);
-        document.getElementById('vr_honorarios_display').value = formatarMoeda(indice.valor_honorarios);
+        document.getElementById('perc_honorarios_display').value = formatarPercentual(indice. perc_honorarios);
+        document.getElementById('vr_honorarios_display').value = formatarMoeda(indice. valor_honorarios);
         document.getElementById('vr_total_com_honorarios_display').value = formatarMoeda(indice.valor_com_honorarios);
 
         // Scroll suave até o card de detalhes

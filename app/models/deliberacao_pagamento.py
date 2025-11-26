@@ -132,6 +132,10 @@ class DeliberacaoPagamento(db.Model):
     VR_DEBITOS_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
     PENALIDADE_ANS_CAIXA = db.Column(db.Text, nullable=True)
     PREJUIZO_FINANCEIRO_CAIXA = db.Column(db.Text, nullable=True)
+    CONSIDERACOES_GESTOR_SUMOV = db.Column(db.Text, nullable=True)  # ← ADICIONE ESTA LINHA
+
+    # Informações de Venda
+    TIPO_PAGAMENTO_VENDA = db.Column(db.String(20), nullable=True)  # ← ADICIONE ESTA LINHA
 
     def __repr__(self):
         return f'<DeliberacaoPagamento {self.NU_CONTRATO}>'
