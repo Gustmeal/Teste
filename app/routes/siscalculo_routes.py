@@ -463,11 +463,12 @@ def resultados():
             return redirect(url_for('siscalculo.index'))
 
         # ✅ BUSCAR PERCENTUAL DO BANCO SE NÃO VEIO NOS PARÂMETROS
-        if perc_honorarios_param:
+        if perc_honorarios_param is not None and perc_honorarios_param != '':
             perc_honorarios = Decimal(perc_honorarios_param)
+        elif parcelas and parcelas[0].PERC_HONORARIOS is not None:
+            perc_honorarios = parcelas[0].PERC_HONORARIOS
         else:
-            # Buscar do primeiro registro (todos têm o mesmo percentual)
-            perc_honorarios = parcelas[0].PERC_HONORARIOS if parcelas[0].PERC_HONORARIOS else Decimal('10.00')
+            perc_honorarios = Decimal('10.00')
 
         print(f"[DEBUG RESULTADOS] Percentual de honorários: {perc_honorarios}%")
 
@@ -824,10 +825,12 @@ def exportar_pdf():
             flash('Nenhum cálculo encontrado com os filtros especificados para gerar o PDF.', 'warning')
             return redirect(url_for('siscalculo.index'))
 
-        if perc_honorarios_param:
+        if perc_honorarios_param is not None and perc_honorarios_param != '':
             perc_honorarios = Decimal(perc_honorarios_param)
+        elif parcelas and parcelas[0].PERC_HONORARIOS is not None:
+            perc_honorarios = parcelas[0].PERC_HONORARIOS
         else:
-            perc_honorarios = parcelas[0].PERC_HONORARIOS if parcelas[0].PERC_HONORARIOS else Decimal('10.00')
+            perc_honorarios = Decimal('10.00')
 
         dado = SiscalculoDados.query.filter_by(IMOVEL=imovel, DT_ATUALIZACAO=dt_atualizacao_filtro).first()
         nome_condominio = dado.NOME_CONDOMINIO if dado else ''
