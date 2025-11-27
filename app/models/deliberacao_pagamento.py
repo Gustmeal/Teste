@@ -134,6 +134,15 @@ class DeliberacaoPagamento(db.Model):
     PREJUIZO_FINANCEIRO_CAIXA = db.Column(db.Text, nullable=True)
     CONSIDERACOES_GESTOR_SUMOV = db.Column(db.Text, nullable=True)  # ← ADICIONE ESTA LINHA
 
+
+
+    # Datas do período de cobrança (NOVO)
+    DT_PERIODO_COBRANCA_INICIO = db.Column(db.Date, nullable=True)
+    DT_PERIODO_COBRANCA_FIM = db.Column(db.Date, nullable=True)
+
+    # Valor da dívida cobrada pelo condomínio (primeiro valor)
+
+
     # Informações de Venda
     TIPO_PAGAMENTO_VENDA = db.Column(db.String(20), nullable=True)  # ← ADICIONE ESTA LINHA
 

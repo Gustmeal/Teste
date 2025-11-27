@@ -845,12 +845,19 @@ def deliberacao_pagamento_nova():
     """Criar nova Deliberação de Pagamento seguindo estrutura do Word"""
     if request.method == 'POST':
         try:
+            from decimal import Decimal, InvalidOperation
+
             # ===== CAPTURA DADOS DO FORMULÁRIO =====
             contrato = request.form.get('contrato', '').strip()
             matricula = request.form.get('matricula', '').strip() or None
             dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
             indice_selecionado_idx = request.form.get('indice_economico', '').strip()
             dt_registro_str = request.form.get('dt_registro', '').strip()
+
+            # NOVOS CAMPOS
+            vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
+            dt_periodo_inicio_str = request.form.get('dt_periodo_cobranca_inicio', '').strip()
+            dt_periodo_fim_str = request.form.get('dt_periodo_cobranca_fim', '').strip()
 
             # Campos da parte final
             gravame_matricula = request.form.get('gravame_matricula', '').strip() or None
@@ -894,6 +901,36 @@ def deliberacao_pagamento_nova():
                     dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
                 except ValueError:
                     flash('Data do registro inválida.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # NOVOS: Converter datas do período de cobrança
+            dt_periodo_cobranca_inicio = None
+            if dt_periodo_inicio_str:
+                try:
+                    dt_periodo_cobranca_inicio = datetime.strptime(dt_periodo_inicio_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de início do período de cobrança inválida.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            dt_periodo_cobranca_fim = None
+            if dt_periodo_fim_str:
+                try:
+                    dt_periodo_cobranca_fim = datetime.strptime(dt_periodo_fim_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de fim do período de cobrança inválida.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # NOVO: Converter valor manual
+            vr_divida_condominio_2 = None
+            if vr_divida_condominio_2_str:
+                try:
+                    # Remover formatação brasileira e converter
+                    valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',',
+                                                                                                        '.').strip()
+                    if valor_limpo:
+                        vr_divida_condominio_2 = Decimal(valor_limpo)
+                except (ValueError, InvalidOperation):
+                    flash('Valor da Dívida (Manual) inválido.', 'danger')
                     return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
             # ===== BUSCA 1: Data de Entrada no Estoque =====
@@ -1074,7 +1111,10 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
                 deliberacao_existente.DT_ENTRADA_ESTOQUE = dt_entrada_estoque
                 deliberacao_existente.PERIODO_PRESCRITO = periodo_prescrito
+                deliberacao_existente.DT_PERIODO_COBRANCA_INICIO = dt_periodo_cobranca_inicio
+                deliberacao_existente.DT_PERIODO_COBRANCA_FIM = dt_periodo_cobranca_fim
                 deliberacao_existente.VR_DIVIDA_CONDOMINIO_1 = vr_divida_inicial
+                deliberacao_existente.VR_DIVIDA_CONDOMINIO_2 = vr_divida_condominio_2
                 deliberacao_existente.VR_DEBITO_EXCLUIDO_PRESCRITAS = vr_debito_excluido_prescritas
                 deliberacao_existente.VR_DEBITO_CALCULADO_EMGEA = vr_debito_calculado_emgea
                 deliberacao_existente.INDICE_DEBITO_EMGEA = indice_debito_emgea
@@ -1091,7 +1131,6 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.VR_DEBITOS_SISDEX = vr_debitos_sisdex
                 deliberacao_existente.VR_DEBITOS_SISGEA = vr_debitos_sisgea
                 deliberacao_existente.VR_DEBITOS_TOTAL = vr_debitos_total
-                # Parte final
                 deliberacao_existente.GRAVAME_MATRICULA = gravame_matricula
                 deliberacao_existente.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
                 deliberacao_existente.NR_PROCESSOS_JUDICIAIS = nr_processos
@@ -1120,7 +1159,10 @@ def deliberacao_pagamento_nova():
                     DT_ARREMATACAO_AQUISICAO=dt_arrematacao,
                     DT_ENTRADA_ESTOQUE=dt_entrada_estoque,
                     PERIODO_PRESCRITO=periodo_prescrito,
+                    DT_PERIODO_COBRANCA_INICIO=dt_periodo_cobranca_inicio,
+                    DT_PERIODO_COBRANCA_FIM=dt_periodo_cobranca_fim,
                     VR_DIVIDA_CONDOMINIO_1=vr_divida_inicial,
+                    VR_DIVIDA_CONDOMINIO_2=vr_divida_condominio_2,
                     VR_DEBITO_EXCLUIDO_PRESCRITAS=vr_debito_excluido_prescritas,
                     VR_DEBITO_CALCULADO_EMGEA=vr_debito_calculado_emgea,
                     INDICE_DEBITO_EMGEA=indice_debito_emgea,
@@ -1137,7 +1179,6 @@ def deliberacao_pagamento_nova():
                     VR_DEBITOS_SISDEX=vr_debitos_sisdex,
                     VR_DEBITOS_SISGEA=vr_debitos_sisgea,
                     VR_DEBITOS_TOTAL=vr_debitos_total,
-                    # Parte final
                     GRAVAME_MATRICULA=gravame_matricula,
                     ACOES_NEGOCIAIS_ADMINISTRATIVAS=acoes_negociais_adm,
                     NR_PROCESSOS_JUDICIAIS=nr_processos,
@@ -1176,6 +1217,8 @@ def deliberacao_pagamento_nova():
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao processar deliberação: {str(e)}', 'danger')
+            import traceback
+            traceback.print_exc()
             return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
     # GET - Carregar página do formulário
@@ -1213,6 +1256,30 @@ def buscar_dados_contrato():
         """)
         result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
         periodo_prescricao = result_prescricao[0] if result_prescricao else None
+
+        # ===== BUSCA 2.5: Período da Cobrança dos Débitos (MIN e MAX DT_VENCIMENTO) =====
+        sql_periodo_cobranca = text("""
+            SELECT 
+                MIN([DT_VENCIMENTO]) as DT_INICIO,
+                MAX([DT_VENCIMENTO]) as DT_FIM
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+            WHERE [IMOVEL] = :contrato
+            AND [DT_ATUALIZACAO] = (
+                SELECT MAX([DT_ATUALIZACAO])
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+                WHERE [IMOVEL] = :contrato
+            )
+        """)
+        result_periodo_cobranca = db.session.execute(sql_periodo_cobranca, {'contrato': contrato}).fetchone()
+
+        dt_periodo_cobranca_inicio = None
+        dt_periodo_cobranca_fim = None
+        periodo_cobranca_encontrado = False
+
+        if result_periodo_cobranca and result_periodo_cobranca[0] and result_periodo_cobranca[1]:
+            dt_periodo_cobranca_inicio = result_periodo_cobranca[0].strftime('%Y-%m-%d')
+            dt_periodo_cobranca_fim = result_periodo_cobranca[1].strftime('%Y-%m-%d')
+            periodo_cobranca_encontrado = True
 
         # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA - DA ÚLTIMA ATUALIZAÇÃO) =====
         sql_valor_inicial = text("""
@@ -1345,7 +1412,7 @@ def buscar_dados_contrato():
         dt_venda = result_venda[1].strftime('%Y-%m-%d') if result_venda and result_venda[1] else None
         nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
 
-        # NOVO: Determinar tipo de pagamento
+        # Determinar tipo de pagamento
         tipo_pagamento_venda = None
         if result_venda and result_venda[3] is not None:
             vr_sd_devedor = float(result_venda[3])
@@ -1362,7 +1429,6 @@ def buscar_dados_contrato():
         """)
         result_processos = db.session.execute(sql_processos, {'contrato': contrato}).fetchall()
 
-        # Se não encontrar por nrContrato, tentar por fkContratoSISCTR com CAST
         if not result_processos:
             try:
                 sql_processos_alt = text("""
@@ -1379,7 +1445,6 @@ def buscar_dados_contrato():
             for processo in result_processos:
                 nr_processo = processo[0]
 
-                # Buscar detalhes do processo
                 sql_detalhes = text("""
                     SELECT 
                         [dsComarca],
@@ -1428,9 +1493,14 @@ def buscar_dados_contrato():
             'success': True,
             'dt_entrada_estoque': dt_entrada_estoque,
             'periodo_prescricao': periodo_prescricao,
+            'dt_periodo_cobranca_inicio': dt_periodo_cobranca_inicio,
+            'dt_periodo_cobranca_fim': dt_periodo_cobranca_fim,
+            'periodo_cobranca_encontrado': periodo_cobranca_encontrado,
             'valor_inicial': valor_inicial,
             'qtd_parcelas_inicial': qtd_parcelas_inicial,
             'nome_condominio': nome_condominio,
+            'valor_prescrito': valor_prescrito,
+            'qtd_parcelas_prescrito': qtd_prescrito,
             'indices_disponiveis': indices_disponiveis,
             'vr_avaliacao': vr_avaliacao,
             'dt_laudo': dt_laudo,
@@ -1548,7 +1618,6 @@ def deliberacao_pagamento_pdf(contrato):
         # Estilos
         styles = getSampleStyleSheet()
 
-        # Estilo para título
         style_titulo = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
@@ -1559,7 +1628,6 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica-Bold'
         )
 
-        # Estilo para subtítulos
         style_subtitulo = ParagraphStyle(
             'CustomSubtitle',
             parent=styles['Heading2'],
@@ -1570,7 +1638,6 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica-Bold'
         )
 
-        # Estilo para texto normal
         style_normal = ParagraphStyle(
             'CustomNormal',
             parent=styles['Normal'],
@@ -1580,7 +1647,6 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica'
         )
 
-        # Estilo para labels
         style_label = ParagraphStyle(
             'CustomLabel',
             parent=styles['Normal'],
@@ -1590,7 +1656,6 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica-Bold'
         )
 
-        # Estilo para valores
         style_valor = ParagraphStyle(
             'CustomValor',
             parent=styles['Normal'],
@@ -1599,13 +1664,12 @@ def deliberacao_pagamento_pdf(contrato):
             fontName='Helvetica'
         )
 
-        # Helper para escapar HTML
+        # Helper functions
         def escape_text(text):
             if not text:
                 return '-'
             return html.escape(str(text))
 
-        # Helper para formatar datas
         def formatar_data(data):
             if not data:
                 return '-'
@@ -1613,13 +1677,11 @@ def deliberacao_pagamento_pdf(contrato):
                 return data
             return data.strftime('%d/%m/%Y')
 
-        # Helper para formatar valores monetários
         def formatar_moeda(valor):
             if not valor:
                 return 'R$ 0,00'
             return 'R$ {:,.2f}'.format(float(valor)).replace(',', 'X').replace('.', ',').replace('X', '.')
 
-        # Helper para formatar percentual
         def formatar_percentual(valor):
             if not valor:
                 return '0,00%'
@@ -1667,13 +1729,28 @@ def deliberacao_pagamento_pdf(contrato):
 
         dados_cobranca = [
             ['Período Prescrito:', escape_text(deliberacao.PERIODO_PRESCRITO)],
+        ]
+
+        # NOVO: Adicionar período de cobrança
+        if deliberacao.DT_PERIODO_COBRANCA_INICIO and deliberacao.DT_PERIODO_COBRANCA_FIM:
+            periodo_cobranca_texto = f"{formatar_data(deliberacao.DT_PERIODO_COBRANCA_INICIO)} até {formatar_data(deliberacao.DT_PERIODO_COBRANCA_FIM)}"
+            dados_cobranca.append(['Período da Cobrança dos Débitos:', periodo_cobranca_texto])
+
+        dados_cobranca.extend([
             ['Valor Inicial da Dívida:', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
+        ])
+
+        # NOVO: Adicionar valor manual se existir
+        if deliberacao.VR_DIVIDA_CONDOMINIO_2:
+            dados_cobranca.append(['Valor da Dívida (Manual):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_2)])
+
+        dados_cobranca.extend([
             ['Valor Excluídos Cotas Prescritas:', formatar_moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS)],
             ['Índice Econômico:', escape_text(deliberacao.INDICE_DEBITO_EMGEA)],
             ['Percentual de Honorários:', formatar_percentual(deliberacao.PERC_HONORARIOS_EMGEA)],
             ['Valor dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
             ['VALOR TOTAL (com Honorários):', formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)]
-        ]
+        ])
 
         tabela_cobranca = Table(dados_cobranca, colWidths=[7 * cm, 10 * cm])
         tabela_cobranca.setStyle(TableStyle([
@@ -1685,7 +1762,6 @@ def deliberacao_pagamento_pdf(contrato):
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            # Destacar última linha (VALOR TOTAL)
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#D4EDDA')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, -1), (-1, -1), 10),
@@ -1706,7 +1782,6 @@ def deliberacao_pagamento_pdf(contrato):
             ['Status do Imóvel:', escape_text(deliberacao.STATUS_IMOVEL)],
         ]
 
-        # NOVO: Se vendido, adicionar informações da venda
         if deliberacao.STATUS_IMOVEL and 'VENDIDO' in deliberacao.STATUS_IMOVEL.upper():
             dados_avaliacao.extend([
                 ['Valor de Venda:', formatar_moeda(deliberacao.VR_VENDA)],
@@ -1714,7 +1789,6 @@ def deliberacao_pagamento_pdf(contrato):
                 ['Nome do Adquirente:', escape_text(deliberacao.NOME_COMPRADOR)],
             ])
 
-            # NOVO: Adicionar tipo de pagamento
             tipo_pagamento_texto = '-'
             if deliberacao.TIPO_PAGAMENTO_VENDA:
                 if deliberacao.TIPO_PAGAMENTO_VENDA == 'A_VISTA':
@@ -1792,7 +1866,6 @@ def deliberacao_pagamento_pdf(contrato):
             ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            # Destacar última linha (TOTAL)
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#FFF3CD')),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
             ('LEFTPADDING', (0, 0), (-1, -1), 8),
@@ -1826,13 +1899,12 @@ def deliberacao_pagamento_pdf(contrato):
             elements.append(Paragraph(escape_text(deliberacao.CONSIDERACOES_GESTOR_GEADI), style_valor))
             elements.append(Spacer(1, 0.3 * cm))
 
-        # NOVO: Considerações do Gestor da SUMOV
         if deliberacao.CONSIDERACOES_GESTOR_SUMOV:
             elements.append(Paragraph('<b>Considerações Finais do Gestor da SUMOV:</b>', style_label))
             elements.append(Paragraph(escape_text(deliberacao.CONSIDERACOES_GESTOR_SUMOV), style_valor))
             elements.append(Spacer(1, 0.3 * cm))
 
-        # ===== RODAPÉ COM DATA DE GERAÇÃO =====
+        # ===== RODAPÉ =====
         elements.append(Spacer(1, 1 * cm))
         elements.append(Paragraph(
             f'<i>Documento gerado em {datetime.now().strftime("%d/%m/%Y às %H:%M")}</i>',
