@@ -75,8 +75,15 @@
 
                     <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
-                               required value="{{ '%.2f'|format(deposito.VR_RATEIO)|replace('.', ',') }}" placeholder="0,00">
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary" type="button" id="btn_toggle_sinal" title="Clique para negativar/positivar o valor">
+                                <i class="fas fa-plus-minus"></i>
+                            </button>
+                            <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
+                                   required value="{{ '%.2f'|format(deposito.VR_RATEIO|abs)|replace('.', ',') }}">
+                            <input type="hidden" id="vr_rateio_negativo" value="{{ 'true' if deposito.VR_RATEIO < 0 else 'false' }}">
+                        </div>
+                        <small class="text-muted">Clique no botão <i class="fas fa-plus-minus"></i> para negativar</small>
                     </div>
 
                     <!-- Segunda Linha -->
@@ -233,65 +240,53 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const nuLinha = {{ deposito.NU_LINHA }};
-    const btnMarcarAndamento = document.getElementById('btnMarcarAndamento');
-
-    // Verificar status ao carregar a página
-    verificarStatusContrato();
-
-    // Função para verificar se contrato está em andamento
-    function verificarStatusContrato() {
-        fetch(`/depositos-judiciais/api/verificar-status/${nuLinha}`)
-            .then(response => response.json())
-            .then(data => {
-                // Só mostra modal se estiver em andamento E não for o mesmo usuário
-                if (data.success && data.em_andamento && !data.eh_mesmo_usuario) {
-                    // Mostrar modal de aviso
-                    document.getElementById('modalArea').textContent = data.area_status || 'Não especificada';
-                    const modal = new bootstrap.Modal(document.getElementById('modalEmAndamento'));
-                    modal.show();
-                }
-            })
-            .catch(error => {
-                console.error('Erro ao verificar status:', error);
-            });
-    }
-
-    // Marcar como em andamento
-    if (btnMarcarAndamento) {
-        btnMarcarAndamento.addEventListener('click', function() {
-            if (confirm('Deseja marcar este contrato como Em Andamento?')) {
-                fetch(`/depositos-judiciais/api/marcar-em-andamento/${nuLinha}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Contrato marcado como Em Andamento!');
-                        location.reload();
-                    } else {
-                        alert(data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('Erro ao marcar contrato: ' + error);
-                });
-            }
-        });
-    }
-
-    // Máscara de moeda
     const moneyInput = document.getElementById('vr_rateio');
+    const btnToggleSinal = document.getElementById('btn_toggle_sinal');
+    const inputNegativo = document.getElementById('vr_rateio_negativo');
 
+    /**
+     * Formata valor monetário (formato brasileiro)
+     */
     function formatarValorMonetario(valor) {
         valor = valor.replace(/\D/g, '');
-        if (!valor) return '0,00';
+        if (valor === '') return '0,00';
         valor = (parseInt(valor) / 100).toFixed(2);
-        return valor.replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        valor = valor.replace('.', ',');
+        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+        return valor;
     }
+
+    /**
+     * Atualiza a aparência do botão conforme o sinal
+     */
+    function atualizarBotaoSinal() {
+        const isNegativo = inputNegativo.value === 'true';
+
+        if (isNegativo) {
+            btnToggleSinal.classList.remove('btn-outline-secondary');
+            btnToggleSinal.classList.add('btn-danger');
+            btnToggleSinal.innerHTML = '<i class="fas fa-minus"></i>';
+            btnToggleSinal.title = 'Valor NEGATIVO - Clique para positivar';
+            moneyInput.style.color = '#dc3545';
+            moneyInput.style.fontWeight = 'bold';
+        } else {
+            btnToggleSinal.classList.remove('btn-danger');
+            btnToggleSinal.classList.add('btn-outline-secondary');
+            btnToggleSinal.innerHTML = '<i class="fas fa-plus-minus"></i>';
+            btnToggleSinal.title = 'Valor POSITIVO - Clique para negativar';
+            moneyInput.style.color = '#000';
+            moneyInput.style.fontWeight = 'normal';
+        }
+    }
+
+    /**
+     * Toggle do sinal (positivo/negativo)
+     */
+    btnToggleSinal.addEventListener('click', function() {
+        const isNegativo = inputNegativo.value === 'true';
+        inputNegativo.value = isNegativo ? 'false' : 'true';
+        atualizarBotaoSinal();
+    });
 
     moneyInput.addEventListener('input', function(e) {
         let valor = e.target.value;
@@ -320,6 +315,18 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('formEdicao').addEventListener('submit', function(e) {
         e.preventDefault();
 
+        // Aplicar sinal negativo ao valor antes de enviar
+        const isNegativo = inputNegativo.value === 'true';
+        if (isNegativo) {
+            const valorAtual = moneyInput.value;
+            if (!valorAtual.startsWith('-')) {
+                moneyInput.value = '-' + valorAtual;
+            }
+        } else {
+            // Garantir que não tenha sinal negativo se for positivo
+            moneyInput.value = moneyInput.value.replace('-', '');
+        }
+
         const centroAntigo = {{ deposito.ID_CENTRO }};
         const centroNovo = parseInt(document.getElementById('id_centro').value);
 
@@ -342,7 +349,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         camposObrigatorios.forEach(campo => {
             const input = document.getElementById(campo);
-            if (!input.value || (campo === 'vr_rateio' && input.value === '0,00')) {
+            const valor = input.value.replace('-', ''); // Ignora o sinal na validação
+            if (!valor || (campo === 'vr_rateio' && valor === '0,00')) {
                 input.classList.add('is-invalid');
                 valido = false;
             } else {
@@ -358,6 +366,9 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Por favor, preencha todos os campos obrigatórios.');
         }
     });
+
+    // Inicializar estado do botão ao carregar a página
+    atualizarBotaoSinal();
 });
 </script>
 {% endblock %}

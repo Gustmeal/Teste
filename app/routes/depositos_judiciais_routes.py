@@ -41,11 +41,14 @@ def inclusao():
             novo_deposito.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
             # Corrigir conversão do valor rateio
+            # Corrigir conversão do valor rateio (permite valores negativos)
             vr_rateio = request.form.get('vr_rateio')
-            # Remove pontos de milhar e substitui vírgula por ponto
-            vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
-            if vr_rateio_numeros:
-                novo_deposito.VR_RATEIO = Decimal(vr_rateio_numeros) / 100
+            # Detectar se é negativo
+            is_negativo = vr_rateio.startswith('-')
+            # Remove pontos de milhar, mantém vírgula e sinal negativo
+            vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
+            if vr_rateio_limpo and vr_rateio_limpo != '-':
+                novo_deposito.VR_RATEIO = Decimal(vr_rateio_limpo)
 
             novo_deposito.MEMO_SUFIN = request.form.get('memo_sufin')
 
@@ -232,7 +235,13 @@ def edicao():
         if filtros['vr_rateio']:
             try:
                 valor = float(filtros['vr_rateio'].replace(',', '.'))
-                query = query.filter(DepositosSufin.VR_RATEIO == valor)
+                # Buscar tanto o valor positivo quanto o negativo
+                query = query.filter(
+                    or_(
+                        DepositosSufin.VR_RATEIO == valor,
+                        DepositosSufin.VR_RATEIO == -valor
+                    )
+                )
             except ValueError:
                 pass
 
@@ -686,11 +695,12 @@ def editar(nu_linha):
                 deposito_obj.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 deposito_obj.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
-                # Corrigir conversão do valor rateio
+                # Corrigir conversão do valor rateio (permite valores negativos)
                 vr_rateio = request.form.get('vr_rateio')
-                vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
-                if vr_rateio_numeros:
-                    deposito_obj.VR_RATEIO = Decimal(vr_rateio_numeros) / 100
+                # Remove pontos de milhar, mantém vírgula e sinal negativo
+                vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
+                if vr_rateio_limpo and vr_rateio_limpo != '-':
+                    deposito_obj.VR_RATEIO = Decimal(vr_rateio_limpo)
 
                 deposito_obj.MEMO_SUFIN = request.form.get('memo_sufin')
 
@@ -800,49 +810,57 @@ def editar(nu_linha):
 @depositos_judiciais_bp.route('/executar-scripts-relatorio', methods=['POST'])
 @login_required
 def executar_scripts_relatorio():
-    """Executa os scripts SQL para atualizar relatórios"""
+    """
+    Executa os scripts SQL para atualizar relatórios
+    Scripts baseados nos arquivos:
+    - DPJ_TB007_DJ_RELATORIO.sql
+    - DPJ_TB008_COMPARATIVO_SISCOR.sql
+    """
     import time
 
     tempo_inicio = time.time()
 
     try:
-        # Script 1: DPJ_TB007_DJ_RELATORIO
+        # =====================================================
+        # SCRIPT 1: DPJ_TB007_DJ_RELATORIO
+        # =====================================================
         sql_relatorio = """
-        DELETE FROM [dbo].[DPJ_TB007_DJ_RELATORIO];
+        DELETE FROM [BDDASHBOARDBI].[BDG].[DPJ_TB007_DJ_RELATORIO];
 
-        INSERT INTO [dbo].[DPJ_TB007_DJ_RELATORIO] 
+        INSERT INTO [BDDASHBOARDBI].[BDG].[DPJ_TB007_DJ_RELATORIO] 
         SELECT 
-            DPJ.NU_LINHA
-            ,[DT_LANCAMENTO_DJ] 
-            ,ANO_SISCOR = YEAR([DT_SISCOR])
-            ,[DSC_MES] MES_SISCOR
-            ,[VR_RATEIO]
-            ,[MEMO_SUFIN]
-            ,[DT_IDENTIFICACAO]
-            ,CT.[NO_CARTEIRA]
-            ,[DT_AJUSTE_RM]
-            ,[NU_CONTRATO]
-            ,[NR_PROCESSO]
-            ,[OBS]
-            ,[IC_APROPRIADO]
-            ,[IC_INCLUIDO_ACERTO]
-            ,DT_SISCOR
-        FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DPJ 
-        INNER JOIN [dbo].[DPJ_TB002_CENTRO_RESULTADO] CT
+            DPJ.NU_LINHA,
+            [DT_LANCAMENTO_DJ],
+            ANO_SISCOR = YEAR([DT_SISCOR]),
+            [DSC_MES] MES_SISCOR,
+            [VR_RATEIO],
+            [MEMO_SUFIN],
+            [DT_IDENTIFICACAO],
+            CT.[NO_CARTEIRA],
+            [DT_AJUSTE_RM],
+            [NU_CONTRATO],
+            [NR_PROCESSO],
+            [OBS],
+            [IC_APROPRIADO],
+            [IC_INCLUIDO_ACERTO],
+            DT_SISCOR
+        FROM [BDDASHBOARDBI].[BDG].[DPJ_TB004_DEPOSITOS_SUFIN] DPJ 
+        INNER JOIN [BDDASHBOARDBI].bdg.DPJ_TB002_CENTRO_RESULTADO CT
             ON DPJ.ID_CENTRO = CT.ID_CENTRO
-        LEFT JOIN [dbo].[DPJ_TB006_PROCESSOS_JUDICIAIS] JU
+        LEFT JOIN [BDDASHBOARDBI].[BDG].[DPJ_TB006_PROCESSOS_JUDICIAIS] JU
             ON DPJ.NU_LINHA = JU.NU_LINHA
-        LEFT JOIN [BDG].[PAR_TB020_CALENDARIO] CAL
+        LEFT JOIN [BDDASHBOARDBI].BDG.PAR_TB020_CALENDARIO CAL
             ON CAL.DIA = DPJ.DT_SISCOR
         ORDER BY ABS(VR_RATEIO);
         """
 
-        # Script 2: DPJ_TB008_COMPARATIVO_SISCOR e DPJ_TB009_ALERTAS_SUFIN
+        # =====================================================
+        # SCRIPT 2: DPJ_TB008_COMPARATIVO_SISCOR
+        # =====================================================
         sql_comparativo = """
-        -- Comparativo SISCOR
-        DELETE FROM [dbo].[DPJ_TB008_COMPARATIVO_SISCOR];
+        DELETE FROM [BDDASHBOARDBI].[BDG].[DPJ_TB008_COMPARATIVO_SISCOR];
 
-        INSERT INTO [dbo].[DPJ_TB008_COMPARATIVO_SISCOR]
+        INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB008_COMPARATIVO_SISCOR]
         SELECT 
             COR.UNIDADE,
             COR.DT_EXECUCAO_ORCAMENTO DT_SISCOR,
@@ -852,59 +870,62 @@ def executar_scripts_relatorio():
         FROM 
         (
             SELECT 
-                UNIDADE = CASE WHEN ID_ITEM IN (1464) THEN 'Indenização-Seguro'
-                            WHEN UNIDADE IN ('SUCRE') THEN 'Sucre-DJ'
-                            WHEN UNIDADE IN ('SUPEJ') THEN 'Supej'
-                            WHEN UNIDADE IN ('SUPEC') THEN 'Supec'
-                            WHEN UNIDADE IN ('SUMOV') THEN 'Sumov'
-                            ELSE UNIDADE END
-                ,[DT_EXECUCAO_ORCAMENTO]
-                ,SUM([VR_EXECUCAO_ORCAMENTO]) VLR
-            FROM [BDG].[COR_TB001_EXECUCAO_ORCAMENTARIA_SISCOR]
-            WHERE ID_ITEM IN (1432,1473,1471,1470,1472,1464)
+                UNIDADE = CASE  WHEN ID_ITEM IN (1464) THEN 'Indenização-Seguro'
+                                WHEN UNIDADE IN ('SUCRE') THEN 'Sucre-DJ'
+                                WHEN UNIDADE IN ('SUPEJ') THEN 'Supej'
+                                WHEN UNIDADE IN ('SUPEC') THEN 'Supec'
+                                WHEN UNIDADE IN ('SUMOV') THEN 'Sumov'
+                                ELSE UNIDADE END,
+                [DT_EXECUCAO_ORCAMENTO],
+                SUM([VR_EXECUCAO_ORCAMENTO]) VLR
+            FROM [BDDASHBOARDBI].[BDG].[COR_TB001_EXECUCAO_ORCAMENTARIA_SISCOR]
+            WHERE ID_ITEM IN (1432,1473,1471,1470,1472,1464)   --SUPEJ(1471), SUCRE (1470) , SUPEC (1472) , SUMOV (1473)
                 AND [ID_NATUREZA] = 3
                 AND [VR_EXECUCAO_ORCAMENTO] <> 0
                 AND [UNIDADE] NOT IN ('INSTIT')
             GROUP BY
-                CASE WHEN ID_ITEM IN (1464) THEN 'Indenização-Seguro'
-                    WHEN UNIDADE IN ('SUCRE') THEN 'Sucre-DJ'
-                    WHEN UNIDADE IN ('SUPEJ') THEN 'Supej'
-                    WHEN UNIDADE IN ('SUPEC') THEN 'Supec'
-                    WHEN UNIDADE IN ('SUMOV') THEN 'Sumov'
-                    ELSE UNIDADE END
-                ,[DT_EXECUCAO_ORCAMENTO]
+                CASE    WHEN ID_ITEM IN (1464) THEN 'Indenização-Seguro'
+                        WHEN UNIDADE IN ('SUCRE') THEN 'Sucre-DJ'
+                        WHEN UNIDADE IN ('SUPEJ') THEN 'Supej'
+                        WHEN UNIDADE IN ('SUPEC') THEN 'Supec'
+                        WHEN UNIDADE IN ('SUMOV') THEN 'Sumov'
+                        ELSE UNIDADE END,
+                [DT_EXECUCAO_ORCAMENTO]
         ) COR
         LEFT JOIN 
         (
             SELECT 
-                UNIDADE = CASE WHEN ID_CENTRO IN (2) THEN 'Supec'
-                            WHEN ID_CENTRO IN (3) THEN 'Sucre-DJ'
-                            WHEN ID_CENTRO IN (1,4) THEN 'Supej'
-                            WHEN ID_CENTRO IN (5) THEN 'Sumov'
-                            WHEN ID_CENTRO IN (7) THEN 'Indenização-Seguro'
-                            ELSE NULL END,
+                UNIDADE = CASE  WHEN ID_CENTRO IN (2) THEN 'Supec'
+                                WHEN ID_CENTRO IN (3) THEN 'Sucre-DJ'
+                                WHEN ID_CENTRO IN (1,4) THEN 'Supej'
+                                WHEN ID_CENTRO IN (5) THEN 'Sumov'
+                                WHEN ID_CENTRO IN (7) THEN 'Indenização-Seguro'
+                                ELSE NULL END,
                 DT_IDENT_SISCOR = (SUBSTRING(CONVERT(VARCHAR(4),[DT_SISCOR]),1,4)+SUBSTRING(CONVERT(VARCHAR(10),[DT_SISCOR]),6,2)),
                 SUM(VR_RATEIO) VR
-            FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN]
+            FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN]
             WHERE DT_SISCOR IS NOT NULL AND ID_CENTRO IN (1,2,3,4,5,7)
             GROUP BY
-                CASE WHEN ID_CENTRO IN (2) THEN 'Supec'
-                    WHEN ID_CENTRO IN (3) THEN 'Sucre-DJ'
-                    WHEN ID_CENTRO IN (1,4) THEN 'Supej'
-                    WHEN ID_CENTRO IN (5) THEN 'Sumov'
-                    WHEN ID_CENTRO IN (7) THEN 'Indenização-Seguro'
-                    ELSE NULL END,
+                CASE    WHEN ID_CENTRO IN (2) THEN 'Supec'
+                        WHEN ID_CENTRO IN (3) THEN 'Sucre-DJ'
+                        WHEN ID_CENTRO IN (1,4) THEN 'Supej'
+                        WHEN ID_CENTRO IN (5) THEN 'Sumov'
+                        WHEN ID_CENTRO IN (7) THEN 'Indenização-Seguro'
+                        ELSE NULL END,
                 (SUBSTRING(CONVERT(VARCHAR(4),[DT_SISCOR]),1,4)+SUBSTRING(CONVERT(VARCHAR(10),[DT_SISCOR]),6,2))
         ) DJ
-        ON COR.DT_EXECUCAO_ORCAMENTO = DJ.DT_IDENT_SISCOR
+            ON COR.DT_EXECUCAO_ORCAMENTO = DJ.DT_IDENT_SISCOR
             AND COR.UNIDADE = DJ.UNIDADE
         ORDER BY COR.UNIDADE, COR.DT_EXECUCAO_ORCAMENTO;
+        """
 
-        -- Alertas SUFIN
-        DELETE FROM [dbo].[DPJ_TB009_ALERTAS_SUFIN];
+        # =====================================================
+        # SCRIPT 3: DPJ_TB009_ALERTAS_SUFIN
+        # =====================================================
+        sql_alertas = """
+        DELETE [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN];
 
-        -- Alerta 1: Duplicidades
-        INSERT INTO [dbo].[DPJ_TB009_ALERTAS_SUFIN]
+        INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
         SELECT 
             DJ.NU_LINHA,
             DJ.DT_LANCAMENTO_DJ,
@@ -913,29 +934,31 @@ def executar_scripts_relatorio():
             DJ.NU_CONTRATO,
             DJ.VR_RATEIO,
             DJ.DT_SISCOR,
-            ALERTA = CASE WHEN DJ.DT_LANCAMENTO_DJ IS NULL THEN 'Dt de Lançamento DJ não informada'
-                        WHEN ABS(DJ.VR_RATEIO) IN (50258.25,123131.63) THEN 'Lançado 2 vezes no Siscor'
-                        ELSE 'Indício de Duplidade' END
-        FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DJ
-        INNER JOIN [dbo].[DPJ_TB002_CENTRO_RESULTADO] CT
+            ALERTA = CASE   WHEN DJ.DT_LANCAMENTO_DJ IS NULL THEN 'Dt de Lançamento DJ não informada'
+                            WHEN ABS(DJ.VR_RATEIO) IN (50258.25,123131.63) THEN 'Lançado 2 vezes no Siscor'
+                            ELSE 'Indício de Duplidade' END
+        FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] DJ
+        INNER JOIN [BDDASHBOARDBI].BDG.[DPJ_TB002_CENTRO_RESULTADO] CT
             ON DJ.ID_CENTRO = CT.ID_CENTRO
         INNER JOIN 
         (
             SELECT 
-                ISNULL(DT_LANCAMENTO_DJ,'') DT_LANCAMENTO_DJ
-                ,ABS([VR_RATEIO]) QUEBRA_VR
-                ,SUM([VR_RATEIO]) VR
-            FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN]
+                ISNULL(DT_LANCAMENTO_DJ,'') DT_LANCAMENTO_DJ,
+                ABS([VR_RATEIO]) QUEBRA_VR,
+                SUM([VR_RATEIO]) VR
+            FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN]
             WHERE ABS([VR_RATEIO]) NOT IN (1120.09,27408.86,41447.54,585.87)
-            GROUP BY DT_LANCAMENTO_DJ, ABS([VR_RATEIO])
+            GROUP BY 
+                DT_LANCAMENTO_DJ,
+                ABS([VR_RATEIO])
             HAVING ABS([VR_RATEIO]) - SUM([VR_RATEIO]) <> 0
         ) ALERTA
-        ON ABS(DJ.VR_RATEIO) = ALERTA.QUEBRA_VR
+            ON ABS(DJ.VR_RATEIO) = ALERTA.QUEBRA_VR
             AND ISNULL(DJ.DT_LANCAMENTO_DJ,'') = ALERTA.DT_LANCAMENTO_DJ
         ORDER BY ABS(DJ.VR_RATEIO);
 
-        -- Alerta 2: Áreas diferentes/mesmo contrato
-        INSERT INTO [dbo].[DPJ_TB009_ALERTAS_SUFIN]
+        -----
+        INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
         SELECT 
             DJ.[NU_LINHA],
             DJ.[DT_LANCAMENTO_DJ],
@@ -945,8 +968,8 @@ def executar_scripts_relatorio():
             DJ.[VR_RATEIO],
             DJ.[DT_SISCOR],
             [ALERTA]= 'Áreas diferentes/mesmo contrato'
-        FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DJ
-        INNER JOIN [dbo].[DPJ_TB002_CENTRO_RESULTADO] CT
+        FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] DJ
+        INNER JOIN BDDASHBOARDBI.BDG.[DPJ_TB002_CENTRO_RESULTADO] CT
             ON DJ.ID_CENTRO = CT.ID_CENTRO
         INNER JOIN 
         (
@@ -954,13 +977,15 @@ def executar_scripts_relatorio():
                 NU_CONTRATO,
                 ID_CENTRO,
                 sum(DJ.VR_RATEIO) vr
-            FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DJ
-            INNER JOIN [BDG].[AUX_VW001_CONTRATOS_CPF] CTR
+            FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] DJ
+            INNER JOIN [BDDASHBOARDBI].[BDG].[AUX_VW001_CONTRATOS_CPF] CTR
                 ON DJ.NU_CONTRATO = CTR.NR_CONTRATO
-            WHERE NU_CONTRATO IS NOT NULL
+            WHERE 
+                NU_CONTRATO IS NOT NULL
                 AND NU_CONTRATO NOT IN (101560100203)
                 AND NU_CONTRATO <> 0
-                AND (
+                AND 
+                (
                     (DJ.ID_CENTRO = 2 AND [CARTEIRA] <> 'Comercial PF')
                     OR (DJ.ID_CENTRO = 3 AND [CARTEIRA] NOT IN ('Habitação PF','Imóveis'))
                     OR (DJ.ID_CENTRO = 4 AND [CARTEIRA] NOT LIKE '%PJ')
@@ -968,10 +993,10 @@ def executar_scripts_relatorio():
             GROUP BY NU_CONTRATO, ID_CENTRO
             HAVING SUM(DJ.VR_RATEIO) > 0
         ) CTR
-        ON DJ.NU_CONTRATO = CTR.NU_CONTRATO;
+            ON DJ.NU_CONTRATO = CTR.NU_CONTRATO;
 
-        -- Alerta 3: Contrato não é EMGEA
-        INSERT INTO [dbo].[DPJ_TB009_ALERTAS_SUFIN]
+        ------AQUI
+        INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
         SELECT 
             DJ.[NU_LINHA],
             DJ.[DT_LANCAMENTO_DJ],
@@ -981,14 +1006,14 @@ def executar_scripts_relatorio():
             DJ.[VR_RATEIO],
             DJ.[DT_SISCOR],
             [ALERTA]= 'Contrato não é EMGEA'
-        FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DJ
-        INNER JOIN [dbo].[DPJ_TB002_CENTRO_RESULTADO] CT
+        FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] DJ
+        INNER JOIN BDDASHBOARDBI.BDG.[DPJ_TB002_CENTRO_RESULTADO] CT
             ON DJ.ID_CENTRO = CT.ID_CENTRO
         WHERE OBS LIKE '%CONTR%EMGEA%'
             AND DJ.NU_CONTRATO NOT IN (455552166963);
 
-        -- Alerta 4: Não Apropriado no Siscor
-        INSERT INTO [dbo].[DPJ_TB009_ALERTAS_SUFIN]
+        ----
+        INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
         SELECT 
             DJ.[NU_LINHA],
             DJ.[DT_LANCAMENTO_DJ],
@@ -998,24 +1023,25 @@ def executar_scripts_relatorio():
             DJ.[VR_RATEIO],
             DJ.[DT_SISCOR],
             [ALERTA]= 'Não Apropriado no Siscor'
-        FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] DJ
-        INNER JOIN [dbo].[DPJ_TB002_CENTRO_RESULTADO] CT
+        FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] DJ
+        INNER JOIN BDDASHBOARDBI.BDG.[DPJ_TB002_CENTRO_RESULTADO] CT
             ON DJ.ID_CENTRO = CT.ID_CENTRO
         WHERE DJ.ID_CENTRO NOT IN (6)
             AND DJ.[DT_SISCOR] IS NULL;
 
-        -- Exclusões específicas
-        DELETE FROM [dbo].[DPJ_TB009_ALERTAS_SUFIN]
+        DELETE FROM [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
         WHERE NU_LINHA IN (151,101,102,103,1789,3380,3379,3450,229,
-                         230,231,232,233,234,235,236,237,238,687,688,2272,2273,2494,2495,716,717,1446,1447,3546,3547);
+        230,231,232,233,234,235,236,237,238,687,688,2272,2273,2494,2495,716,717,1446,1447,3546,3547,1362,3793,3096,3792,3728,3743,3789,
+        3841);
 
-        DELETE FROM [dbo].[DPJ_TB009_ALERTAS_SUFIN] 
-        WHERE [NU_CONTRATO] IN (SELECT [NU_CONTRATO] FROM [dbo].[DPJ_TB004_DEPOSITOS_SUFIN] WHERE ID_CENTRO = 8);
+        DELETE FROM [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN] 
+        WHERE [NU_CONTRATO] IN (SELECT [NU_CONTRATO] FROM [BDDASHBOARDBI].BDG.[DPJ_TB004_DEPOSITOS_SUFIN] WHERE ID_CENTRO = 8);
         """
 
         # Executar scripts
         db.session.execute(text(sql_relatorio))
         db.session.execute(text(sql_comparativo))
+        db.session.execute(text(sql_alertas))
         db.session.commit()
 
         # Registrar log

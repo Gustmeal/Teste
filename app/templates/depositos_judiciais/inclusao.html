@@ -35,8 +35,15 @@
 
                     <div class="col-md-3">
                         <label for="vr_rateio" class="form-label">Valor Rateio <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
-                               required placeholder="0,00">
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary" type="button" id="btn_toggle_sinal" title="Clique para negativar/positivar o valor">
+                                <i class="fas fa-plus-minus"></i>
+                            </button>
+                            <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
+                                   required placeholder="0,00">
+                            <input type="hidden" id="vr_rateio_negativo" value="false">
+                        </div>
+                        <small class="text-muted">Clique no botão <i class="fas fa-plus-minus"></i> para negativar</small>
                     </div>
 
                     <!-- Segunda Linha -->
@@ -151,23 +158,53 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Máscara monetária corrigida para o campo valor rateio
     const moneyInput = document.getElementById('vr_rateio');
+    const btnToggleSinal = document.getElementById('btn_toggle_sinal');
+    const inputNegativo = document.getElementById('vr_rateio_negativo');
 
-    // Função para formatar valor monetário
+    /**
+     * Formata valor monetário (formato brasileiro)
+     */
     function formatarValorMonetario(valor) {
-        // Remove tudo que não for número
         valor = valor.replace(/\D/g, '');
-
-        // Se não tiver valor, retorna 0,00
         if (valor === '') return '0,00';
-
-        // Converte para número e divide por 100
-        let numero = parseInt(valor) / 100;
-
-        // Formata com 2 casas decimais e troca ponto por vírgula
-        return numero.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        valor = (parseInt(valor) / 100).toFixed(2);
+        valor = valor.replace('.', ',');
+        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
+        return valor;
     }
+
+    /**
+     * Atualiza a aparência do botão conforme o sinal
+     */
+    function atualizarBotaoSinal() {
+        const isNegativo = inputNegativo.value === 'true';
+
+        if (isNegativo) {
+            btnToggleSinal.classList.remove('btn-outline-secondary');
+            btnToggleSinal.classList.add('btn-danger');
+            btnToggleSinal.innerHTML = '<i class="fas fa-minus"></i>';
+            btnToggleSinal.title = 'Valor NEGATIVO - Clique para positivar';
+            moneyInput.style.color = '#dc3545';
+            moneyInput.style.fontWeight = 'bold';
+        } else {
+            btnToggleSinal.classList.remove('btn-danger');
+            btnToggleSinal.classList.add('btn-outline-secondary');
+            btnToggleSinal.innerHTML = '<i class="fas fa-plus-minus"></i>';
+            btnToggleSinal.title = 'Valor POSITIVO - Clique para negativar';
+            moneyInput.style.color = '#000';
+            moneyInput.style.fontWeight = 'normal';
+        }
+    }
+
+    /**
+     * Toggle do sinal (positivo/negativo)
+     */
+    btnToggleSinal.addEventListener('click', function() {
+        const isNegativo = inputNegativo.value === 'true';
+        inputNegativo.value = isNegativo ? 'false' : 'true';
+        atualizarBotaoSinal();
+    });
 
     // Evento de input para aplicar a máscara
     moneyInput.addEventListener('input', function(e) {
@@ -213,13 +250,23 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('formInclusao').addEventListener('submit', function(e) {
         e.preventDefault();
 
+        // Aplicar sinal negativo ao valor antes de enviar
+        const isNegativo = inputNegativo.value === 'true';
+        if (isNegativo) {
+            const valorAtual = moneyInput.value;
+            if (!valorAtual.startsWith('-')) {
+                moneyInput.value = '-' + valorAtual;
+            }
+        }
+
         // Validar campos obrigatórios
         const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
         let valido = true;
 
         camposObrigatorios.forEach(campo => {
             const input = document.getElementById(campo);
-            if (!input.value || (campo === 'vr_rateio' && input.value === '0,00')) {
+            const valor = input.value.replace('-', ''); // Ignora o sinal na validação
+            if (!valor || (campo === 'vr_rateio' && valor === '0,00')) {
                 input.classList.add('is-invalid');
                 valido = false;
             } else {
@@ -241,12 +288,26 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Por favor, preencha todos os campos obrigatórios.');
         }
     });
+
+    // Inicializar estado do botão
+    atualizarBotaoSinal();
 });
 
 function limparFormulario() {
     if (confirm('Deseja limpar todos os campos?')) {
         document.getElementById('formInclusao').reset();
         document.getElementById('vr_rateio').value = '0,00';
+        document.getElementById('vr_rateio_negativo').value = 'false';
+
+        // Resetar aparência do botão
+        const btnToggleSinal = document.getElementById('btn_toggle_sinal');
+        btnToggleSinal.classList.remove('btn-danger');
+        btnToggleSinal.classList.add('btn-outline-secondary');
+        btnToggleSinal.innerHTML = '<i class="fas fa-plus-minus"></i>';
+
+        const moneyInput = document.getElementById('vr_rateio');
+        moneyInput.style.color = '#000';
+        moneyInput.style.fontWeight = 'normal';
     }
 }
 </script>

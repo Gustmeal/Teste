@@ -1,17 +1,24 @@
 def format_currency(value, decimal_places=2, currency_symbol="R$ "):
     """
     Formata um valor como moeda com o padrão brasileiro (ponto para milhar, vírgula para decimal)
-    Ex: R$ 1.234,56
+    Suporta valores negativos corretamente
+    Ex: R$ 1.234,56 ou R$ -1.234,56
     """
     if value is None:
         return "-"
 
-    # Converter para float e formatar
+    # Converter para float
     value = float(value)
+
+    # Detectar se é negativo
+    is_negative = value < 0
+
+    # Trabalhar com valor absoluto
+    value = abs(value)
 
     # Separar parte inteira e decimal
     int_part = int(value)
-    decimal_part = int(round((value - int_part) * (10 ** decimal_places)))
+    decimal_part = round((value - int_part) * (10 ** decimal_places))
 
     # Formatar parte inteira com separador de milhar
     formatted_int = ""
@@ -26,9 +33,11 @@ def format_currency(value, decimal_places=2, currency_symbol="R$ "):
     # Formatar parte decimal
     decimal_str = str(decimal_part).zfill(decimal_places)
 
-    # Retornar valor formatado
-    return f"{currency_symbol}{formatted_int},{decimal_str}"
-
+    # Retornar valor formatado com sinal negativo se necessário
+    if is_negative:
+        return f"{currency_symbol}-{formatted_int},{decimal_str}"
+    else:
+        return f"{currency_symbol}{formatted_int},{decimal_str}"
 
 def format_number(value):
     """
