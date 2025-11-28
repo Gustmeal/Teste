@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4 fade-in">
+    <a href="{{ url_for('vinculacao_dre.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1>Vinculações DRE vs Item Orçamentário</h1>
+            <p class="text-muted">Gerenciar todas as vinculações cadastradas</p>
+        </div>
+        <a href="{{ url_for('vinculacao_dre.nova_vinculacao') }}" class="btn btn-primary btn-lg">
+            <i class="fas fa-plus me-2"></i> Nova Vinculação
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filtros
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('vinculacao_dre.lista_vinculacoes') }}">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Nível 1</label>
+                        <select name="nivel1" class="form-select">
+                            <option value="">Todos</option>
+                            {% for nivel1 in nivel1_disponiveis %}
+                                <option value="{{ nivel1 }}" {% if nivel1_filtro == nivel1 %}selected{% endif %}>
+                                    {{ nivel1 }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Nível 2</label>
+                        <select name="nivel2" class="form-select">
+                            <option value="">Todos</option>
+                            {% for nivel2 in nivel2_disponiveis %}
+                                <option value="{{ nivel2 }}" {% if nivel2_filtro == nivel2 %}selected{% endif %}>
+                                    {{ nivel2 }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Item Orçamentário (ID)</label>
+                        <input type="number" name="item" class="form-control"
+                               placeholder="Digite o ID do item" value="{{ item_filtro }}">
+                    </div>
+
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-2"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('vinculacao_dre.lista_vinculacoes') }}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Limpar Filtros
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela de vinculações -->
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-list me-2"></i>Vinculações Cadastradas
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            {% if vinculacoes %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0 align-middle table-bordered">
+                        <thead class="table-primary sticky-header">
+                            <tr>
+                                <th class="sticky-col">Ações</th>
+                                <th>Ordem</th>
+                                <th>Item</th>
+                                <th>Nível 2</th>
+                                <th>Nível 1</th>
+                                <th class="text-center">Rec. Líq.</th>
+                                <th class="text-center">Lucro Bruto</th>
+                                <th class="text-center">Desp. Adm.</th>
+                                <th class="text-center">Rec./Desp.</th>
+                                <th class="text-center">Lucro A.R.F.</th>
+                                <th class="text-center">Result. A.T.</th>
+                                <th class="text-center">Lucro Líq.</th>
+                                <th class="text-center">Result. D.JCP</th>
+                                <th class="text-center">Sinal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for vinculacao in vinculacoes %}
+                            <tr>
+                                <td class="sticky-col bg-white">
+                                    <div class="btn-group-vertical" role="group">
+                                        <a href="{{ url_for('vinculacao_dre.editar_vinculacao', nivel3_item=vinculacao.NIVEL3_ITEM) }}"
+                                           class="btn btn-sm btn-warning mb-1" title="Editar">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button onclick="excluirVinculacao({{ vinculacao.NIVEL3_ITEM }})"
+                                                class="btn btn-sm btn-danger" title="Excluir">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                                <td><strong>{{ vinculacao.ORDEM or '-' }}</strong></td>
+                                <td><span class="badge bg-primary">{{ vinculacao.NIVEL3_ITEM }}</span></td>
+                                <td class="text-truncate" style="max-width: 200px;" title="{{ vinculacao.NIVEL2 or '-' }}">
+                                    {{ vinculacao.NIVEL2 or '-' }}
+                                </td>
+                                <td class="text-truncate" style="max-width: 200px;" title="{{ vinculacao.NIVEL1 or '-' }}">
+                                    {{ vinculacao.NIVEL1 or '-' }}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.RECEITA_LIQUIDA == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.LUCRO_BRUTO == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.DESPESAS_ADMINISTRATIVAS == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.RECEITAS_DESPESAS == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.LUCRO_ANTES_RESULT_FINANC == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.RESULT_ANTES_TRIBUTOS == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.LUCRO_LIQ_PERIODO == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.RESULT_DEPOIS_JCP == 1 %}
+                                        <i class="fas fa-check-circle text-success fa-lg"></i>
+                                    {% else %}
+                                        <i class="fas fa-times-circle text-danger fa-lg"></i>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if vinculacao.SINAL == 1 %}
+                                        <span class="badge bg-success"><i class="fas fa-plus"></i> Positivo</span>
+                                    {% elif vinculacao.SINAL == -1 %}
+                                        <span class="badge bg-danger"><i class="fas fa-minus"></i> Negativo</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center p-5">
+                    <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">Nenhuma vinculação encontrada.</p>
+                    <a href="{{ url_for('vinculacao_dre.nova_vinculacao') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i> Criar Primeira Vinculação
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+async function excluirVinculacao(nivel3Item) {
+    if (!confirm(`Tem certeza que deseja excluir a vinculação do item ${nivel3Item}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`{{ url_for('vinculacao_dre.excluir_vinculacao', nivel3_item=0) }}`.replace('0', nivel3Item), {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Erro: ' + data.message);
+        }
+    } catch (error) {
+        alert('Erro ao excluir vinculação: ' + error.message);
+    }
+}
+</script>
+
+<style>
+/* Melhorias visuais da tabela */
+.table {
+    font-size: 0.9rem;
+}
+
+.table thead th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    background-color: #6c5ce7 !important;
+    color: white !important;
+    border-color: #5b4bc4 !important;
+}
+
+.table tbody td {
+    vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+/* Coluna fixa de ações à esquerda */
+.sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: white;
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+    min-width: 80px;
+    max-width: 80px;
+}
+
+.sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.sticky-header .sticky-col {
+    z-index: 30;
+}
+
+/* Botões de ação em coluna */
+.btn-group-vertical {
+    width: 100%;
+}
+
+.btn-group-vertical .btn {
+    width: 100%;
+}
+
+.badge {
+    padding: 0.4em 0.6em;
+    font-size: 0.85rem;
+}
+
+.btn-sm {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.875rem;
+}
+
+/* Tabela com bordas */
+.table-bordered {
+    border: 1px solid #dee2e6;
+}
+
+.table-bordered th,
+.table-bordered td {
+    border: 1px solid #dee2e6;
+}
+
+/* Text truncate para colunas grandes */
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Ícones maiores */
+.fa-lg {
+    font-size: 1.2em;
+}
+
+/* Scroll suave */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Responsividade */
+@media (max-width: 1400px) {
+    .table {
+        font-size: 0.85rem;
+    }
+
+    .table thead th {
+        font-size: 0.75rem;
+        padding: 0.5rem;
+    }
+
+    .table tbody td {
+        padding: 0.5rem;
+    }
+}
+
+/* Hover effect nas linhas */
+.table-hover tbody tr:hover {
+    background-color: rgba(108, 92, 231, 0.1);
+}
+
+/* Destacar primeira coluna */
+.sticky-col {
+    font-weight: 600;
+}
+
+/* Scroll horizontal mais visível */
+.table-responsive::-webkit-scrollbar {
+    height: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+</style>
+{% endblock %}

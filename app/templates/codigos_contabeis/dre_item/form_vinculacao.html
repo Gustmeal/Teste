@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a href="{{ url_for('vinculacao_dre.lista_vinculacoes') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<div class="form-container fade-in">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white">
+            <h1 class="mb-0">
+                {% if edit_mode %}Editar Vinculação DRE{% else %}Nova Vinculação DRE{% endif %}
+            </h1>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST" id="vinculacaoDreForm">
+                <!-- Seção: Identificação -->
+                <div class="section-divider">
+                    <h4><i class="fas fa-tag me-2"></i>Identificação</h4>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Item Orçamentário (Nível 3) <span class="text-danger">*</span></label>
+                        <select name="nivel3_item" id="nivel3_item" class="form-select" required {% if edit_mode %}disabled{% endif %}>
+                            <option value="">Selecione ou digite...</option>
+                            {% for item in itens_siscor %}
+                                <option value="{{ item.ID_ITEM }}"
+                                        {% if vinculacao and vinculacao.NIVEL3_ITEM == item.ID_ITEM %}selected{% endif %}>
+                                    {{ item.ID_ITEM }} - {{ item.DSC_ITEM_ORCAMENTO or 'Sem descrição' }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if edit_mode %}
+                            <input type="hidden" name="nivel3_item" value="{{ vinculacao.NIVEL3_ITEM }}">
+                        {% endif %}
+                        <div class="form-text">
+                            <i class="fas fa-search me-1"></i>Digite o ID ou descrição para buscar
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nível 2 <span class="text-danger">*</span></label>
+                        <select name="nivel2" id="nivel2" class="form-select" required>
+                            <option value="">Selecione ou digite...</option>
+                            {% for nivel2 in nivel2_disponiveis %}
+                                <option value="{{ nivel2 }}"
+                                        {% if vinculacao and vinculacao.NIVEL2 == nivel2 %}selected{% endif %}>
+                                    {{ nivel2 }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            A ordem será definida automaticamente
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nível 1 <span class="text-danger">*</span></label>
+                        <select name="nivel1" id="nivel1" class="form-select" required>
+                            <option value="">Selecione ou digite...</option>
+                            {% for nivel1 in nivel1_disponiveis %}
+                                <option value="{{ nivel1 }}"
+                                        {% if vinculacao and vinculacao.NIVEL1 == nivel1 %}selected{% endif %}>
+                                    {{ nivel1 }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Sinal <span class="text-danger">*</span></label>
+                        <select name="sinal" id="sinal" class="form-select" required>
+                            <option value="">Selecione o sinal</option>
+                            <option value="positivo" {% if vinculacao and vinculacao.SINAL == 1 %}selected{% endif %}>
+                                Positivo (+)
+                            </option>
+                            <option value="negativo" {% if vinculacao and vinculacao.SINAL == -1 %}selected{% endif %}>
+                                Negativo (-)
+                            </option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Seção: Configurações DRE -->
+                <div class="section-divider">
+                    <h4><i class="fas fa-cog me-2"></i>Configurações DRE</h4>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Receita Líquida</label>
+                        <select name="receita_liquida" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.RECEITA_LIQUIDA == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.RECEITA_LIQUIDA == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Lucro Bruto</label>
+                        <select name="lucro_bruto" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.LUCRO_BRUTO == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.LUCRO_BRUTO == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Despesas Administrativas</label>
+                        <select name="despesas_administrativas" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.DESPESAS_ADMINISTRATIVAS == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.DESPESAS_ADMINISTRATIVAS == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Receitas e Despesas</label>
+                        <select name="receitas_despesas" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.RECEITAS_DESPESAS == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.RECEITAS_DESPESAS == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Lucro Antes Resultado Financeiro</label>
+                        <select name="lucro_antes_result_financ" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.LUCRO_ANTES_RESULT_FINANC == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.LUCRO_ANTES_RESULT_FINANC == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Resultado Antes Tributos</label>
+                        <select name="result_antes_tributos" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.RESULT_ANTES_TRIBUTOS == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.RESULT_ANTES_TRIBUTOS == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Lucro Líquido do Período</label>
+                        <select name="lucro_liq_periodo" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.LUCRO_LIQ_PERIODO == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.LUCRO_LIQ_PERIODO == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Resultado Depois JCP</label>
+                        <select name="result_depois_jcp" class="form-select">
+                            <option value="nao" {% if not vinculacao or vinculacao.RESULT_DEPOIS_JCP == 0 %}selected{% endif %}>Não</option>
+                            <option value="sim" {% if vinculacao and vinculacao.RESULT_DEPOIS_JCP == 1 %}selected{% endif %}>Sim</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Botões -->
+                <div class="d-flex justify-content-between mt-4">
+                    <a href="{{ url_for('vinculacao_dre.lista_vinculacoes') }}" class="btn btn-secondary btn-lg">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-save me-2"></i>
+                        {% if edit_mode %}Atualizar{% else %}Salvar{% endif %} Vinculação
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- CSS do Select2 -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<!-- jQuery (necessário para o Select2) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- JS do Select2 -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- Tradução PT-BR do Select2 -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/pt-BR.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Configuração global do Select2
+    $.fn.select2.defaults.set('theme', 'bootstrap-5');
+    $.fn.select2.defaults.set('language', 'pt-BR');
+
+    // Inicializar Select2 no campo Item Orçamentário (Nível 3)
+    $('#nivel3_item').select2({
+        placeholder: 'Selecione ou digite...',
+        allowClear: true,
+        width: '100%',
+        language: 'pt-BR',
+        dropdownAutoWidth: true,
+        matcher: function(params, data) {
+            // Se não houver termo de busca, retorna todos
+            if ($.trim(params.term) === '') {
+                return data;
+            }
+
+            // Não exibe o placeholder nos resultados
+            if (typeof data.text === 'undefined') {
+                return null;
+            }
+
+            // Busca tanto no ID quanto na descrição
+            var term = params.term.toLowerCase();
+            var text = data.text.toLowerCase();
+
+            if (text.indexOf(term) > -1) {
+                return data;
+            }
+
+            return null;
+        }
+    });
+
+    // Inicializar Select2 no campo Nível 2
+    $('#nivel2').select2({
+        placeholder: 'Selecione ou digite...',
+        allowClear: true,
+        width: '100%',
+        language: 'pt-BR',
+        dropdownAutoWidth: true
+    });
+
+    // Inicializar Select2 no campo Nível 1
+    $('#nivel1').select2({
+        placeholder: 'Selecione ou digite...',
+        allowClear: true,
+        width: '100%',
+        language: 'pt-BR',
+        dropdownAutoWidth: true
+    });
+
+    // Validação do formulário
+    document.getElementById('vinculacaoDreForm').addEventListener('submit', function(e) {
+        const nivel3Item = document.getElementById('nivel3_item').value;
+        const nivel2 = document.getElementById('nivel2').value;
+        const nivel1 = document.getElementById('nivel1').value;
+        const sinal = document.getElementById('sinal').value;
+
+        if (!nivel3Item || !nivel2 || !nivel1 || !sinal) {
+            e.preventDefault();
+            alert('Por favor, preencha todos os campos obrigatórios!');
+
+            // Destacar campos vazios
+            if (!nivel3Item) $('#nivel3_item').next('.select2-container').addClass('is-invalid');
+            if (!nivel2) $('#nivel2').next('.select2-container').addClass('is-invalid');
+            if (!nivel1) $('#nivel1').next('.select2-container').addClass('is-invalid');
+            if (!sinal) document.getElementById('sinal').classList.add('is-invalid');
+
+            return false;
+        }
+    });
+
+    // Remover destaque de erro ao selecionar
+    $('#nivel3_item, #nivel2, #nivel1').on('select2:select', function() {
+        $(this).next('.select2-container').removeClass('is-invalid');
+    });
+
+    document.getElementById('sinal').addEventListener('change', function() {
+        this.classList.remove('is-invalid');
+    });
+});
+</script>
+
+<style>
+.section-divider {
+    margin: 2rem 0 1.5rem 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e9ecef;
+}
+
+.section-divider h4 {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+/* Estilos personalizados do Select2 - MELHORADOS */
+.select2-container--bootstrap-5 .select2-selection--single {
+    min-height: 42px !important;
+    height: 42px !important;
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    line-height: 40px !important;
+    padding-left: 12px !important;
+    padding-right: 40px !important;
+    color: #495057;
+    font-size: 1rem;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__placeholder {
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow {
+    height: 40px !important;
+    right: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--bootstrap-5.select2-container--focus .select2-selection,
+.select2-container--bootstrap-5.select2-container--open .select2-selection {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    outline: 0;
+}
+
+/* Dropdown do Select2 */
+.select2-container--bootstrap-5 .select2-dropdown {
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.select2-container--bootstrap-5 .select2-results__option {
+    padding: 8px 12px;
+    font-size: 0.95rem;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: #0d6efd !important;
+    color: white !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #e9ecef;
+    color: #212529;
+}
+
+/* Campo de busca dentro do dropdown */
+.select2-container--bootstrap-5 .select2-search--dropdown {
+    padding: 8px;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    padding: 8px 12px;
+    font-size: 0.95rem;
+    width: 100%;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    outline: 0;
+}
+
+/* Botão de limpar (X) */
+.select2-container--bootstrap-5 .select2-selection__clear {
+    color: #6c757d;
+    font-size: 1.2rem;
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.select2-container--bootstrap-5 .select2-selection__clear:hover {
+    color: #dc3545;
+}
+
+/* Destaque de erro */
+.select2-container.is-invalid .select2-selection {
+    border-color: #dc3545 !important;
+}
+
+.is-invalid {
+    border-color: #dc3545 !important;
+}
+
+/* Melhorar aparência quando desabilitado */
+.select2-container--bootstrap-5 .select2-selection--single.select2-selection--disabled {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+    border-color: #ced4da;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single.select2-selection--disabled .select2-selection__rendered {
+    color: #6c757d;
+}
+
+/* Ajuste para telas menores */
+@media (max-width: 768px) {
+    .select2-container--bootstrap-5 .select2-selection--single {
+        min-height: 38px !important;
+        height: 38px !important;
+    }
+
+    .select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+        line-height: 36px !important;
+    }
+}
+
+/* Form text melhorado */
+.form-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+.form-text i {
+    font-size: 0.8rem;
+}
+</style>
+{% endblock %}

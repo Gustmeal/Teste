@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Trocar Senha - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-lock"></i> Trocar Senha
+                    </h4>
+                </div>
+                <div class="card-body">
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Dica:</strong> Use uma senha forte com pelo menos 8 caracteres,
+                        combinando letras, números e símbolos.
+                    </div>
+
+                    <form method="POST" action="{{ url_for('auth.trocar_senha') }}" id="formTrocarSenha">
+                        <div class="mb-3">
+                            <label for="senha_atual" class="form-label">
+                                <i class="fas fa-key"></i> Senha Atual
+                            </label>
+                            <input type="password" class="form-control" id="senha_atual"
+                                   name="senha_atual" required autofocus>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="nova_senha" class="form-label">
+                                <i class="fas fa-lock"></i> Nova Senha
+                            </label>
+                            <input type="password" class="form-control" id="nova_senha"
+                                   name="nova_senha" minlength="8" required>
+                            <small class="text-muted">Mínimo de 8 caracteres</small>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="confirmar_senha" class="form-label">
+                                <i class="fas fa-lock"></i> Confirmar Nova Senha
+                            </label>
+                            <input type="password" class="form-control" id="confirmar_senha"
+                                   name="confirmar_senha" minlength="8" required>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Alterar Senha
+                            </button>
+                            <a href="{{ url_for('main.geinc_index') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i> Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Validação de senhas em tempo real
+    document.getElementById('formTrocarSenha').addEventListener('submit', function(e) {
+        const novaSenha = document.getElementById('nova_senha').value;
+        const confirmarSenha = document.getElementById('confirmar_senha').value;
+
+        if (novaSenha !== confirmarSenha) {
+            e.preventDefault();
+            alert('As senhas não coincidem!');
+            document.getElementById('confirmar_senha').focus();
+        }
+    });
+</script>
+{% endblock %}

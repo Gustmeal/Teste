@@ -960,3 +960,23 @@ body::before {
     background-color: #17a2b8;
     color: white;
 }
+/* Cores para os ícones do sistema DRE */
+.items-color {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.system-icon {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.system-icon i {
+    font-size: 2rem;
+    color: white;
+}

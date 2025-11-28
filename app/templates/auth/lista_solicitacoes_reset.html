@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitações de Reset de Senha - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-key"></i> Solicitações de Reset de Senha
+                    </h4>
+                    <a href="{{ url_for('auth.lista_usuarios') }}" class="btn btn-light btn-sm">
+                        <i class="fas fa-arrow-left"></i> Voltar
+                    </a>
+                </div>
+                <div class="card-body">
+
+                    <!-- Solicitações Pendentes -->
+                    <h5 class="mb-3">
+                        <i class="fas fa-clock text-warning"></i> Pendentes
+                        <span class="badge bg-warning text-dark">{{ pendentes|length }}</span>
+                    </h5>
+
+                    {% if pendentes %}
+                        <div class="table-responsive mb-5">
+                            <table class="table table-hover table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Usuário</th>
+                                        <th>Email</th>
+                                        <th>Motivo</th>
+                                        <th>Data Solicitação</th>
+                                        <th class="text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for solicitacao in pendentes %}
+                                    <tr>
+                                        <td>{{ solicitacao.ID }}</td>
+                                        <td>{{ solicitacao.usuario.NOME }}</td>
+                                        <td>{{ solicitacao.usuario.EMAIL }}</td>
+                                        <td>
+                                            {% if solicitacao.MOTIVO %}
+                                                {{ solicitacao.MOTIVO }}
+                                            {% else %}
+                                                <em class="text-muted">Não informado</em>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ solicitacao.SOLICITADO_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                                        <td class="text-center">
+                                            <form method="POST" style="display: inline;"
+                                                  action="{{ url_for('auth.aprovar_reset', id=solicitacao.ID) }}"
+                                                  onsubmit="return confirm('Confirma aprovação? Uma senha temporária será gerada.')">
+                                                <button type="submit" class="btn btn-success btn-sm"
+                                                        title="Aprovar e gerar senha">
+                                                    <i class="fas fa-check"></i> Aprovar
+                                                </button>
+                                            </form>
+                                            <form method="POST" style="display: inline;"
+                                                  action="{{ url_for('auth.recusar_reset', id=solicitacao.ID) }}"
+                                                  onsubmit="return confirm('Confirma recusa?')">
+                                                <button type="submit" class="btn btn-danger btn-sm"
+                                                        title="Recusar solicitação">
+                                                    <i class="fas fa-times"></i> Recusar
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle"></i> Nenhuma solicitação pendente no momento.
+                        </div>
+                    {% endif %}
+
+                    <!-- Histórico -->
+                    <h5 class="mb-3 mt-4">
+                        <i class="fas fa-history text-secondary"></i> Histórico Recente
+                    </h5>
+
+                    {% if historico %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Usuário</th>
+                                        <th>Email</th>
+                                        <th>Status</th>
+                                        <th>Aprovado/Recusado Por</th>
+                                        <th>Data</th>
+                                        <th>Senha Temporária</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for solicitacao in historico %}
+                                    <tr>
+                                        <td>{{ solicitacao.ID }}</td>
+                                        <td>{{ solicitacao.usuario.NOME }}</td>
+                                        <td>{{ solicitacao.usuario.EMAIL }}</td>
+                                        <td>
+                                            {% if solicitacao.STATUS == 'APROVADO' %}
+                                                <span class="badge bg-success">Aprovado</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Recusado</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if solicitacao.aprovador %}
+                                                {{ solicitacao.aprovador.NOME }}
+                                            {% else %}
+                                                <em class="text-muted">Sistema</em>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ solicitacao.APROVADO_AT.strftime('%d/%m/%Y %H:%M') if solicitacao.APROVADO_AT else '-' }}</td>
+                                        <td>
+                                            {% if solicitacao.NOVA_SENHA_TEMPORARIA %}
+                                                <code>{{ solicitacao.NOVA_SENHA_TEMPORARIA }}</code>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-secondary">
+                            <i class="fas fa-info-circle"></i> Nenhum histórico disponível.
+                        </div>
+                    {% endif %}
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

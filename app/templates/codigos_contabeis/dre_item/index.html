@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="central-panel mt-5 fade-in">
+    <a href="{{ url_for('codigo_contabil.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1>Vinculação entre DRE e Itens Orçamentários do SISCOR</h1>
+    <p class="text-secondary">Gerencie as vinculações entre estrutura DRE e itens orçamentários</p>
+
+    <!-- Cards de estatísticas -->
+    <div class="row g-4 mt-4 mb-5">
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle vinculacao-color mx-auto mb-3">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="card-title-custom mb-2">Total Vinculações</h3>
+                    <h2 class="text-primary counter mb-2" data-target="{{ total_vinculacoes }}">0</h2>
+                    <p class="text-muted small mb-0">Vinculações cadastradas</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle items-color mx-auto mb-3">
+                        <i class="fas fa-tags"></i>
+                    </div>
+                    <h3 class="card-title-custom mb-2">Itens Vinculados</h3>
+                    <h2 class="text-success counter mb-2" data-target="{{ itens_vinculados }}">0</h2>
+                    <p class="text-muted small mb-0">Itens orçamentários</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle codes-color mx-auto mb-3">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <h3 class="card-title-custom mb-2">Itens Disponíveis</h3>
+                    <h2 class="text-info counter mb-2" data-target="{{ itens_disponiveis }}">0</h2>
+                    <p class="text-muted small mb-0">No sistema SISCOR</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ações principais -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle manage-color mx-auto mb-3">
+                        <i class="fas fa-list"></i>
+                    </div>
+                    <h3 class="card-title-custom mb-3">Gerenciar Vinculações</h3>
+                    <p class="text-muted mb-4">
+                        Visualize, edite e gerencie todas as vinculações entre DRE e itens orçamentários.
+                    </p>
+                    <a href="{{ url_for('vinculacao_dre.lista_vinculacoes') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-eye me-2"></i> Ver Vinculações
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="icon-circle add-color mx-auto mb-3">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h3 class="card-title-custom mb-3">Nova Vinculação</h3>
+                    <p class="text-muted mb-4">
+                        Crie novas vinculações entre itens do SISCOR e níveis da DRE.
+                    </p>
+                    <a href="{{ url_for('vinculacao_dre.nova_vinculacao') }}" class="btn btn-success btn-lg">
+                        <i class="fas fa-plus me-2"></i> Criar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Últimas vinculações -->
+    {% if ultimas_vinculacoes %}
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-clock me-2"></i>Últimas Vinculações
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ordem</th>
+                            <th>Item</th>
+                            <th>Nível 2</th>
+                            <th>Nível 1</th>
+                            <th>Sinal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vinculacao in ultimas_vinculacoes %}
+                        <tr>
+                            <td><strong>{{ vinculacao.ORDEM }}</strong></td>
+                            <td>{{ vinculacao.NIVEL3_ITEM or '-' }}</td>
+                            <td>{{ vinculacao.NIVEL2 or '-' }}</td>
+                            <td>{{ vinculacao.NIVEL1 or '-' }}</td>
+                            <td>
+                                {% if vinculacao.SINAL == 1 %}
+                                    <span class="badge bg-success">Positivo</span>
+                                {% elif vinculacao.SINAL == -1 %}
+                                    <span class="badge bg-danger">Negativo</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Estilos específicos para os cards de estatísticas */
+.icon-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+}
+
+.icon-circle i {
+    font-size: 2rem;
+    color: white;
+}
+
+.vinculacao-color {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.items-color {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.codes-color {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.manage-color {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.add-color {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+.card-title-custom {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #495057;
+}
+
+.home-card {
+    border: none;
+    border-radius: 15px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.home-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+</style>
+
+<script>
+// Animação dos contadores
+document.addEventListener('DOMContentLoaded', function() {
+    const counters = document.querySelectorAll('.counter');
+
+    counters.forEach(counter => {
+        const target = parseInt(counter.getAttribute('data-target'));
+        const duration = 2000;
+        const increment = target / (duration / 16);
+        let current = 0;
+
+        const updateCounter = () => {
+            current += increment;
+            if (current < target) {
+                counter.textContent = Math.floor(current);
+                requestAnimationFrame(updateCounter);
+            } else {
+                counter.textContent = target;
+            }
+        };
+
+        updateCounter();
+    });
+});
+</script>
+{% endblock %}

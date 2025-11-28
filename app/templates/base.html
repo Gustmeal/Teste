@@ -89,12 +89,12 @@
                 </li>
 
                 <li><a href="{{ url_for('auth.perfil') }}"><i class="fas fa-user"></i> Meu Perfil</a></li>
-
+                <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
                 {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
                 <li><a href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users"></i> Gerenciar Usuários</a></li>
+                <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 {% endif %}
-
                 <li><a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
             </ul>
         </div>
@@ -178,8 +178,10 @@
                             <li><a class="dropdown-item" href="{{ url_for('feedback.index') }}"><i class="fas fa-comment-alt me-2"></i> Feedback</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('chat.index') }}"><i class="fas fa-comments me-2"></i> Chat</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt me-2"></i> Conversor de Documentos</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
                             {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users me-2"></i> Gerenciar Usuários</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% endif %}
                             <li><hr class="dropdown-divider"></li>

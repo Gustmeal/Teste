@@ -11,6 +11,9 @@ from app.models.usuario import Usuario, Empregado
 from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
 from app.models.usuario import Usuario, Empregado
 from app.utils.audit import registrar_log
+import secrets
+import string
+from app.models.reset_senha import ResetSenha
 
 
 
@@ -570,3 +573,195 @@ def cadastrar_usuario():
             flash(f'Erro ao cadastrar usuário: {str(e)}', 'danger')
 
     return render_template('auth/form_usuario.html', usuario=None)
+@auth_bp.route('/esqueci-senha', methods=['GET', 'POST'])
+def esqueci_senha():
+    """Página para solicitar reset de senha"""
+    if current_user.is_authenticated:
+        return redirect(url_for('main.geinc_index'))
+
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+        motivo = request.form.get('motivo', '').strip()
+
+        # Verificar se usuário existe
+        usuario = Usuario.query.filter_by(EMAIL=email).first()
+
+        if usuario:
+            # Verificar se já não tem solicitação pendente
+            solicitacao_pendente = ResetSenha.query.filter_by(
+                USUARIO_ID=usuario.ID,
+                STATUS='PENDENTE',
+                DELETED_AT=None
+            ).first()
+
+            if solicitacao_pendente:
+                flash('Você já possui uma solicitação de reset pendente. Aguarde aprovação do administrador.', 'warning')
+            else:
+                # Criar nova solicitação
+                nova_solicitacao = ResetSenha(
+                    USUARIO_ID=usuario.ID,
+                    MOTIVO=motivo,
+                    STATUS='PENDENTE'
+                )
+                db.session.add(nova_solicitacao)
+                db.session.commit()
+
+                # Registrar log
+                registrar_log(
+                    acao='solicitar_reset',
+                    entidade='usuario',
+                    entidade_id=usuario.ID,
+                    descricao=f'Solicitação de reset de senha: {email}'
+                )
+
+                flash('Solicitação enviada! Um administrador irá analisar e aprovar sua solicitação em breve.', 'success')
+        else:
+            # Por segurança, mostrar mensagem genérica mesmo se email não existir
+            flash('Solicitação enviada! Se o email estiver cadastrado, será analisada em breve.', 'success')
+
+        return redirect(url_for('auth.login'))
+
+    return render_template('auth/esqueci_senha.html')
+
+
+@auth_bp.route('/admin/solicitacoes-reset')
+@login_required
+@admin_or_moderador_required
+def lista_solicitacoes_reset():
+    """Lista todas as solicitações de reset de senha"""
+    # Buscar solicitações pendentes
+    pendentes = ResetSenha.query.filter_by(
+        STATUS='PENDENTE',
+        DELETED_AT=None
+    ).order_by(ResetSenha.SOLICITADO_AT.desc()).all()
+
+    # Buscar histórico (últimas 30 aprovadas/recusadas)
+    historico = ResetSenha.query.filter(
+        ResetSenha.STATUS.in_(['APROVADO', 'RECUSADO']),
+        ResetSenha.DELETED_AT == None
+    ).order_by(ResetSenha.APROVADO_AT.desc()).limit(30).all()
+
+    return render_template('auth/lista_solicitacoes_reset.html',
+                           pendentes=pendentes,
+                           historico=historico)
+
+
+@auth_bp.route('/admin/aprovar-reset/<int:id>', methods=['POST'])
+@login_required
+@admin_or_moderador_required
+def aprovar_reset(id):
+    """Aprovar solicitação de reset e gerar senha temporária"""
+    try:
+        solicitacao = ResetSenha.query.get_or_404(id)
+
+        if solicitacao.STATUS != 'PENDENTE':
+            flash('Esta solicitação já foi processada.', 'warning')
+            return redirect(url_for('auth.lista_solicitacoes_reset'))
+
+        # Gerar senha temporária (8 caracteres alfanuméricos)
+        caracteres = string.ascii_letters + string.digits
+        senha_temporaria = ''.join(secrets.choice(caracteres) for _ in range(8))
+
+        # Atualizar senha do usuário
+        usuario = Usuario.query.get(solicitacao.USUARIO_ID)
+        usuario.set_senha(senha_temporaria)
+
+        # Atualizar solicitação
+        solicitacao.STATUS = 'APROVADO'
+        solicitacao.APROVADO_POR = current_user.id
+        solicitacao.APROVADO_AT = datetime.utcnow()
+        solicitacao.NOVA_SENHA_TEMPORARIA = senha_temporaria
+
+        db.session.commit()
+
+        # Registrar log
+        registrar_log(
+            acao='aprovar_reset',
+            entidade='usuario',
+            entidade_id=usuario.ID,
+            descricao=f'Reset de senha aprovado para: {usuario.EMAIL}'
+        )
+
+        flash(f'Reset aprovado! Senha temporária: {senha_temporaria} - Informe ao usuário {usuario.EMAIL}', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao aprovar reset: {str(e)}', 'danger')
+
+    return redirect(url_for('auth.lista_solicitacoes_reset'))
+
+
+@auth_bp.route('/admin/recusar-reset/<int:id>', methods=['POST'])
+@login_required
+@admin_or_moderador_required
+def recusar_reset(id):
+    """Recusar solicitação de reset"""
+    try:
+        solicitacao = ResetSenha.query.get_or_404(id)
+
+        if solicitacao.STATUS != 'PENDENTE':
+            flash('Esta solicitação já foi processada.', 'warning')
+            return redirect(url_for('auth.lista_solicitacoes_reset'))
+
+        solicitacao.STATUS = 'RECUSADO'
+        solicitacao.APROVADO_POR = current_user.id
+        solicitacao.APROVADO_AT = datetime.utcnow()
+
+        db.session.commit()
+
+        # Registrar log
+        registrar_log(
+            acao='recusar_reset',
+            entidade='usuario',
+            entidade_id=solicitacao.USUARIO_ID,
+            descricao=f'Reset de senha recusado'
+        )
+
+        flash('Solicitação recusada.', 'info')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao recusar reset: {str(e)}', 'danger')
+
+    return redirect(url_for('auth.lista_solicitacoes_reset'))
+
+
+@auth_bp.route('/trocar-senha', methods=['GET', 'POST'])
+@login_required
+def trocar_senha():
+    """Página para o próprio usuário trocar sua senha"""
+    if request.method == 'POST':
+        senha_atual = request.form.get('senha_atual', '')
+        nova_senha = request.form.get('nova_senha', '')
+        confirmar_senha = request.form.get('confirmar_senha', '')
+
+        usuario = Usuario.query.get(current_user.id)
+
+        # Validações
+        if not usuario.verificar_senha(senha_atual):
+            flash('Senha atual incorreta.', 'danger')
+        elif len(nova_senha) < 8:
+            flash('A nova senha deve ter pelo menos 8 caracteres.', 'danger')
+        elif nova_senha != confirmar_senha:
+            flash('As senhas não coincidem.', 'danger')
+        else:
+            try:
+                usuario.set_senha(nova_senha)
+                db.session.commit()
+
+                # Registrar log
+                registrar_log(
+                    acao='trocar_senha',
+                    entidade='usuario',
+                    entidade_id=current_user.id,
+                    descricao='Senha alterada pelo próprio usuário'
+                )
+
+                flash('Senha alterada com sucesso!', 'success')
+                return redirect(url_for('main.geinc_index'))
+
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Erro ao alterar senha: {str(e)}', 'danger')
+
+    return render_template('auth/trocar_senha.html')

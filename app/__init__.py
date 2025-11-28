@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from config import Config
+from flask_login import current_user
 
 db = SQLAlchemy()
 
@@ -21,6 +22,7 @@ def create_app():
     @app.template_filter('br_number')
     def br_number_filter(value):
         return format_number(value)
+
 
     # Inicializar Flask-Login
     from app.auth.utils import init_login_manager
@@ -95,6 +97,9 @@ def create_app():
     from app.routes.codigo_contabil_routes import codigo_contabil_bp
     app.register_blueprint(codigo_contabil_bp)
 
+    from app.routes.vinculacao_dre_routes import vinculacao_dre_bp
+    app.register_blueprint(vinculacao_dre_bp)
+
     from app.routes.vinculacao_routes import vinculacao_bp
     app.register_blueprint(vinculacao_bp)
 
@@ -157,5 +162,14 @@ def create_app():
             return redirect(url_for('auth.login'))
 
         return redirect(url_for('main.geinc_index'))
+
+    @app.context_processor
+    def inject_pendentes_reset():
+        if current_user.is_authenticated and (current_user.perfil in ['admin', 'moderador']):
+            from app.models.reset_senha import ResetSenha
+            pendentes_count = ResetSenha.query.filter_by(STATUS='PENDENTE', DELETED_AT=None).count()
+            return {'pendentes_count': pendentes_count}
+        return {'pendentes_count': 0}
+
 
     return app
