@@ -43,7 +43,7 @@ def create_app():
         from app.models.mensagem import Mensagem
         from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
         from app.models.deliberacao_pagamento import DeliberacaoPagamento
-
+        from app.models.notificacao import Notificacao, NotificacaoVisualizacao
 
         db.create_all()
 
@@ -151,6 +151,8 @@ def create_app():
     from app.routes.siscalculo_routes import siscalculo_bp
     app.register_blueprint(siscalculo_bp)
 
+    from app.routes.notificacoes_routes import notificacoes_bp
+    app.register_blueprint(notificacoes_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

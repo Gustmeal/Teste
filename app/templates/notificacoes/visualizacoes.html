@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Visualizações - {{ notificacao.TITULO }} - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-eye"></i> Visualizações da Notificação</h2>
+        <a href="{{ url_for('notificacoes.index') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <h5>{{ notificacao.TITULO }}</h5>
+            <p class="text-muted">{{ notificacao.MENSAGEM[:200] }}...</p>
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>Tipo:</strong> {{ notificacao.TIPO }}<br>
+                    <strong>Prioridade:</strong> {{ notificacao.PRIORIDADE }}
+                </div>
+                <div class="col-md-6">
+                    <strong>Status:</strong> {{ 'Ativa' if notificacao.ATIVO else 'Inativa' }}<br>
+                    <strong>Criada em:</strong> {{ notificacao.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if visualizacoes %}
+    <div class="card shadow">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                Total de Visualizações: {{ visualizacoes|length }}
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Usuário</th>
+                            <th>Email</th>
+                            <th>Perfil</th>
+                            <th>Data/Hora Visualização</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vis in visualizacoes %}
+                        <tr>
+                            <td>{{ vis.usuario.NOME }}</td>
+                            <td>{{ vis.usuario.EMAIL }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'danger' if vis.usuario.perfil == 'admin' else ('warning' if vis.usuario.perfil == 'moderador' else 'secondary') }}">
+                                    {{ vis.usuario.perfil }}
+                                </span>
+                            </td>
+                            <td>{{ vis.VISUALIZADO_AT.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle"></i> Nenhuma visualização registrada ainda.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

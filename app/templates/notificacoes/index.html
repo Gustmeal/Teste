@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Notificações - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-bell"></i> Gerenciar Notificações</h2>
+        <a href="{{ url_for('notificacoes.nova') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Nova Notificação
+        </a>
+    </div>
+
+    {% if notificacoes %}
+    <div class="card shadow">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Título</th>
+                            <th>Tipo</th>
+                            <th>Prioridade</th>
+                            <th>Status</th>
+                            <th>Visualizações</th>
+                            <th>Período</th>
+                            <th>Criado Por</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for notif in notificacoes %}
+                        <tr>
+                            <td>{{ notif.ID }}</td>
+                            <td>
+                                <strong>{{ notif.TITULO }}</strong>
+                                <br>
+                                <small class="text-muted">{{ notif.MENSAGEM[:50] }}...</small>
+                            </td>
+                            <td>
+                                {% if notif.TIPO == 'modal' %}
+                                <span class="badge bg-primary">Modal</span>
+                                {% else %}
+                                <span class="badge bg-info">Banner</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if notif.PRIORIDADE == 'urgente' %}
+                                <span class="badge bg-danger">Urgente</span>
+                                {% elif notif.PRIORIDADE == 'alta' %}
+                                <span class="badge bg-warning">Alta</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Normal</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if notif.ATIVO %}
+                                <span class="badge bg-success">Ativa</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Inativa</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('notificacoes.visualizacoes', id=notif.ID) }}"
+                                   class="text-decoration-none">
+                                    {{ notif.total_visualizacoes }} usuários
+                                    <br>
+                                    <small class="text-muted">{{ "%.1f"|format(notif.percentual_visualizacao) }}%</small>
+                                </a>
+                            </td>
+                            <td>
+                                <small>
+                                    {% if notif.DT_INICIO %}
+                                    De: {{ notif.DT_INICIO.strftime('%d/%m/%Y %H:%M') }}<br>
+                                    {% endif %}
+                                    {% if notif.DT_FIM %}
+                                    Até: {{ notif.DT_FIM.strftime('%d/%m/%Y %H:%M') }}
+                                    {% endif %}
+                                    {% if not notif.DT_INICIO and not notif.DT_FIM %}
+                                    Sem período definido
+                                    {% endif %}
+                                </small>
+                            </td>
+                            <td>
+                                {{ notif.criador.NOME }}<br>
+                                <small class="text-muted">{{ notif.CREATED_AT.strftime('%d/%m/%Y') }}</small>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{{ url_for('notificacoes.editar', id=notif.ID) }}"
+                                       class="btn btn-outline-primary" title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+
+                                    <form method="POST"
+                                          action="{{ url_for('notificacoes.alternar_status', id=notif.ID) }}"
+                                          style="display: inline;">
+                                        <button type="submit"
+                                                class="btn btn-outline-{{ 'secondary' if notif.ATIVO else 'success' }}"
+                                                title="{{ 'Desativar' if notif.ATIVO else 'Ativar' }}">
+                                            <i class="fas fa-{{ 'toggle-on' if notif.ATIVO else 'toggle-off' }}"></i>
+                                        </button>
+                                    </form>
+
+                                    <form method="POST"
+                                          action="{{ url_for('notificacoes.excluir', id=notif.ID) }}"
+                                          onsubmit="return confirm('Confirma exclusão?')"
+                                          style="display: inline;">
+                                        <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> Nenhuma notificação cadastrada.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

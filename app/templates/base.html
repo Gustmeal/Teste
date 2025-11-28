@@ -95,6 +95,13 @@
                 <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 {% endif %}
+                {% if current_user.perfil in ['admin', 'moderador'] %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
+                        <i class="fas fa-bell"></i> Notificações
+                    </a>
+                </li>
+                {% endif %}
                 <li><a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
             </ul>
         </div>
@@ -184,6 +191,13 @@
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% endif %}
+                            {% if current_user.perfil in ['admin', 'moderador'] %}
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
+                                    <i class="fas fa-bell"></i> Notificações
+                                </a>
+                            </li>
+                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Sair</a></li>
                         </ul>
@@ -234,6 +248,205 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    <!-- SISTEMA DE NOTIFICAÇÕES - Modal Pop-up -->
+    <!-- SISTEMA DE NOTIFICAÇÕES - Modal Pop-up -->
+    {% if current_user.is_authenticated %}
+
+    <!-- Estilos customizados para o modal -->
+    <style>
+        #notificacaoModal .modal-content {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        #notificacaoModal .modal-header {
+            border: none;
+            padding: 25px 30px;
+            position: relative;
+        }
+
+        #notificacaoModal .modal-header::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+
+        #notificacaoModal .modal-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #notificacaoModal .modal-title i {
+            font-size: 1.6rem;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        #notificacaoModal .modal-body {
+            padding: 30px;
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: #333;
+        }
+
+        #notificacaoModal .modal-footer {
+            border: none;
+            padding: 20px 30px;
+            background: #f8f9fa;
+        }
+
+        #notificacaoModal .btn-entendi {
+            padding: 12px 35px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        #notificacaoModal .btn-entendi:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        #notificacaoModal .btn-close {
+            filter: brightness(0) invert(1);
+            opacity: 0.8;
+        }
+
+        #notificacaoModal .btn-close:hover {
+            opacity: 1;
+        }
+
+        /* Animação de entrada */
+        #notificacaoModal.show .modal-dialog {
+            animation: slideInDown 0.5s ease;
+        }
+
+        @keyframes slideInDown {
+            from {
+                transform: translate3d(0, -100%, 0);
+                opacity: 0;
+            }
+            to {
+                transform: translate3d(0, 0, 0);
+                opacity: 1;
+            }
+        }
+
+        /* Gradientes para diferentes prioridades */
+        .modal-header.bg-primary-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .modal-header.bg-warning-gradient {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .modal-header.bg-danger-gradient {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+    </style>
+
+    <div class="modal fade" id="notificacaoModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content" id="modalContent">
+                <!-- Conteúdo dinâmico será inserido aqui -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const url = '{{ url_for("notificacoes.obter_nao_lidas") }}';
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data.notificacoes && data.notificacoes.length > 0) {
+                    exibirNotificacao(data.notificacoes[0]);
+                }
+            })
+            .catch(error => console.error('Erro ao buscar notificações:', error));
+    });
+
+    function exibirNotificacao(notif) {
+        // Definir estilo baseado na prioridade
+        let headerClass = 'bg-primary-gradient';
+        let icone = 'fa-bell';
+        let btnClass = 'btn-primary';
+
+        if (notif.prioridade === 'urgente') {
+            headerClass = 'bg-danger-gradient';
+            icone = 'fa-exclamation-triangle';
+            btnClass = 'btn-danger';
+        } else if (notif.prioridade === 'alta') {
+            headerClass = 'bg-warning-gradient';
+            icone = 'fa-exclamation-circle';
+            btnClass = 'btn-warning';
+        }
+
+        // Montar HTML do modal com design moderno
+        const modalHtml = `
+            <div class="modal-header ${headerClass} text-white">
+                <h5 class="modal-title">
+                    <i class="fas ${icone}"></i>
+                    <span>${notif.titulo}</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div style="text-align: justify;">
+                    ${notif.mensagem}
+                </div>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn ${btnClass} btn-entendi" onclick="marcarComoLida(${notif.id})" data-bs-dismiss="modal">
+                    <i class="fas fa-check-circle me-2"></i>
+                    Entendi
+                </button>
+            </div>
+        `;
+
+        document.getElementById('modalContent').innerHTML = modalHtml;
+
+        // Exibir modal
+        const modal = new bootstrap.Modal(document.getElementById('notificacaoModal'));
+        modal.show();
+    }
+
+    function marcarComoLida(notifId) {
+        fetch('{{ url_for("notificacoes.marcar_visualizada", id=0) }}'.replace('0', notifId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Notificação marcada como lida');
+            }
+        })
+        .catch(error => console.error('Erro ao marcar notificação:', error));
+    }
+    </script>
+    {% endif %}
 
     <!-- Script do Sidebar -->
     <script>
@@ -348,6 +561,5 @@
             modal.show();
         }
     </script>
-<script src="{{ url_for('static', filename='js/auto-loading.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Editar' if notificacao else 'Nova' }} Notificação - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="fas fa-bell"></i>
+                        {{ 'Editar' if notificacao else 'Nova' }} Notificação
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Título <span class="text-danger">*</span></label>
+                            <input type="text"
+                                   class="form-control"
+                                   name="titulo"
+                                   value="{{ notificacao.TITULO if notificacao else '' }}"
+                                   required
+                                   maxlength="200">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Mensagem <span class="text-danger">*</span></label>
+                            <textarea class="form-control"
+                                      name="mensagem"
+                                      rows="6"
+                                      required>{{ notificacao.MENSAGEM if notificacao else '' }}</textarea>
+                            <small class="text-muted">Suporta HTML básico (negrito, itálico, quebras de linha)</small>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Tipo de Exibição</label>
+                                <select class="form-select" name="tipo">
+                                    <option value="modal" {{ 'selected' if notificacao and notificacao.TIPO == 'modal' else '' }}>
+                                        Modal (Pop-up)
+                                    </option>
+                                    <option value="banner" {{ 'selected' if notificacao and notificacao.TIPO == 'banner' else '' }}>
+                                        Banner (Topo fixo)
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Prioridade</label>
+                                <select class="form-select" name="prioridade">
+                                    <option value="normal" {{ 'selected' if notificacao and notificacao.PRIORIDADE == 'normal' else '' }}>
+                                        Normal
+                                    </option>
+                                    <option value="alta" {{ 'selected' if notificacao and notificacao.PRIORIDADE == 'alta' else '' }}>
+                                        Alta
+                                    </option>
+                                    <option value="urgente" {{ 'selected' if notificacao and notificacao.PRIORIDADE == 'urgente' else '' }}>
+                                        Urgente
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Data/Hora Início (Opcional)</label>
+                                <input type="datetime-local"
+                                       class="form-control"
+                                       name="dt_inicio"
+                                       value="{{ notificacao.DT_INICIO.strftime('%Y-%m-%dT%H:%M') if notificacao and notificacao.DT_INICIO else '' }}">
+                                <small class="text-muted">Deixe vazio para exibir imediatamente</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Data/Hora Fim (Opcional)</label>
+                                <input type="datetime-local"
+                                       class="form-control"
+                                       name="dt_fim"
+                                       value="{{ notificacao.DT_FIM.strftime('%Y-%m-%dT%H:%M') if notificacao and notificacao.DT_FIM else '' }}">
+                                <small class="text-muted">Deixe vazio para sem data de expiração</small>
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Dica:</strong> A notificação será exibida apenas para usuários que ainda não a visualizaram
+                            e que estejam dentro do período definido (se houver).
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('notificacoes.index') }}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> {{ 'Atualizar' if notificacao else 'Criar' }} Notificação
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
