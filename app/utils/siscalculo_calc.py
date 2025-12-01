@@ -191,67 +191,79 @@ class CalculadorSiscalculo:
 
     def calcular_parcela_completa(self, dado):
         """
-        Calcula UMA PARCELA do vencimento até a data de atualização
+        Calcula UMA parcela com TODAS as etapas de arredondamento
 
-        FÓRMULAS CORRETAS (baseadas no SQL da EMGEA):
-        1. MESESATRASO = Diferença em meses entre DT_VENCIMENTO e DT_PROPOSTA
-        2. VR_Atual = VR_COTA × (1 + Fator_Acumulado)
-        3. ATM = VR_Atual - VR_COTA (DIFERENÇA - pode ser negativa!)
-        4. juros = VR_Atual × (Taxa_Juros_Mensal × MESESATRASO)
-        5. multa = VR_Atual × (Percentual_Multa / 100)
-        6. SOMA = VR_Atual + juros + multa
-
-        IMPORTANTE: Arredonda valores como no Excel (ROUND_HALF_UP) para evitar diferença de centavos
+        CORREÇÕES:
+        1. Se meses de atraso < 0 (futuro), zera todos os encargos
+        2. Se meses de atraso == 0 (mês da atualização), zera todos os encargos
+        3. Cálculo correto de meses considerando apenas ano e mês (ignora dia)
         """
         try:
-            print(f"    [CALCULANDO PARCELA COMPLETA]")
-            print(f"    Vencimento: {dado.DT_VENCIMENTO}")
-            print(f"    Atualização: {self.dt_atualizacao}")
-            print(f"    Valor Cota: R$ {dado.VR_COTA}")
+            print(f"\n=== CALCULANDO PARCELA ===")
+            print(f"Imóvel: {dado.IMOVEL}")
+            print(f"Vencimento: {dado.DT_VENCIMENTO}")
+            print(f"Atualização: {self.dt_atualizacao}")
 
             # 1. ARREDONDAR VR_COTA (2 casas decimais)
             vr_cota_arredondado = arredondar(dado.VR_COTA, 2)
             print(f"    VR_COTA arredondado: R$ {vr_cota_arredondado}")
 
-            # 2. MESES DE ATRASO
+            # 2. MESES DE ATRASO - Calcular diferença em meses
             delta = relativedelta(self.dt_atualizacao, dado.DT_VENCIMENTO)
             meses_atraso = delta.years * 12 + delta.months
+
+            # ✅ CORREÇÃO: Se meses == 0 mas já passou do vencimento, conta 1 mês
+            # Exemplo: 02/01/2018 → 01/02/2018 = 30 dias = 1 mês de atraso
+            if meses_atraso == 0 and self.dt_atualizacao > dado.DT_VENCIMENTO:
+                meses_atraso = 1
+
             print(f"    Meses de atraso: {meses_atraso}")
 
-            # 3. Buscar índices do período e calcular FATOR ACUMULADO (JUROS COMPOSTOS)
+            # ✅ CORREÇÃO: Se meses <= 0, zerar TUDO
+            if meses_atraso <= 0:
+                print(f"    [AVISO] Meses de atraso <= 0: Zerando todos os encargos")
+                return {
+                    'meses_atraso_total': meses_atraso,
+                    'percentual_total': Decimal('0'),
+                    'atm': Decimal('0'),
+                    'total_juros': Decimal('0'),
+                    'total_multa': Decimal('0'),
+                    'total_desconto': Decimal('0'),
+                    'valor_total': vr_cota_arredondado
+                }
+
+            # 3. Buscar índices do período e calcular FATOR ACUMULADO
             indices_periodo = self._obter_indices_periodo(dado.DT_VENCIMENTO, self.dt_atualizacao)
 
-            # IMPORTANTE: Manter MÁXIMA precisão durante o cálculo
+            # Calcular fator acumulado (juros compostos)
             fator_acumulado = Decimal('1.0')
             for indice in indices_periodo:
                 fator_mes = Decimal('1.0') + (indice / Decimal('100'))
                 fator_acumulado = fator_acumulado * fator_mes
 
-            # Percentual = (Fator - 1) - pode ser NEGATIVO
+            # Percentual = (Fator - 1)
             percentual_correcao = (fator_acumulado - Decimal('1.0'))
 
-            print(f"    Total de meses com índice: {len(indices_periodo)}")
+            print(f"    Total de índices aplicados: {len(indices_periodo)}")
             print(f"    Fator acumulado: {fator_acumulado}")
-            print(f"    Percentual de correção: {(percentual_correcao * Decimal('100')):.6f}%")
+            print(f"    Percentual de correção: {(percentual_correcao * Decimal('100')):.4f}%")
 
-            # 4. VR_Atual = VR_COTA_ARREDONDADO × Fator_Acumulado
+            # 4. VR_Atual = VR_COTA × Fator_Acumulado
             vr_atual_calculado = vr_cota_arredondado * fator_acumulado
-
-            # 5. ARREDONDAR VR_Atual (2 casas decimais) - IGUAL AO EXCEL
             vr_atual_arredondado = arredondar(vr_atual_calculado, 2)
 
-            # 6. ATM = VR_Atual_Arredondado - VR_COTA_Arredondado
+            # 5. ATM = VR_Atual - VR_COTA
             atm = vr_atual_arredondado - vr_cota_arredondado
             atm_arredondado = arredondar(atm, 2)
 
-            print(f"    Valor Atualizado (VR_Atual): R$ {vr_atual_arredondado}")
-            print(f"    ATM (diferença): R$ {atm_arredondado}")
+            print(f"    Valor Atualizado: R$ {vr_atual_arredondado}")
+            print(f"    ATM: R$ {atm_arredondado}")
 
-            # 7. JUROS = VR_Atual_Arredondado × (Taxa × Meses)
+            # 6. JUROS = VR_Atual × (Taxa × Meses)
             valor_juros_calculado = vr_atual_arredondado * self.TAXA_JUROS_MENSAL * Decimal(str(meses_atraso))
             juros_arredondado = arredondar(valor_juros_calculado, 4)
 
-            # 8. MULTA = VR_Atual_Arredondado × (Percentual_Multa / 100)
+            # 7. MULTA = VR_Atual × (Percentual_Multa / 100)
             if dado.DT_VENCIMENTO <= self.DATA_MUDANCA_MULTA:
                 taxa_multa = self.MULTA_ANTIGA
             else:
@@ -260,20 +272,16 @@ class CalculadorSiscalculo:
             valor_multa_calculado = vr_atual_arredondado * taxa_multa / Decimal('100')
             multa_arredondada = arredondar(valor_multa_calculado, 2)
 
-            # 9. Desconto
+            # 8. Desconto
             valor_desconto = Decimal('0')
 
-            # 10. SOMA = VR_Atual_Arredondado + Juros_Arredondado + Multa_Arredondada
+            # 9. SOMA TOTAL
             soma = vr_atual_arredondado + juros_arredondado + multa_arredondada - valor_desconto
             soma_final = arredondar(soma, 2)
 
-            print(f"    --- VALORES ARREDONDADOS (EXCEL) ---")
-            print(f"    VR_COTA: R$ {vr_cota_arredondado} (2 casas)")
-            print(f"    VR_Atual: R$ {vr_atual_arredondado} (2 casas)")
-            print(f"    ATM: R$ {atm_arredondado} (2 casas)")
-            print(f"    Juros: R$ {juros_arredondado} (4 casas)")
-            print(f"    Multa: R$ {multa_arredondada} (2 casas)")
-            print(f"    SOMA: R$ {soma_final} (2 casas)")
+            print(f"    Juros: R$ {juros_arredondado}")
+            print(f"    Multa: R$ {multa_arredondada}")
+            print(f"    SOMA: R$ {soma_final}")
 
             return {
                 'meses_atraso_total': meses_atraso,
@@ -296,23 +304,26 @@ class CalculadorSiscalculo:
         Busca TODOS os índices do período (mês a mês)
         Retorna lista com os percentuais
 
-        Exemplo de retorno: [0.45, 0.38, 0.42, 0.35, 0.40, 0.36]
+        Exemplo de retorno: [0.25, 0.57, 0.42, ...]
 
-        IMPORTANTE: Aplica índices até o MÊS ANTERIOR à data de atualização
+        IMPORTANTE: INCLUI o índice do mês da data de atualização
+
+        Exemplo: Se data de atualização é 01/02/2018, INCLUI o índice de fevereiro/2018
         """
         try:
             # Primeiro dia do mês de início
             dt_inicio_mes = date(dt_inicio.year, dt_inicio.month, 1)
 
-            # ✅ CORREÇÃO: Primeiro dia do MÊS ANTERIOR à data de atualização
-            from dateutil.relativedelta import relativedelta
-            dt_fim_mes = date(dt_fim.year, dt_fim.month, 1) - relativedelta(months=1)
+            # ✅ CORREÇÃO DEFINITIVA: Incluir o mês da data de atualização
+            # Se dt_fim = 01/02/2018, pega até 01/02/2018 (INCLUI fevereiro)
+            dt_fim_mes_atual = date(dt_fim.year, dt_fim.month, 1)
 
             dt_inicio_str = dt_inicio_mes.strftime('%Y%m%d')
-            dt_fim_str = dt_fim_mes.strftime('%Y%m%d')
+            dt_fim_str = dt_fim_mes_atual.strftime('%Y%m%d')
 
             print(f"    [DEBUG ÍNDICES] Período: {dt_inicio_str} até {dt_fim_str}")
 
+            # Query simples já que IPCA (id=9) tem apenas 1 registro por mês
             sql = text("""
                 SELECT numIndicadorEconomico
                 FROM [DBPRDINDICADORECONOMICO].[dbo].[tblIndicadorEconomico]
@@ -331,12 +342,15 @@ class CalculadorSiscalculo:
                 }
             )
 
-            # Retorna lista de Decimals: [0.45, 0.38, 0.42, ...]
+            # Retorna lista de Decimals
             indices = [Decimal(str(row[0])) for row in resultado.fetchall()]
 
             if len(indices) > 0:
-                print(f"    [DEBUG] Total de índices: {len(indices)}")
+                print(f"    [DEBUG] Total de índices retornados: {len(indices)}")
                 print(f"    [DEBUG] Primeiros 3 índices: {indices[:3]}")
+                print(f"    [DEBUG] Últimos 3 índices: {indices[-3:]}")
+            else:
+                print(f"    [AVISO] Nenhum índice encontrado para o período!")
 
             return indices
 
