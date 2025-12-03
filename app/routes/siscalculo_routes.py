@@ -910,3 +910,249 @@ def exportar_pdf():
         flash(f'Erro interno ao gerar o PDF: {str(e)}', 'danger')
         return redirect(url_for('siscalculo.index'))
 
+
+@siscalculo_bp.route('/clausula_prejuizo')
+@login_required
+def clausula_prejuizo():
+    """Página principal da Cláusula de Prejuízo"""
+    try:
+        # Buscar todos os contratos únicos que possuem cálculos
+        contratos = db.session.query(
+            SiscalculoCalculos.IMOVEL
+        ).distinct().order_by(
+            SiscalculoCalculos.IMOVEL
+        ).all()
+
+        contratos_lista = [c.IMOVEL for c in contratos]
+
+        return render_template('sumov/siscalculo/clausula_prejuizo.html',
+                               contratos=contratos_lista)
+
+    except Exception as e:
+        flash(f'Erro ao carregar cláusula de prejuízo: {str(e)}', 'danger')
+        return redirect(url_for('siscalculo.index'))
+
+
+@siscalculo_bp.route('/clausula_prejuizo/buscar_datas/<imovel>')
+@login_required
+def buscar_datas_contrato(imovel):
+    """Busca as datas de atualização disponíveis para um contrato"""
+    try:
+        # Buscar todas as datas de atualização para o contrato selecionado
+        datas = db.session.query(
+            SiscalculoCalculos.DT_ATUALIZACAO,
+            SiscalculoCalculos.ID_INDICE_ECONOMICO,
+            ParamIndicesEconomicos.DSC_INDICE_ECONOMICO,
+            db.func.sum(SiscalculoCalculos.VR_TOTAL).label('total_geral'),
+            db.func.max(SiscalculoCalculos.PERC_HONORARIOS).label('perc_honorarios')
+        ).join(
+            ParamIndicesEconomicos,
+            SiscalculoCalculos.ID_INDICE_ECONOMICO == ParamIndicesEconomicos.ID_INDICE_ECONOMICO
+        ).filter(
+            SiscalculoCalculos.IMOVEL == imovel
+        ).group_by(
+            SiscalculoCalculos.DT_ATUALIZACAO,
+            SiscalculoCalculos.ID_INDICE_ECONOMICO,
+            ParamIndicesEconomicos.DSC_INDICE_ECONOMICO
+        ).order_by(
+            SiscalculoCalculos.DT_ATUALIZACAO.desc()
+        ).all()
+
+        # Converter para formato JSON
+        datas_json = []
+        for d in datas:
+            # Calcular honorários
+            total_sem_honorarios = d.total_geral or Decimal('0')
+            perc_hon = d.perc_honorarios or Decimal('10.00')
+
+            # Remover honorários do total para obter o valor base
+            # total_geral = valor_base * (1 + perc_honorarios/100)
+            # valor_base = total_geral / (1 + perc_honorarios/100)
+            valor_base = total_sem_honorarios / (Decimal('1') + perc_hon / Decimal('100'))
+            honorarios = total_sem_honorarios - valor_base
+
+            datas_json.append({
+                'dt_atualizacao': d.DT_ATUALIZACAO.strftime('%Y-%m-%d'),
+                'dt_atualizacao_formatada': d.DT_ATUALIZACAO.strftime('%d/%m/%Y'),
+                'id_indice': d.ID_INDICE_ECONOMICO,
+                'dsc_indice': d.DSC_INDICE_ECONOMICO,
+                'total_sem_honorarios': float(valor_base),
+                'honorarios': float(honorarios),
+                'total_com_honorarios': float(total_sem_honorarios),
+                'perc_honorarios': float(perc_hon)
+            })
+
+        return jsonify(datas_json)
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@siscalculo_bp.route('/clausula_prejuizo/calcular', methods=['POST'])
+@login_required
+def calcular_clausula_prejuizo():
+    """Calcula o prejuízo entre duas datas de atualização"""
+    try:
+        data = request.get_json()
+
+        imovel = data.get('imovel')
+        dt_maior = data.get('dt_maior')
+        dt_menor = data.get('dt_menor')
+
+        if not all([imovel, dt_maior, dt_menor]):
+            return jsonify({'erro': 'Dados incompletos'}), 400
+
+        # Converter datas
+        dt_maior_obj = datetime.strptime(dt_maior, '%Y-%m-%d').date()
+        dt_menor_obj = datetime.strptime(dt_menor, '%Y-%m-%d').date()
+
+        # Buscar o total com honorários da data maior
+        calc_maior = db.session.query(
+            db.func.sum(SiscalculoCalculos.VR_TOTAL).label('total'),
+            db.func.max(SiscalculoCalculos.PERC_HONORARIOS).label('perc_honorarios')
+        ).filter(
+            SiscalculoCalculos.IMOVEL == imovel,
+            SiscalculoCalculos.DT_ATUALIZACAO == dt_maior_obj
+        ).first()
+
+        # Buscar o total com honorários da data menor
+        calc_menor = db.session.query(
+            db.func.sum(SiscalculoCalculos.VR_TOTAL).label('total'),
+            db.func.max(SiscalculoCalculos.PERC_HONORARIOS).label('perc_honorarios')
+        ).filter(
+            SiscalculoCalculos.IMOVEL == imovel,
+            SiscalculoCalculos.DT_ATUALIZACAO == dt_menor_obj
+        ).first()
+
+        if not calc_maior or not calc_menor:
+            return jsonify({'erro': 'Dados não encontrados para as datas selecionadas'}), 404
+
+        # Valores COM honorários
+        valor_maior_com_hon = calc_maior.total or Decimal('0')
+        valor_menor_com_hon = calc_menor.total or Decimal('0')
+
+        # Calcular prejuízo: MENOR - MAIOR (ordem corrigida)
+        prejuizo_com_honorarios = valor_menor_com_hon - valor_maior_com_hon
+
+        return jsonify({
+            'valor_maior': float(valor_maior_com_hon),
+            'valor_menor': float(valor_menor_com_hon),
+            'prejuizo': float(prejuizo_com_honorarios),
+            'perc_honorarios': float(calc_maior.perc_honorarios or Decimal('10.00'))
+        })
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+@siscalculo_bp.route('/clausula_prejuizo/salvar', methods=['POST'])
+@login_required
+def salvar_clausula_prejuizo():
+    """Salva a cláusula de prejuízo na tabela PEN_TB013_TABELA_PRINCIPAL"""
+    try:
+        data = request.get_json()
+
+        nu_contrato = data.get('nu_contrato')
+        vr_falha = data.get('vr_falha')
+
+        if not nu_contrato or vr_falha is None:
+            return jsonify({'erro': 'Dados incompletos'}), 400
+
+        # Converter valor para Decimal e garantir que seja POSITIVO
+        vr_falha_decimal = abs(Decimal(str(vr_falha)))
+
+        # Converter número do contrato para Numeric(23,0)
+        try:
+            nu_contrato_decimal = Decimal(nu_contrato)
+        except:
+            return jsonify({'erro': 'Número de contrato inválido'}), 400
+
+        # Buscar o último ID_DETALHAMENTO para incrementar
+        ultimo_id = db.session.query(
+            db.func.max(db.cast(
+                db.text("ID_DETALHAMENTO"),
+                db.Integer
+            ))
+        ).select_from(
+            db.text("BDG.PEN_TB013_TABELA_PRINCIPAL")
+        ).scalar()
+
+        novo_id = (ultimo_id or 0) + 1
+
+        # Preparar dados para inserção
+        dados_insercao = {
+            'ID_DETALHAMENTO': novo_id,
+            'NU_CONTRATO': nu_contrato_decimal,
+            'ID_CARTEIRA': 4,
+            'ID_OCORRENCIA': 1,
+            'ID_STATUS': 3,
+            'VR_FALHA': vr_falha_decimal,  # Já está como positivo
+            'DEVEDOR': 'CAIXA',  # Sempre CAIXA
+            'USUARIO_CRIACAO': current_user.NOME,
+            'USUARIO_ALTERACAO': current_user.NOME,
+            'USUARIO_EXCLUSAO': None,
+            'CREATED_AT': datetime.utcnow(),
+            'UPDATED_AT': datetime.utcnow(),
+            'DELETED_AT': None,
+            # Demais campos como NULL
+            'NU_OFICIO': None,
+            'IC_CONDENACAO': None,
+            'INDICIO_DUPLIC': None,
+            'DT_PAGTO': None,
+            'ID_ACAO': None,
+            'DT_DOCUMENTO': None,
+            'DT_INICIO_ATUALIZACAO': None,
+            'DT_ATUALIZACAO': None,
+            'NR_PROCESSO': None,
+            'VR_REAL': None,
+            'ID_OBSERVACAO': None,
+            'ID_ESPECIFICACAO': None,
+            'NR_TICKET': None,
+            'DSC_DOCUMENTO': None,
+            'VR_ISS': None
+        }
+
+        # Inserir no banco usando SQL direto para garantir compatibilidade
+        sql_insert = text("""
+            INSERT INTO BDG.PEN_TB013_TABELA_PRINCIPAL (
+                ID_DETALHAMENTO, NU_CONTRATO, ID_CARTEIRA, ID_OCORRENCIA, ID_STATUS,
+                VR_FALHA, DEVEDOR, USUARIO_CRIACAO, USUARIO_ALTERACAO, USUARIO_EXCLUSAO,
+                CREATED_AT, UPDATED_AT, DELETED_AT,
+                NU_OFICIO, IC_CONDENACAO, INDICIO_DUPLIC, DT_PAGTO, ID_ACAO,
+                DT_DOCUMENTO, DT_INICIO_ATUALIZACAO, DT_ATUALIZACAO,
+                NR_PROCESSO, VR_REAL, ID_OBSERVACAO, ID_ESPECIFICACAO, NR_TICKET,
+                DSC_DOCUMENTO, VR_ISS
+            ) VALUES (
+                :ID_DETALHAMENTO, :NU_CONTRATO, :ID_CARTEIRA, :ID_OCORRENCIA, :ID_STATUS,
+                :VR_FALHA, :DEVEDOR, :USUARIO_CRIACAO, :USUARIO_ALTERACAO, :USUARIO_EXCLUSAO,
+                :CREATED_AT, :UPDATED_AT, :DELETED_AT,
+                :NU_OFICIO, :IC_CONDENACAO, :INDICIO_DUPLIC, :DT_PAGTO, :ID_ACAO,
+                :DT_DOCUMENTO, :DT_INICIO_ATUALIZACAO, :DT_ATUALIZACAO,
+                :NR_PROCESSO, :VR_REAL, :ID_OBSERVACAO, :ID_ESPECIFICACAO, :NR_TICKET,
+                :DSC_DOCUMENTO, :VR_ISS
+            )
+        """)
+
+        db.session.execute(sql_insert, dados_insercao)
+        db.session.commit()
+
+        # Registrar log de auditoria
+        registrar_log(
+            acao='INSERT',
+            entidade='PEN_TB013_TABELA_PRINCIPAL',
+            entidade_id=novo_id,
+            descricao=f'Cláusula de prejuízo salva - Contrato: {nu_contrato}, Valor: R$ {vr_falha_decimal:,.2f}, Devedor: CAIXA',
+            usuario_id=current_user.ID
+        )
+
+        return jsonify({
+            'sucesso': True,
+            'id_detalhamento': novo_id,
+            'mensagem': f'Cláusula de prejuízo salva com sucesso! ID: {novo_id}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': str(e)}), 500

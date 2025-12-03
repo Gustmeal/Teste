@@ -1042,13 +1042,14 @@ def deliberacao_pagamento_nova():
             indice_obj = ParamIndicesEconomicos.query.get(id_indice)
             indice_debito_emgea = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
 
-            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
+            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo (SEMPRE DA ÚLTIMA DT_REFERENCIA) =====
             sql_avaliacao = text("""
                 SELECT TOP 1
                     [VR_LAUDO_AVALIACAO],
                     [DT_LAUDO]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
                 WHERE [NR_CONTRATO] = :contrato
+                ORDER BY [DT_REFERENCIA] DESC
             """)
             result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
 
@@ -1379,6 +1380,7 @@ def buscar_dados_contrato():
                 [DT_LAUDO]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
             WHERE [NR_CONTRATO] = :contrato
+            ORDER BY [DT_REFERENCIA] DESC
         """)
         result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
 

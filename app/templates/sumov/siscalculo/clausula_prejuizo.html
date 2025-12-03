@@ -1,0 +1,551 @@
+{% extends "base.html" %}
+
+{% block title %}Cláusula de Prejuízo - SISCalculo{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Cabeçalho -->
+    <div class="page-header mb-4">
+        <div class="row align-items-center">
+            <div class="col">
+                <h1 class="h2">
+                    <a href="{{ url_for('siscalculo.index') }}" class="text-decoration-none">
+                        <i class="fas fa-arrow-left text-secondary me-2"></i>
+                    </a>
+                    <i class="fas fa-balance-scale text-danger me-2"></i>
+                    Cláusula de Prejuízo
+                </h1>
+                <p class="text-muted mb-0">
+                    Cálculo de diferença entre valores de contrato em datas diferentes
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card de Seleção -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-danger text-white py-3">
+            <h5 class="mb-0">
+                <i class="fas fa-file-contract me-2"></i>Selecionar Contrato e Datas
+            </h5>
+        </div>
+        <div class="card-body">
+            <form id="formClausulaPrejuizo">
+                <!-- Linha 1: Seleção de Contrato com Autocomplete -->
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <label for="input_contrato" class="form-label">
+                            Número do Contrato <span class="text-danger">*</span>
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="input_contrato"
+                               list="lista_contratos"
+                               placeholder="Digite ou selecione o número do contrato..."
+                               required>
+                        <datalist id="lista_contratos">
+                            {% for contrato in contratos %}
+                            <option value="{{ contrato }}">
+                            {% endfor %}
+                        </datalist>
+                        <small class="text-muted">
+                            Digite o número do contrato ou selecione da lista
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Área de Datas (oculta inicialmente) -->
+                <div id="area_datas" style="display: none;">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Importante:</strong> Selecione a data MENOR (mais antiga). A data MAIOR é opcional - use apenas se não houver acordo.
+                    </div>
+
+                    <div class="row mb-4">
+                        <!-- Data Menor (primeira) - OBRIGATÓRIA -->
+                        <div class="col-md-6">
+                            <label for="select_data_menor" class="form-label">
+                                Data de Atualização MENOR (Mais Antiga) <span class="text-danger">*</span>
+                            </label>
+                            <select class="form-select" id="select_data_menor" required disabled>
+                                <option value="">Selecione a data menor...</option>
+                            </select>
+                            <div id="info_data_menor" class="mt-2" style="display: none;">
+                                <small class="text-muted">
+                                    <strong>Índice:</strong> <span id="indice_menor"></span><br>
+                                    <strong>Total com Honorários:</strong> R$ <span id="total_menor"></span>
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Data Maior (segunda) - OPCIONAL -->
+                        <div class="col-md-6">
+                            <label for="select_data_maior" class="form-label">
+                                Data de Atualização MAIOR (Mais Recente) <span class="text-muted">(Opcional)</span>
+                            </label>
+                            <select class="form-select" id="select_data_maior" disabled>
+                                <option value="">Selecione a data maior (opcional)...</option>
+                            </select>
+                            <div id="info_data_maior" class="mt-2" style="display: none;">
+                                <small class="text-muted">
+                                    <strong>Índice:</strong> <span id="indice_maior"></span><br>
+                                    <strong>Total com Honorários:</strong> R$ <span id="total_maior"></span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checkbox de Acordo -->
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="check_acordo">
+                                <label class="form-check-label" for="check_acordo">
+                                    <strong>Houve acordo? Informe o valor do acordo</strong>
+                                </label>
+                            </div>
+                            <div id="campo_acordo" style="display: none;">
+                                <label for="input_valor_acordo" class="form-label">
+                                    Valor do Acordo <span class="text-danger">*</span>
+                                </label>
+                                <div class="input-group">
+                                    <span class="input-group-text">R$</span>
+                                    <input type="number" class="form-control" id="input_valor_acordo"
+                                           step="0.01" placeholder="0,00">
+                                </div>
+                                <small class="text-muted">
+                                    Este valor <strong>substituirá o valor da data MAIOR</strong> no cálculo da subtração
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Botão Calcular -->
+                    <div class="row mb-4">
+                        <div class="col-md-12 text-center">
+                            <button type="button" class="btn btn-primary btn-lg" id="btnCalcular" disabled>
+                                <i class="fas fa-calculator me-2"></i>Calcular Prejuízo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Card de Resultado (oculto inicialmente) -->
+    <div class="card shadow mb-4" id="card_resultado" style="display: none;">
+        <div class="card-header bg-success text-white py-3">
+            <h5 class="mb-0">
+                <i class="fas fa-chart-line me-2"></i>Resultado do Cálculo
+            </h5>
+        </div>
+        <div class="card-body">
+
+            <!-- Valores COM Honorários -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card border-primary shadow-sm">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted mb-3">
+                                <i class="fas fa-calendar-alt me-2"></i>Valor Data MENOR<br>
+                                <small>(Mais Antiga)</small>
+                            </h6>
+                            <h2 class="text-primary mb-0">
+                                R$ <span id="resultado_valor_menor">0,00</span>
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card border-info shadow-sm">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted mb-3">
+                                <i class="fas fa-calendar-check me-2"></i>
+                                <span id="label_valor_maior">Valor Data MAIOR</span><br>
+                                <small id="sublabel_valor_maior">(Mais Recente)</small>
+                            </h6>
+                            <h2 class="text-info mb-0">
+                                R$ <span id="resultado_valor_maior">0,00</span>
+                            </h2>
+                            <div id="badge_acordo" style="display: none;">
+                                <span class="badge bg-warning text-dark mt-2">Valor do Acordo</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card border-danger shadow-sm">
+                        <div class="card-body text-center">
+                            <h6 class="text-muted mb-3">
+                                <i class="fas fa-balance-scale me-2"></i>Subtração<br>
+                                <small>(Menor - Maior)</small>
+                            </h6>
+                            <h2 class="text-danger mb-0">
+                                R$ <span id="resultado_subtracao">0,00</span>
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Cálculo:</strong> <span id="texto_calculo">Subtração = Valor da Data Menor - Valor da Data Maior</span>
+            </div>
+
+            <hr class="my-4">
+
+            <!-- Valor Final a Salvar -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="alert alert-primary">
+                        <h6 class="mb-2"><i class="fas fa-save me-2"></i>Valor que será salvo (VR_FALHA) - SEMPRE POSITIVO</h6>
+                        <h3 class="mb-0">R$ <span id="valor_final_salvar">0,00</span></h3>
+                        <small class="text-muted d-block mt-2">
+                            O valor será salvo como positivo (sem sinal) na tabela
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botões -->
+            <div class="row">
+                <div class="col-md-12 text-center">
+                    <button type="button" class="btn btn-secondary btn-lg me-2" onclick="limparFormulario()">
+                        <i class="fas fa-eraser me-2"></i>Limpar
+                    </button>
+                    <button type="button" class="btn btn-success btn-lg" id="btnSalvar">
+                        <i class="fas fa-save me-2"></i>Salvar na Tabela Principal
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let datasDisponiveis = [];
+let calculoAtual = null;
+let valorMenorAtual = 0;
+let valorMaiorAtual = 0;
+let valorAcordoAtual = 0;
+
+// Função para formatar número para moeda brasileira
+function formatarMoeda(valor) {
+    return parseFloat(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Debounce para evitar múltiplas requisições
+let debounceTimer;
+function debounce(func, delay) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(func, delay);
+}
+
+// Carregar datas quando o contrato for digitado/selecionado
+document.getElementById('input_contrato').addEventListener('input', function() {
+    debounce(() => {
+        const contrato = this.value.trim();
+        const areaDatas = document.getElementById('area_datas');
+        const selectDataMaior = document.getElementById('select_data_maior');
+        const selectDataMenor = document.getElementById('select_data_menor');
+        const cardResultado = document.getElementById('card_resultado');
+
+        // Limpar campos
+        selectDataMaior.innerHTML = '<option value="">Selecione a data maior (opcional)...</option>';
+        selectDataMenor.innerHTML = '<option value="">Selecione a data menor...</option>';
+        selectDataMaior.disabled = true;
+        selectDataMenor.disabled = true;
+        areaDatas.style.display = 'none';
+        cardResultado.style.display = 'none';
+        document.getElementById('info_data_maior').style.display = 'none';
+        document.getElementById('info_data_menor').style.display = 'none';
+        document.getElementById('check_acordo').checked = false;
+        document.getElementById('campo_acordo').style.display = 'none';
+
+        if (!contrato || contrato.length < 3) return;
+
+        // Buscar datas disponíveis
+        fetch(`/sumov/siscalculo/clausula_prejuizo/buscar_datas/${encodeURIComponent(contrato)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.erro) {
+                    alert('Erro: ' + data.erro);
+                    return;
+                }
+
+                datasDisponiveis = data;
+
+                if (data.length === 0) {
+                    alert('Nenhuma data de atualização encontrada para este contrato.');
+                    return;
+                }
+
+                // Preencher selects
+                data.forEach(d => {
+                    const option = `<option value="${d.dt_atualizacao}"
+                        data-indice="${d.dsc_indice}"
+                        data-total="${d.total_com_honorarios}">
+                        ${d.dt_atualizacao_formatada} - ${d.dsc_indice} - R$ ${formatarMoeda(d.total_com_honorarios)}
+                    </option>`;
+                    selectDataMaior.innerHTML += option;
+                    selectDataMenor.innerHTML += option;
+                });
+
+                selectDataMenor.disabled = false;
+                selectDataMaior.disabled = false;
+                areaDatas.style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Erro ao buscar datas:', error);
+            });
+    }, 500);
+});
+
+// Atualizar informações quando data MENOR for selecionada
+document.getElementById('select_data_menor').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const infoDiv = document.getElementById('info_data_menor');
+
+    if (this.value) {
+        valorMenorAtual = parseFloat(selectedOption.dataset.total);
+        document.getElementById('indice_menor').textContent = selectedOption.dataset.indice;
+        document.getElementById('total_menor').textContent = formatarMoeda(selectedOption.dataset.total);
+        infoDiv.style.display = 'block';
+    } else {
+        valorMenorAtual = 0;
+        infoDiv.style.display = 'none';
+    }
+
+    verificarBotaoCalcular();
+});
+
+// Atualizar informações quando data MAIOR for selecionada
+document.getElementById('select_data_maior').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const infoDiv = document.getElementById('info_data_maior');
+
+    if (this.value) {
+        valorMaiorAtual = parseFloat(selectedOption.dataset.total);
+        document.getElementById('indice_maior').textContent = selectedOption.dataset.indice;
+        document.getElementById('total_maior').textContent = formatarMoeda(selectedOption.dataset.total);
+        infoDiv.style.display = 'block';
+
+        // Validar se data maior é realmente maior que data menor
+        const dataMenor = document.getElementById('select_data_menor').value;
+        if (dataMenor && new Date(this.value) <= new Date(dataMenor)) {
+            alert('A data MAIOR deve ser cronologicamente posterior à data MENOR!');
+            this.value = '';
+            valorMaiorAtual = 0;
+            infoDiv.style.display = 'none';
+        }
+    } else {
+        valorMaiorAtual = 0;
+        infoDiv.style.display = 'none';
+    }
+
+    verificarBotaoCalcular();
+});
+
+// Verificar se pode habilitar botão calcular
+function verificarBotaoCalcular() {
+    const dataMenor = document.getElementById('select_data_menor').value;
+    const dataMaior = document.getElementById('select_data_maior').value;
+    const checkAcordo = document.getElementById('check_acordo').checked;
+    const btnCalcular = document.getElementById('btnCalcular');
+
+    // Pode calcular se:
+    // 1. Tem data menor E data maior (sem acordo) OU
+    // 2. Tem data menor E acordo marcado
+    if (dataMenor && (dataMaior || checkAcordo)) {
+        btnCalcular.disabled = false;
+    } else {
+        btnCalcular.disabled = true;
+    }
+}
+
+// Checkbox de acordo
+document.getElementById('check_acordo').addEventListener('change', function() {
+    const campoAcordo = document.getElementById('campo_acordo');
+    const inputAcordo = document.getElementById('input_valor_acordo');
+
+    if (this.checked) {
+        campoAcordo.style.display = 'block';
+        inputAcordo.required = true;
+    } else {
+        campoAcordo.style.display = 'none';
+        inputAcordo.required = false;
+        inputAcordo.value = '';
+        valorAcordoAtual = 0;
+    }
+
+    verificarBotaoCalcular();
+});
+
+// Atualizar valor do acordo e recalcular
+document.getElementById('input_valor_acordo').addEventListener('input', function() {
+    valorAcordoAtual = parseFloat(this.value) || 0;
+});
+
+// Calcular prejuízo
+document.getElementById('btnCalcular').addEventListener('click', function() {
+    const contrato = document.getElementById('input_contrato').value.trim();
+    const dataMenor = document.getElementById('select_data_menor').value;
+    const dataMaior = document.getElementById('select_data_maior').value;
+    const checkAcordo = document.getElementById('check_acordo').checked;
+    const valorAcordo = parseFloat(document.getElementById('input_valor_acordo').value) || 0;
+
+    if (!dataMenor) {
+        alert('Selecione pelo menos a data MENOR!');
+        return;
+    }
+
+    if (!dataMaior && !checkAcordo) {
+        alert('Selecione a data MAIOR ou marque que houve acordo!');
+        return;
+    }
+
+    if (checkAcordo && valorAcordo <= 0) {
+        alert('Informe um valor válido para o acordo!');
+        return;
+    }
+
+    // Determinar qual valor usar para o cálculo
+    let valorParaSubtrair;
+    let usouAcordo = false;
+
+    if (checkAcordo && valorAcordo > 0) {
+        // Acordo substitui o valor maior
+        valorParaSubtrair = valorAcordo;
+        usouAcordo = true;
+    } else if (dataMaior) {
+        // Usa o valor da data maior
+        valorParaSubtrair = valorMaiorAtual;
+    } else {
+        alert('Erro: sem valor para subtrair!');
+        return;
+    }
+
+    // Calcular subtração: MENOR - MAIOR (ou acordo)
+    const subtracao = valorMenorAtual - valorParaSubtrair;
+
+    console.log('=== CÁLCULO ===');
+    console.log('Valor Menor:', valorMenorAtual);
+    console.log('Valor para subtrair:', valorParaSubtrair);
+    console.log('Acordo?', usouAcordo);
+    console.log('Subtração:', subtracao);
+
+    // Preencher resultados
+    document.getElementById('resultado_valor_menor').textContent = formatarMoeda(valorMenorAtual);
+    document.getElementById('resultado_valor_maior').textContent = formatarMoeda(valorParaSubtrair);
+    document.getElementById('resultado_subtracao').textContent = formatarMoeda(subtracao);
+
+    // Valor final a salvar (sempre positivo)
+    document.getElementById('valor_final_salvar').textContent = formatarMoeda(Math.abs(subtracao));
+
+    // Atualizar labels se for acordo
+    if (usouAcordo) {
+        document.getElementById('label_valor_maior').textContent = 'Valor do Acordo';
+        document.getElementById('sublabel_valor_maior').textContent = '(Substituiu Data Maior)';
+        document.getElementById('badge_acordo').style.display = 'block';
+        document.getElementById('texto_calculo').textContent = 'Subtração = Valor da Data Menor - Valor do Acordo';
+    } else {
+        document.getElementById('label_valor_maior').textContent = 'Valor Data MAIOR';
+        document.getElementById('sublabel_valor_maior').textContent = '(Mais Recente)';
+        document.getElementById('badge_acordo').style.display = 'none';
+        document.getElementById('texto_calculo').textContent = 'Subtração = Valor da Data Menor - Valor da Data Maior';
+    }
+
+    // Guardar para salvar depois
+    calculoAtual = {
+        valor_menor: valorMenorAtual,
+        valor_maior: valorParaSubtrair,
+        subtracao: subtracao,
+        valor_salvar: Math.abs(subtracao)
+    };
+
+    // Exibir card de resultado
+    document.getElementById('card_resultado').style.display = 'block';
+
+    // Scroll suave para o resultado
+    setTimeout(() => {
+        document.getElementById('card_resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+});
+
+// Salvar na tabela
+document.getElementById('btnSalvar').addEventListener('click', function() {
+    const contrato = document.getElementById('input_contrato').value.trim();
+
+    if (!calculoAtual) {
+        alert('Faça o cálculo antes de salvar!');
+        return;
+    }
+
+    const valorFinal = calculoAtual.valor_salvar;
+
+    if (!confirm(`Confirma o salvamento?\n\nContrato: ${contrato}\nValor (POSITIVO): R$ ${formatarMoeda(valorFinal)}`)) {
+        return;
+    }
+
+    // Desabilitar botão durante o salvamento
+    this.disabled = true;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Salvando...';
+
+    fetch('/sumov/siscalculo/clausula_prejuizo/salvar', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            nu_contrato: contrato,
+            vr_falha: valorFinal
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.erro) {
+            alert('Erro ao salvar: ' + data.erro);
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-save me-2"></i>Salvar na Tabela Principal';
+            return;
+        }
+
+        alert(data.mensagem);
+
+        // Limpar formulário após sucesso
+        limparFormulario();
+
+        // Reabilitar botão
+        this.disabled = false;
+        this.innerHTML = '<i class="fas fa-save me-2"></i>Salvar na Tabela Principal';
+    })
+    .catch(error => {
+        alert('Erro ao salvar: ' + error);
+        this.disabled = false;
+        this.innerHTML = '<i class="fas fa-save me-2"></i>Salvar na Tabela Principal';
+    });
+});
+
+// Função para limpar formulário
+function limparFormulario() {
+    document.getElementById('formClausulaPrejuizo').reset();
+    document.getElementById('area_datas').style.display = 'none';
+    document.getElementById('card_resultado').style.display = 'none';
+    document.getElementById('campo_acordo').style.display = 'none';
+    document.getElementById('info_data_maior').style.display = 'none';
+    document.getElementById('info_data_menor').style.display = 'none';
+    document.getElementById('select_data_maior').disabled = true;
+    document.getElementById('select_data_menor').disabled = true;
+    document.getElementById('badge_acordo').style.display = 'none';
+    calculoAtual = null;
+    datasDisponiveis = [];
+    valorMenorAtual = 0;
+    valorMaiorAtual = 0;
+    valorAcordoAtual = 0;
+}
+</script>
+{% endblock %}
