@@ -88,7 +88,10 @@ class CalculadorSiscalculo:
                 query = query.filter_by(IMOVEL=self.imovel)
                 print(f"[1] Filtrando por imóvel: {self.imovel}")
 
-            dados = query.order_by(SiscalculoDados.DT_VENCIMENTO).all()
+            dados = query.order_by(
+                SiscalculoDados.DT_VENCIMENTO,  # ✅ CORRETO - data primeiro
+                SiscalculoDados.ID_TIPO  # Depois tipo
+            ).all()
 
             print(f"[1] Total de parcelas encontradas: {len(dados)}")
 
@@ -144,7 +147,8 @@ class CalculadorSiscalculo:
                         VR_MULTA=resultado_parcela['total_multa'],
                         VR_DESCONTO=resultado_parcela['total_desconto'],
                         VR_TOTAL=resultado_parcela['valor_total'],
-                        PERC_HONORARIOS=self.perc_honorarios
+                        PERC_HONORARIOS=self.perc_honorarios,
+                        ID_TIPO=dado.ID_TIPO
                     )
                     db.session.add(novo_calculo)
                     total_processado += resultado_parcela['valor_total']

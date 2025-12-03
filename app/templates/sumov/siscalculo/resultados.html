@@ -69,6 +69,46 @@
     </div>
     {% endif %}
 
+    <!-- ✅ NOVO: Card de Totais por Tipo de Parcela -->
+    {% if totais_por_tipo %}
+    <div class="card shadow mb-3">
+        <div class="card-header bg-success text-white py-2">
+            <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Resumo por Tipo de Parcela</h6>
+        </div>
+        <div class="card-body py-3">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center" style="width: 15%;">ID Tipo</th>
+                            <th style="width: 35%;">Descrição do Tipo</th>
+                            <th class="text-center" style="width: 20%;">Quantidade</th>
+                            <th class="text-end" style="width: 30%;">Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tipo in totais_por_tipo %}
+                        <tr>
+                            <td class="text-center">{{ tipo.id_tipo }}</td>
+                            <td>{{ tipo.descricao }}</td>
+                            <td class="text-center">{{ tipo.quantidade }}</td>
+                            <td class="text-end"><strong>{{ "R$ {:,.2f}".format(tipo.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-info">
+                            <th colspan="2" class="text-end">TOTAL GERAL:</th>
+                            <th class="text-center"><strong>{{ totais_por_tipo|sum(attribute='quantidade') }}</strong></th>
+                            <th class="text-end"><strong>{{ "R$ {:,.2f}".format(totais_por_tipo|sum(attribute='valor_total')).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tabela de Resultados -->
     <div class="card shadow">
         <div class="card-header bg-primary text-white py-2">

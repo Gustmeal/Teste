@@ -36,6 +36,7 @@ class SiscalculoDados(db.Model):
 
     # Dados
     VR_COTA = db.Column(db.Numeric(18, 2), nullable=False)
+    ID_TIPO = db.Column(db.Integer, primary_key=True, nullable=False, default=1)
 
     def __repr__(self):
         return f'<SiscalculoDados {self.IMOVEL} - {self.DT_VENCIMENTO}>'
@@ -47,7 +48,8 @@ class SiscalculoDados(db.Model):
 
         Args:
             dt_atualizacao: Data do processamento
-            imovel: Número do imóvel/contrato (opcional). Se None, limpa TODOS do dia
+            imovel: Número do imóvel/contrato (opcional).
+                Se None, limpa TODOS do dia
         """
         try:
             if imovel:
@@ -89,7 +91,8 @@ class SiscalculoCalculos(db.Model):
     VR_MULTA = db.Column(db.Numeric(18, 2), nullable=True)
     VR_DESCONTO = db.Column(db.Numeric(18, 2), nullable=True)
     VR_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
-    PERC_HONORARIOS = db.Column(db.Numeric(5, 2), nullable=True)  # ✅ NOVA COLUNA
+    PERC_HONORARIOS = db.Column(db.Numeric(5, 2), nullable=True)
+    ID_TIPO = db.Column(db.Integer, primary_key=True, nullable=False, default=1)
 
     def __repr__(self):
         return f'<SiscalculoCalculo {self.DT_ATUALIZACAO} - Índice {self.ID_INDICE_ECONOMICO} - {self.IMOVEL}>'
@@ -174,6 +177,7 @@ class SiscalculoPrescricoes(db.Model):
     PERIODO_PRESCRICAO = db.Column(db.String(50), nullable=False)
     DT_PROCESSAMENTO = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     USUARIO = db.Column(db.String(100), nullable=True)
+    ID_TIPO = db.Column(db.Integer, primary_key=True, nullable=False, default=1)
 
     def __repr__(self):
         return f'<SiscalculoPrescricao {self.IMOVEL} - {self.DT_VENCIMENTO} - Período: {self.PERIODO_PRESCRICAO}>'
@@ -201,3 +205,30 @@ class SiscalculoPrescricoes(db.Model):
         except Exception as e:
             db.session.rollback()
             print(f"Erro ao limpar prescrições anteriores: {e}")
+
+
+# =====================================================
+# ✅ NOVO: MODELO PARA TIPOS DE PARCELA
+# =====================================================
+
+class TipoParcela(db.Model):
+    """Tabela de tipos de parcela do SISCalculo"""
+    __tablename__ = 'MOV_TB035_TIPO_PARCELA'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID_TIPO = db.Column(db.Integer, primary_key=True)
+    DSC_TIPO = db.Column(db.String(100), nullable=False)
+
+    def __repr__(self):
+        return f'<TipoParcela {self.ID_TIPO}: {self.DSC_TIPO}>'
+
+    @staticmethod
+    def obter_todos():
+        """Retorna todos os tipos de parcela"""
+        return TipoParcela.query.order_by(TipoParcela.ID_TIPO).all()
+
+    @staticmethod
+    def obter_dict():
+        """Retorna dicionário {ID: DESCRIÇÃO}"""
+        tipos = TipoParcela.query.all()
+        return {t.ID_TIPO: t.DSC_TIPO for t in tipos}

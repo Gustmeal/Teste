@@ -373,6 +373,11 @@ class SiscalculoPDF:
             dados.get('periodo_prescricao', '')
         ))
 
+        # ✅ NOVO: Tabela de totais por tipo (ANTES da tabela de parcelas)
+        totais_por_tipo = dados.get('totais_por_tipo', [])
+        if totais_por_tipo:
+            elementos.extend(self._criar_tabela_totais_por_tipo(totais_por_tipo))
+
         # Tabela de parcelas
         table, total_soma = self._criar_tabela_parcelas(dados.get('parcelas', []))
         elementos.append(table)
@@ -394,12 +399,98 @@ class SiscalculoPDF:
 
         return output_path
 
+    def _criar_tabela_totais_por_tipo(self, totais_por_tipo):
+        """Cria tabela de totais agrupados por tipo de parcela"""
+        if not totais_por_tipo:
+            return []
+
+        elementos = []
+
+        # Título da seção
+        styles = getSampleStyleSheet()
+        style_section_title = ParagraphStyle(
+            'SectionTitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#198754'),  # Verde
+            alignment=TA_LEFT,
+            fontName='Helvetica-Bold',
+            spaceAfter=3 * mm,
+            spaceBefore=5 * mm
+        )
+
+        elementos.append(Paragraph("Resumo por Tipo de Parcela", style_section_title))
+
+        # Dados da tabela
+        data = [['ID Tipo', 'Descrição do Tipo', 'Quantidade', 'Valor Total']]
+
+        total_quantidade = 0
+        total_valor = Decimal('0')
+
+        for tipo in totais_por_tipo:
+            data.append([
+                str(tipo['id_tipo']),
+                tipo['descricao'],
+                str(tipo['quantidade']),
+                self._formatar_moeda(tipo['valor_total'])
+            ])
+            total_quantidade += tipo['quantidade']
+            total_valor += Decimal(str(tipo['valor_total']))
+
+        # Linha de total
+        data.append([
+            'TOTAL',
+            '',
+            str(total_quantidade),
+            self._formatar_moeda(float(total_valor))
+        ])
+
+        # Criar tabela
+        table = Table(data, colWidths=[20 * mm, 90 * mm, 30 * mm, 40 * mm])
+
+        table.setStyle(TableStyle([
+            # Cabeçalho
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e9ecef')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+            ('TOPPADDING', (0, 0), (-1, 0), 6),
+
+            # Corpo
+            ('ALIGN', (0, 1), (0, -2), 'CENTER'),  # ID Tipo centralizado
+            ('ALIGN', (1, 1), (1, -2), 'LEFT'),  # Descrição à esquerda
+            ('ALIGN', (2, 1), (2, -2), 'CENTER'),  # Quantidade centralizada
+            ('ALIGN', (3, 1), (-1, -2), 'RIGHT'),  # Valor à direita
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -2), 8),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#f8f9fa')]),
+
+            # Linha de total
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#d1ecf1')),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
+            ('ALIGN', (0, -1), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+
+            # Bordas
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('LINEBELOW', (0, 0), (-1, 0), 1, colors.grey),
+            ('LINEABOVE', (0, -1), (-1, -1), 1, colors.grey),
+        ]))
+
+        elementos.append(table)
+        elementos.append(Spacer(1, 5 * mm))
+
+        return elementos
+
 
 def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
                          endereco_imovel='', imovel='', data_atualizacao='',
                          indice_nome='', perc_honorarios=10, periodo_prescricao='',
-                         logo_path=None):
-    """Função auxiliar para gerar PDF completo"""
+                         totais_por_tipo=None, logo_path=None):  # ✅ ADICIONAR totais_por_tipo
+    """Função auxiliar para gerar PDF completo com totais por tipo"""
     pdf_generator = SiscalculoPDF(logo_path=logo_path)
 
     dados = {
@@ -411,7 +502,8 @@ def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
         'parcelas': parcelas,
         'perc_honorarios': perc_honorarios,
         'periodo_prescricao': periodo_prescricao,
-        'totais': totais
+        'totais': totais,
+        'totais_por_tipo': totais_por_tipo or []  # ✅ ADICIONAR totais por tipo
     }
 
     return pdf_generator.gerar_pdf(output_path, dados)
