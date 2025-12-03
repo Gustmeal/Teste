@@ -1197,17 +1197,15 @@ def salvar_clausula_prejuizo():
         except:
             return jsonify({'erro': 'Número de contrato inválido'}), 400
 
-        # Buscar o último ID_DETALHAMENTO para incrementar
-        ultimo_id = db.session.query(
-            db.func.max(db.cast(
-                db.text("ID_DETALHAMENTO"),
-                db.Integer
-            ))
-        ).select_from(
-            db.text("BDG.PEN_TB013_TABELA_PRINCIPAL")
-        ).scalar()
+        # ✅ CORREÇÃO: Buscar o último ID_DETALHAMENTO usando SQL puro
+        sql_ultimo_id = text("""
+            SELECT ISNULL(MAX(ID_DETALHAMENTO), 0) AS ultimo_id
+            FROM BDG.PEN_TB013_TABELA_PRINCIPAL
+        """)
 
-        novo_id = (ultimo_id or 0) + 1
+        resultado = db.session.execute(sql_ultimo_id).fetchone()
+        ultimo_id = resultado[0] if resultado else 0
+        novo_id = ultimo_id + 1
 
         # Preparar dados para inserção
         dados_insercao = {
@@ -1216,15 +1214,14 @@ def salvar_clausula_prejuizo():
             'ID_CARTEIRA': 4,
             'ID_OCORRENCIA': 1,
             'ID_STATUS': 3,
-            'VR_FALHA': vr_falha_decimal,  # Já está como positivo
-            'DEVEDOR': 'CAIXA',  # Sempre CAIXA
-            'USUARIO_CRIACAO': current_user.NOME,
-            'USUARIO_ALTERACAO': current_user.NOME,
+            'VR_FALHA': vr_falha_decimal,
+            'DEVEDOR': 'CAIXA',
+            'USUARIO_CRIACAO': current_user.nome,
+            'USUARIO_ALTERACAO': current_user.nome,
             'USUARIO_EXCLUSAO': None,
             'CREATED_AT': datetime.utcnow(),
             'UPDATED_AT': datetime.utcnow(),
             'DELETED_AT': None,
-            # Demais campos como NULL
             'NU_OFICIO': None,
             'IC_CONDENACAO': None,
             'INDICIO_DUPLIC': None,
@@ -1242,7 +1239,7 @@ def salvar_clausula_prejuizo():
             'VR_ISS': None
         }
 
-        # Inserir no banco usando SQL direto para garantir compatibilidade
+        # Inserir no banco usando SQL direto
         sql_insert = text("""
             INSERT INTO BDG.PEN_TB013_TABELA_PRINCIPAL (
                 ID_DETALHAMENTO, NU_CONTRATO, ID_CARTEIRA, ID_OCORRENCIA, ID_STATUS,
@@ -1266,13 +1263,19 @@ def salvar_clausula_prejuizo():
         db.session.execute(sql_insert, dados_insercao)
         db.session.commit()
 
-        # Registrar log de auditoria
+
         registrar_log(
             acao='INSERT',
             entidade='PEN_TB013_TABELA_PRINCIPAL',
             entidade_id=novo_id,
             descricao=f'Cláusula de prejuízo salva - Contrato: {nu_contrato}, Valor: R$ {vr_falha_decimal:,.2f}, Devedor: CAIXA',
-            usuario_id=current_user.ID
+            dados_novos={
+                'nu_contrato': str(nu_contrato),
+                'vr_falha': str(vr_falha_decimal),
+                'devedor': 'CAIXA',
+                'id_detalhamento': novo_id,
+                'usuario': current_user.nome
+            }
         )
 
         return jsonify({
