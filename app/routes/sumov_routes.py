@@ -1330,14 +1330,14 @@ def buscar_dados_contrato():
         valor_prescrito = float(result_prescrito[0]) if result_prescrito and result_prescrito[0] else 0
         qtd_prescrito = result_prescrito[1] if result_prescrito and result_prescrito[1] else 0
 
-        # ===== BUSCA 5: Índices Disponíveis com Cálculos =====
+        # ===== BUSCA 5: Índices disponíveis no SISCalculo COM TOTAIS POR TIPO =====
         sql_indices = text("""
             SELECT 
                 C.ID_INDICE_ECONOMICO,
-                SUM(C.VR_TOTAL) AS VR_TOTAL_SEM_HONORARIOS,
-                MAX(C.PERC_HONORARIOS) AS PERC_HONORARIOS,
-                SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0 AS VR_HONORARIOS,
-                SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) AS VR_TOTAL_COM_HONORARIOS
+                SUM(C.VR_TOTAL - (C.VR_TOTAL * C.PERC_HONORARIOS / 100.0)) as VR_DIVIDA,
+                MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
+                SUM(C.VR_TOTAL * C.PERC_HONORARIOS / 100.0) as VR_HONORARIOS,
+                SUM(C.VR_TOTAL) as VR_TOTAL_COM_HONORARIOS
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
             WHERE C.[IMOVEL] = :contrato
             AND C.[DT_ATUALIZACAO] = (
@@ -1352,7 +1352,7 @@ def buscar_dados_contrato():
 
         indices_disponiveis = []
         if result_indices:
-            from app.models.siscalculo import ParamIndicesEconomicos
+            from app.models.siscalculo import ParamIndicesEconomicos, SiscalculoCalculos, TipoParcela
 
             for idx, row in enumerate(result_indices):
                 id_indice = row[0]
@@ -1364,13 +1364,49 @@ def buscar_dados_contrato():
                 indice_obj = ParamIndicesEconomicos.query.get(id_indice)
                 nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
 
+                # ✅ NOVO: Buscar totais por tipo de parcela para este índice específico
+                totais_por_tipo = db.session.query(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO,
+                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
+                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+                ).join(
+                    TipoParcela,
+                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
+                ).filter(
+                    SiscalculoCalculos.IMOVEL == contrato,
+                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
+                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                    ).filter(
+                        SiscalculoCalculos.IMOVEL == contrato
+                    ).scalar_subquery()
+                ).group_by(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO
+                ).order_by(
+                    SiscalculoCalculos.ID_TIPO
+                ).all()
+
+                # Converter para lista de dicionários
+                tipos_parcela_lista = [
+                    {
+                        'id_tipo': t.ID_TIPO,
+                        'descricao': t.DSC_TIPO,
+                        'quantidade': t.quantidade,
+                        'valor_total': float(t.valor_total) if t.valor_total else 0
+                    }
+                    for t in totais_por_tipo
+                ]
+
                 indices_disponiveis.append({
                     'id_indice': id_indice,
                     'nome_indice': nome_indice,
                     'valor_divida': vr_total_sem_honorarios,
                     'valor_honorarios': vr_honorarios,
                     'perc_honorarios': perc_honorarios,
-                    'valor_com_honorarios': vr_total_com_honorarios
+                    'valor_com_honorarios': vr_total_com_honorarios,
+                    'totais_por_tipo': tipos_parcela_lista  # ✅ NOVO CAMPO
                 })
 
         # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
@@ -1537,9 +1573,70 @@ def deliberacao_pagamento_editar(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
+        # ✅ NOVO: Buscar totais por tipo de parcela
+        # Busca o índice diretamente do SISCalculo (não precisa estar salvo na deliberação)
+        totais_por_tipo = []
+
+        try:
+            from app.models.siscalculo import SiscalculoCalculos, TipoParcela
+
+            # Primeiro, buscar qual índice foi usado para este contrato
+            indice_usado = db.session.query(
+                SiscalculoCalculos.ID_INDICE_ECONOMICO
+            ).filter(
+                SiscalculoCalculos.IMOVEL == contrato,
+                SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                    db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                ).filter(
+                    SiscalculoCalculos.IMOVEL == contrato
+                ).scalar_subquery()
+            ).first()
+
+            # Se encontrou o índice, buscar os totais por tipo
+            if indice_usado:
+                id_indice = indice_usado[0]
+
+                totais_query = db.session.query(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO,
+                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
+                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+                ).join(
+                    TipoParcela,
+                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
+                ).filter(
+                    SiscalculoCalculos.IMOVEL == contrato,
+                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
+                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                    ).filter(
+                        SiscalculoCalculos.IMOVEL == contrato
+                    ).scalar_subquery()
+                ).group_by(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO
+                ).order_by(
+                    SiscalculoCalculos.ID_TIPO
+                ).all()
+
+                totais_por_tipo = [
+                    {
+                        'id_tipo': t.ID_TIPO,
+                        'descricao': t.DSC_TIPO,
+                        'quantidade': t.quantidade,
+                        'valor_total': float(t.valor_total) if t.valor_total else 0
+                    }
+                    for t in totais_query
+                ]
+        except Exception as e:
+            # Se der erro ao buscar tipos de parcela, apenas não mostra (não quebra a página)
+            print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
+            totais_por_tipo = []
+
         return render_template(
             'sumov/deliberacao_pagamento/editar.html',
-            deliberacao=deliberacao
+            deliberacao=deliberacao,
+            totais_por_tipo=totais_por_tipo
         )
 
     except Exception as e:
@@ -1595,6 +1692,7 @@ def deliberacao_pagamento_pdf(contrato):
         from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
         from reportlab.pdfgen import canvas
         from datetime import datetime
+        from decimal import Decimal
         import html
 
         # Buscar deliberação
@@ -1774,6 +1872,124 @@ def deliberacao_pagamento_pdf(contrato):
         ]))
         elements.append(tabela_cobranca)
         elements.append(Spacer(1, 0.5 * cm))
+
+        # ✅ NOVO: Adicionar tabela de tipos de parcela (se houver dados)
+        # Busca o índice diretamente do SISCalculo
+        try:
+            from app.models.siscalculo import SiscalculoCalculos, TipoParcela
+
+            # Primeiro, buscar qual índice foi usado para este contrato
+            indice_usado = db.session.query(
+                SiscalculoCalculos.ID_INDICE_ECONOMICO
+            ).filter(
+                SiscalculoCalculos.IMOVEL == contrato,
+                SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                    db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                ).filter(
+                    SiscalculoCalculos.IMOVEL == contrato
+                ).scalar_subquery()
+            ).first()
+
+            # Se encontrou o índice, buscar os totais por tipo
+            if indice_usado:
+                id_indice = indice_usado[0]
+
+                totais_query = db.session.query(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO,
+                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
+                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+                ).join(
+                    TipoParcela,
+                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
+                ).filter(
+                    SiscalculoCalculos.IMOVEL == contrato,
+                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
+                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                    ).filter(
+                        SiscalculoCalculos.IMOVEL == contrato
+                    ).scalar_subquery()
+                ).group_by(
+                    SiscalculoCalculos.ID_TIPO,
+                    TipoParcela.DSC_TIPO
+                ).order_by(
+                    SiscalculoCalculos.ID_TIPO
+                ).all()
+
+                if totais_query:
+                    # Adicionar subtítulo
+                    elements.append(Spacer(1, 0.3 * cm))
+                    elements.append(Paragraph('2.1 RESUMO POR TIPO DE PARCELA', style_subtitulo))
+
+                    # Criar dados da tabela
+                    dados_tipos = [['ID', 'Descrição do Tipo', 'Quantidade', 'Valor Total']]
+
+                    total_qtd = 0
+                    total_valor = Decimal('0')
+
+                    for t in totais_query:
+                        valor = Decimal(str(t.valor_total)) if t.valor_total else Decimal('0')
+                        total_qtd += t.quantidade
+                        total_valor += valor
+
+                        dados_tipos.append([
+                            str(t.ID_TIPO),
+                            escape_text(t.DSC_TIPO),
+                            str(t.quantidade),
+                            formatar_moeda(valor)
+                        ])
+
+                    # Adicionar linha de totais
+                    dados_tipos.append([
+                        '',
+                        'TOTAL GERAL:',
+                        str(total_qtd),
+                        formatar_moeda(total_valor)
+                    ])
+
+                    # Criar tabela
+                    tabela_tipos = Table(dados_tipos, colWidths=[2 * cm, 8 * cm, 3 * cm, 4 * cm])
+                    tabela_tipos.setStyle(TableStyle([
+                        # Cabeçalho
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+
+                        # Corpo da tabela
+                        ('BACKGROUND', (0, 1), (-1, -2), colors.white),
+                        ('TEXTCOLOR', (0, 1), (-1, -2), colors.black),
+                        ('ALIGN', (0, 1), (0, -2), 'CENTER'),  # ID centralizado
+                        ('ALIGN', (1, 1), (1, -2), 'LEFT'),  # Descrição à esquerda
+                        ('ALIGN', (2, 1), (2, -2), 'CENTER'),  # Quantidade centralizada
+                        ('ALIGN', (3, 1), (3, -2), 'RIGHT'),  # Valor à direita
+                        ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -2), 9),
+
+                        # Linha de totais (última linha)
+                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#D4EDDA')),
+                        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, -1), (-1, -1), 10),
+                        ('ALIGN', (1, -1), (1, -1), 'RIGHT'),
+                        ('ALIGN', (2, -1), (2, -1), 'CENTER'),
+                        ('ALIGN', (3, -1), (3, -1), 'RIGHT'),
+
+                        # Bordas e padding
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                        ('TOPPADDING', (0, 0), (-1, -1), 6),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ]))
+
+                    elements.append(tabela_tipos)
+                    elements.append(Spacer(1, 0.5 * cm))
+        except Exception as e:
+            # Se der erro ao buscar tipos de parcela, apenas não adiciona no PDF (não quebra)
+            print(f"Aviso: Não foi possível adicionar tipos de parcela ao PDF: {e}")
 
         # ===== SEÇÃO 3: AVALIAÇÃO E VENDA =====
         elements.append(Paragraph('3. AVALIAÇÃO E VENDA', style_subtitulo))

@@ -328,6 +328,38 @@
                             </div>
                         </div>
                     </div>
+                        <!-- ✅ NOVO: CARD COM RESUMO POR TIPO DE PARCELA -->
+                    <div id="divTiposParcela" class="card shadow-sm mb-3" style="display: none;">
+                        <div class="card-header bg-success text-white py-2">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-pie me-2"></i>Resumo por Tipo de Parcela - <span id="nomeIndiceTipos"></span>
+                            </h6>
+                        </div>
+                        <div class="card-body py-3">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered table-hover mb-0" id="tabelaTiposParcela">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center" style="width: 15%;">ID Tipo</th>
+                                            <th style="width: 35%;">Descrição do Tipo</th>
+                                            <th class="text-center" style="width: 20%;">Quantidade</th>
+                                            <th class="text-end" style="width: 30%;">Valor Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="corpoTabelaTiposParcela">
+                                        <!-- Será preenchido dinamicamente -->
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="table-info">
+                                            <th colspan="2" class="text-end">TOTAL GERAL:</th>
+                                            <th class="text-center" id="totalQuantidade"><strong>-</strong></th>
+                                            <th class="text-end" id="totalValor"><strong>-</strong></th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Valor do débito calculado pela Emgea (campo hidden usado no POST) -->
                     <input type="hidden" id="vr_debito_calculado_emgea" name="vr_debito_calculado_emgea">
@@ -1027,13 +1059,14 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
     });
 });
 
-// Evento ao selecionar índice - MOSTRAR DETALHES DOS HONORÁRIOS
+// Evento ao selecionar índice - MOSTRAR DETALHES DOS HONORÁRIOS E TIPOS DE PARCELA
 document.getElementById('indice_economico').addEventListener('change', function() {
     const idx = parseInt(this.value);
 
     if (!isNaN(idx) && indicesDisponiveis[idx]) {
         const indice = indicesDisponiveis[idx];
 
+        // Preencher valores do cálculo
         document.getElementById('vr_debito_calculado_emgea').value = indice.valor_com_honorarios;
         document.getElementById('divDetalhesCalculo').style.display = 'block';
         document.getElementById('nomeIndiceDetalhes').textContent = indice.nome_indice;
@@ -1042,12 +1075,50 @@ document.getElementById('indice_economico').addEventListener('change', function(
         document.getElementById('vr_honorarios_display').value = formatarMoeda(indice.valor_honorarios);
         document.getElementById('vr_total_com_honorarios_display').value = formatarMoeda(indice.valor_com_honorarios);
 
+        // ✅ NOVO: Preencher tabela de tipos de parcela
+        if (indice.totais_por_tipo && indice.totais_por_tipo.length > 0) {
+            const tbody = document.getElementById('corpoTabelaTiposParcela');
+            tbody.innerHTML = '';
+
+            let totalQtd = 0;
+            let totalValor = 0;
+
+            indice.totais_por_tipo.forEach(tipo => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="text-center">${tipo.id_tipo}</td>
+                    <td>${tipo.descricao}</td>
+                    <td class="text-center">${tipo.quantidade}</td>
+                    <td class="text-end"><strong>${formatarMoeda(tipo.valor_total)}</strong></td>
+                `;
+                tbody.appendChild(tr);
+
+                totalQtd += tipo.quantidade;
+                totalValor += tipo.valor_total;
+            });
+
+            // Atualizar totais no footer
+            document.getElementById('totalQuantidade').innerHTML = `<strong>${totalQtd}</strong>`;
+            document.getElementById('totalValor').innerHTML = `<strong>${formatarMoeda(totalValor)}</strong>`;
+
+            // Atualizar nome do índice no card de tipos
+            document.getElementById('nomeIndiceTipos').textContent = indice.nome_indice;
+
+            // Mostrar card de tipos de parcela
+            document.getElementById('divTiposParcela').style.display = 'block';
+        } else {
+            // Esconder card se não houver tipos
+            document.getElementById('divTiposParcela').style.display = 'none';
+        }
+
+        // Scroll suave para os detalhes
         document.getElementById('divDetalhesCalculo').scrollIntoView({
             behavior: 'smooth',
             block: 'nearest'
         });
     } else {
         document.getElementById('divDetalhesCalculo').style.display = 'none';
+        document.getElementById('divTiposParcela').style.display = 'none';  // ✅ NOVO
     }
 });
 </script>
