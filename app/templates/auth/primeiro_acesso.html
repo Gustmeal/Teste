@@ -1,79 +1,104 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Primeiro Acesso - Sistema de Credenciamento</title>
-    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Primeiro Acesso - Portal GEINC</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        .login-container {
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+        }
+
+        .container {
             max-width: 450px;
-            margin: 60px auto;
-            background-color: rgba(255, 255, 255, 0.85);
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            width: 100%;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 3rem 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             backdrop-filter: blur(10px);
         }
 
         .login-logo {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 2rem;
         }
 
         .login-title {
-            color: var(--primary-color);
-            font-weight: 700;
             text-align: center;
-            margin-bottom: 25px;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 2rem;
         }
 
         .login-input {
-            border-radius: 50px;
             padding: 12px 20px;
-            margin-bottom: 15px;
-            border: 1px solid var(--border-color);
-            background-color: rgba(255, 255, 255, 0.7);
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s;
         }
 
         .login-input:focus {
-            box-shadow: 0 0 0 0.25rem rgba(108, 99, 255, 0.25);
-            border-color: var(--primary-color);
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
         }
 
         .login-btn {
-            border-radius: 50px;
             padding: 12px;
-            background-color: #28a745;
+            border-radius: 10px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border: none;
             color: white;
-            font-weight: 600;
-            margin-top: 10px;
             transition: all 0.3s;
         }
 
         .login-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-            background-color: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
         }
 
         .info-box {
-            background-color: #e3f2fd;
-            border-left: 4px solid #2196f3;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
+            background-color: rgba(33, 150, 243, 0.1);
+            border-left: 4px solid #2196F3;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            color: #0277BD;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: white;
+            font-size: 0.9rem;
+        }
+
+        [data-theme="dark"] body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
         }
 
         [data-theme="dark"] .login-container {
-            background-color: rgba(40, 40, 50, 0.9);
+            background: rgba(30, 30, 40, 0.9);
+        }
+
+        [data-theme="dark"] .login-title {
+            color: #e2e8f0;
         }
 
         [data-theme="dark"] .login-input {
@@ -116,8 +141,8 @@
                 <div class="mb-3">
                     <label for="email" class="form-label">Email Institucional</label>
                     <input type="email" class="form-control login-input" name="email" id="email"
-                           pattern="[a-zA-Z0-9._%+-]+@emgea\.gov\.br$"
-                           title="Por favor, utilize seu email institucional (@emgea.gov.br)"
+                           pattern="[a-zA-Z0-9._%+-]+@emgea\.(gov|org)\.br$"
+                           title="Por favor, utilize seu email institucional (@emgea.gov.br ou @emgea.org.br)"
                            placeholder="seu.nome@emgea.gov.br" required autofocus>
                     <small class="text-muted">Use o mesmo email cadastrado no RH</small>
                 </div>

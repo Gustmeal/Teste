@@ -79,9 +79,9 @@ class Usuario(db.Model):
     @staticmethod
     def validar_email(email):
         """Valida se o email é institucional e não está em uso."""
-        # Verificar formato
-        if not email.endswith('@emgea.gov.br'):
-            return False, "Por favor, utilize seu email institucional (@emgea.gov.br)."
+        # Verificar formato - aceitar tanto .gov.br quanto .org.br
+        if not (email.endswith('@emgea.gov.br') or email.endswith('@emgea.org.br')):
+            return False, "Por favor, utilize seu email institucional (@emgea.gov.br ou @emgea.org.br)."
 
         # Verificar se já existe
         usuario_existente = Usuario.query.filter_by(EMAIL=email).first()
@@ -93,9 +93,9 @@ class Usuario(db.Model):
     @staticmethod
     def validar_email_empregado(email):
         """Valida se o email existe na base de empregados e se pode criar usuário"""
-        # Verificar formato
-        if not email.endswith('@emgea.gov.br'):
-            return False, "Por favor, utilize seu email institucional (@emgea.gov.br)."
+        # Verificar formato - aceitar tanto .gov.br quanto .org.br
+        if not (email.endswith('@emgea.gov.br') or email.endswith('@emgea.org.br')):
+            return False, "Por favor, utilize seu email institucional (@emgea.gov.br ou @emgea.org.br)."
 
         # Verificar se existe na base de empregados
         empregado = Empregado.buscar_por_email(email)
