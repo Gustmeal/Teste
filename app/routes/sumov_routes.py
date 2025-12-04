@@ -1573,64 +1573,75 @@ def deliberacao_pagamento_editar(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # ✅ NOVO: Buscar totais por tipo de parcela
-        # Busca o índice diretamente do SISCalculo (não precisa estar salvo na deliberação)
+        # ✅ CORRIGIDO: Buscar totais por tipo de parcela CORRETAMENTE
         totais_por_tipo = []
 
         try:
             from app.models.siscalculo import SiscalculoCalculos, TipoParcela
 
-            # Primeiro, buscar qual índice foi usado para este contrato
-            indice_usado = db.session.query(
-                SiscalculoCalculos.ID_INDICE_ECONOMICO
-            ).filter(
-                SiscalculoCalculos.IMOVEL == contrato,
-                SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                    db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
-                ).filter(
-                    SiscalculoCalculos.IMOVEL == contrato
-                ).scalar_subquery()
-            ).first()
+            # Buscar o índice usado nesta deliberação
+            indice_usado = deliberacao.INDICE_DEBITO_EMGEA
 
-            # Se encontrou o índice, buscar os totais por tipo
             if indice_usado:
-                id_indice = indice_usado[0]
+                # Extrair o ID do índice do nome (formato: "IPCA - 123")
+                # Ou tentar buscar diretamente se já estiver armazenado
 
-                totais_query = db.session.query(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO,
-                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
-                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
-                ).join(
-                    TipoParcela,
-                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
-                ).filter(
-                    SiscalculoCalculos.IMOVEL == contrato,
-                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
-                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                # Primeiro, tentar buscar qual ID de índice foi usado
+                from app.models.siscalculo import ParamIndicesEconomicos
+
+                # Buscar pelo nome do índice
+                indice_obj = ParamIndicesEconomicos.query.filter(
+                    ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(indice_usado.split(' - ')[0])
+                ).first()
+
+                if indice_obj:
+                    id_indice = indice_obj.ID_INDICE_ECONOMICO
+
+                    # ✅ QUERY CORRIGIDA: Usar SiscalculoCalculos (MOV_TB031) com JOIN em TipoParcela
+                    totais_query = db.session.query(
+                        SiscalculoCalculos.ID_TIPO,
+                        TipoParcela.DSC_TIPO,
+                        db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
+                        db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+                    ).join(
+                        TipoParcela,
+                        SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
                     ).filter(
-                        SiscalculoCalculos.IMOVEL == contrato
-                    ).scalar_subquery()
-                ).group_by(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO
-                ).order_by(
-                    SiscalculoCalculos.ID_TIPO
-                ).all()
+                        SiscalculoCalculos.IMOVEL == contrato,
+                        SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
+                        SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
+                            db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
+                        ).filter(
+                            SiscalculoCalculos.IMOVEL == contrato
+                        ).scalar_subquery()
+                    ).group_by(
+                        SiscalculoCalculos.ID_TIPO,
+                        TipoParcela.DSC_TIPO
+                    ).order_by(
+                        SiscalculoCalculos.ID_TIPO
+                    ).all()
 
-                totais_por_tipo = [
-                    {
-                        'id_tipo': t.ID_TIPO,
-                        'descricao': t.DSC_TIPO,
-                        'quantidade': t.quantidade,
-                        'valor_total': float(t.valor_total) if t.valor_total else 0
-                    }
-                    for t in totais_query
-                ]
+                    # Converter para lista de dicionários
+                    totais_por_tipo = [
+                        {
+                            'id_tipo': t.ID_TIPO,
+                            'tipo': t.DSC_TIPO,  # ← NOME CORRETO DA CHAVE
+                            'descricao': t.DSC_TIPO,  # ← TAMBÉM MANTER ESTE
+                            'quantidade': t.quantidade,
+                            'valor_total': float(t.valor_total) if t.valor_total else 0
+                        }
+                        for t in totais_query
+                    ]
+
+                    print(f"[DEBUG EDIÇÃO] Encontrados {len(totais_por_tipo)} tipos de parcela")
+                    for t in totais_por_tipo:
+                        print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
+
         except Exception as e:
             # Se der erro ao buscar tipos de parcela, apenas não mostra (não quebra a página)
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
+            import traceback
+            traceback.print_exc()
             totais_por_tipo = []
 
         return render_template(
