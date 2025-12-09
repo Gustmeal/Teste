@@ -42,22 +42,36 @@ def criar_observacao(descricao, id_detalhamento=None):
 def criar_especificacao(descricao, id_detalhamento=None):
     """
     Cria uma especificação na tabela PEN_TB006_ESPECIFICACAO_FALHA e retorna o ID gerado
+
+    LÓGICA:
+    1. Busca o próximo ID disponível (MAX + 1)
+    2. Insere com ID manual porque a coluna não tem IDENTITY no banco
+    3. Retorna o ID gerado
     """
-    sql = text("""
-        INSERT INTO [BDG].[PEN_TB006_ESPECIFICACAO_FALHA] 
-        (ID_DETALHAMENTO, DSC_ESPECIFICACAO, ULTIMA_ATUALIZACAO)
-        OUTPUT INSERTED.ID_ESPECIFICACAO
-        VALUES (:id_detalhamento, :descricao, :data_atualizacao)
+    # PASSO 1: Obter próximo ID disponível
+    sql_max = text("""
+        SELECT ISNULL(MAX(ID_ESPECIFICACAO), 0) + 1 AS PROXIMO_ID 
+        FROM [BDG].[PEN_TB006_ESPECIFICACAO_FALHA]
     """)
 
-    result = db.session.execute(sql, {
+    result_max = db.session.execute(sql_max)
+    proximo_id = result_max.fetchone()[0]
+
+    # PASSO 2: Inserir com ID manual
+    sql_insert = text("""
+        INSERT INTO [BDG].[PEN_TB006_ESPECIFICACAO_FALHA] 
+        (ID_ESPECIFICACAO, ID_DETALHAMENTO, DSC_ESPECIFICACAO, ULTIMA_ATUALIZACAO)
+        VALUES (:id_especificacao, :id_detalhamento, :descricao, :data_atualizacao)
+    """)
+
+    db.session.execute(sql_insert, {
+        'id_especificacao': proximo_id,
         'id_detalhamento': id_detalhamento,
         'descricao': descricao,
         'data_atualizacao': datetime.utcnow()
     })
 
-    id_especificacao = result.fetchone()[0]
-    return id_especificacao
+    return proximo_id
 
 
 @caixa_emgea_bp.route('/')

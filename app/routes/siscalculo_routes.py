@@ -1161,8 +1161,18 @@ def calcular_clausula_prejuizo():
         valor_maior_com_hon = calc_maior.total or Decimal('0')
         valor_menor_com_hon = calc_menor.total or Decimal('0')
 
-        # Calcular prejuízo: MENOR - MAIOR (ordem corrigida)
-        prejuizo_com_honorarios = valor_menor_com_hon - valor_maior_com_hon
+        # ✅ LÓGICA DE PREJUÍZO COM REGRAS DE NEGÓCIO
+        prejuizo_com_honorarios = Decimal('0')
+
+        # REGRA 1: Se data maior < data menor (ordem cronológica invertida) → prejuízo = 0
+        if dt_maior_obj < dt_menor_obj:
+            prejuizo_com_honorarios = Decimal('0')
+        # REGRA 2: Se valor menor <= valor maior (não houve perda) → prejuízo = 0
+        elif valor_menor_com_hon <= valor_maior_com_hon:
+            prejuizo_com_honorarios = Decimal('0')
+        # REGRA 3: Houve prejuízo real (valor diminuiu no tempo)
+        else:
+            prejuizo_com_honorarios = valor_menor_com_hon - valor_maior_com_hon
 
         return jsonify({
             'valor_maior': float(valor_maior_com_hon),

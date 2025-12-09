@@ -429,34 +429,83 @@ document.getElementById('btnCalcular').addEventListener('click', function() {
         return;
     }
 
-    // Calcular subtração: MENOR - MAIOR (ou acordo)
-    const subtracao = valorMenorAtual - valorParaSubtrair;
+    // ✅ LÓGICA CORRIGIDA DE PREJUÍZO COM REGRAS DE NEGÓCIO
+    let subtracao = 0;
+    let motivoZero = '';
 
-    console.log('=== CÁLCULO ===');
-    console.log('Valor Menor:', valorMenorAtual);
-    console.log('Valor para subtrair:', valorParaSubtrair);
+    // Converter datas para comparação
+    const dataMenorObj = new Date(dataMenor);
+    const dataMaiorObj = new Date(dataMaior || dataMenor);
+
+    // REGRA 1: Se data de negociação < data menor → prejuízo = 0
+    if (dataMaiorObj < dataMenorObj && !usouAcordo) {
+        subtracao = 0;
+        motivoZero = 'Data de negociação é anterior à data menor. Não há prejuízo.';
+    }
+    // ✅ REGRA 2 CORRIGIDA: Se valor negociação/maior < valor menor → prejuízo = 0
+    else if (valorParaSubtrair < valorMenorAtual) {
+        subtracao = 0;
+        motivoZero = 'Valor da negociação/data maior é menor que o valor da data menor. Não há prejuízo.';
+    }
+    // ✅ REGRA 3 CORRIGIDA: Se valor negociação/maior >= valor menor → há prejuízo
+    else if (valorParaSubtrair > valorMenorAtual) {
+        subtracao = valorParaSubtrair - valorMenorAtual;
+    }
+    // REGRA 4: Se valores forem iguais → prejuízo = 0
+    else {
+        subtracao = 0;
+        motivoZero = 'Valores são iguais. Não há prejuízo.';
+    }
+
+    console.log('=== CÁLCULO COM REGRAS DE NEGÓCIO CORRIGIDAS ===');
+    console.log('Valor Menor (Data Antiga):', valorMenorAtual);
+    console.log('Valor para comparar (Negociação/Data Maior):', valorParaSubtrair);
     console.log('Acordo?', usouAcordo);
-    console.log('Subtração:', subtracao);
+    console.log('Prejuízo calculado:', subtracao);
+    if (motivoZero) console.log('Motivo Zero:', motivoZero);
 
     // Preencher resultados
     document.getElementById('resultado_valor_menor').textContent = formatarMoeda(valorMenorAtual);
     document.getElementById('resultado_valor_maior').textContent = formatarMoeda(valorParaSubtrair);
     document.getElementById('resultado_subtracao').textContent = formatarMoeda(subtracao);
 
-    // Valor final a salvar (sempre positivo)
-    document.getElementById('valor_final_salvar').textContent = formatarMoeda(Math.abs(subtracao));
+    // Valor final a salvar
+    document.getElementById('valor_final_salvar').textContent = formatarMoeda(subtracao);
+
+    // ✅ Exibir mensagem se prejuízo = 0 por regra de negócio
+    if (motivoZero) {
+        const alertaZero = `
+            <div class="alert alert-warning mt-3" role="alert">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Prejuízo = R$ 0,00:</strong> ${motivoZero}
+            </div>
+        `;
+
+        const cardBody = document.getElementById('card_resultado').querySelector('.card-body');
+        if (!document.getElementById('alerta_prejuizo_zero')) {
+            const divAlerta = document.createElement('div');
+            divAlerta.id = 'alerta_prejuizo_zero';
+            divAlerta.innerHTML = alertaZero;
+            cardBody.insertBefore(divAlerta, cardBody.firstChild);
+        } else {
+            document.getElementById('alerta_prejuizo_zero').innerHTML = alertaZero;
+        }
+    } else {
+        const alertaExistente = document.getElementById('alerta_prejuizo_zero');
+        if (alertaExistente) alertaExistente.remove();
+    }
 
     // Atualizar labels se for acordo
     if (usouAcordo) {
         document.getElementById('label_valor_maior').textContent = 'Valor do Acordo';
         document.getElementById('sublabel_valor_maior').textContent = '(Substituiu Data Maior)';
         document.getElementById('badge_acordo').style.display = 'block';
-        document.getElementById('texto_calculo').textContent = 'Subtração = Valor da Data Menor - Valor do Acordo';
+        document.getElementById('texto_calculo').textContent = 'Prejuízo = Valor do Acordo - Valor da Data Menor';
     } else {
         document.getElementById('label_valor_maior').textContent = 'Valor Data MAIOR';
         document.getElementById('sublabel_valor_maior').textContent = '(Mais Recente)';
         document.getElementById('badge_acordo').style.display = 'none';
-        document.getElementById('texto_calculo').textContent = 'Subtração = Valor da Data Menor - Valor da Data Maior';
+        document.getElementById('texto_calculo').textContent = 'Prejuízo = Valor da Data Maior - Valor da Data Menor';
     }
 
     // Guardar para salvar depois
@@ -464,7 +513,7 @@ document.getElementById('btnCalcular').addEventListener('click', function() {
         valor_menor: valorMenorAtual,
         valor_maior: valorParaSubtrair,
         subtracao: subtracao,
-        valor_salvar: Math.abs(subtracao)
+        valor_salvar: subtracao
     };
 
     // Exibir card de resultado
@@ -487,7 +536,7 @@ document.getElementById('btnSalvar').addEventListener('click', function() {
 
     const valorFinal = calculoAtual.valor_salvar;
 
-    if (!confirm(`Confirma o salvamento?\n\nContrato: ${contrato}\nValor (POSITIVO): R$ ${formatarMoeda(valorFinal)}`)) {
+    if (!confirm(`Confirma o salvamento?\n\nContrato: ${contrato}\nValor: R$ ${formatarMoeda(valorFinal)}`)) {
         return;
     }
 
@@ -541,6 +590,11 @@ function limparFormulario() {
     document.getElementById('select_data_maior').disabled = true;
     document.getElementById('select_data_menor').disabled = true;
     document.getElementById('badge_acordo').style.display = 'none';
+
+    // Remover alerta se existe
+    const alertaExistente = document.getElementById('alerta_prejuizo_zero');
+    if (alertaExistente) alertaExistente.remove();
+
     calculoAtual = null;
     datasDisponiveis = [];
     valorMenorAtual = 0;
