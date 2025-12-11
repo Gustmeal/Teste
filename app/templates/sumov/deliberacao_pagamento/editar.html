@@ -25,7 +25,7 @@
             </h5>
         </div>
         <div class="card-body p-4">
-            <form method="POST" action="{{ url_for('sumov.deliberacao_pagamento_nova') }}">
+            <form method="POST" action="{{ url_for('sumov.deliberacao_pagamento_editar', contrato=deliberacao.NU_CONTRATO) }}">
 
                 <!-- Campo Hidden: Contrato (NÃO EDITÁVEL) -->
                 <input type="hidden" name="contrato" value="{{ deliberacao.NU_CONTRATO }}">

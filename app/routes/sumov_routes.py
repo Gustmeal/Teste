@@ -1562,7 +1562,7 @@ def buscar_dados_contrato():
         }), 500
 
 
-@sumov_bp.route('/deliberacao-pagamento/editar/<contrato>')
+@sumov_bp.route('/deliberacao-pagamento/editar/<contrato>', methods=['GET', 'POST'])
 @login_required
 def deliberacao_pagamento_editar(contrato):
     """Editar uma Deliberação de Pagamento existente"""
@@ -1573,7 +1573,94 @@ def deliberacao_pagamento_editar(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # ✅ CORRIGIDO: Buscar totais por tipo de parcela CORRETAMENTE
+        # ===== POST: PROCESSAR SALVAMENTO DA EDIÇÃO =====
+        if request.method == 'POST':
+            from decimal import Decimal, InvalidOperation
+
+            # Capturar campos editáveis do formulário
+            matricula = request.form.get('matricula', '').strip() or None
+            dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
+            dt_registro_str = request.form.get('dt_registro', '').strip()
+            vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
+            dt_periodo_inicio_str = request.form.get('dt_periodo_cobranca_inicio', '').strip()
+            dt_periodo_fim_str = request.form.get('dt_periodo_cobranca_fim', '').strip()
+            gravame_matricula = request.form.get('gravame_matricula', '').strip() or None
+            acoes_negociais_adm = request.form.get('acoes_negociais_administrativas', '').strip() or None
+            nr_processos = request.form.get('nr_processos_judiciais', '').strip() or None
+            vara_processo = request.form.get('vara_processo', '').strip() or None
+            fase_processo = request.form.get('fase_processo', '').strip() or None
+            relatorio_assessoria = request.form.get('relatorio_assessoria_juridica', '').strip() or None
+            penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
+            prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
+            consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
+            consideracoes_gestor = request.form.get('consideracoes_gestor', '').strip() or None
+            consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
+
+            # Converter datas
+            if dt_arrematacao_str:
+                try:
+                    deliberacao.DT_ARREMATACAO_AQUISICAO = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de arrematação inválida.', 'warning')
+
+            if dt_registro_str:
+                try:
+                    deliberacao.DT_REGISTRO = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data do registro inválida.', 'warning')
+
+            if dt_periodo_inicio_str:
+                try:
+                    deliberacao.DT_PERIODO_COBRANCA_INICIO = datetime.strptime(dt_periodo_inicio_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de início do período inválida.', 'warning')
+
+            if dt_periodo_fim_str:
+                try:
+                    deliberacao.DT_PERIODO_COBRANCA_FIM = datetime.strptime(dt_periodo_fim_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Data de fim do período inválida.', 'warning')
+
+            # Converter valor manual
+            if vr_divida_condominio_2_str:
+                try:
+                    valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',',
+                                                                                                        '.').strip()
+                    if valor_limpo:
+                        deliberacao.VR_DIVIDA_CONDOMINIO_2 = Decimal(valor_limpo)
+                except (ValueError, InvalidOperation):
+                    flash('Valor da Dívida (Manual) inválido.', 'warning')
+
+            # Atualizar campos editáveis
+            deliberacao.MATRICULA_CAIXA_EMGEA = matricula
+            deliberacao.GRAVAME_MATRICULA = gravame_matricula
+            deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
+            deliberacao.NR_PROCESSOS_JUDICIAIS = nr_processos
+            deliberacao.VARA_PROCESSO = vara_processo
+            deliberacao.FASE_PROCESSO = fase_processo
+            deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
+            deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
+            deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
+            deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
+            deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
+            deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
+            deliberacao.USUARIO_ATUALIZACAO = current_user.nome
+            deliberacao.UPDATED_AT = datetime.utcnow()
+
+            # Salvar no banco
+            if deliberacao.salvar():
+                registrar_log(
+                    acao='editar',
+                    entidade='deliberacao_pagamento',
+                    entidade_id=contrato,
+                    descricao=f'Deliberação de Pagamento editada: {contrato}'
+                )
+                flash('Deliberação atualizada com sucesso!', 'success')
+                return redirect(url_for('sumov.deliberacao_pagamento'))
+            else:
+                flash('Erro ao salvar alterações.', 'danger')
+
+        # ===== GET: CARREGAR PÁGINA DE EDIÇÃO =====
         totais_por_tipo = []
 
         try:
@@ -1583,10 +1670,6 @@ def deliberacao_pagamento_editar(contrato):
             indice_usado = deliberacao.INDICE_DEBITO_EMGEA
 
             if indice_usado:
-                # Extrair o ID do índice do nome (formato: "IPCA - 123")
-                # Ou tentar buscar diretamente se já estiver armazenado
-
-                # Primeiro, tentar buscar qual ID de índice foi usado
                 from app.models.siscalculo import ParamIndicesEconomicos
 
                 # Buscar pelo nome do índice
@@ -1597,7 +1680,7 @@ def deliberacao_pagamento_editar(contrato):
                 if indice_obj:
                     id_indice = indice_obj.ID_INDICE_ECONOMICO
 
-                    # ✅ QUERY CORRIGIDA: Usar SiscalculoCalculos (MOV_TB031) com JOIN em TipoParcela
+                    # Query para buscar totais por tipo
                     totais_query = db.session.query(
                         SiscalculoCalculos.ID_TIPO,
                         TipoParcela.DSC_TIPO,
@@ -1625,8 +1708,8 @@ def deliberacao_pagamento_editar(contrato):
                     totais_por_tipo = [
                         {
                             'id_tipo': t.ID_TIPO,
-                            'tipo': t.DSC_TIPO,  # ← NOME CORRETO DA CHAVE
-                            'descricao': t.DSC_TIPO,  # ← TAMBÉM MANTER ESTE
+                            'tipo': t.DSC_TIPO,
+                            'descricao': t.DSC_TIPO,
                             'quantidade': t.quantidade,
                             'valor_total': float(t.valor_total) if t.valor_total else 0
                         }
@@ -1638,7 +1721,6 @@ def deliberacao_pagamento_editar(contrato):
                         print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
 
         except Exception as e:
-            # Se der erro ao buscar tipos de parcela, apenas não mostra (não quebra a página)
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
             traceback.print_exc()
@@ -2228,3 +2310,352 @@ def buscar_diferenca_siscor():
             'success': False,
             'erro': str(e)
         }), 500
+
+
+# =============================================================================
+# ROTAS: PENALIDADES ANS
+# =============================================================================
+
+@sumov_bp.route('/penalidade-ans')
+@login_required
+def penalidade_ans_index():
+    """
+    Página inicial de Penalidades ANS
+    Lista todos os contratos que possuem penalidades cadastradas
+    """
+    try:
+        from app.models.penalidade_ans import PenalidadeANS
+
+        # Buscar todas as penalidades (não deletadas)
+        penalidades = PenalidadeANS.query.filter_by(
+            DELETED_AT=None
+        ).order_by(
+            PenalidadeANS.NU_CONTRATO.asc(),
+            PenalidadeANS.INI_VIGENCIA.desc()
+        ).all()
+
+        # Agrupar por contrato para exibição
+        contratos_dict = {}
+        for p in penalidades:
+            contrato = str(p.NU_CONTRATO)
+            if contrato not in contratos_dict:
+                contratos_dict[contrato] = {
+                    'nu_contrato': p.NU_CONTRATO,
+                    'penalidades': [],
+                    'total_penalidades': 0,
+                    'valor_total': 0
+                }
+
+            contratos_dict[contrato]['penalidades'].append(p)
+            contratos_dict[contrato]['total_penalidades'] += 1
+            contratos_dict[contrato]['valor_total'] += float(p.VR_TARIFA) if p.VR_TARIFA else 0
+
+        # Converter para lista
+        contratos_lista = list(contratos_dict.values())
+
+        return render_template('sumov/penalidade_ans/index.html',
+                               contratos=contratos_lista)
+
+    except Exception as e:
+        flash(f'Erro ao carregar penalidades ANS: {str(e)}', 'danger')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('sumov.index'))
+
+
+@sumov_bp.route('/penalidade-ans/nova', methods=['GET', 'POST'])
+@login_required
+def penalidade_ans_nova():
+    """
+    Página para cadastrar nova penalidade ANS
+    """
+    if request.method == 'POST':
+        try:
+            from app.models.penalidade_ans import PenalidadeANS
+            from app.utils.audit import registrar_log  # ← IMPORT CORRETO
+            from decimal import Decimal
+
+            # Capturar dados do formulário
+            nu_contrato = request.form.get('nu_contrato', '').strip()
+            ini_vigencia_str = request.form.get('ini_vigencia', '').strip()
+            fim_vigencia_str = request.form.get('fim_vigencia', '').strip()
+            vr_tarifa_str = request.form.get('vr_tarifa', '').strip()
+            prazo_dias_str = request.form.get('prazo_dias', '').strip()
+
+            # Validações
+            if not nu_contrato or not ini_vigencia_str or not fim_vigencia_str or not vr_tarifa_str:
+                flash('Preencha todos os campos obrigatórios (Contrato, Datas de Vigência e Valor da Tarifa).',
+                      'warning')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            # Converter dados
+            try:
+                nu_contrato = int(nu_contrato)
+            except ValueError:
+                flash('Número do contrato inválido.', 'danger')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            try:
+                ini_vigencia = datetime.strptime(ini_vigencia_str, '%Y-%m-%d').date()
+                fim_vigencia = datetime.strptime(fim_vigencia_str, '%Y-%m-%d').date()
+            except ValueError:
+                flash('Datas de vigência inválidas.', 'danger')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            # Validar se data fim é maior que data início
+            if fim_vigencia <= ini_vigencia:
+                flash('A data de fim da vigência deve ser posterior à data de início.', 'danger')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            try:
+                vr_tarifa = Decimal(vr_tarifa_str.replace('.', '').replace(',', '.'))
+            except:
+                flash('Valor da tarifa inválido.', 'danger')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            prazo_dias = None
+            if prazo_dias_str:
+                try:
+                    prazo_dias = int(prazo_dias_str)
+                except ValueError:
+                    flash('Prazo em dias inválido.', 'danger')
+                    return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            # Verificar se já existe penalidade com mesmas chaves
+            existe = PenalidadeANS.query.filter_by(
+                NU_CONTRATO=nu_contrato,
+                INI_VIGENCIA=ini_vigencia,
+                FIM_VIGENCIA=fim_vigencia,
+                DELETED_AT=None
+            ).first()
+
+            if existe:
+                flash('Já existe uma penalidade cadastrada para este contrato com as mesmas datas de vigência.',
+                      'warning')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+            # Criar nova penalidade
+            penalidade = PenalidadeANS(
+                NU_CONTRATO=nu_contrato,
+                INI_VIGENCIA=ini_vigencia,
+                FIM_VIGENCIA=fim_vigencia,
+                VR_TARIFA=vr_tarifa,
+                PRAZO_DIAS=prazo_dias,
+                USUARIO_CRIACAO=current_user.nome,
+                CREATED_AT=datetime.utcnow()
+            )
+
+            if penalidade.salvar():
+                # Registrar log
+                registrar_log(
+                    acao='criar',
+                    entidade='penalidade_ans',
+                    entidade_id=f"{nu_contrato}_{ini_vigencia_str}_{fim_vigencia_str}",
+                    descricao=f'Cadastro de Penalidade ANS - Contrato {nu_contrato}',
+                    dados_novos={
+                        'nu_contrato': nu_contrato,
+                        'ini_vigencia': ini_vigencia_str,
+                        'fim_vigencia': fim_vigencia_str,
+                        'vr_tarifa': str(vr_tarifa),
+                        'prazo_dias': prazo_dias
+                    }
+                )
+
+                flash('Penalidade ANS cadastrada com sucesso!', 'success')
+                return redirect(url_for('sumov.penalidade_ans_index'))
+            else:
+                flash('Erro ao salvar penalidade ANS no banco de dados.', 'danger')
+                return redirect(url_for('sumov.penalidade_ans_nova'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao processar penalidade ANS: {str(e)}', 'danger')
+            import traceback
+            traceback.print_exc()
+            return redirect(url_for('sumov.penalidade_ans_nova'))
+
+    # GET - Exibir formulário
+    return render_template('sumov/penalidade_ans/nova.html')
+
+
+@sumov_bp.route('/penalidade-ans/buscar-dados-contrato', methods=['POST'])
+@login_required
+def penalidade_ans_buscar_dados():
+    """
+    Busca dados do contrato para exibição no formulário de penalidades ANS
+    USA AS MESMAS QUERIES DA DELIBERAÇÃO DE PAGAMENTO E SISCALCULO
+
+    Retorna dados informativos:
+    - Endereço completo (do SISCalculo)
+    - Data de entrada no estoque (da Deliberação)
+    - Valor da venda e data (da Deliberação)
+    - Valor da avaliação e data do laudo (da Deliberação)
+    """
+    try:
+        data = request.get_json()
+        contrato = data.get('contrato', '').strip()
+
+        if not contrato:
+            return jsonify({'success': False, 'message': 'Contrato não informado'})
+
+        # ===== BUSCA 1: ENDEREÇO (MESMA FORMA DO SISCALCULO - com db.engine.connect) =====
+        endereco = None
+        try:
+            with db.engine.connect() as connection:
+                sql_endereco = text("""
+                    SELECT TOP 1 
+                        RTRIM(LTRIM(ISNULL(DS_ENDERECO, ''))) + ', ' +
+                        RTRIM(LTRIM(ISNULL(NU_ENDERECO, ''))) + ' - ' +
+                        RTRIM(LTRIM(ISNULL(DS_BAIRRO, ''))) + ' - ' +
+                        RTRIM(LTRIM(ISNULL(DS_CIDADE, ''))) + '/' +
+                        RTRIM(LTRIM(ISNULL(DS_ESTADO, ''))) AS ENDERECO_COMPLETO
+                    FROM [BDG].[MOV_TB001_IMOVEL]
+                    WHERE NU_IMOVEL = :imovel
+                """)
+                result = connection.execute(sql_endereco, {"imovel": contrato})
+                row = result.fetchone()
+                if row and row[0]:
+                    endereco = row[0]
+        except Exception as e:
+            print(f"[ERRO] Erro ao buscar endereço: {str(e)}")
+
+        # ===== BUSCA 2: DATA DE ENTRADA NO ESTOQUE (EXATAMENTE COMO NA DELIBERAÇÃO) =====
+        sql_estoque = text("""
+            SELECT TOP 1 
+                [DT_ENTRADA_ESTOQUE]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
+            WHERE [NR_CONTRATO] = :contrato
+        """)
+        result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
+        dt_entrada_estoque = result_estoque[0].strftime('%d/%m/%Y') if result_estoque and result_estoque[0] else None
+
+        # ===== BUSCA 3: DADOS DE VENDA (EXATAMENTE COMO NA DELIBERAÇÃO) =====
+        sql_venda = text("""
+            SELECT TOP 1
+                [VR_VENDA],
+                [DT_VENDA]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
+            WHERE [NU_IMOVEL] = :contrato
+            ORDER BY [DT_VENDA] DESC
+        """)
+        result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
+
+        vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
+        dt_venda = result_venda[1].strftime('%d/%m/%Y') if result_venda and result_venda[1] else None
+
+        # ===== BUSCA 4: VALOR DE AVALIAÇÃO E DATA DO LAUDO (EXATAMENTE COMO NA DELIBERAÇÃO) =====
+        sql_avaliacao = text("""
+            SELECT TOP 1
+                [VR_LAUDO_AVALIACAO],
+                [DT_LAUDO]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
+            WHERE [NR_CONTRATO] = :contrato
+            ORDER BY [DT_REFERENCIA] DESC
+        """)
+        result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
+
+        vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
+        dt_laudo = result_avaliacao[1].strftime('%d/%m/%Y') if result_avaliacao and result_avaliacao[1] else None
+
+        return jsonify({
+            'success': True,
+            'endereco': endereco,
+            'dt_entrada_estoque': dt_entrada_estoque,
+            'vr_venda': vr_venda,
+            'dt_venda': dt_venda,
+            'vr_avaliacao': vr_avaliacao,
+            'dt_laudo': dt_laudo
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao buscar dados: {str(e)}'
+        }), 500
+
+@sumov_bp.route('/penalidade-ans/visualizar/<int:contrato>')
+@login_required
+def penalidade_ans_visualizar(contrato):
+    """
+    Visualiza todas as penalidades de um contrato específico
+    """
+    try:
+        from app.models.penalidade_ans import PenalidadeANS
+
+        # Buscar penalidades do contrato
+        penalidades = PenalidadeANS.buscar_por_contrato(contrato)
+
+        if not penalidades:
+            flash('Nenhuma penalidade encontrada para este contrato.', 'warning')
+            return redirect(url_for('sumov.penalidade_ans_index'))
+
+        return render_template('sumov/penalidade_ans/visualizar.html',
+                               contrato=contrato,
+                               penalidades=penalidades)
+
+    except Exception as e:
+        flash(f'Erro ao visualizar penalidades: {str(e)}', 'danger')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('sumov.penalidade_ans_index'))
+
+
+@sumov_bp.route('/penalidade-ans/excluir', methods=['POST'])
+@login_required
+def penalidade_ans_excluir():
+    """
+    Exclui (soft delete) uma penalidade ANS
+    """
+    try:
+        from app.models.penalidade_ans import PenalidadeANS
+        from app.utils.audit import registrar_log  # ← IMPORT CORRETO
+
+        data = request.get_json()
+        nu_contrato = data.get('nu_contrato')
+        ini_vigencia_str = data.get('ini_vigencia')
+        fim_vigencia_str = data.get('fim_vigencia')
+
+        if not nu_contrato or not ini_vigencia_str or not fim_vigencia_str:
+            return jsonify({'success': False, 'message': 'Dados incompletos'}), 400
+
+        # Converter datas
+        ini_vigencia = datetime.strptime(ini_vigencia_str, '%Y-%m-%d').date()
+        fim_vigencia = datetime.strptime(fim_vigencia_str, '%Y-%m-%d').date()
+
+        # Buscar penalidade
+        penalidade = PenalidadeANS.query.filter_by(
+            NU_CONTRATO=nu_contrato,
+            INI_VIGENCIA=ini_vigencia,
+            FIM_VIGENCIA=fim_vigencia,
+            DELETED_AT=None
+        ).first()
+
+        if not penalidade:
+            return jsonify({'success': False, 'message': 'Penalidade não encontrada'}), 404
+
+        # Realizar exclusão lógica
+        if penalidade.excluir():
+            # Registrar log
+            registrar_log(
+                acao='excluir',
+                entidade='penalidade_ans',
+                entidade_id=f"{nu_contrato}_{ini_vigencia_str}_{fim_vigencia_str}",
+                descricao=f'Exclusão de Penalidade ANS - Contrato {nu_contrato}',
+                dados_antigos={
+                    'nu_contrato': nu_contrato,
+                    'ini_vigencia': ini_vigencia_str,
+                    'fim_vigencia': fim_vigencia_str,
+                    'vr_tarifa': str(penalidade.VR_TARIFA)
+                }
+            )
+
+            return jsonify({'success': True, 'message': 'Penalidade excluída com sucesso!'})
+        else:
+            return jsonify({'success': False, 'message': 'Erro ao excluir penalidade'}), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
