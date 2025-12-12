@@ -11,6 +11,8 @@ from app.models.evidencias_sumov import EvidenciasSumov
 from datetime import datetime, date
 from app.models.deliberacao_pagamento import DeliberacaoPagamento
 from flask import send_file
+from dateutil.relativedelta import relativedelta
+from datetime import timedelta
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
@@ -2321,40 +2323,23 @@ def buscar_diferenca_siscor():
 def penalidade_ans_index():
     """
     Página inicial de Penalidades ANS
-    Lista todos os contratos que possuem penalidades cadastradas
+    Lista todas as deliberações salvas
     """
     try:
+        from app.models.deliberacao_ans import DeliberacaoANS
         from app.models.penalidade_ans import PenalidadeANS
 
-        # Buscar todas as penalidades (não deletadas)
-        penalidades = PenalidadeANS.query.filter_by(
-            DELETED_AT=None
-        ).order_by(
-            PenalidadeANS.NU_CONTRATO.asc(),
-            PenalidadeANS.INI_VIGENCIA.desc()
+        # Buscar todas as deliberações salvas
+        deliberacoes = DeliberacaoANS.query.order_by(
+            DeliberacaoANS.CREATED_AT.desc()
         ).all()
 
-        # Agrupar por contrato para exibição
-        contratos_dict = {}
-        for p in penalidades:
-            contrato = str(p.NU_CONTRATO)
-            if contrato not in contratos_dict:
-                contratos_dict[contrato] = {
-                    'nu_contrato': p.NU_CONTRATO,
-                    'penalidades': [],
-                    'total_penalidades': 0,
-                    'valor_total': 0
-                }
-
-            contratos_dict[contrato]['penalidades'].append(p)
-            contratos_dict[contrato]['total_penalidades'] += 1
-            contratos_dict[contrato]['valor_total'] += float(p.VR_TARIFA) if p.VR_TARIFA else 0
-
-        # Converter para lista
-        contratos_lista = list(contratos_dict.values())
+        # Contar contratos ANS cadastrados (tabela de referência)
+        total_contratos_ans = PenalidadeANS.query.count()
 
         return render_template('sumov/penalidade_ans/index.html',
-                               contratos=contratos_lista)
+                               deliberacoes=deliberacoes,
+                               total_contratos_ans=total_contratos_ans)
 
     except Exception as e:
         flash(f'Erro ao carregar penalidades ANS: {str(e)}', 'danger')
@@ -2372,7 +2357,7 @@ def penalidade_ans_nova():
     if request.method == 'POST':
         try:
             from app.models.penalidade_ans import PenalidadeANS
-            from app.utils.audit import registrar_log  # ← IMPORT CORRETO
+            from app.utils.audit import registrar_log
             from decimal import Decimal
 
             # Capturar dados do formulário
@@ -2388,13 +2373,7 @@ def penalidade_ans_nova():
                       'warning')
                 return redirect(url_for('sumov.penalidade_ans_nova'))
 
-            # Converter dados
-            try:
-                nu_contrato = int(nu_contrato)
-            except ValueError:
-                flash('Número do contrato inválido.', 'danger')
-                return redirect(url_for('sumov.penalidade_ans_nova'))
-
+            # Converter datas
             try:
                 ini_vigencia = datetime.strptime(ini_vigencia_str, '%Y-%m-%d').date()
                 fim_vigencia = datetime.strptime(fim_vigencia_str, '%Y-%m-%d').date()
@@ -2425,8 +2404,7 @@ def penalidade_ans_nova():
             existe = PenalidadeANS.query.filter_by(
                 NU_CONTRATO=nu_contrato,
                 INI_VIGENCIA=ini_vigencia,
-                FIM_VIGENCIA=fim_vigencia,
-                DELETED_AT=None
+                FIM_VIGENCIA=fim_vigencia
             ).first()
 
             if existe:
@@ -2434,15 +2412,13 @@ def penalidade_ans_nova():
                       'warning')
                 return redirect(url_for('sumov.penalidade_ans_nova'))
 
-            # Criar nova penalidade
+            # Criar nova penalidade (SEM campos de auditoria)
             penalidade = PenalidadeANS(
                 NU_CONTRATO=nu_contrato,
                 INI_VIGENCIA=ini_vigencia,
                 FIM_VIGENCIA=fim_vigencia,
                 VR_TARIFA=vr_tarifa,
-                PRAZO_DIAS=prazo_dias,
-                USUARIO_CRIACAO=current_user.nome,
-                CREATED_AT=datetime.utcnow()
+                PRAZO_DIAS=prazo_dias
             )
 
             if penalidade.salvar():
@@ -2478,106 +2454,281 @@ def penalidade_ans_nova():
     return render_template('sumov/penalidade_ans/nova.html')
 
 
-@sumov_bp.route('/penalidade-ans/buscar-dados-contrato', methods=['POST'])
-@login_required
-def penalidade_ans_buscar_dados():
+def verificar_tipo_despesa_contrato(nu_contrato):
     """
-    Busca dados do contrato para exibição no formulário de penalidades ANS
-    USA AS MESMAS QUERIES DA DELIBERAÇÃO DE PAGAMENTO E SISCALCULO
+    Verifica se o contrato possui despesas de IPTU ou Condomínio
+    PEGA O REGISTRO COM A MAIOR DT_LANCAMENTO_PAGAMENTO
 
-    Retorna dados informativos:
-    - Endereço completo (do SISCalculo)
-    - Data de entrada no estoque (da Deliberação)
-    - Valor da venda e data (da Deliberação)
-    - Valor da avaliação e data do laudo (da Deliberação)
+    Retorna:
+        'IPTU' - se tiver despesas de IPTU (prazo 120 dias)
+        'Condomínio' - se tiver apenas despesas de Condomínio (prazo 150 dias)
+        'Ambos' - se tiver os dois tipos
+        None - se não encontrar despesas
     """
     try:
-        data = request.get_json()
-        contrato = data.get('contrato', '').strip()
+        print(f"[DEBUG] ===== VERIFICANDO TIPO DE DESPESA DO CONTRATO {nu_contrato} =====")
 
-        if not contrato:
-            return jsonify({'success': False, 'message': 'Contrato não informado'})
-
-        # ===== BUSCA 1: ENDEREÇO (MESMA FORMA DO SISCALCULO - com db.engine.connect) =====
-        endereco = None
-        try:
-            with db.engine.connect() as connection:
-                sql_endereco = text("""
-                    SELECT TOP 1 
-                        RTRIM(LTRIM(ISNULL(DS_ENDERECO, ''))) + ', ' +
-                        RTRIM(LTRIM(ISNULL(NU_ENDERECO, ''))) + ' - ' +
-                        RTRIM(LTRIM(ISNULL(DS_BAIRRO, ''))) + ' - ' +
-                        RTRIM(LTRIM(ISNULL(DS_CIDADE, ''))) + '/' +
-                        RTRIM(LTRIM(ISNULL(DS_ESTADO, ''))) AS ENDERECO_COMPLETO
-                    FROM [BDG].[MOV_TB001_IMOVEL]
-                    WHERE NU_IMOVEL = :imovel
-                """)
-                result = connection.execute(sql_endereco, {"imovel": contrato})
-                row = result.fetchone()
-                if row and row[0]:
-                    endereco = row[0]
-        except Exception as e:
-            print(f"[ERRO] Erro ao buscar endereço: {str(e)}")
-
-        # ===== BUSCA 2: DATA DE ENTRADA NO ESTOQUE (EXATAMENTE COMO NA DELIBERAÇÃO) =====
-        sql_estoque = text("""
-            SELECT TOP 1 
-                [DT_ENTRADA_ESTOQUE]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
-            WHERE [NR_CONTRATO] = :contrato
-        """)
-        result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
-        dt_entrada_estoque = result_estoque[0].strftime('%d/%m/%Y') if result_estoque and result_estoque[0] else None
-
-        # ===== BUSCA 3: DADOS DE VENDA (EXATAMENTE COMO NA DELIBERAÇÃO) =====
-        sql_venda = text("""
+        # Buscar despesa mais recente (maior DT_LANCAMENTO_PAGAMENTO)
+        sql_despesa_recente = text("""
             SELECT TOP 1
-                [VR_VENDA],
-                [DT_VENDA]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
-            WHERE [NU_IMOVEL] = :contrato
-            ORDER BY [DT_VENDA] DESC
+                D3.TIPO_DESPESA
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB004_DESPESAS_ANALITICO] D4
+            INNER JOIN [BDDASHBOARDBI].[BDG].[MOV_TB003_DESPESAS] D3
+                ON D4.DSC_ITEM_SERVICO = D3.DSC_ITEM_SERVICO
+            WHERE D4.NR_CONTRATO = :contrato
+                AND D3.TIPO_DESPESA IN ('IPTU', 'Condomínio')
+                AND D4.DT_LANCAMENTO_PAGAMENTO IS NOT NULL
+            ORDER BY D4.DT_LANCAMENTO_PAGAMENTO DESC
         """)
-        result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
 
-        vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
-        dt_venda = result_venda[1].strftime('%d/%m/%Y') if result_venda and result_venda[1] else None
+        result = db.session.execute(sql_despesa_recente, {'contrato': nu_contrato}).fetchone()
 
-        # ===== BUSCA 4: VALOR DE AVALIAÇÃO E DATA DO LAUDO (EXATAMENTE COMO NA DELIBERAÇÃO) =====
-        sql_avaliacao = text("""
-            SELECT TOP 1
-                [VR_LAUDO_AVALIACAO],
-                [DT_LAUDO]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
-            WHERE [NR_CONTRATO] = :contrato
-            ORDER BY [DT_REFERENCIA] DESC
-        """)
-        result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
+        if not result:
+            print(f"[DEBUG] ⚠️ NENHUMA DESPESA ENCONTRADA! Retornando None (usará 150 dias)")
+            return None
 
-        vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
-        dt_laudo = result_avaliacao[1].strftime('%d/%m/%Y') if result_avaliacao and result_avaliacao[1] else None
+        tipo_despesa = result[0]
+        print(f"[DEBUG] ✓ Tipo de despesa mais recente: {tipo_despesa}")
 
-        return jsonify({
-            'success': True,
-            'endereco': endereco,
-            'dt_entrada_estoque': dt_entrada_estoque,
-            'vr_venda': vr_venda,
-            'dt_venda': dt_venda,
-            'vr_avaliacao': vr_avaliacao,
-            'dt_laudo': dt_laudo
-        })
+        if tipo_despesa == 'IPTU':
+            print(f"[DEBUG] ✓ É IPTU - Retornando 'IPTU'")
+            return 'IPTU'
+        elif tipo_despesa == 'Condomínio':
+            print(f"[DEBUG] ✓ É Condomínio - Retornando 'Condomínio'")
+            return 'Condomínio'
+        else:
+            print(f"[DEBUG] ⚠️ Tipo não identificado: {tipo_despesa} - Retornando None")
+            return None
 
     except Exception as e:
+        print(f"[ERRO] Erro ao verificar tipo de despesa: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Erro ao buscar dados: {str(e)}'
-        }), 500
+        return None
 
-@sumov_bp.route('/penalidade-ans/visualizar/<int:contrato>')
+
+def obter_prazo_contrato_03_2014(nu_contrato):
+    """
+    Retorna o prazo correto para o Contrato 03/2014 baseado no tipo de despesa
+
+    Regras:
+    - IPTU: 120 dias
+    - Condomínio: 150 dias
+    - Não encontrado: 150 dias (padrão)
+    """
+    print(f"\n[DEBUG] ===== OBTENDO PRAZO PARA CONTRATO 03/2014 =====")
+
+    tipo_despesa = verificar_tipo_despesa_contrato(nu_contrato)
+
+    if tipo_despesa == 'IPTU':
+        print(f"[INFO] ✓ Contrato {nu_contrato} possui despesas de IPTU → Prazo: 120 dias\n")
+        return 120
+    else:
+        # Condomínio ou não encontrado: usa 150 dias (padrão)
+        print(f"[INFO] ⚠️ Contrato {nu_contrato} possui Condomínio ou não encontrado → Prazo: 150 dias (padrão)\n")
+        return 150
+
+@sumov_bp.route('/penalidade-ans/consultar', methods=['GET', 'POST'])
 @login_required
-def penalidade_ans_visualizar(contrato):
+def penalidade_ans_consultar():
+    """
+    Página para consultar e calcular penalidades ANS de um contrato
+    Esta é apenas para VISUALIZAÇÃO dos cálculos
+    """
+    if request.method == 'POST':
+        try:
+            from app.models.penalidade_ans import PenalidadeANS
+            from dateutil.relativedelta import relativedelta
+
+            # Capturar número do contrato
+            nu_contrato = request.form.get('nu_contrato', '').strip()
+
+            if not nu_contrato:
+                flash('Informe o número do contrato.', 'warning')
+                return redirect(url_for('sumov.penalidade_ans_consultar'))
+
+            # ===== BUSCAR DATA DE ENTRADA NO ESTOQUE =====
+            sql_estoque = text("""
+                SELECT TOP 1 
+                    [DT_ENTRADA_ESTOQUE]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            result_estoque = db.session.execute(sql_estoque, {'contrato': nu_contrato}).fetchone()
+
+            if not result_estoque or not result_estoque[0]:
+                flash('Data de entrada no estoque não encontrada para este contrato.', 'warning')
+                return redirect(url_for('sumov.penalidade_ans_consultar'))
+
+            dt_entrada_estoque = result_estoque[0]
+
+            # ===== BUSCAR DADOS DE VENDA =====
+            sql_venda = text("""
+                SELECT TOP 1
+                    [VR_VENDA],
+                    [DT_VENDA]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
+                WHERE [NU_IMOVEL] = :contrato
+                ORDER BY [DT_VENDA] DESC
+            """)
+            result_venda = db.session.execute(sql_venda, {'contrato': nu_contrato}).fetchone()
+
+            vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
+            dt_venda = result_venda[1] if result_venda and result_venda[1] else None
+
+            # ===== BUSCAR VALOR DE AVALIAÇÃO =====
+            sql_avaliacao = text("""
+                SELECT TOP 1
+                    [VR_LAUDO_AVALIACAO],
+                    [DT_LAUDO]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
+                WHERE [NR_CONTRATO] = :contrato
+                ORDER BY [DT_REFERENCIA] DESC
+            """)
+            result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': nu_contrato}).fetchone()
+
+            vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
+            dt_laudo = result_avaliacao[1] if result_avaliacao and result_avaliacao[1] else None
+
+            # ===== BUSCAR TODOS OS CONTRATOS ANS (TABELA DE REFERÊNCIA) =====
+            contratos_ans = PenalidadeANS.query.order_by(
+                PenalidadeANS.INI_VIGENCIA.asc()
+            ).all()
+
+            if not contratos_ans:
+                flash('Nenhum contrato ANS cadastrado na tabela de referência.', 'warning')
+                return redirect(url_for('sumov.penalidade_ans_consultar'))
+
+            # ===== CALCULAR PENALIDADES PARA CADA CONTRATO ANS =====
+            penalidades_calculadas = []
+            total_penalidades = 0
+
+            # ===== VERIFICAR TIPO DE DESPESA PARA CONTRATO 03/2014 =====
+            prazo_contrato_03_2014 = obter_prazo_contrato_03_2014(nu_contrato)
+
+            for contrato_ans in contratos_ans:
+                # ===== DETERMINAR DATA LIMITE DE PAGAMENTO =====
+
+                if contrato_ans.NU_CONTRATO == 'Contrato s/nº':
+                    # Contrato s/nº: entrada estoque + 120 dias
+                    data_limite_pagamento = dt_entrada_estoque + timedelta(days=120)
+
+                elif contrato_ans.NU_CONTRATO == 'Contrato 03/2014':
+                    # REGRA ESPECIAL: Se entrada < 13/03/2014, data limite é 31/12/2015
+                    if dt_entrada_estoque < contrato_ans.INI_VIGENCIA:
+                        # Imóvel entrou ANTES do contrato: prazo até 31/12/2015
+                        data_limite_pagamento = datetime(2015, 12, 31).date()
+                        print(
+                            f"[INFO] Contrato 03/2014 - Imóvel em estoque antes do contrato: Data limite fixa 31/12/2015")
+                    else:
+                        # Imóvel entrou DEPOIS do contrato: usa prazo normal (120 IPTU ou 150 Condomínio)
+                        data_limite_pagamento = dt_entrada_estoque + timedelta(days=prazo_contrato_03_2014)
+                        print(
+                            f"[INFO] Contrato 03/2014 - Imóvel em estoque depois do contrato: Prazo {prazo_contrato_03_2014} dias")
+
+                elif contrato_ans.NU_CONTRATO == 'Contrato 13/2019':
+                    # Contrato 13/2019: se entrada < início contrato, conta da assinatura
+                    if dt_entrada_estoque < contrato_ans.INI_VIGENCIA:
+                        data_limite_pagamento = contrato_ans.INI_VIGENCIA + timedelta(days=120)
+                        print(
+                            f"[INFO] Contrato 13/2019 - Imóvel em estoque antes do contrato: Prazo conta da assinatura")
+                    else:
+                        data_limite_pagamento = dt_entrada_estoque + timedelta(days=120)
+
+                else:
+                    # Outros contratos: usa prazo da tabela
+                    data_limite_pagamento = dt_entrada_estoque + timedelta(days=contrato_ans.PRAZO_DIAS)
+
+                # ===== CALCULAR DATA DE INÍCIO DA PENALIDADE =====
+
+                if contrato_ans.NU_CONTRATO == 'Contrato s/nº':
+                    # Contrato s/nº: só pode penalizar após 18 meses da assinatura
+                    data_minima_penalizacao = contrato_ans.INI_VIGENCIA + relativedelta(months=18)
+                    # Penalidade começa no dia seguinte ao maior entre data_limite e data_minima
+                    data_inicio_penalidade = max(data_limite_pagamento, data_minima_penalizacao) + timedelta(days=1)
+                    print(
+                        f"[DEBUG] Contrato s/nº - Data mínima: {data_minima_penalizacao}, Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
+                else:
+                    # Penalidade começa no dia seguinte ao vencimento do prazo
+                    # E não pode começar antes do início da vigência do contrato
+                    data_inicio_penalidade = max(data_limite_pagamento + timedelta(days=1), contrato_ans.INI_VIGENCIA)
+                    print(
+                        f"[DEBUG] {contrato_ans.NU_CONTRATO} - Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
+
+                # ===== DATA DE FIM DA PENALIDADE =====
+                data_fim_penalidade = contrato_ans.FIM_VIGENCIA
+
+                # ===== VERIFICAR SE HÁ PENALIDADE =====
+                if data_inicio_penalidade >= data_fim_penalidade:
+                    penalidades_calculadas.append({
+                        'nome_contrato': contrato_ans.NU_CONTRATO,
+                        'dt_inicio_contrato': contrato_ans.INI_VIGENCIA,
+                        'dt_fim_contrato': contrato_ans.FIM_VIGENCIA,
+                        'qtd_meses_atraso': 0,
+                        'vr_unitario_tarifa': float(contrato_ans.VR_TARIFA),
+                        'valor_penalidade': 0
+                    })
+                    continue
+
+                # ===== CALCULAR QUANTIDADE DE MESES =====
+                # USAR A MESMA LÓGICA DO ACCESS: Calcular dias e dividir por 30
+                # Fórmula Access: IIf([Atr03]/30>=0.33 And [Atr03]/30<1,1,Int([Atr03]/30))
+
+                # Calcular quantidade de DIAS entre as datas
+                dias_atraso = (data_fim_penalidade - data_inicio_penalidade).days
+
+                # Aplicar a fórmula do Access
+                meses_calculado = dias_atraso / 30.0
+
+                if meses_calculado >= 0.33 and meses_calculado < 1:
+                    qtd_meses_atraso = 1
+                else:
+                    qtd_meses_atraso = int(dias_atraso / 30)
+
+                print(
+                    f"[DEBUG] {contrato_ans.NU_CONTRATO} - De {data_inicio_penalidade} até {data_fim_penalidade} = {dias_atraso} dias, {meses_calculado:.2f} meses calculado, {qtd_meses_atraso} meses final")
+
+                # Calcular valor da penalidade
+                valor_penalidade = float(contrato_ans.VR_TARIFA) * qtd_meses_atraso
+
+                # Adicionar à lista
+                penalidades_calculadas.append({
+                    'nome_contrato': contrato_ans.NU_CONTRATO,
+                    'dt_inicio_contrato': contrato_ans.INI_VIGENCIA,
+                    'dt_fim_contrato': contrato_ans.FIM_VIGENCIA,
+                    'qtd_meses_atraso': qtd_meses_atraso,
+                    'vr_unitario_tarifa': float(contrato_ans.VR_TARIFA),
+                    'valor_penalidade': valor_penalidade
+                })
+
+                total_penalidades += valor_penalidade
+
+            # Renderizar página com resultados
+            return render_template('sumov/penalidade_ans/consultar.html',
+                                   nu_contrato=nu_contrato,
+                                   dt_entrada_estoque=dt_entrada_estoque,
+                                   vr_venda=vr_venda,
+                                   dt_venda=dt_venda,
+                                   vr_avaliacao=vr_avaliacao,
+                                   dt_laudo=dt_laudo,
+                                   penalidades=penalidades_calculadas,
+                                   total_penalidades=total_penalidades,
+                                   exibir_resultados=True)
+
+        except Exception as e:
+            flash(f'Erro ao calcular penalidades: {str(e)}', 'danger')
+            import traceback
+            traceback.print_exc()
+            return redirect(url_for('sumov.penalidade_ans_consultar'))
+
+    # GET - Exibir formulário de pesquisa
+    return render_template('sumov/penalidade_ans/consultar.html',
+                           exibir_resultados=False)
+
+
+@sumov_bp.route('/penalidade-ans/visualizar/<nu_contrato>')
+@login_required
+def penalidade_ans_visualizar(nu_contrato):
     """
     Visualiza todas as penalidades de um contrato específico
     """
@@ -2585,75 +2736,148 @@ def penalidade_ans_visualizar(contrato):
         from app.models.penalidade_ans import PenalidadeANS
 
         # Buscar penalidades do contrato
-        penalidades = PenalidadeANS.buscar_por_contrato(contrato)
+        penalidades = PenalidadeANS.query.filter_by(
+            NU_CONTRATO=nu_contrato
+        ).order_by(
+            PenalidadeANS.INI_VIGENCIA.desc()
+        ).all()
 
         if not penalidades:
             flash('Nenhuma penalidade encontrada para este contrato.', 'warning')
             return redirect(url_for('sumov.penalidade_ans_index'))
 
         return render_template('sumov/penalidade_ans/visualizar.html',
-                               contrato=contrato,
+                               nu_contrato=nu_contrato,
                                penalidades=penalidades)
 
     except Exception as e:
-        flash(f'Erro ao visualizar penalidades: {str(e)}', 'danger')
+        flash(f'Erro ao carregar penalidades: {str(e)}', 'danger')
         import traceback
         traceback.print_exc()
         return redirect(url_for('sumov.penalidade_ans_index'))
 
 
-@sumov_bp.route('/penalidade-ans/excluir', methods=['POST'])
+@sumov_bp.route('/penalidade-ans/excluir-deliberacao', methods=['POST'])
 @login_required
-def penalidade_ans_excluir():
+def penalidade_ans_excluir_deliberacao():
     """
-    Exclui (soft delete) uma penalidade ANS
+    Exclui uma deliberação ANS salva
     """
     try:
-        from app.models.penalidade_ans import PenalidadeANS
-        from app.utils.audit import registrar_log  # ← IMPORT CORRETO
+        from app.models.deliberacao_ans import DeliberacaoANS
+        from app.utils.audit import registrar_log
 
         data = request.get_json()
         nu_contrato = data.get('nu_contrato')
-        ini_vigencia_str = data.get('ini_vigencia')
-        fim_vigencia_str = data.get('fim_vigencia')
 
-        if not nu_contrato or not ini_vigencia_str or not fim_vigencia_str:
-            return jsonify({'success': False, 'message': 'Dados incompletos'}), 400
+        if not nu_contrato:
+            return jsonify({'success': False, 'message': 'Contrato não informado'}), 400
 
-        # Converter datas
-        ini_vigencia = datetime.strptime(ini_vigencia_str, '%Y-%m-%d').date()
-        fim_vigencia = datetime.strptime(fim_vigencia_str, '%Y-%m-%d').date()
+        # Buscar deliberação
+        deliberacao = DeliberacaoANS.buscar_por_contrato(nu_contrato)
 
-        # Buscar penalidade
-        penalidade = PenalidadeANS.query.filter_by(
-            NU_CONTRATO=nu_contrato,
-            INI_VIGENCIA=ini_vigencia,
-            FIM_VIGENCIA=fim_vigencia,
-            DELETED_AT=None
-        ).first()
+        if not deliberacao:
+            return jsonify({'success': False, 'message': 'Deliberação não encontrada'}), 404
 
-        if not penalidade:
-            return jsonify({'success': False, 'message': 'Penalidade não encontrada'}), 404
+        # Excluir
+        try:
+            db.session.delete(deliberacao)
+            db.session.commit()
 
-        # Realizar exclusão lógica
-        if penalidade.excluir():
             # Registrar log
             registrar_log(
                 acao='excluir',
-                entidade='penalidade_ans',
-                entidade_id=f"{nu_contrato}_{ini_vigencia_str}_{fim_vigencia_str}",
-                descricao=f'Exclusão de Penalidade ANS - Contrato {nu_contrato}',
+                entidade='deliberacao_ans',
+                entidade_id=nu_contrato,
+                descricao=f'Exclusão de Deliberação ANS - Contrato {nu_contrato}',
                 dados_antigos={
                     'nu_contrato': nu_contrato,
-                    'ini_vigencia': ini_vigencia_str,
-                    'fim_vigencia': fim_vigencia_str,
-                    'vr_tarifa': str(penalidade.VR_TARIFA)
+                    'vr_ans': str(deliberacao.VR_ANS)
                 }
             )
 
-            return jsonify({'success': True, 'message': 'Penalidade excluída com sucesso!'})
+            return jsonify({'success': True, 'message': 'Deliberação excluída com sucesso!'})
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': f'Erro ao excluir: {str(e)}'}), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/penalidade-ans/salvar-deliberacao', methods=['POST'])
+@login_required
+def penalidade_ans_salvar_deliberacao():
+    """
+    Salva a deliberação de penalidades ANS calculadas
+    """
+    try:
+        from app.models.deliberacao_ans import DeliberacaoANS
+        from app.utils.audit import registrar_log
+        from decimal import Decimal
+
+        data = request.get_json()
+
+        nu_contrato = data.get('nu_contrato', '').strip()
+        dt_estoque_str = data.get('dt_estoque', '').strip()
+        vr_ans = data.get('vr_ans', 0)
+
+        # Dados dos 3 contratos ANS
+        penalidades = data.get('penalidades', [])
+
+        if not nu_contrato or not dt_estoque_str:
+            return jsonify({'success': False, 'message': 'Dados incompletos'}), 400
+
+        # Converter data
+        dt_estoque = datetime.strptime(dt_estoque_str, '%Y-%m-%d').date()
+
+        # Organizar dados por contrato
+        dados_contratos = {}
+        for p in penalidades:
+            nome = p['nome_contrato']
+            dados_contratos[nome] = {
+                'qtd_meses': p['qtd_meses_atraso'],
+                'vr_penalidade': p['valor_penalidade']
+            }
+
+        # Criar deliberação
+        deliberacao = DeliberacaoANS(
+            NU_CONTRATO=nu_contrato,
+            DT_ESTOQUE=dt_estoque,
+            VR_ANS=Decimal(str(vr_ans)),
+
+            # Contrato s/nº
+            QTD_MESES_SN=dados_contratos.get('Contrato s/nº', {}).get('qtd_meses'),
+            VR_PENALIDADE_SN=Decimal(str(dados_contratos.get('Contrato s/nº', {}).get('vr_penalidade', 0))),
+
+            # Contrato 03/2014
+            QTD_MESES_03_2014=dados_contratos.get('Contrato 03/2014', {}).get('qtd_meses'),
+            VR_PENALIDADE_03_2014=Decimal(str(dados_contratos.get('Contrato 03/2014', {}).get('vr_penalidade', 0))),
+
+            # Contrato 13/2019
+            QTD_MESES_13_2019=dados_contratos.get('Contrato 13/2019', {}).get('qtd_meses'),
+            VR_PENALIDADE_13_2019=Decimal(str(dados_contratos.get('Contrato 13/2019', {}).get('vr_penalidade', 0)))
+        )
+
+        if deliberacao.salvar():
+            # Registrar log
+            registrar_log(
+                acao='criar',
+                entidade='deliberacao_ans',
+                entidade_id=nu_contrato,
+                descricao=f'Deliberação de Penalidades ANS salva - Contrato {nu_contrato}',
+                dados_novos={
+                    'nu_contrato': nu_contrato,
+                    'vr_ans': str(vr_ans)
+                }
+            )
+
+            return jsonify({'success': True, 'message': 'Deliberação salva com sucesso!'})
         else:
-            return jsonify({'success': False, 'message': 'Erro ao excluir penalidade'}), 500
+            return jsonify({'success': False, 'message': 'Erro ao salvar no banco de dados'}), 500
 
     except Exception as e:
         import traceback

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Consultar Penalidades ANS - SUMOV{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Cabeçalho -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">
+                <i class="fas fa-calculator text-warning me-2"></i>
+                Consultar Penalidades ANS
+            </h2>
+            <p class="text-muted mb-0">Cálculo automático de penalidades ANS por contrato</p>
+        </div>
+        <div>
+            <a href="{{ url_for('sumov.penalidade_ans_index') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+        </div>
+    </div>
+
+    <!-- Card de Busca -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0">
+                <i class="fas fa-search me-2"></i>Buscar Contrato
+            </h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST">
+                <div class="row align-items-end">
+                    <div class="col-md-8">
+                        <label for="nu_contrato" class="form-label fw-bold">
+                            <i class="fas fa-file-contract text-primary me-1"></i>
+                            Número do Contrato  <span class="text-danger">*</span>
+                        </label>
+                        <input type="text"
+                               class="form-control form-control-lg"
+                               id="nu_contrato"
+                               name="nu_contrato"
+                               value="{{ nu_contrato if exibir_resultados else '' }}"
+                               placeholder="Digite o número do contrato"
+                               required>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-success btn-lg w-100">
+                            <i class="fas fa-search me-2"></i>Buscar e Calcular
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if exibir_resultados %}
+    <!-- Dados do Imóvel -->
+    <div class="card shadow-sm mb-3 border-info">
+        <div class="card-header bg-info text-white py-2">
+            <h6 class="mb-0">
+                <i class="fas fa-building me-2"></i>Dados do Imóvel
+            </h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-2"><strong>Nº do Contrato:</strong> {{ nu_contrato }}</p>
+                    <p class="mb-2"><strong>Data Entrada Estoque:</strong> {{ dt_entrada_estoque.strftime('%d/%m/%Y') }}</p>
+                </div>
+                <div class="col-md-6">
+                    {% if vr_venda %}
+                    <p class="mb-2"><strong>Valor Venda:</strong> R$ {{ "{:,.2f}".format(vr_venda).replace(',', 'X').replace('.', ',').replace('X', '.') }}</p>
+                    {% if dt_venda %}
+                    <p class="mb-2"><strong>Data Venda:</strong> {{ dt_venda.strftime('%d/%m/%Y') }}</p>
+                    {% endif %}
+                    {% endif %}
+                    {% if vr_avaliacao %}
+                    <p class="mb-0"><strong>Valor Avaliação:</strong> R$ {{ "{:,.2f}".format(vr_avaliacao).replace(',', 'X').replace('.', ',').replace('X', '.') }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Itens de ANS (Cálculos) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark py-3">
+            <h5 class="mb-0 fw-bold">
+                <i class="fas fa-list-alt me-2"></i>Itens de ANS
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        {% for p in penalidades %}
+                        <!-- Linha do Contrato -->
+                        <tr class="table-light">
+                            <td colspan="8" class="fw-bold">{{ p.nome_contrato }}</td>
+                        </tr>
+                        <!-- Linha de Dados -->
+                        <tr>
+                            <td style="width: 150px;"><small><strong>Data Início Contrato</strong></small></td>
+                            <td style="width: 120px;">{{ p.dt_inicio_contrato.strftime('%d/%m/%Y') }}</td>
+
+                            <td style="width: 150px;"><small><strong>Data Fim Contrato</strong></small></td>
+                            <td style="width: 120px;">{{ p.dt_fim_contrato.strftime('%d/%m/%Y') }}</td>
+
+                            <td style="width: 150px;"><small><strong>Qtd Meses Atraso</strong></small></td>
+                            <td class="text-center" style="width: 80px;">
+                                <span class="badge bg-warning text-dark">{{ p.qtd_meses_atraso }}</span>
+                            </td>
+
+                            <td style="width: 150px;"><small><strong>Vlr Unitário Tarifa</strong></small></td>
+                            <td class="text-end" style="width: 120px;">
+                                {{ "{:,.2f}".format(p.vr_unitario_tarifa).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                        </tr>
+                        <!-- Linha do Valor da Penalidade -->
+                        <tr>
+                            <td colspan="6"></td>
+                            <td class="text-end fw-bold">Vlr da Penalidade</td>
+                            <td class="text-end fw-bold text-danger">
+                                {{ "{:,.2f}".format(p.valor_penalidade).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+
+                        <!-- Linha de Total -->
+                        <tr class="table-success">
+                            <td colspan="6"></td>
+                            <td class="text-end fw-bold fs-5">Total das Penalidades de ANS</td>
+                            <td class="text-end fw-bold text-danger fs-5">
+                                {{ "{:,.2f}".format(total_penalidades).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botão Salvar Deliberação -->
+    <div class="text-end mb-3">
+        <button type="button" class="btn btn-success btn-lg" id="btnSalvarDeliberacao">
+            <i class="fas fa-save me-2"></i>Salvar Deliberação
+        </button>
+    </div>
+
+    <!-- Informação sobre Cláusula 11ª -->
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Cláusula 11ª – Prejuízo Financeiro:</strong> A CAIXA deverá arcar com as despesas de juros e multa incidentes sobre as taxas de condomínio a partir do dia seguinte ao término do prazo fixado no Contrato de Prestação de Serviços vigente à época.
+    </div>
+    {% endif %}
+</div>
+
+<script>
+{% if exibir_resultados %}
+document.getElementById('btnSalvarDeliberacao').addEventListener('click', function() {
+    if (!confirm('Deseja salvar esta deliberação de penalidades ANS?')) {
+        return;
+    }
+
+    // Preparar dados
+    const penalidades = [];
+    {% for p in penalidades %}
+    penalidades.push({
+        nome_contrato: '{{ p.nome_contrato }}',
+        qtd_meses_atraso: {{ p.qtd_meses_atraso }},
+        valor_penalidade: {{ p.valor_penalidade }}
+    });
+    {% endfor %}
+
+    const dados = {
+        nu_contrato: '{{ nu_contrato }}',
+        dt_estoque: '{{ dt_entrada_estoque.strftime('%Y-%m-%d') }}',
+        vr_ans: {{ total_penalidades }},
+        penalidades: penalidades
+    };
+
+    // Desabilitar botão
+    this.disabled = true;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Salvando...';
+
+    // Enviar via AJAX
+    fetch('/sumov/penalidade-ans/salvar-deliberacao', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(dados)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.href = '/sumov/penalidade-ans';
+        } else {
+            alert('Erro: ' + data.message);
+            // Reabilitar botão
+            document.getElementById('btnSalvarDeliberacao').disabled = false;
+            document.getElementById('btnSalvarDeliberacao').innerHTML = '<i class="fas fa-save me-2"></i>Salvar Deliberação';
+        }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao salvar deliberação');
+        // Reabilitar botão
+        document.getElementById('btnSalvarDeliberacao').disabled = false;
+        document.getElementById('btnSalvarDeliberacao').innerHTML = '<i class="fas fa-save me-2"></i>Salvar Deliberação';
+    });
+});
+{% endif %}
+</script>
+{% endblock %}

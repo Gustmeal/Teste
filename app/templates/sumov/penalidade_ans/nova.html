@@ -1,4 +1,3 @@
-<!-- templates/sumov/penalidade_ans/nova.html -->
 {% extends "base.html" %}
 
 {% block title %}Nova Penalidade ANS - SUMOV{% endblock %}
@@ -10,9 +9,9 @@
         <div>
             <h2 class="fw-bold text-dark mb-1">
                 <i class="fas fa-plus-circle text-success me-2"></i>
-                Nova Penalidade ANS
+                Cadastrar Penalidade ANS
             </h2>
-            <p class="text-muted mb-0">Cadastro de nova penalidade ANS para contrato condominal</p>
+            <p class="text-muted mb-0">Cadastro de nova penalidade ANS para contratos condominiais</p>
         </div>
         <div>
             <a href="{{ url_for('sumov.penalidade_ans_index') }}" class="btn btn-outline-secondary">
@@ -21,13 +20,13 @@
         </div>
     </div>
 
-    <!-- Formulário -->
     <div class="row">
-        <div class="col-lg-8">
+        <!-- COLUNA ESQUERDA: Formulário -->
+        <div class="col-md-7">
             <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white py-3">
+                <div class="card-header bg-success text-white py-3">
                     <h5 class="mb-0">
-                        <i class="fas fa-edit me-2"></i>Dados da Penalidade
+                        <i class="fas fa-file-alt me-2"></i>Dados da Penalidade
                     </h5>
                 </div>
                 <div class="card-body p-4">
@@ -40,122 +39,139 @@
                             </label>
                             <div class="input-group">
                                 <input type="text"
-                                       class="form-control"
+                                       class="form-control form-control-lg"
                                        id="nu_contrato"
                                        name="nu_contrato"
                                        placeholder="Digite o número do contrato"
                                        required>
-                                <button class="btn btn-primary" type="button" id="btnBuscarContrato">
-                                    <i class="fas fa-search me-1"></i>Buscar Dados
+                                <button type="button"
+                                        class="btn btn-info"
+                                        id="btnBuscarDados">
+                                    <i class="fas fa-search me-2"></i>Buscar Dados
                                 </button>
                             </div>
-                            <small class="text-muted">Digite o número do contrato e clique em "Buscar Dados" para preencher as informações automaticamente</small>
+                            <small class="form-text text-muted">
+                                Clique em "Buscar Dados" para carregar informações e calcular penalidades
+                            </small>
                         </div>
 
                         <hr class="my-4">
 
-                        <!-- Dados de Vigência -->
-                        <h6 class="fw-bold text-secondary mb-3">
-                            <i class="fas fa-calendar-alt me-2"></i>Período de Vigência
-                        </h6>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="ini_vigencia" class="form-label fw-bold">
-                                        <i class="fas fa-calendar-check text-success me-1"></i>
-                                        Data de Início da Vigência <span class="text-danger">*</span>
-                                    </label>
-                                    <input type="date"
-                                           class="form-control"
-                                           id="ini_vigencia"
-                                           name="ini_vigencia"
-                                           required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="fim_vigencia" class="form-label fw-bold">
-                                        <i class="fas fa-calendar-times text-danger me-1"></i>
-                                        Data de Fim da Vigência <span class="text-danger">*</span>
-                                    </label>
-                                    <input type="date"
-                                           class="form-control"
-                                           id="fim_vigencia"
-                                           name="fim_vigencia"
-                                           required>
-                                </div>
-                            </div>
+                        <!-- Data Início Vigência -->
+                        <div class="mb-3">
+                            <label for="ini_vigencia" class="form-label fw-bold">
+                                <i class="fas fa-calendar-alt text-success me-1"></i>
+                                Data Início Vigência <span class="text-danger">*</span>
+                            </label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="ini_vigencia"
+                                   name="ini_vigencia"
+                                   required>
                         </div>
 
-                        <hr class="my-4">
-
-                        <!-- Valores da Penalidade -->
-                        <h6 class="fw-bold text-secondary mb-3">
-                            <i class="fas fa-dollar-sign me-2"></i>Valores e Prazos
-                        </h6>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="vr_tarifa" class="form-label fw-bold">
-                                        <i class="fas fa-money-bill-wave text-success me-1"></i>
-                                        Valor da Tarifa ANS <span class="text-danger">*</span>
-                                    </label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">R$</span>
-                                        <input type="text"
-                                               class="form-control"
-                                               id="vr_tarifa"
-                                               name="vr_tarifa"
-                                               placeholder="0,00"
-                                               required>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="prazo_dias" class="form-label fw-bold">
-                                        <i class="fas fa-clock text-warning me-1"></i>
-                                        Prazo (dias)
-                                    </label>
-                                    <input type="number"
-                                           class="form-control"
-                                           id="prazo_dias"
-                                           name="prazo_dias"
-                                           placeholder="Ex: 30"
-                                           min="1">
-                                    <small class="text-muted">Opcional</small>
-                                </div>
-                            </div>
+                        <!-- Data Fim Vigência -->
+                        <div class="mb-3">
+                            <label for="fim_vigencia" class="form-label fw-bold">
+                                <i class="fas fa-calendar-check text-danger me-1"></i>
+                                Data Fim Vigência <span class="text-danger">*</span>
+                            </label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="fim_vigencia"
+                                   name="fim_vigencia"
+                                   required>
                         </div>
 
-                        <!-- Botões de Ação -->
-                        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                            <a href="{{ url_for('sumov.penalidade_ans_index') }}" class="btn btn-secondary">
-                                <i class="fas fa-times me-2"></i>Cancelar
-                            </a>
-                            <button type="submit" class="btn btn-success">
+                        <!-- Valor da Tarifa -->
+                        <div class="mb-3">
+                            <label for="vr_tarifa" class="form-label fw-bold">
+                                <i class="fas fa-dollar-sign text-success me-1"></i>
+                                Valor da Tarifa <span class="text-danger">*</span>
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="vr_tarifa"
+                                   name="vr_tarifa"
+                                   placeholder="0,00"
+                                   required>
+                        </div>
+
+                        <!-- Prazo em Dias -->
+                        <div class="mb-4">
+                            <label for="prazo_dias" class="form-label fw-bold">
+                                <i class="fas fa-clock text-warning me-1"></i>
+                                Prazo em Dias
+                            </label>
+                            <input type="number"
+                                   class="form-control"
+                                   id="prazo_dias"
+                                   name="prazo_dias"
+                                   placeholder="Ex: 120">
+                            <small class="form-text text-muted">Prazo para quitação dos débitos</small>
+                        </div>
+
+                        <!-- Botões -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
                                 <i class="fas fa-save me-2"></i>Salvar Penalidade
                             </button>
+                            <a href="{{ url_for('sumov.penalidade_ans_index') }}"
+                               class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Cancelar
+                            </a>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- Painel Lateral com Informações do Contrato -->
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-info">
-                <div class="card-header bg-info text-white py-3">
-                    <h5 class="mb-0">
+        <!-- COLUNA DIREITA: Dados do Contrato e Cálculos -->
+        <div class="col-md-5">
+            <!-- Card de Informações do Contrato -->
+            <div class="card shadow-sm mb-3" id="cardInfoContrato" style="display: none;">
+                <div class="card-header bg-info text-white py-2">
+                    <h6 class="mb-0">
                         <i class="fas fa-info-circle me-2"></i>Informações do Contrato
-                    </h5>
+                    </h6>
                 </div>
-                <div class="card-body" id="painelInformacoes">
-                    <div class="text-center text-muted py-4">
-                        <i class="fas fa-search fa-3x mb-3 opacity-50"></i>
-                        <p class="mb-0">Digite um contrato e clique em "Buscar Dados" para visualizar as informações</p>
+                <div class="card-body">
+                    <div id="dadosContrato"></div>
+                </div>
+            </div>
+
+            <!-- Card de Cálculo de Penalidades -->
+            <div class="card shadow-sm border-warning" id="cardCalculoPenalidades" style="display: none;">
+                <div class="card-header bg-warning text-dark py-3">
+                    <h6 class="mb-0">
+                        <i class="fas fa-calculator me-2"></i>Cálculo de Penalidades ANS
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" id="tabelaPenalidades">
+                            <thead class="table-light">
+                                <tr style="font-size: 0.85rem;">
+                                    <th>Contrato</th>
+                                    <th class="text-center">Meses</th>
+                                    <th class="text-end">Vlr Unit.</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="corpoTabelaPenalidades">
+                                <!-- Será preenchido via JavaScript -->
+                            </tbody>
+                            <tfoot class="table-warning">
+                                <tr>
+                                    <td colspan="3" class="text-end fw-bold">
+                                        <strong>Total Penalidades:</strong>
+                                    </td>
+                                    <td class="text-end fw-bold" id="totalPenalidades">
+                                        R$ 0,00
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -163,139 +179,112 @@
     </div>
 </div>
 
-<!-- Script para buscar dados do contrato -->
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const btnBuscar = document.getElementById('btnBuscarContrato');
-    const inputContrato = document.getElementById('nu_contrato');
-    const painelInfo = document.getElementById('painelInformacoes');
+// Máscara monetária no campo VR_TARIFA
+document.getElementById('vr_tarifa').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/\D/g, '');
+    value = (value / 100).toFixed(2);
+    value = value.replace('.', ',');
+    value = value.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    e.target.value = value;
+});
 
-    // Máscara para valor monetário
-    const inputValor = document.getElementById('vr_tarifa');
-    inputValor.addEventListener('input', function(e) {
-        let value = e.target.value.replace(/\D/g, '');
-        value = (parseInt(value) / 100).toFixed(2);
-        e.target.value = value.replace('.', ',');
-    });
+// Buscar dados do contrato
+document.getElementById('btnBuscarDados').addEventListener('click', function() {
+    const contrato = document.getElementById('nu_contrato').value.trim();
 
-    // Buscar dados do contrato
-    btnBuscar.addEventListener('click', function() {
-        const contrato = inputContrato.value.trim();
+    if (!contrato) {
+        alert('Informe o número do contrato');
+        return;
+    }
 
-        if (!contrato) {
-            alert('Digite o número do contrato primeiro!');
-            inputContrato.focus();
-            return;
-        }
+    // Exibir loading
+    this.disabled = true;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Buscando...';
 
-        // Mostrar loading
-        painelInfo.innerHTML = `
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Carregando...</span>
-                </div>
-                <p class="mt-3 text-muted">Buscando dados do contrato...</p>
-            </div>
-        `;
+    fetch('{{ url_for("sumov.penalidade_ans_buscar_dados") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ contrato: contrato })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Exibir dados informativos
+            let html = '';
 
-        // Fazer requisição AJAX
-        fetch('{{ url_for("sumov.penalidade_ans_buscar_dados") }}', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ contrato: contrato })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Montar HTML com as informações
-                let html = '<div class="list-group list-group-flush">';
-
-                // Endereço
-                html += `
-                    <div class="list-group-item px-0">
-                        <div class="d-flex w-100 justify-content-between mb-1">
-                            <h6 class="mb-1 fw-bold text-primary">
-                                <i class="fas fa-map-marker-alt me-1"></i>Endereço
-                            </h6>
-                        </div>
-                        <p class="mb-0 small">${data.endereco || 'Não encontrado'}</p>
-                    </div>
-                `;
-
-                // Data de Entrada no Estoque
-                html += `
-                    <div class="list-group-item px-0">
-                        <div class="d-flex w-100 justify-content-between mb-1">
-                            <h6 class="mb-1 fw-bold text-primary">
-                                <i class="fas fa-warehouse me-1"></i>Entrada no Estoque
-                            </h6>
-                        </div>
-                        <p class="mb-0 small">${data.dt_entrada_estoque || 'Não encontrado'}</p>
-                    </div>
-                `;
-
-                // Valor da Avaliação
-                html += `
-                    <div class="list-group-item px-0">
-                        <div class="d-flex w-100 justify-content-between mb-1">
-                            <h6 class="mb-1 fw-bold text-primary">
-                                <i class="fas fa-file-invoice-dollar me-1"></i>Valor da Avaliação
-                            </h6>
-                        </div>
-                        <p class="mb-0 small">
-                            ${data.vr_avaliacao ? 'R$ ' + data.vr_avaliacao.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Não encontrado'}
-                        </p>
-                        ${data.dt_laudo ? '<small class="text-muted">Data do Laudo: ' + data.dt_laudo + '</small>' : ''}
-                    </div>
-                `;
-
-                // Valor da Venda
-                html += `
-                    <div class="list-group-item px-0">
-                        <div class="d-flex w-100 justify-content-between mb-1">
-                            <h6 class="mb-1 fw-bold text-primary">
-                                <i class="fas fa-hand-holding-usd me-1"></i>Valor da Venda
-                            </h6>
-                        </div>
-                        <p class="mb-0 small">
-                            ${data.vr_venda ? 'R$ ' + data.vr_venda.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'Não encontrado'}
-                        </p>
-                        ${data.dt_venda ? '<small class="text-muted">Data da Venda: ' + data.dt_venda + '</small>' : ''}
-                    </div>
-                `;
-
-                html += '</div>';
-
-                painelInfo.innerHTML = html;
-            } else {
-                painelInfo.innerHTML = `
-                    <div class="alert alert-warning mb-0">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        ${data.message || 'Erro ao buscar dados do contrato'}
-                    </div>
-                `;
+            if (data.dt_entrada_estoque) {
+                html += `<p class="mb-2"><strong><i class="fas fa-calendar text-primary me-1"></i> Data Entrada Estoque:</strong> ${data.dt_entrada_estoque}</p>`;
             }
-        })
-        .catch(error => {
-            console.error('Erro:', error);
-            painelInfo.innerHTML = `
-                <div class="alert alert-danger mb-0">
-                    <i class="fas fa-times-circle me-2"></i>
-                    Erro ao buscar dados. Tente novamente.
-                </div>
-            `;
-        });
-    });
 
-    // Permitir buscar com Enter no campo de contrato
-    inputContrato.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            btnBuscar.click();
+            if (data.vr_venda) {
+                html += `<p class="mb-2"><strong><i class="fas fa-dollar-sign text-success me-1"></i> Valor Venda:</strong> R$ ${data.vr_venda.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>`;
+                if (data.dt_venda) {
+                    html += `<p class="mb-2"><strong><i class="fas fa-calendar-check text-info me-1"></i> Data Venda:</strong> ${data.dt_venda}</p>`;
+                }
+            }
+
+            if (data.vr_avaliacao) {
+                html += `<p class="mb-2"><strong><i class="fas fa-file-invoice-dollar text-warning me-1"></i> Valor Avaliação:</strong> R$ ${data.vr_avaliacao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>`;
+                if (data.dt_laudo) {
+                    html += `<p class="mb-0"><strong><i class="fas fa-file-alt text-secondary me-1"></i> Data Laudo:</strong> ${data.dt_laudo}</p>`;
+                }
+            }
+
+            if (html) {
+                document.getElementById('dadosContrato').innerHTML = html;
+                document.getElementById('cardInfoContrato').style.display = 'block';
+            }
+
+            // Exibir cálculos de penalidades
+            if (data.penalidades && data.penalidades.length > 0) {
+                let htmlPenalidades = '';
+
+                data.penalidades.forEach(function(p) {
+                    htmlPenalidades += `
+                        <tr style="font-size: 0.85rem;">
+                            <td><small><strong>${p.nome_contrato}</strong></small></td>
+                            <td class="text-center"><span class="badge bg-warning text-dark">${p.qtd_meses_atraso}</span></td>
+                            <td class="text-end"><small>R$ ${p.vr_unitario_tarifa.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small></td>
+                            <td class="text-end"><strong class="text-danger"><small>R$ ${p.valor_penalidade.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</small></strong></td>
+                        </tr>
+                    `;
+                });
+
+                document.getElementById('corpoTabelaPenalidades').innerHTML = htmlPenalidades;
+                document.getElementById('totalPenalidades').innerHTML = `<strong class="text-danger">R$ ${data.total_penalidades.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong>`;
+                document.getElementById('cardCalculoPenalidades').style.display = 'block';
+            } else {
+                document.getElementById('cardCalculoPenalidades').style.display = 'none';
+            }
+
+        } else {
+            alert('Erro: ' + data.message);
         }
+    })
+    .catch(error => {
+        console.error('Erro:', error);
+        alert('Erro ao buscar dados do contrato');
+    })
+    .finally(() => {
+        // Restaurar botão
+        document.getElementById('btnBuscarDados').disabled = false;
+        document.getElementById('btnBuscarDados').innerHTML = '<i class="fas fa-search me-2"></i>Buscar Dados';
     });
+});
+
+// Validação de datas antes do submit
+document.getElementById('formPenalidade').addEventListener('submit', function(e) {
+    const dataInicio = new Date(document.getElementById('ini_vigencia').value);
+    const dataFim = new Date(document.getElementById('fim_vigencia').value);
+
+    if (dataFim <= dataInicio) {
+        e.preventDefault();
+        alert('A data de fim da vigência deve ser posterior à data de início.');
+        return false;
+    }
 });
 </script>
 {% endblock %}
