@@ -220,6 +220,24 @@
                         </small>
                     </div>
 
+                    <!-- ✅ NOVO CAMPO: Índice Usado pelo Condomínio -->
+                    <div class="mb-3">
+                        <label for="indice_usado_condominio" class="form-label fw-bold">
+                            <i class="fas fa-percent text-info me-1"></i>
+                            Índice Usado pelo Condomínio
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="indice_usado_condominio"
+                               name="indice_usado_condominio"
+                               maxlength="5"
+                               placeholder="Ex: IGPM, IPCA, INPC">
+                        <small class="text-muted">
+                            Campo opcional - Digite o índice utilizado (máximo 5 caracteres)
+                        </small>
+                    </div>
+
+
                     <!-- NOVO: Valor da Dívida (Manual) -->
                     <div class="mb-3">
                         <label for="vr_divida_condominio_2" class="form-label fw-bold">
@@ -485,17 +503,16 @@
 
                     <!-- Data do registro (INPUT MANUAL) -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-edit text-primary me-1"></i>
-                            Data do Registro <span class="text-danger">*</span>
+                        <label for="dt_registro" class="form-label fw-bold">
+                            <i class="fas fa-calendar-check text-secondary me-1"></i>
+                            Data do Registro
                         </label>
                         <input type="date"
                                class="form-control"
                                id="dt_registro"
-                               name="dt_registro"
-                               required>
+                               name="dt_registro">
                         <small class="text-muted">
-                            Campo de preenchimento manual obrigatório
+                            Campo opcional de preenchimento manual
                         </small>
                     </div>
                 </div>
@@ -612,49 +629,76 @@
                             </h6>
                         </div>
                         <div class="card-body">
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Valores obtidos automaticamente das tabelas SISDEX, SISGEA e SISINC
+                            </p>
                             <div class="row">
-                                <!-- Sisdex -->
-                                <div class="col-md-4 mb-3">
-                                    <label class="form-label fw-bold">
-                                        <i class="fas fa-file-invoice-dollar text-primary me-1"></i>
-                                        Sisdex
+                                <!-- SISDEX -->
+                                <div class="col-md-3 mb-3">
+                                    <label for="vr_debitos_sisdex" class="form-label fw-bold">
+                                        <i class="fas fa-tools text-warning me-1"></i>
+                                        SISDEX
                                     </label>
                                     <input type="text"
                                            class="form-control bg-white"
                                            id="vr_debitos_sisdex"
+                                           name="vr_debitos_sisdex"
+                                           value="R$ 0,00"
                                            readonly>
-                                    <small class="text-muted">
-                                        <span id="msgSisdex">Busca automática</span>
+                                    <small id="msgSisdex" class="text-muted">
+                                        <i class="fas fa-hourglass-half me-1"></i>Aguardando busca
                                     </small>
                                 </div>
 
-                                <!-- Sisgea -->
-                                <div class="col-md-4 mb-3">
-                                    <label class="form-label fw-bold">
-                                        <i class="fas fa-file-invoice-dollar text-success me-1"></i>
-                                        Sisgea
+                                <!-- SISGEA -->
+                                <div class="col-md-3 mb-3">
+                                    <label for="vr_debitos_sisgea" class="form-label fw-bold">
+                                        <i class="fas fa-building text-success me-1"></i>
+                                        SISGEA
                                     </label>
                                     <input type="text"
                                            class="form-control bg-white"
                                            id="vr_debitos_sisgea"
+                                           name="vr_debitos_sisgea"
+                                           value="R$ 0,00"
                                            readonly>
-                                    <small class="text-muted">
-                                        <span id="msgSisgea">Busca automática</span>
+                                    <small id="msgSisgea" class="text-muted">
+                                        <i class="fas fa-hourglass-half me-1"></i>Aguardando busca
                                     </small>
                                 </div>
 
-                                <!-- Total -->
-                                <div class="col-md-4 mb-3">
-                                    <label class="form-label fw-bold">
-                                        <i class="fas fa-calculator text-warning me-1"></i>
+                                <!-- SISINC (NOVO) -->
+                                <div class="col-md-3 mb-3">
+                                    <label for="vr_debitos_sisinc" class="form-label fw-bold">
+                                        <i class="fas fa-gavel text-info me-1"></i>
+                                        SISINC
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           id="vr_debitos_sisinc"
+                                           name="vr_debitos_sisinc"
+                                           value="R$ 0,00"
+                                           readonly>
+                                    <small id="msgSisinc" class="text-muted">
+                                        <i class="fas fa-hourglass-half me-1"></i>Aguardando busca
+                                    </small>
+                                </div>
+
+                                <!-- TOTAL -->
+                                <div class="col-md-3 mb-3">
+                                    <label for="vr_debitos_total" class="form-label fw-bold">
+                                        <i class="fas fa-calculator text-danger me-1"></i>
                                         Total
                                     </label>
                                     <input type="text"
-                                           class="form-control bg-white border-warning fw-bold"
+                                           class="form-control bg-white border-danger fw-bold"
                                            id="vr_debitos_total"
+                                           name="vr_debitos_total"
+                                           value="R$ 0,00"
                                            readonly>
-                                    <small class="text-muted">
-                                        <span id="msgDebitosTotal">Soma automática</span>
+                                    <small id="msgDebitosTotal" class="text-muted">
+                                        <i class="fas fa-hourglass-half me-1"></i>Aguardando busca
                                     </small>
                                 </div>
                             </div>
@@ -1032,7 +1076,7 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
             document.getElementById('infoProcessosRelatorio').style.display = 'none';
         }
 
-        // 9. Preencher Débitos
+        // Preencher Débitos
         if (data.vr_debitos_sisdex !== undefined) {
             document.getElementById('vr_debitos_sisdex').value = formatarMoeda(data.vr_debitos_sisdex);
             document.getElementById('msgSisdex').innerHTML =
@@ -1042,6 +1086,13 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
         if (data.vr_debitos_sisgea !== undefined) {
             document.getElementById('vr_debitos_sisgea').value = formatarMoeda(data.vr_debitos_sisgea);
             document.getElementById('msgSisgea').innerHTML =
+                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+        }
+
+        // NOVO - SISINC
+        if (data.vr_debitos_sisinc !== undefined) {
+            document.getElementById('vr_debitos_sisinc').value = formatarMoeda(data.vr_debitos_sisinc);
+            document.getElementById('msgSisinc').innerHTML =
                 '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
 

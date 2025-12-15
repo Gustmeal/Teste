@@ -25,6 +25,7 @@ class DeliberacaoPagamento(db.Model):
 
     # Valor da dívida cobrada pelo condomínio (primeiro valor)
     VR_DIVIDA_CONDOMINIO_1 = db.Column(db.Numeric(18, 2), nullable=True)
+    INDICE_USADO_CONDOMINIO = db.Column(db.String(5), nullable=True)
     INDICE_DIVIDA_CONDOMINIO_1 = db.Column(db.String(50), nullable=True)
     PERC_HONORARIOS_CONDOMINIO_1 = db.Column(db.Numeric(5, 2), nullable=True)
     OBS_DIVIDA_CONDOMINIO_1 = db.Column(db.String(200), nullable=True)
@@ -112,6 +113,7 @@ class DeliberacaoPagamento(db.Model):
 
     # ==== CONTROLE ====
     STATUS_DOCUMENTO = db.Column(db.String(50), default='RASCUNHO')
+    USUARIO_DELIBEROU = db.Column(db.String(200), nullable=True)
 
     # ==== AUDITORIA ====
     USUARIO_CRIACAO = db.Column(db.String(200), nullable=True)
@@ -129,6 +131,7 @@ class DeliberacaoPagamento(db.Model):
     RELATORIO_ASSESSORIA_JURIDICA = db.Column(db.Text, nullable=True)
     VR_DEBITOS_SISDEX = db.Column(db.Numeric(18, 2), nullable=True)
     VR_DEBITOS_SISGEA = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_DEBITOS_SISINC = db.Column(db.Numeric(18, 2), nullable=True)
     VR_DEBITOS_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
     PENALIDADE_ANS_CAIXA = db.Column(db.Text, nullable=True)
     PREJUIZO_FINANCEIRO_CAIXA = db.Column(db.Text, nullable=True)

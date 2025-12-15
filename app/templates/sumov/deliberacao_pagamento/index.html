@@ -3,138 +3,143 @@
 {% block content %}
 <div class="container-fluid fade-in">
     <a href="{{ url_for('sumov.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar ao SUMOV
+        <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">
             <i class="fas fa-gavel text-warning me-2"></i> Deliberação de Pagamento
         </h1>
-        <div>
-            <a href="{{ url_for('sumov.deliberacao_pagamento_nova') }}" class="btn btn-success">
-                <i class="fas fa-plus me-2"></i>Nova Deliberação
-            </a>
-        </div>
+        <a href="{{ url_for('sumov.deliberacao_pagamento_nova') }}" class="btn btn-success">
+            <i class="fas fa-plus me-2"></i>Nova Deliberação
+        </a>
     </div>
 
-    <!-- Cards de estatísticas -->
-    <div class="row mb-4">
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="bg-warning bg-opacity-10 p-3 rounded">
-                                <i class="fas fa-file-contract text-warning fs-3"></i>
-                            </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Total Deliberações</h6>
-                            <h5 class="mb-0">{{ deliberacoes|length }}</h5>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="bg-info bg-opacity-10 p-3 rounded">
-                                <i class="fas fa-calendar-check text-info fs-3"></i>
-                            </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Data de Hoje</h6>
-                            <h5 class="mb-0">{{ data_hoje }}</h5>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="flex-shrink-0">
-                            <div class="bg-success bg-opacity-10 p-3 rounded">
-                                <i class="fas fa-user-check text-success fs-3"></i>
-                            </div>
-                        </div>
-                        <div class="flex-grow-1 ms-3">
-                            <h6 class="text-muted mb-1">Analista</h6>
-                            <h5 class="mb-0">{{ current_user.nome.split()[0] }}</h5>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tabela de Deliberações Salvas -->
-    {% if deliberacoes %}
+    <!-- Card de Filtros -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-gradient-primary text-white">
             <h5 class="mb-0">
-                <i class="fas fa-list me-2"></i>Deliberações Salvas
+                <i class="fas fa-filter me-2"></i>Filtros de Pesquisa
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('sumov.deliberacao_pagamento') }}" id="formFiltros">
+                <div class="row g-3">
+                    <!-- Filtro por Número do Contrato -->
+                    <div class="col-md-4">
+                        <label for="filtro_contrato" class="form-label fw-bold">
+                            <i class="fas fa-file-contract text-primary me-1"></i>
+                            Número do Contrato
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="filtro_contrato"
+                               name="filtro_contrato"
+                               value="{{ filtro_contrato }}"
+                               placeholder="Digite o número do contrato">
+                    </div>
+
+                    <!-- Filtro por Analista -->
+                    <div class="col-md-4">
+                        <label for="filtro_analista" class="form-label fw-bold">
+                            <i class="fas fa-user text-info me-1"></i>
+                            Analista
+                        </label>
+                        <select class="form-select" id="filtro_analista" name="filtro_analista">
+                            <option value="">Todos os analistas</option>
+                            {% for analista in lista_analistas %}
+                            <option value="{{ analista }}"
+                                    {% if filtro_analista == analista %}selected{% endif %}>
+                                {{ analista }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Filtro por Status -->
+                    <div class="col-md-4">
+                        <label for="filtro_status" class="form-label fw-bold">
+                            <i class="fas fa-flag text-warning me-1"></i>
+                            Status
+                        </label>
+                        <select class="form-select" id="filtro_status" name="filtro_status">
+                            <option value="">Todos os status</option>
+                            {% for status in lista_status %}
+                            <option value="{{ status }}"
+                                    {% if filtro_status == status %}selected{% endif %}>
+                                {{ status }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Botões de Ação dos Filtros -->
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-secondary">
+                        <i class="fas fa-eraser me-2"></i>Limpar Filtros
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Lista de Deliberações -->
+    {% if deliberacoes %}
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-list me-2"></i>
+                Deliberações Cadastradas ({{ deliberacoes|length }} registro(s))
             </h5>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover mb-0" id="tabelaDeliberacoes">
+                <table class="table table-hover table-striped mb-0 align-middle">
                     <thead class="table-light">
                         <tr>
-                            <th><i class="fas fa-file-contract me-1"></i>Contrato</th>
-                            <th><i class="fas fa-calendar me-1"></i>Data Análise</th>
-                            <th><i class="fas fa-user me-1"></i>Analista</th>
-                            <th><i class="fas fa-chart-line me-1"></i>Índice</th>
-                            <th><i class="fas fa-dollar-sign me-1"></i>Valor Calculado</th>
-                            <th><i class="fas fa-info-circle me-1"></i>Status</th>
-                            <th class="text-center"><i class="fas fa-cog me-1"></i>Ações</th>
+                            <th class="text-center">Contrato</th>
+                            <th>Analista</th>
+                            <th class="text-center">Data Análise</th>
+                            <th class="text-center">Quem Deliberou</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for deliberacao in deliberacoes %}
                         <tr>
-                            <td class="fw-bold">{{ deliberacao.NU_CONTRATO }}</td>
-                            <td>
-                                {% if deliberacao.DT_ANALISE %}
-                                    {{ deliberacao.DT_ANALISE.strftime('%d/%m/%Y') }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </td>
+                            <td class="text-center fw-bold">{{ deliberacao.NU_CONTRATO }}</td>
                             <td>{{ deliberacao.COLABORADOR_ANALISOU or '-' }}</td>
-                            <td>
-                                <small class="text-muted">{{ deliberacao.INDICE_DEBITO_EMGEA or '-' }}</small>
+                            <td class="text-center">
+                                {{ deliberacao.DT_ANALISE.strftime('%d/%m/%Y') if deliberacao.DT_ANALISE else '-' }}
                             </td>
-                            <td>
-                                {% if deliberacao.VR_DEBITO_CALCULADO_EMGEA %}
-                                    <span class="text-success fw-bold">
-                                        R$ {{ "{:,.2f}".format(deliberacao.VR_DEBITO_CALCULADO_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            <td class="text-center">
+                                {% if deliberacao.USUARIO_DELIBEROU %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-user-check me-1"></i>{{ deliberacao.USUARIO_DELIBEROU }}
                                     </span>
                                 {% else %}
-                                    -
+                                    <span class="text-muted">-</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                {% set status = deliberacao.STATUS_DOCUMENTO or 'RASCUNHO' %}
-                                {% if status == 'RASCUNHO' %}
+                            <td class="text-center">
+                                {% if deliberacao.STATUS_DOCUMENTO == 'RASCUNHO' %}
                                     <span class="badge bg-secondary">
-                                        <i class="fas fa-pencil-alt me-1"></i>Rascunho
+                                        <i class="fas fa-edit me-1"></i>Rascunho
                                     </span>
-                                {% elif status == 'EM_ANALISE' %}
-                                    <span class="badge bg-warning">
-                                        <i class="fas fa-clock me-1"></i>Em Análise
-                                    </span>
-                                {% elif status == 'APROVADO' %}
+                                {% elif deliberacao.STATUS_DOCUMENTO == 'DELIBERADO' %}
                                     <span class="badge bg-success">
-                                        <i class="fas fa-check me-1"></i>Aprovado
+                                        <i class="fas fa-check me-1"></i>Deliberado
                                     </span>
-                                {% elif status == 'REJEITADO' %}
+                                {% elif deliberacao.STATUS_DOCUMENTO == 'APROVADO' %}
+                                    <span class="badge bg-primary">
+                                        <i class="fas fa-check-double me-1"></i>Aprovado
+                                    </span>
+                                {% elif deliberacao.STATUS_DOCUMENTO == 'REJEITADO' %}
                                     <span class="badge bg-danger">
                                         <i class="fas fa-times me-1"></i>Rejeitado
                                     </span>
@@ -168,10 +173,19 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>
+        {% if filtro_contrato or filtro_analista or filtro_status %}
+            Nenhuma deliberação encontrada com os filtros aplicados.
+        {% else %}
+            Nenhuma deliberação cadastrada ainda. Clique em "Nova Deliberação" para começar.
+        {% endif %}
+    </div>
     {% endif %}
 
     <!-- Informações sobre o módulo -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm mt-4">
         <div class="card-body">
             <h5 class="card-title">
                 <i class="fas fa-info-circle text-primary me-2"></i>
@@ -181,41 +195,30 @@
                 Este módulo permite criar relatórios automatizados de deliberação de pagamento para análise da GEADI.
                 Os dados são extraídos automaticamente das tabelas do sistema e organizados em formato padronizado.
             </p>
-
-            <div class="row">
-                <div class="col-md-6">
-                    <h6 class="text-primary">
-                        <i class="fas fa-check-circle me-2"></i>Funcionalidades
-                    </h6>
-                    <ul class="text-muted">
-                        <li>Busca automática de dados do contrato/imóvel</li>
-                        <li>Preenchimento automático de dados do estoque</li>
-                        <li>Identificação automática de períodos prescritos</li>
-                        <li>Busca de processos judiciais e débitos</li>
-                        <li>Salvamento e edição de deliberações</li>
-                    </ul>
-                </div>
-                <div class="col-md-6">
-                    <h6 class="text-primary">
-                        <i class="fas fa-database me-2"></i>Fontes de Dados
-                    </h6>
-                    <ul class="text-muted">
-                        <li>MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE</li>
-                        <li>MOV_TB032_SISCALCULO_PRESCRICOES</li>
-                        <li>MOV_TB031_SISCALCULO_CALCULOS</li>
-                        <li>SISJUD - tblProcessoCredito e tblProcessoEmgea</li>
-                        <li>MOV_TB017_DESPESAS_MANUTENCAO (SISDEX)</li>
-                        <li>MOV_TB004_DESPESAS_ANALITICO (SISGEA)</li>
-                    </ul>
-                </div>
-            </div>
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2">
+                    <i class="fas fa-check text-success me-2"></i>
+                    <strong>Busca automática:</strong> Dados de contratos, estoque, vendas e débitos
+                </li>
+                <li class="mb-2">
+                    <i class="fas fa-check text-success me-2"></i>
+                    <strong>Cálculos precisos:</strong> Correção monetária com diversos índices econômicos
+                </li>
+                <li class="mb-2">
+                    <i class="fas fa-check text-success me-2"></i>
+                    <strong>Exportação PDF:</strong> Relatórios prontos para impressão e assinatura
+                </li>
+                <li>
+                    <i class="fas fa-check text-success me-2"></i>
+                    <strong>Controle de status:</strong> Acompanhamento do fluxo de aprovação
+                </li>
+            </ul>
         </div>
     </div>
-
 </div>
 
 <!-- Modal de Confirmação de Exclusão -->
-<div class="modal fade" id="modalExcluir" tabindex="-1">
+<div class="modal fade" id="modalExcluir" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
@@ -225,16 +228,19 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Tem certeza que deseja excluir a deliberação do contrato <strong id="contratoExcluir"></strong>?</p>
-                <p class="text-muted small mb-0">Esta ação não pode ser desfeita.</p>
+                <p class="mb-0">Deseja realmente excluir a deliberação do contrato <strong id="contratoExcluir"></strong>?</p>
+                <p class="text-danger mt-2 mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Esta ação não poderá ser desfeita.
+                </p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times me-2"></i>Cancelar
                 </button>
-                <form method="POST" id="formExcluir" style="display: inline;">
+                <form id="formExcluir" method="POST" style="display: inline;">
                     <button type="submit" class="btn btn-danger">
-                        <i class="fas fa-trash me-2"></i>Excluir
+                        <i class="fas fa-trash me-2"></i>Confirmar Exclusão
                     </button>
                 </form>
             </div>
@@ -243,17 +249,14 @@
 </div>
 
 <script>
-
 // Função para baixar PDF
 function baixarPDF(contrato) {
-    // Mostrar indicador de carregamento no botão
     const botoes = document.querySelectorAll(`button[onclick="baixarPDF('${contrato}')"]`);
     botoes.forEach(btn => {
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
     });
 
-    // Criar elemento <a> temporário para download
     const link = document.createElement('a');
     link.href = `/sumov/deliberacao-pagamento/pdf/${contrato}`;
     link.download = `Deliberacao_${contrato}.pdf`;
@@ -261,7 +264,6 @@ function baixarPDF(contrato) {
     link.click();
     document.body.removeChild(link);
 
-    // Restaurar botão após 2 segundos
     setTimeout(() => {
         botoes.forEach(btn => {
             btn.disabled = false;
@@ -269,11 +271,11 @@ function baixarPDF(contrato) {
         });
     }, 2000);
 }
+
 // Confirmar exclusão
 function confirmarExclusao(contrato) {
     document.getElementById('contratoExcluir').textContent = contrato;
     document.getElementById('formExcluir').action = `/sumov/deliberacao-pagamento/excluir/${contrato}`;
-
     const modal = new bootstrap.Modal(document.getElementById('modalExcluir'));
     modal.show();
 }

@@ -13,6 +13,14 @@ from app.models.deliberacao_pagamento import DeliberacaoPagamento
 from flask import send_file
 from dateutil.relativedelta import relativedelta
 from datetime import timedelta
+from flask import request, render_template, redirect, url_for, flash, jsonify, send_file
+from flask_login import login_required, current_user
+from sqlalchemy import text, func, distinct
+from app import db
+from app.models.deliberacao_pagamento import DeliberacaoPagamento
+from app.utils.audit import registrar_log
+from datetime import datetime
+from decimal import Decimal
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
@@ -819,26 +827,71 @@ def buscar_analise_pagamentos():
 @sumov_bp.route('/deliberacao-pagamento')
 @login_required
 def deliberacao_pagamento():
-    """Dashboard do sistema de Deliberação de Pagamento com lista de deliberações"""
+    """Dashboard do sistema de Deliberação de Pagamento com lista de deliberações e filtros"""
     try:
         from datetime import datetime
 
-        # Buscar todas as deliberações salvas
-        deliberacoes = DeliberacaoPagamento.query.filter(
+        # Capturar parâmetros de filtro
+        filtro_contrato = request.args.get('filtro_contrato', '').strip()
+        filtro_analista = request.args.get('filtro_analista', '').strip()
+        filtro_status = request.args.get('filtro_status', '').strip()
+
+        # Construir query base
+        query = DeliberacaoPagamento.query.filter(
             DeliberacaoPagamento.DELETED_AT.is_(None)
-        ).order_by(
-            DeliberacaoPagamento.CREATED_AT.desc()
-        ).all()
+        )
+
+        # Aplicar filtros
+        if filtro_contrato:
+            query = query.filter(DeliberacaoPagamento.NU_CONTRATO.like(f'%{filtro_contrato}%'))
+
+        if filtro_analista:
+            query = query.filter(DeliberacaoPagamento.COLABORADOR_ANALISOU == filtro_analista)
+
+        if filtro_status:
+            query = query.filter(DeliberacaoPagamento.STATUS_DOCUMENTO == filtro_status)
+
+        # Ordenar e buscar
+        deliberacoes = query.order_by(DeliberacaoPagamento.CREATED_AT.desc()).all()
+
+        # Buscar valores distintos para os filtros
+        analistas_distintos = db.session.query(
+            distinct(DeliberacaoPagamento.COLABORADOR_ANALISOU)
+        ).filter(
+            DeliberacaoPagamento.DELETED_AT.is_(None),
+            DeliberacaoPagamento.COLABORADOR_ANALISOU.isnot(None)
+        ).order_by(DeliberacaoPagamento.COLABORADOR_ANALISOU).all()
+
+        status_distintos = db.session.query(
+            distinct(DeliberacaoPagamento.STATUS_DOCUMENTO)
+        ).filter(
+            DeliberacaoPagamento.DELETED_AT.is_(None),
+            DeliberacaoPagamento.STATUS_DOCUMENTO.isnot(None)
+        ).order_by(DeliberacaoPagamento.STATUS_DOCUMENTO).all()
+
+        # Transformar em listas simples
+        lista_analistas = [a[0] for a in analistas_distintos if a[0]]
+        lista_status = [s[0] for s in status_distintos if s[0]]
 
         return render_template('sumov/deliberacao_pagamento/index.html',
                                deliberacoes=deliberacoes,
-                               data_hoje=datetime.now().strftime('%d/%m/%Y'))
+                               data_hoje=datetime.now().strftime('%d/%m/%Y'),
+                               lista_analistas=lista_analistas,
+                               lista_status=lista_status,
+                               filtro_contrato=filtro_contrato,
+                               filtro_analista=filtro_analista,
+                               filtro_status=filtro_status)
     except Exception as e:
         from datetime import datetime
         flash(f'Erro ao carregar deliberações: {str(e)}', 'danger')
         return render_template('sumov/deliberacao_pagamento/index.html',
                                deliberacoes=[],
-                               data_hoje=datetime.now().strftime('%d/%m/%Y'))
+                               data_hoje=datetime.now().strftime('%d/%m/%Y'),
+                               lista_analistas=[],
+                               lista_status=[],
+                               filtro_contrato='',
+                               filtro_analista='',
+                               filtro_status='')
 
 
 @sumov_bp.route('/deliberacao-pagamento/nova', methods=['GET', 'POST'])
@@ -875,7 +928,7 @@ def deliberacao_pagamento_nova():
             consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
             tipo_pagamento_venda = request.form.get('tipo_pagamento_venda', '').strip() or None
 
-            # Validação básica obrigatória
+            # ===== VALIDAÇÕES OBRIGATÓRIAS =====
             if not contrato:
                 flash('Por favor, informe o Contrato/Imóvel.', 'danger')
                 return redirect(url_for('sumov.deliberacao_pagamento_nova'))
@@ -884,28 +937,27 @@ def deliberacao_pagamento_nova():
                 flash('Por favor, selecione o Índice Econômico.', 'danger')
                 return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            if not dt_registro_str:
-                flash('Por favor, informe a Data do Registro.', 'danger')
-                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+            # ===== CONVERSÃO DE DATAS =====
 
-            # Converter datas
+            # Converter dt_arrematacao (OPCIONAL)
             dt_arrematacao = None
             if dt_arrematacao_str:
                 try:
                     dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
                 except ValueError:
-                    flash('Data de arrematação inválida.', 'danger')
+                    flash('Data de Arrematação inválida.', 'danger')
                     return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
+            # ✅ Converter dt_registro (OPCIONAL - PODE SER VAZIO AGORA)
             dt_registro = None
             if dt_registro_str:
                 try:
                     dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
                 except ValueError:
-                    flash('Data do registro inválida.', 'danger')
+                    flash('Data do Registro inválida.', 'danger')
                     return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            # NOVOS: Converter datas do período de cobrança
+            # Converter datas do período de cobrança (OPCIONAL)
             dt_periodo_cobranca_inicio = None
             if dt_periodo_inicio_str:
                 try:
@@ -922,7 +974,9 @@ def deliberacao_pagamento_nova():
                     flash('Data de fim do período de cobrança inválida.', 'danger')
                     return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            # NOVO: Converter valor manual
+            # ===== CONVERSÃO DE VALORES =====
+
+            # Converter valor manual (OPCIONAL)
             vr_divida_condominio_2 = None
             if vr_divida_condominio_2_str:
                 try:
@@ -974,7 +1028,7 @@ def deliberacao_pagamento_nova():
             vr_divida_inicial = result_valor[0] if result_valor and result_valor[0] else Decimal('0')
             nome_condominio = result_valor[1] if result_valor and result_valor[1] else None
 
-            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas (DE UM ÚNICO ÍNDICE) =====
+            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
             sql_valor_prescrito = text("""
                 SELECT 
                     SUM([VR_COTA]) as VALOR_PRESCRITO
@@ -1044,7 +1098,7 @@ def deliberacao_pagamento_nova():
             indice_obj = ParamIndicesEconomicos.query.get(id_indice)
             indice_debito_emgea = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
 
-            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo (SEMPRE DA ÚLTIMA DT_REFERENCIA) =====
+            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
             sql_avaliacao = text("""
                 SELECT TOP 1
                     [VR_LAUDO_AVALIACAO],
@@ -1084,7 +1138,7 @@ def deliberacao_pagamento_nova():
             dt_venda = result_venda[1] if result_venda and result_venda[1] else None
             nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
 
-            # ===== BUSCA 9: Débitos Pagos =====
+            # ===== BUSCA 9: Débitos Pagos (SISDEX + SISGEA + SISINC) =====
             sql_sisdex = text("""
                 SELECT SUM([VR_PAGO]) as TOTAL_SISDEX
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB017_DESPESAS_MANUTENCAO]
@@ -1101,10 +1155,28 @@ def deliberacao_pagamento_nova():
             result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
             vr_debitos_sisgea = result_sisgea[0] if result_sisgea and result_sisgea[0] else Decimal('0')
 
-            vr_debitos_total = vr_debitos_sisdex + vr_debitos_sisgea
+            # ===== NOVO: BUSCA SISINC =====
+            sql_sisinc = text("""
+                SELECT SUM([VR_LANCAMENTO]) as TOTAL_SISINC
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB014_DESPESAS_EXECUCAO_SISINC]
+                WHERE [NU_CONTRATO] = :contrato
+            """)
+            result_sisinc = db.session.execute(sql_sisinc, {'contrato': contrato}).fetchone()
+            vr_debitos_sisinc = result_sisinc[0] if result_sisinc and result_sisinc[0] else Decimal('0')
+
+            # TOTAL agora inclui SISINC
+            vr_debitos_total = vr_debitos_sisdex + vr_debitos_sisgea + vr_debitos_sisinc
 
             # ===== VERIFICAR SE JÁ EXISTE REGISTRO =====
             deliberacao_existente = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
+            # Determinar status e usuário que deliberou
+            status_documento = 'RASCUNHO'
+            usuario_deliberou = None
+
+            if consideracoes_gestor or consideracoes_gestor_sumov:
+                status_documento = 'DELIBERADO'
+                usuario_deliberou = current_user.nome
 
             if deliberacao_existente:
                 # ATUALIZAR registro existente
@@ -1133,6 +1205,7 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.DT_REGISTRO = dt_registro
                 deliberacao_existente.VR_DEBITOS_SISDEX = vr_debitos_sisdex
                 deliberacao_existente.VR_DEBITOS_SISGEA = vr_debitos_sisgea
+                deliberacao_existente.VR_DEBITOS_SISINC = vr_debitos_sisinc  # NOVO
                 deliberacao_existente.VR_DEBITOS_TOTAL = vr_debitos_total
                 deliberacao_existente.GRAVAME_MATRICULA = gravame_matricula
                 deliberacao_existente.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
@@ -1146,11 +1219,14 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
                 deliberacao_existente.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
                 deliberacao_existente.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
+                deliberacao_existente.STATUS_DOCUMENTO = status_documento
+                if status_documento == 'DELIBERADO' and not deliberacao_existente.USUARIO_DELIBEROU:
+                    deliberacao_existente.USUARIO_DELIBEROU = usuario_deliberou
                 deliberacao_existente.USUARIO_ATUALIZACAO = current_user.nome
                 deliberacao_existente.UPDATED_AT = datetime.utcnow()
 
                 deliberacao = deliberacao_existente
-                acao_log = 'editar'
+                acao_log = 'atualizar'
                 mensagem = 'Deliberação de Pagamento atualizada com sucesso!'
             else:
                 # CRIAR novo registro
@@ -1181,6 +1257,7 @@ def deliberacao_pagamento_nova():
                     DT_REGISTRO=dt_registro,
                     VR_DEBITOS_SISDEX=vr_debitos_sisdex,
                     VR_DEBITOS_SISGEA=vr_debitos_sisgea,
+                    VR_DEBITOS_SISINC=vr_debitos_sisinc,  # NOVO
                     VR_DEBITOS_TOTAL=vr_debitos_total,
                     GRAVAME_MATRICULA=gravame_matricula,
                     ACOES_NEGOCIAIS_ADMINISTRATIVAS=acoes_negociais_adm,
@@ -1194,7 +1271,8 @@ def deliberacao_pagamento_nova():
                     CONSIDERACOES_GESTOR_GEADI=consideracoes_gestor,
                     CONSIDERACOES_GESTOR_SUMOV=consideracoes_gestor_sumov,
                     TIPO_PAGAMENTO_VENDA=tipo_pagamento_venda,
-                    STATUS_DOCUMENTO='RASCUNHO',
+                    STATUS_DOCUMENTO=status_documento,
+                    USUARIO_DELIBEROU=usuario_deliberou,
                     USUARIO_CRIACAO=current_user.nome,
                     CREATED_AT=datetime.utcnow()
                 )
@@ -1227,11 +1305,10 @@ def deliberacao_pagamento_nova():
     # GET - Carregar página do formulário
     return render_template('sumov/deliberacao_pagamento/nova.html')
 
-
 @sumov_bp.route('/deliberacao-pagamento/buscar-dados-contrato', methods=['POST'])
 @login_required
 def buscar_dados_contrato():
-    """Busca dados do contrato nas tabelas do banco"""
+    """Busca dados do contrato nas tabelas do banco incluindo SISINC"""
     try:
         data = request.get_json()
         contrato = data.get('contrato', '').strip()
@@ -1304,7 +1381,7 @@ def buscar_dados_contrato():
         qtd_parcelas_inicial = result_valor[1] if result_valor and result_valor[1] else 0
         nome_condominio = result_valor[2] if result_valor and result_valor[2] else None
 
-        # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas (DE UM ÚNICO ÍNDICE) =====
+        # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
         sql_valor_prescrito = text("""
             SELECT 
                 SUM([VR_COTA]) as VALOR_PRESCRITO,
@@ -1366,7 +1443,7 @@ def buscar_dados_contrato():
                 indice_obj = ParamIndicesEconomicos.query.get(id_indice)
                 nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
 
-                # ✅ NOVO: Buscar totais por tipo de parcela para este índice específico
+                # Buscar totais por tipo de parcela para este índice específico
                 totais_por_tipo = db.session.query(
                     SiscalculoCalculos.ID_TIPO,
                     TipoParcela.DSC_TIPO,
@@ -1408,7 +1485,7 @@ def buscar_dados_contrato():
                     'valor_honorarios': vr_honorarios,
                     'perc_honorarios': perc_honorarios,
                     'valor_com_honorarios': vr_total_com_honorarios,
-                    'totais_por_tipo': tipos_parcela_lista  # ✅ NOVO CAMPO
+                    'totais_por_tipo': tipos_parcela_lista
                 })
 
         # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
@@ -1526,7 +1603,17 @@ def buscar_dados_contrato():
         result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
         vr_sisgea = float(result_sisgea[0]) if result_sisgea and result_sisgea[0] else 0
 
-        vr_total_debitos = vr_sisdex + vr_sisgea
+        # ===== BUSCA 12: Débitos Pagos - SISINC (NOVO) =====
+        sql_sisinc = text("""
+            SELECT SUM([VR_LANCAMENTO]) as TOTAL_SISINC
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB014_DESPESAS_EXECUCAO_SISINC]
+            WHERE [NU_CONTRATO] = :contrato
+        """)
+        result_sisinc = db.session.execute(sql_sisinc, {'contrato': contrato}).fetchone()
+        vr_sisinc = float(result_sisinc[0]) if result_sisinc and result_sisinc[0] else 0
+
+        # TOTAL agora inclui SISINC
+        vr_total_debitos = vr_sisdex + vr_sisgea + vr_sisinc
 
         # ===== RETORNAR TODOS OS DADOS =====
         return jsonify({
@@ -1552,6 +1639,7 @@ def buscar_dados_contrato():
             'processos_judiciais': processos_judiciais,
             'vr_debitos_sisdex': vr_sisdex,
             'vr_debitos_sisgea': vr_sisgea,
+            'vr_debitos_sisinc': vr_sisinc,  # NOVO
             'vr_debitos_total': vr_total_debitos
         })
 
@@ -1575,105 +1663,78 @@ def deliberacao_pagamento_editar(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # ===== POST: PROCESSAR SALVAMENTO DA EDIÇÃO =====
+        # ===== POST - SALVAR EDIÇÕES =====
         if request.method == 'POST':
-            from decimal import Decimal, InvalidOperation
+            try:
+                # Capturar campos editáveis
+                consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
+                consideracoes_gestor_geadi = request.form.get('consideracoes_gestor', '').strip() or None
+                consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
+                gravame_matricula = request.form.get('gravame_matricula', '').strip() or None
+                acoes_negociais_adm = request.form.get('acoes_negociais_administrativas', '').strip() or None
+                nr_processos = request.form.get('nr_processos_judiciais', '').strip() or None
+                vara_processo = request.form.get('vara_processo', '').strip() or None
+                fase_processo = request.form.get('fase_processo', '').strip() or None
+                relatorio_assessoria = request.form.get('relatorio_assessoria_juridica', '').strip() or None
+                penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
+                prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
 
-            # Capturar campos editáveis do formulário
-            matricula = request.form.get('matricula', '').strip() or None
-            dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
-            dt_registro_str = request.form.get('dt_registro', '').strip()
-            vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
-            dt_periodo_inicio_str = request.form.get('dt_periodo_cobranca_inicio', '').strip()
-            dt_periodo_fim_str = request.form.get('dt_periodo_cobranca_fim', '').strip()
-            gravame_matricula = request.form.get('gravame_matricula', '').strip() or None
-            acoes_negociais_adm = request.form.get('acoes_negociais_administrativas', '').strip() or None
-            nr_processos = request.form.get('nr_processos_judiciais', '').strip() or None
-            vara_processo = request.form.get('vara_processo', '').strip() or None
-            fase_processo = request.form.get('fase_processo', '').strip() or None
-            relatorio_assessoria = request.form.get('relatorio_assessoria_juridica', '').strip() or None
-            penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
-            prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
-            consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
-            consideracoes_gestor = request.form.get('consideracoes_gestor', '').strip() or None
-            consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
+                # Atualizar campos editáveis
+                deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
+                deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor_geadi
+                deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
+                deliberacao.GRAVAME_MATRICULA = gravame_matricula
+                deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
+                deliberacao.NR_PROCESSOS_JUDICIAIS = nr_processos
+                deliberacao.VARA_PROCESSO = vara_processo
+                deliberacao.FASE_PROCESSO = fase_processo
+                deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
+                deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
+                deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
 
-            # Converter datas
-            if dt_arrematacao_str:
-                try:
-                    deliberacao.DT_ARREMATACAO_AQUISICAO = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data de arrematação inválida.', 'warning')
+                # LÓGICA: Se alguma consideração de gestor foi preenchida
+                if consideracoes_gestor_geadi or consideracoes_gestor_sumov:
+                    # Atualizar status para DELIBERADO
+                    deliberacao.STATUS_DOCUMENTO = 'DELIBERADO'
 
-            if dt_registro_str:
-                try:
-                    deliberacao.DT_REGISTRO = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data do registro inválida.', 'warning')
+                    # Registrar quem deliberou (apenas se ainda não tiver sido registrado)
+                    if not deliberacao.USUARIO_DELIBEROU:
+                        deliberacao.USUARIO_DELIBEROU = current_user.nome
 
-            if dt_periodo_inicio_str:
-                try:
-                    deliberacao.DT_PERIODO_COBRANCA_INICIO = datetime.strptime(dt_periodo_inicio_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data de início do período inválida.', 'warning')
+                # Atualizar dados de auditoria
+                deliberacao.USUARIO_ATUALIZACAO = current_user.nome
+                deliberacao.UPDATED_AT = datetime.utcnow()
 
-            if dt_periodo_fim_str:
-                try:
-                    deliberacao.DT_PERIODO_COBRANCA_FIM = datetime.strptime(dt_periodo_fim_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data de fim do período inválida.', 'warning')
+                if deliberacao.salvar():
+                    registrar_log(
+                        acao='editar',
+                        entidade='deliberacao_pagamento',
+                        entidade_id=contrato,
+                        descricao=f'Deliberação de Pagamento editada: {contrato}'
+                    )
+                    flash('Deliberação atualizada com sucesso!', 'success')
+                else:
+                    flash('Erro ao atualizar deliberação.', 'danger')
 
-            # Converter valor manual
-            if vr_divida_condominio_2_str:
-                try:
-                    valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',',
-                                                                                                        '.').strip()
-                    if valor_limpo:
-                        deliberacao.VR_DIVIDA_CONDOMINIO_2 = Decimal(valor_limpo)
-                except (ValueError, InvalidOperation):
-                    flash('Valor da Dívida (Manual) inválido.', 'warning')
-
-            # Atualizar campos editáveis
-            deliberacao.MATRICULA_CAIXA_EMGEA = matricula
-            deliberacao.GRAVAME_MATRICULA = gravame_matricula
-            deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
-            deliberacao.NR_PROCESSOS_JUDICIAIS = nr_processos
-            deliberacao.VARA_PROCESSO = vara_processo
-            deliberacao.FASE_PROCESSO = fase_processo
-            deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
-            deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
-            deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
-            deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
-            deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
-            deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
-            deliberacao.USUARIO_ATUALIZACAO = current_user.nome
-            deliberacao.UPDATED_AT = datetime.utcnow()
-
-            # Salvar no banco
-            if deliberacao.salvar():
-                registrar_log(
-                    acao='editar',
-                    entidade='deliberacao_pagamento',
-                    entidade_id=contrato,
-                    descricao=f'Deliberação de Pagamento editada: {contrato}'
-                )
-                flash('Deliberação atualizada com sucesso!', 'success')
                 return redirect(url_for('sumov.deliberacao_pagamento'))
-            else:
-                flash('Erro ao salvar alterações.', 'danger')
 
-        # ===== GET: CARREGAR PÁGINA DE EDIÇÃO =====
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Erro ao atualizar deliberação: {str(e)}', 'danger')
+                import traceback
+                traceback.print_exc()
+                return redirect(url_for('sumov.deliberacao_pagamento'))
+
+        # ===== GET - MOSTRAR FORMULÁRIO DE EDIÇÃO =====
+        # Buscar totais por tipo de parcela se existir índice
         totais_por_tipo = []
 
         try:
-            from app.models.siscalculo import SiscalculoCalculos, TipoParcela
+            from app.models.siscalculo import SiscalculoCalculos, TipoParcela, ParamIndicesEconomicos
 
-            # Buscar o índice usado nesta deliberação
             indice_usado = deliberacao.INDICE_DEBITO_EMGEA
 
             if indice_usado:
-                from app.models.siscalculo import ParamIndicesEconomicos
-
                 # Buscar pelo nome do índice
                 indice_obj = ParamIndicesEconomicos.query.filter(
                     ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(indice_usado.split(' - ')[0])
@@ -1718,11 +1779,8 @@ def deliberacao_pagamento_editar(contrato):
                         for t in totais_query
                     ]
 
-                    print(f"[DEBUG EDIÇÃO] Encontrados {len(totais_por_tipo)} tipos de parcela")
-                    for t in totais_por_tipo:
-                        print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
-
         except Exception as e:
+            # Se der erro ao buscar tipos de parcela, apenas não mostra
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
             traceback.print_exc()

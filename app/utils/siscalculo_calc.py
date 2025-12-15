@@ -67,7 +67,7 @@ class CalculadorSiscalculo:
         self.imovel = imovel
         self.dados_processados = []
 
-    def executar_calculos(self):
+    def calcular(self):
         """Executa os cálculos para todas as parcelas importadas"""
         try:
             print("=" * 80)

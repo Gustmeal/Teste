@@ -202,6 +202,26 @@
                         </small>
                     </div>
 
+                    <div class="row mt-3">
+                        <div class="col-md-12">
+                            <label for="indice_usado_condominio" class="form-label fw-bold">
+                                <i class="fas fa-percent text-info me-1"></i>
+                                Índice Usado pelo Condomínio
+                            </label>
+                            <input type="text"
+                                   class="form-control"
+                                   id="indice_usado_condominio"
+                                   name="indice_usado_condominio"
+                                   maxlength="5"
+                                   value="{{ deliberacao.INDICE_USADO_CONDOMINIO or '' }}"
+                                   placeholder="Ex: IGPM, IPCA, INPC">
+                            <small class="text-success">
+                                <i class="fas fa-edit me-1"></i>Campo editável (opcional - máximo 5 caracteres)
+                            </small>
+                        </div>
+                    </div>
+
+
                     <!-- Valor da Dívida Manual (EDITÁVEL) -->
                     <div class="mb-3">
                         <label for="vr_divida_condominio_2" class="form-label fw-bold">
@@ -314,8 +334,7 @@
                                class="form-control"
                                id="dt_registro"
                                name="dt_registro"
-                               value="{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') if deliberacao.DT_REGISTRO else '' }}"
-                               required>
+                               value="{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') if deliberacao.DT_REGISTRO else '' }}">
                         <small class="text-success">
                             <i class="fas fa-edit me-1"></i>Campo editável (obrigatório)
                         </small>
@@ -665,8 +684,22 @@
                                     </small>
                                 </div>
 
+                                <div class="col-md-3 mb-3">
+                                    <label class="form-label fw-bold">
+                                        <i class="fas fa-gavel text-info me-1"></i>
+                                        SISINC
+                                    </label>
+                                    <input type="text"
+                                           class="form-control bg-white"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITOS_SISINC).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITOS_SISINC else 'R$ 0,00' }}"
+                                           readonly>
+                                    <small class="text-muted">
+                                        <i class="fas fa-database me-1"></i>Dado obtido automaticamente do SISINC
+                                    </small>
+                                </div>
+
                                 <!-- TOTAL -->
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-calculator text-danger me-1"></i>
                                         Total
@@ -676,7 +709,7 @@
                                            value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITOS_TOTAL).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITOS_TOTAL else 'R$ 0,00' }}"
                                            readonly>
                                     <small class="text-muted">
-                                        <i class="fas fa-database me-1"></i>Soma automática (SISDEX + SISGEA)
+                                        <i class="fas fa-calculator me-1"></i>Soma automática (SISDEX + SISGEA + SISINC)
                                     </small>
                                 </div>
                             </div>
