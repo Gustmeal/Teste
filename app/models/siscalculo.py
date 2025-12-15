@@ -213,7 +213,7 @@ class SiscalculoPrescricoes(db.Model):
 
 class TipoParcela(db.Model):
     """Tabela de tipos de parcela do SISCalculo"""
-    __tablename__ = 'MOV_TB035_TIPO_PARCELA'
+    __tablename__ = 'MOV_TB038_TIPO_PARCELA'
     __table_args__ = {'schema': 'BDG'}
 
     ID_TIPO = db.Column(db.Integer, primary_key=True)
