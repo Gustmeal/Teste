@@ -19,6 +19,7 @@
         <div class="card-body">
             <form method="GET" action="{{ url_for('depositos_judiciais.edicao') }}" id="formFiltros">
                 <div class="row g-3">
+                    <!-- Linha 1 -->
                     <div class="col-md-3">
                         <label for="nu_contrato" class="form-label">Nº Contrato</label>
                         <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
@@ -61,8 +62,11 @@
                         </select>
                     </div>
 
+                    <!-- Linha 2 - Data Identificação -->
                     <div class="col-md-3">
-                        <label for="dt_identificacao" class="form-label">Data Identificação</label>
+                        <label for="dt_identificacao" class="form-label">
+                            <i class="fas fa-calendar me-1"></i>Data Identificação
+                        </label>
                         <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao"
                                value="{{ filtros.dt_identificacao }}">
                     </div>
@@ -86,6 +90,17 @@
                                value="{{ filtros.ano_identificacao }}" placeholder="Ex: 2025">
                     </div>
 
+                    <!-- NOVO CAMPO: Data SISCOR -->
+                    <div class="col-md-3">
+                        <label for="dt_siscor" class="form-label">
+                            <i class="fas fa-calendar-check me-1"></i>Data SISCOR
+                        </label>
+                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
+                               value="{{ filtros.dt_siscor }}">
+                        <small class="text-muted">Filtra por data específica do SISCOR</small>
+                    </div>
+
+                    <!-- Linha 3 - Status DT_SISCOR -->
                     <div class="col-md-3">
                         <label for="dt_siscor_status" class="form-label">Status DT_SISCOR</label>
                         <select class="form-select" id="dt_siscor_status" name="dt_siscor_status">
@@ -97,6 +112,7 @@
                                 Vazio
                             </option>
                         </select>
+                        <small class="text-muted">Verifica se está preenchido ou vazio</small>
                     </div>
                 </div>
 
