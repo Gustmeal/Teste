@@ -41,6 +41,10 @@ class CaixaEmgea(db.Model):
     DSC_DOCUMENTO = db.Column(db.String(100), nullable=True)
     VR_ISS = db.Column(db.Numeric(18, 2), nullable=True)
 
+    # NOVAS COLUNAS ADICIONADAS
+    NU_MEMORANDO = db.Column(db.String(20), nullable=True, index=True)
+    NR_PROCESSO_SEI = db.Column(db.String(50), nullable=True, index=True)
+
     # Campos de auditoria e usuário
     USUARIO_CRIACAO = db.Column(db.String(100), nullable=True)
     USUARIO_ALTERACAO = db.Column(db.String(100), nullable=True)
@@ -50,64 +54,56 @@ class CaixaEmgea(db.Model):
     DELETED_AT = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
-        return f'<CaixaEmgea {self.ID_DETALHAMENTO} - Ofício: {self.NU_OFICIO} - Contrato: {self.NU_CONTRATO}>'
+        return f'<CaixaEmgea {self.ID_DETALHAMENTO} - Contrato: {self.NU_CONTRATO}>'
 
     @staticmethod
     def obter_proximo_id():
-        """
-        Busca o último ID_DETALHAMENTO e retorna o próximo (último + 1)
-        LÓGICA: Simula autoincrement manualmente
-        """
-        ultimo_id = db.session.query(func.max(CaixaEmgea.ID_DETALHAMENTO)).scalar()
-        return (ultimo_id + 1) if ultimo_id else 1
+        """Obtém o próximo ID_DETALHAMENTO disponível"""
+        resultado = db.session.query(func.max(CaixaEmgea.ID_DETALHAMENTO)).first()
+        proximo_id = (resultado[0] or 0) + 1
+        return proximo_id
 
     @staticmethod
-    def verificar_duplicidade(nu_contrato, vr_falha, id_excluir=None):
+    def verificar_duplicidade(nu_contrato, vr_falha, excluir_id=None):
         """
-        Verifica se existe duplicidade de contrato e valor de falha
-        ATUALIZADO: Mudou de VALOR para VR_FALHA
+        Verifica se existe registro com mesmo NU_CONTRATO e VR_FALHA
+        excluir_id: ID a ser ignorado na verificação (para edição)
         """
         query = CaixaEmgea.query.filter(
             CaixaEmgea.NU_CONTRATO == nu_contrato,
             CaixaEmgea.VR_FALHA == vr_falha,
             CaixaEmgea.DELETED_AT.is_(None)
         )
-        if id_excluir:
-            query = query.filter(CaixaEmgea.ID_DETALHAMENTO != id_excluir)
+
+        if excluir_id:
+            query = query.filter(CaixaEmgea.ID_DETALHAMENTO != excluir_id)
+
         return query.first() is not None
 
     @staticmethod
     def obter_todos_ativos():
-        """
-        Retorna todos os registros ativos
-        Mantém a mesma lógica, apenas mudou o campo de ordenação
-        """
-        return CaixaEmgea.query.filter(
-            CaixaEmgea.DELETED_AT.is_(None)
-        ).order_by(CaixaEmgea.CREATED_AT.desc()).all()
+        """Retorna todos os registros não excluídos"""
+        return CaixaEmgea.query.filter(CaixaEmgea.DELETED_AT.is_(None)).order_by(
+            CaixaEmgea.ID_DETALHAMENTO.desc()
+        ).all()
 
     @staticmethod
     def obter_devedores_distintos():
-        """
-        Retorna lista de devedores distintos (CAIXA e EMGEA)
-        """
-        devedores = db.session.query(CaixaEmgea.DEVEDOR).distinct().filter(
+        """Retorna lista de devedores distintos"""
+        resultado = db.session.query(CaixaEmgea.DEVEDOR).distinct().filter(
             CaixaEmgea.DEVEDOR.isnot(None),
             CaixaEmgea.DELETED_AT.is_(None)
         ).all()
-        return [d[0] for d in devedores if d[0]]
+        return [r[0] for r in resultado]
 
     def soft_delete(self, usuario):
-        """
-        Realiza soft delete do registro
-        Mantém a mesma lógica
-        """
+        """Marca registro como excluído"""
         self.DELETED_AT = datetime.utcnow()
         self.USUARIO_EXCLUSAO = usuario
         db.session.commit()
 
     def formatar_dt_documento(self):
-        """Formata DT_DOCUMENTO de DATE para string legível"""
+        """Formata DT_DOCUMENTO para string legível"""
         if self.DT_DOCUMENTO:
             return self.DT_DOCUMENTO.strftime('%d/%m/%Y')
         return ""

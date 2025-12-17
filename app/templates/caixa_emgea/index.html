@@ -19,115 +19,125 @@
         <div class="card-body">
             <!-- Estrutura de Filtros -->
             <div class="row mb-3" id="filters-row">
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filterOficio" class="form-label">Nº Ofício</label>
                     <input type="text" class="form-control form-control-sm" id="filterOficio" placeholder="Filtrar por Nº Ofício">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filterContrato" class="form-label">Nº Contrato</label>
                     <input type="text" class="form-control form-control-sm" id="filterContrato" placeholder="Filtrar por Nº Contrato">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <label for="filterMemorando" class="form-label">Memorando</label>
+                    <input type="text" class="form-control form-control-sm" id="filterMemorando" placeholder="Filtrar por Memorando">
+                </div>
+                <div class="col-md-2">
+                    <label for="filterProcessoSei" class="form-label">Processo SEI</label>
+                    <input type="text" class="form-control form-control-sm" id="filterProcessoSei" placeholder="Filtrar por Processo SEI">
+                </div>
+                <div class="col-md-2">
                     <label for="filterOcorrencia" class="form-label">Ocorrência</label>
                     <input type="text" class="form-control form-control-sm" id="filterOcorrencia" placeholder="Filtrar por Ocorrência">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="filterValorFalha" class="form-label">Valor Falha</label>
                     <input type="text" class="form-control form-control-sm" id="filterValorFalha" placeholder="Filtrar por Valor Falha">
                 </div>
             </div>
             <!-- Fim da Estrutura de Filtros -->
 
-            <!-- Div para a barra de rolagem vertical -->
-            <div class="table-scroll-container" style="max-height: 400px; overflow-y: auto;">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0" id="registrosTable">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Nº Ofício</th>
-                                <th>Nº Contrato</th>
-                                <th>Ocorrência</th>
-                                <th>Status</th>
-                                <th>Valor Falha</th>
-                                <th>Valor Real</th>
-                                <th>Devedor</th>
-                                <th>Carteira</th>
-                                <th>Usuário</th>
-                                <th width="120">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for registro in registros %}
-                            <tr data-oficio="{{ registro.NU_OFICIO or '' }}"
-                                data-contrato="{{ registro.NU_CONTRATO or '' }}"
-                                data-ocorrencia="{{ ocorrencias.get(registro.ID_OCORRENCIA, 'N/A') if registro.ID_OCORRENCIA else '' }}"
-                                data-valorfalha="{{ registro.VR_FALHA or '' }}">
-                                <td>{{ registro.ID_DETALHAMENTO }}</td>
-                                <td>{{ registro.NU_OFICIO or '-' }}</td>
-                                <td>{{ registro.NU_CONTRATO or '-' }}</td>
-                                <td>
-                                    {% if registro.ID_OCORRENCIA %}
-                                        {{ ocorrencias.get(registro.ID_OCORRENCIA, 'N/A') }}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if registro.ID_STATUS %}
-                                        <span class="badge bg-info">
-                                            {{ status_list.get(registro.ID_STATUS, 'N/A') }}
-                                        </span>
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if registro.VR_FALHA %}
-                                        R$ {{ "{:,.2f}".format(registro.VR_FALHA).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if registro.VR_REAL %}
-                                        R$ {{ "{:,.2f}".format(registro.VR_REAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {{ registro.DEVEDOR or '-' }}
-                                </td>
-                                <td>
-                                    {% if registro.ID_CARTEIRA %}
-                                        {{ carteiras.get(registro.ID_CARTEIRA, 'N/A') }}
-                                    {% else %}
-                                        -
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    <small class="text-muted">
-                                        {{ registro.USUARIO_CRIACAO or '-' }}
-                                    </small>
-                                </td>
-                                <td>
-                                    <a href="{{ url_for('caixa_emgea.editar', id=registro.ID_DETALHAMENTO) }}"
-                                       class="btn btn-sm btn-warning" title="Editar">
-                                        <i class="fas fa-edit"></i>
-                                    </a>
-                                    <button type="button" class="btn btn-sm btn-danger"
-                                            onclick="confirmarExclusao({{ registro.ID_DETALHAMENTO }})" title="Excluir">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+            <!-- Div para a barra de rolagem -->
+            <div style="max-height: 400px; overflow-x: auto; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 5px;">
+                <table class="table table-hover mb-0" id="registrosTable" style="min-width: 2000px; width: 100%;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nº Ofício</th>
+                            <th>Nº Contrato</th>
+                            <th>Memorando</th>
+                            <th>Processo SEI</th>
+                            <th>Ocorrência</th>
+                            <th>Status</th>
+                            <th>Valor Falha</th>
+                            <th>Valor Real</th>
+                            <th>Devedor</th>
+                            <th>Carteira</th>
+                            <th>Usuário</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for registro in registros %}
+                        <tr data-oficio="{{ registro.NU_OFICIO or '' }}"
+                            data-contrato="{{ registro.NU_CONTRATO or '' }}"
+                            data-ocorrencia="{{ ocorrencias.get(registro.ID_OCORRENCIA, '') }}"
+                            data-valorfalha="{{ registro.VR_FALHA or '' }}"
+                            data-processosei="{{ registro.NR_PROCESSO_SEI or '' }}"
+                            data-memorando="{{ registro.NU_MEMORANDO or '' }}">
+                            <td>{{ registro.ID_DETALHAMENTO }}</td>
+                            <td>{{ registro.NU_OFICIO or '-' }}</td>
+                            <td>{{ registro.NU_CONTRATO or '-' }}</td>
+                            <td>{{ registro.NU_MEMORANDO or '-' }}</td>
+                            <td>{{ registro.NR_PROCESSO_SEI or '-' }}</td>
+                            <td>
+                                {% if registro.ID_OCORRENCIA %}
+                                    {{ ocorrencias.get(registro.ID_OCORRENCIA, 'N/A') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.ID_STATUS %}
+                                    {{ status_list.get(registro.ID_STATUS, 'N/A') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.VR_FALHA %}
+                                    R$ {{ "{:,.2f}".format(registro.VR_FALHA).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if registro.VR_REAL %}
+                                    R$ {{ "{:,.2f}".format(registro.VR_REAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ registro.DEVEDOR or '-' }}
+                            </td>
+                            <td>
+                                {% if registro.ID_CARTEIRA %}
+                                    {{ carteiras.get(registro.ID_CARTEIRA, 'N/A') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                <small class="text-muted">
+                                    {{ registro.USUARIO_CRIACAO or '-' }}
+                                </small>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('caixa_emgea.editar', id=registro.ID_DETALHAMENTO) }}"
+                                   class="btn btn-sm btn-warning" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="confirmarExclusao({{ registro.ID_DETALHAMENTO }})" title="Excluir">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            <!-- Fim da Div para a barra de rolagem vertical -->
+            <!-- Fim da Div -->
 
         </div>
     </div>
@@ -177,29 +187,35 @@ document.addEventListener('DOMContentLoaded', function() {
         const filterContrato = document.getElementById('filterContrato').value.toLowerCase().trim();
         const filterOcorrencia = document.getElementById('filterOcorrencia').value.toLowerCase().trim();
         const filterValorFalha = document.getElementById('filterValorFalha').value.toLowerCase().trim();
+        const filterProcessoSei = document.getElementById('filterProcessoSei').value.toLowerCase().trim();
+        const filterMemorando = document.getElementById('filterMemorando').value.toLowerCase().trim();
 
         rows.forEach(row => {
             const oficio = row.getAttribute('data-oficio').toLowerCase();
             const contrato = row.getAttribute('data-contrato').toLowerCase();
             const ocorrencia = row.getAttribute('data-ocorrencia').toLowerCase();
             const valorFalha = row.getAttribute('data-valorfalha').toLowerCase();
+            const processoSei = row.getAttribute('data-processosei').toLowerCase();
+            const memorando = row.getAttribute('data-memorando').toLowerCase();
 
             const matchOficio = oficio.includes(filterOficio);
             const matchContrato = contrato.includes(filterContrato);
             const matchOcorrencia = ocorrencia.includes(filterOcorrencia);
             const matchValorFalha = valorFalha.includes(filterValorFalha);
+            const matchProcessoSei = processoSei.includes(filterProcessoSei);
+            const matchMemorando = memorando.includes(filterMemorando);
 
-            if (matchOficio && matchContrato && matchOcorrencia && matchValorFalha) {
-                row.style.display = ''; // Mostra a linha
+            if (matchOficio && matchContrato && matchOcorrencia && matchValorFalha && matchProcessoSei && matchMemorando) {
+                row.style.display = '';
             } else {
-                row.style.display = 'none'; // Esconde a linha
+                row.style.display = 'none';
             }
         });
     }
 
     filters.forEach(input => {
         input.addEventListener('keyup', applyFilters);
-        input.addEventListener('change', applyFilters); // Para caso de inputs de seleção/data
+        input.addEventListener('change', applyFilters);
     });
 });
 </script>

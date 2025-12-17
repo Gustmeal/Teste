@@ -187,42 +187,34 @@ def novo():
             novo_registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get(
                 'id_ocorrencia') else None
             novo_registro.ID_STATUS = int(request.form.get('id_status')) if request.form.get('id_status') else None
-            novo_registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
             novo_registro.ID_CARTEIRA = int(request.form.get('id_carteira')) if request.form.get(
                 'id_carteira') else None
+            novo_registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
 
-            # IC_CONDENACAO
-            ic_condenacao_str = request.form.get('ic_condenacao', '').strip().upper()
-            novo_registro.IC_CONDENACAO = True if ic_condenacao_str == 'S' else (
-                False if ic_condenacao_str == 'N' else None)
-
-            # INDICIO_DUPLIC - AUTOMÁTICO (já calculado acima)
-            novo_registro.INDICIO_DUPLIC = indicio_duplic
-
-            # ID_ACAO - SEMPRE 0
-            novo_registro.ID_ACAO = 0
+            # NOVOS CAMPOS
+            novo_registro.NU_MEMORANDO = request.form.get('nu_memorando', '').strip() or None
+            novo_registro.NR_PROCESSO_SEI = request.form.get('nr_processo_sei', '').strip() or None
 
             # DT_DOCUMENTO
             dt_documento_str = request.form.get('dt_documento', '').strip()
             if dt_documento_str:
                 novo_registro.DT_DOCUMENTO = datetime.strptime(dt_documento_str, '%Y-%m-%d').date()
 
-            # DEVEDOR (CAIXA ou EMGEA)
+            # DEVEDOR e flags
             novo_registro.DEVEDOR = request.form.get('devedor', '').strip() or None
+            novo_registro.INDICIO_DUPLIC = indicio_duplic
+            novo_registro.ID_ACAO = 0  # SEMPRE 0
 
-            # Datas de Atualização
-            dt_inicio_atualizacao_str = request.form.get('dt_inicio_atualizacao', '').strip()
-            if dt_inicio_atualizacao_str:
-                novo_registro.DT_INICIO_ATUALIZACAO = datetime.strptime(dt_inicio_atualizacao_str, '%Y-%m-%d').date()
+            # IC_CONDENACAO
+            ic_condenacao = request.form.get('ic_condenacao', '').strip()
+            if ic_condenacao == '1':
+                novo_registro.IC_CONDENACAO = True
+            elif ic_condenacao == '0':
+                novo_registro.IC_CONDENACAO = False
+            else:
+                novo_registro.IC_CONDENACAO = None
 
-            dt_atualizacao_str = request.form.get('dt_atualizacao', '').strip()
-            if dt_atualizacao_str:
-                novo_registro.DT_ATUALIZACAO = datetime.strptime(dt_atualizacao_str, '%Y-%m-%d').date()
-
-            # NR_PROCESSO
-            novo_registro.NR_PROCESSO = request.form.get('nr_processo', '').strip() or None
-
-            # VR_REAL (copia de VR_FALHA com sinal correto)
+            # VR_REAL (copia VR_FALHA com sinal correto)
             # Se DEVEDOR = EMGEA: negativo | Se DEVEDOR = CAIXA: positivo
             devedor_temp = request.form.get('devedor', '').strip()
             if devedor_temp == 'EMGEA' and vr_falha_decimal:
@@ -264,7 +256,9 @@ def novo():
                     'indicio_duplic': indicio_duplic,
                     'id_acao': 0,
                     'id_observacao': id_observacao,
-                    'id_especificacao': id_especificacao
+                    'id_especificacao': id_especificacao,
+                    'nu_memorando': novo_registro.NU_MEMORANDO,
+                    'nr_processo_sei': novo_registro.NR_PROCESSO_SEI
                 }
             )
 
@@ -362,7 +356,9 @@ def editar(id):
             dados_antigos = {
                 'nu_contrato': str(registro.NU_CONTRATO) if registro.NU_CONTRATO else None,
                 'vr_falha': str(registro.VR_FALHA) if registro.VR_FALHA else None,
-                'devedor': registro.DEVEDOR
+                'devedor': registro.DEVEDOR,
+                'nu_memorando': registro.NU_MEMORANDO,
+                'nr_processo_sei': registro.NR_PROCESSO_SEI
             }
 
             # Processar OBSERVAÇÃO (se houver nova)
@@ -385,44 +381,45 @@ def editar(id):
             # Se DEVEDOR = EMGEA: negativo | Se DEVEDOR = CAIXA: positivo
             devedor_temp = request.form.get('devedor', '').strip()
             if devedor_temp == 'EMGEA' and vr_falha_decimal:
-                registro.VR_REAL = -abs(vr_falha_decimal)  # Garante negativo
+                registro.VR_REAL = -abs(vr_falha_decimal)
             else:
-                registro.VR_REAL = vr_falha_decimal  # Mantém positivo
+                registro.VR_REAL = vr_falha_decimal
 
             registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get(
                 'id_ocorrencia') else None
             registro.ID_STATUS = int(request.form.get('id_status')) if request.form.get('id_status') else None
-            registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
             registro.ID_CARTEIRA = int(request.form.get('id_carteira')) if request.form.get('id_carteira') else None
+            registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
 
-            # IC_CONDENACAO
-            ic_condenacao_str = request.form.get('ic_condenacao', '').strip().upper()
-            registro.IC_CONDENACAO = True if ic_condenacao_str == 'S' else (False if ic_condenacao_str == 'N' else None)
+            # NOVOS CAMPOS
+            registro.NU_MEMORANDO = request.form.get('nu_memorando', '').strip() or None
+            registro.NR_PROCESSO_SEI = request.form.get('nr_processo_sei', '').strip() or None
 
-            # INDICIO_DUPLIC - AUTOMÁTICO
-            registro.INDICIO_DUPLIC = indicio_duplic
-
-            # ID_ACAO - SEMPRE 0
-            registro.ID_ACAO = 0
-
-            # Datas
+            # DT_DOCUMENTO
             dt_documento_str = request.form.get('dt_documento', '').strip()
-            registro.DT_DOCUMENTO = datetime.strptime(dt_documento_str, '%Y-%m-%d').date() if dt_documento_str else None
+            if dt_documento_str:
+                registro.DT_DOCUMENTO = datetime.strptime(dt_documento_str, '%Y-%m-%d').date()
+            else:
+                registro.DT_DOCUMENTO = None
 
             registro.DEVEDOR = request.form.get('devedor', '').strip() or None
+            registro.INDICIO_DUPLIC = indicio_duplic
 
-            dt_inicio_atualizacao_str = request.form.get('dt_inicio_atualizacao', '').strip()
-            registro.DT_INICIO_ATUALIZACAO = datetime.strptime(dt_inicio_atualizacao_str,
-                                                               '%Y-%m-%d').date() if dt_inicio_atualizacao_str else None
+            # IC_CONDENACAO
+            ic_condenacao = request.form.get('ic_condenacao', '').strip()
+            if ic_condenacao == '1':
+                registro.IC_CONDENACAO = True
+            elif ic_condenacao == '0':
+                registro.IC_CONDENACAO = False
+            else:
+                registro.IC_CONDENACAO = None
 
-            dt_atualizacao_str = request.form.get('dt_atualizacao', '').strip()
-            registro.DT_ATUALIZACAO = datetime.strptime(dt_atualizacao_str,
-                                                        '%Y-%m-%d').date() if dt_atualizacao_str else None
-
-            registro.NR_PROCESSO = request.form.get('nr_processo', '').strip() or None
-
+            # DT_PAGTO
             dt_pagto_str = request.form.get('dt_pagto', '').strip()
-            registro.DT_PAGTO = datetime.strptime(dt_pagto_str, '%Y-%m-%d').date() if dt_pagto_str else None
+            if dt_pagto_str:
+                registro.DT_PAGTO = datetime.strptime(dt_pagto_str, '%Y-%m-%d').date()
+            else:
+                registro.DT_PAGTO = None
 
             registro.NR_TICKET = int(request.form.get('nr_ticket')) if request.form.get('nr_ticket') else None
             registro.DSC_DOCUMENTO = request.form.get('dsc_documento', '').strip() or None
@@ -445,7 +442,9 @@ def editar(id):
                     'nu_contrato': str(registro.NU_CONTRATO),
                     'vr_falha': str(registro.VR_FALHA),
                     'devedor': registro.DEVEDOR,
-                    'indicio_duplic': indicio_duplic
+                    'indicio_duplic': indicio_duplic,
+                    'nu_memorando': registro.NU_MEMORANDO,
+                    'nr_processo_sei': registro.NR_PROCESSO_SEI
                 }
             )
 

@@ -35,6 +35,24 @@
                                    value="{{ registro.NU_OFICIO if edit_mode else (dados.nu_oficio if dados else '') }}">
                         </div>
 
+                        <!-- NOVO CAMPO: Número do Memorando -->
+                        <div class="mb-3">
+                            <label for="nu_memorando" class="form-label">Número do Memorando</label>
+                            <input type="text" class="form-control" id="nu_memorando" name="nu_memorando"
+                                   placeholder="Ex: 0132836"
+                                   value="{{ registro.NU_MEMORANDO if edit_mode else (dados.nu_memorando if dados else '') }}">
+                            <small class="text-muted">Formato numérico, ex: 0132836</small>
+                        </div>
+
+                        <!-- NOVO CAMPO: Processo SEI -->
+                        <div class="mb-3">
+                            <label for="nr_processo_sei" class="form-label">Processo SEI</label>
+                            <input type="text" class="form-control" id="nr_processo_sei" name="nr_processo_sei"
+                                   placeholder="Ex: 10034.013231/2025-14"
+                                   value="{{ registro.NR_PROCESSO_SEI if edit_mode else (dados.nr_processo_sei if dados else '') }}">
+                            <small class="text-muted">Formato: 10034.013231/2025-14</small>
+                        </div>
+
                         <!-- Data do Documento -->
                         <div class="mb-3">
                             <label for="dt_documento" class="form-label">Data do Documento</label>
@@ -73,18 +91,54 @@
                                 <input type="text" class="form-control" id="vr_real" name="vr_real" readonly
                                        value="{{ registro.VR_REAL if edit_mode else '' }}">
                             </div>
-                            <small class="text-muted">Valor copiado automaticamente do "Valor da Falha"</small>
+                            <small class="text-muted">Copia VR_FALHA automaticamente (negativo para EMGEA)</small>
                         </div>
 
+                        <!-- Valor ISS -->
+                        <div class="mb-3">
+                            <label for="vr_iss" class="form-label">Valor ISS</label>
+                            <input type="number" step="0.01" class="form-control" id="vr_iss" name="vr_iss"
+                                   value="{{ registro.VR_ISS if edit_mode else (dados.vr_iss if dados else '') }}">
+                        </div>
+
+                        <!-- Data de Pagamento -->
+                        <div class="mb-3">
+                            <label for="dt_pagto" class="form-label">Data de Pagamento</label>
+                            <input type="date" class="form-control" id="dt_pagto" name="dt_pagto"
+                                   value="{{ registro.DT_PAGTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_PAGTO else (dados.dt_pagto if dados else '') }}">
+                        </div>
+
+                        <!-- Número do Ticket -->
+                        <div class="mb-3">
+                            <label for="nr_ticket" class="form-label">Número do Ticket</label>
+                            <input type="number" class="form-control" id="nr_ticket" name="nr_ticket"
+                                   value="{{ registro.NR_TICKET if edit_mode else (dados.nr_ticket if dados else '') }}">
+                        </div>
+
+                        <!-- Descrição do Documento -->
+                        <div class="mb-3">
+                            <label for="dsc_documento" class="form-label">Descrição do Documento</label>
+                            <input type="text" class="form-control" id="dsc_documento" name="dsc_documento"
+                                   value="{{ registro.DSC_DOCUMENTO if edit_mode else (dados.dsc_documento if dados else '') }}">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Relacionamentos -->
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">Relacionamentos</h5>
+                    </div>
+                    <div class="card-body">
                         <!-- Ocorrência -->
                         <div class="mb-3">
                             <label for="id_ocorrencia" class="form-label">Ocorrência</label>
                             <select class="form-select" id="id_ocorrencia" name="id_ocorrencia">
                                 <option value="">Selecione...</option>
-                                {% for occ in ocorrencias %}
-                                <option value="{{ occ.ID_OCORRENCIA }}"
-                                        {% if edit_mode and registro.ID_OCORRENCIA == occ.ID_OCORRENCIA %}selected{% endif %}>
-                                    {{ occ.DSC_OCORRENCIA }}
+                                {% for ocor in ocorrencias %}
+                                <option value="{{ ocor.ID_OCORRENCIA }}"
+                                        {% if edit_mode and registro.ID_OCORRENCIA == ocor.ID_OCORRENCIA %}selected{% endif %}>
+                                    {{ ocor.DSC_OCORRENCIA }}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -95,10 +149,10 @@
                             <label for="id_status" class="form-label">Status</label>
                             <select class="form-select" id="id_status" name="id_status">
                                 <option value="">Selecione...</option>
-                                {% for st in status_list %}
-                                <option value="{{ st.ID_STATUS }}"
-                                        {% if edit_mode and registro.ID_STATUS == st.ID_STATUS %}selected{% endif %}>
-                                    {{ st.DSC_STATUS }}
+                                {% for stat in status_list %}
+                                <option value="{{ stat.ID_STATUS }}"
+                                        {% if edit_mode and registro.ID_STATUS == stat.ID_STATUS %}selected{% endif %}>
+                                    {{ stat.DSC_STATUS }}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -148,142 +202,67 @@
                         <div class="mb-3">
                             <label for="ic_condenacao" class="form-label">IC Condenação</label>
                             <select class="form-select" id="ic_condenacao" name="ic_condenacao">
-                                <option value="">Selecione...</option>
-                                <option value="S" {% if edit_mode and registro.IC_CONDENACAO == True %}selected{% endif %}>SIM</option>
-                                <option value="N" {% if edit_mode and registro.IC_CONDENACAO == False %}selected{% endif %}>NÃO</option>
+                                <option value="">Não definido</option>
+                                <option value="1" {% if edit_mode and registro.IC_CONDENACAO %}selected{% endif %}>Sim</option>
+                                <option value="0" {% if edit_mode and registro.IC_CONDENACAO == False %}selected{% endif %}>Não</option>
                             </select>
                         </div>
 
-                        <!-- Número do Processo -->
-                        <div class="mb-3">
-                            <label for="nr_processo" class="form-label">Número do Processo</label>
-                            <textarea class="form-control" id="nr_processo" name="nr_processo" rows="2"
-                                      placeholder="Digite o número do processo...">{{ registro.NR_PROCESSO if edit_mode else '' }}</textarea>
+                        {% if duplicidade %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Atenção:</strong> Registro duplicado detectado!
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="confirmar_duplicidade" name="confirmar_duplicidade" value="1">
+                                <label class="form-check-label" for="confirmar_duplicidade">
+                                    Confirmar inclusão/alteração mesmo com duplicidade
+                                </label>
+                            </div>
                         </div>
-
-                        <!-- Data de Pagamento -->
-                        <div class="mb-3">
-                            <label for="dt_pagto" class="form-label">Data de Pagamento</label>
-                            <input type="date" class="form-control" id="dt_pagto" name="dt_pagto"
-                                   value="{{ registro.DT_PAGTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_PAGTO else '' }}">
-                        </div>
-
-                        <!-- Data Início Atualização -->
-                        <div class="mb-3">
-                            <label for="dt_inicio_atualizacao" class="form-label">Data Início Atualização</label>
-                            <input type="date" class="form-control" id="dt_inicio_atualizacao" name="dt_inicio_atualizacao"
-                                   value="{{ registro.DT_INICIO_ATUALIZACAO.strftime('%Y-%m-%d') if edit_mode and registro.DT_INICIO_ATUALIZACAO else '' }}">
-                        </div>
-
-                        <!-- Data de Atualização -->
-                        <div class="mb-3">
-                            <label for="dt_atualizacao" class="form-label">Data de Atualização</label>
-                            <input type="date" class="form-control" id="dt_atualizacao" name="dt_atualizacao"
-                                   value="{{ registro.DT_ATUALIZACAO.strftime('%Y-%m-%d') if edit_mode and registro.DT_ATUALIZACAO else '' }}">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card shadow mb-4">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0">Outros Dados</h5>
-                    </div>
-                    <div class="card-body">
-                        <!-- Número do Ticket -->
-                        <div class="mb-3">
-                            <label for="nr_ticket" class="form-label">Número do Ticket</label>
-                            <input type="number" class="form-control" id="nr_ticket" name="nr_ticket"
-                                   value="{{ registro.NR_TICKET if edit_mode else '' }}">
-                        </div>
-
-                        <!-- Descrição do Documento -->
-                        <div class="mb-3">
-                            <label for="dsc_documento" class="form-label">Descrição do Documento</label>
-                            <input type="text" class="form-control" id="dsc_documento" name="dsc_documento"
-                                   value="{{ registro.DSC_DOCUMENTO if edit_mode else '' }}" maxlength="100">
-                        </div>
-
-                        <!-- Valor do ISS -->
-                        <div class="mb-3">
-                            <label for="vr_iss" class="form-label">Valor do ISS</label>
-                            <input type="number" step="0.01" class="form-control" id="vr_iss" name="vr_iss"
-                                   value="{{ registro.VR_ISS if edit_mode else '' }}">
-                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Alerta de Duplicidade -->
-        {% if duplicidade %}
-        <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle me-2"></i>
-            <strong>Atenção!</strong> Já existe um registro com este Número de Contrato e Valor de Falha.
-            <div class="form-check mt-2">
-                <input class="form-check-input" type="checkbox" id="confirmar_duplicidade" name="confirmar_duplicidade" value="1">
-                <label class="form-check-label" for="confirmar_duplicidade">
-                    Confirmo que desejo incluir/alterar mesmo assim
-                </label>
+        <!-- Botões de Ação -->
+        <div class="card shadow">
+            <div class="card-body text-center">
+                <button type="submit" class="btn btn-success btn-lg me-2">
+                    <i class="fas fa-save me-2"></i>
+                    {% if edit_mode %}Atualizar{% else %}Salvar{% endif %}
+                </button>
+                <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary btn-lg">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </a>
             </div>
-            <small class="text-muted d-block mt-2">
-                <i class="fas fa-info-circle"></i> Se confirmar, o campo INDICIO_DUPLIC será marcado automaticamente como TRUE.
-            </small>
-        </div>
-        {% endif %}
-
-        <!-- Botões -->
-        <div class="d-flex justify-content-end gap-2 mb-4">
-            <a href="{{ url_for('caixa_emgea.index') }}" class="btn btn-secondary">
-                <i class="fas fa-times me-2"></i>Cancelar
-            </a>
-            <button type="submit" class="btn btn-primary">
-                <i class="fas fa-save me-2"></i>
-                {% if edit_mode %}Atualizar{% else %}Salvar{% endif %}
-            </button>
         </div>
     </form>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const devedorSelect = document.getElementById('devedor');
     const vrFalhaInput = document.getElementById('vr_falha');
     const vrRealInput = document.getElementById('vr_real');
+    const devedorSelect = document.getElementById('devedor');
     const vrRealSimbolo = document.getElementById('vr_real_simbolo');
 
-    /**
-     * Atualiza o VR_REAL com base no VR_FALHA e DEVEDOR
-     * - Copia o valor de VR_FALHA para VR_REAL
-     * - Se DEVEDOR = CAIXA: verde com "+"
-     * - Se DEVEDOR = EMGEA: vermelho com "-"
-     */
     function atualizarVrReal() {
-        const valorFalha = parseFloat(vrFalhaInput.value) || 0;
+        const vrFalha = parseFloat(vrFalhaInput.value) || 0;
         const devedor = devedorSelect.value;
 
-        if (valorFalha > 0) {
-            // Formatar valor com 2 casas decimais
-            const valorFormatado = valorFalha.toFixed(2);
-
-            if (devedor === 'CAIXA') {
-                // Verde com "+"
-                vrRealInput.value = valorFormatado;
-                vrRealInput.style.color = '#28a745';
-                vrRealInput.style.fontWeight = 'bold';
-                vrRealSimbolo.textContent = '+';
-                vrRealSimbolo.style.backgroundColor = '#28a745';
-                vrRealSimbolo.style.color = 'white';
-            } else if (devedor === 'EMGEA') {
-                // Vermelho com "-"
-                vrRealInput.value = valorFormatado;
+        if (vrFalha > 0 && devedor) {
+            if (devedor === 'EMGEA') {
+                // EMGEA = Negativo
+                vrRealInput.value = (-Math.abs(vrFalha)).toFixed(2);
                 vrRealInput.style.color = '#dc3545';
                 vrRealInput.style.fontWeight = 'bold';
                 vrRealSimbolo.textContent = '-';
                 vrRealSimbolo.style.backgroundColor = '#dc3545';
                 vrRealSimbolo.style.color = 'white';
             } else {
-                // Sem devedor selecionado
-                vrRealInput.value = valorFormatado;
+                // CAIXA = Positivo
+                vrRealInput.value = Math.abs(vrFalha).toFixed(2);
                 vrRealInput.style.color = '#000';
                 vrRealInput.style.fontWeight = 'normal';
                 vrRealSimbolo.textContent = '-';
