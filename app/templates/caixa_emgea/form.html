@@ -35,6 +35,12 @@
                                    value="{{ registro.NU_OFICIO if edit_mode else (dados.nu_oficio if dados else '') }}">
                         </div>
 
+                        <div class="mb-3">
+                            <label for="dt_documento" class="form-label">Data do Documento</label>
+                            <input type="date" class="form-control" id="dt_documento" name="dt_documento"
+                                   value="{{ registro.DT_DOCUMENTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_DOCUMENTO else (dados.dt_documento if dados else '') }}">
+                        </div>
+
                         <!-- NOVO CAMPO: Número do Memorando -->
                         <div class="mb-3">
                             <label for="nu_memorando" class="form-label">Número do Memorando</label>
@@ -51,13 +57,6 @@
                                    placeholder="Ex: 10034.013231/2025-14"
                                    value="{{ registro.NR_PROCESSO_SEI if edit_mode else (dados.nr_processo_sei if dados else '') }}">
                             <small class="text-muted">Formato: 10034.013231/2025-14</small>
-                        </div>
-
-                        <!-- Data do Documento -->
-                        <div class="mb-3">
-                            <label for="dt_documento" class="form-label">Data do Documento</label>
-                            <input type="date" class="form-control" id="dt_documento" name="dt_documento"
-                                   value="{{ registro.DT_DOCUMENTO.strftime('%Y-%m-%d') if edit_mode and registro.DT_DOCUMENTO else (dados.dt_documento if dados else '') }}">
                         </div>
 
                         <!-- Devedor (CAIXA ou EMGEA) -->
