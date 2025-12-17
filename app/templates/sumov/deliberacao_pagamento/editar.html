@@ -774,7 +774,7 @@
                     <!-- Considerações do Gestor GEADI (EDITÁVEL) -->
                     <div class="mb-3">
                         <label for="consideracoes_gestor" class="form-label fw-bold">
-                            <i class="fas fa-user-tie text-primary me-1"></i>
+                            <i class="fas fa-user-tie text-success me-1"></i>
                             Considerações do Gestor GEADI
                         </label>
                         <textarea class="form-control"
@@ -785,6 +785,17 @@
                         <small class="text-success">
                             <i class="fas fa-edit me-1"></i>Campo editável
                         </small>
+                        {% if deliberacao.USUARIO_GESTOR_GEADI %}
+                        <div class="alert alert-info mt-2 mb-0 py-2">
+                            <small>
+                                <i class="fas fa-user-check me-1"></i>
+                                <strong>Deliberado por:</strong> {{ deliberacao.USUARIO_GESTOR_GEADI }}
+                                {% if deliberacao.DT_DELIBERACAO_GEADI %}
+                                em {{ deliberacao.DT_DELIBERACAO_GEADI.strftime('%d/%m/%Y às %H:%M') }}
+                                {% endif %}
+                            </small>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <!-- Considerações do Gestor SUMOV (EDITÁVEL) -->
@@ -801,6 +812,17 @@
                         <small class="text-success">
                             <i class="fas fa-edit me-1"></i>Campo editável
                         </small>
+                        {% if deliberacao.USUARIO_GESTOR_SUMOV %}
+                        <div class="alert alert-warning mt-2 mb-0 py-2">
+                            <small>
+                                <i class="fas fa-user-check me-1"></i>
+                                <strong>Deliberado por:</strong> {{ deliberacao.USUARIO_GESTOR_SUMOV }}
+                                {% if deliberacao.DT_DELIBERACAO_SUMOV %}
+                                em {{ deliberacao.DT_DELIBERACAO_SUMOV.strftime('%d/%m/%Y às %H:%M') }}
+                                {% endif %}
+                            </small>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 

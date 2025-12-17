@@ -1170,13 +1170,29 @@ def deliberacao_pagamento_nova():
             # ===== VERIFICAR SE JÁ EXISTE REGISTRO =====
             deliberacao_existente = DeliberacaoPagamento.buscar_por_contrato(contrato)
 
-            # Determinar status e usuário que deliberou
+            # Determinar status e usuários que deliberaram
             status_documento = 'RASCUNHO'
             usuario_deliberou = None
+            usuario_gestor_geadi = None
+            usuario_gestor_sumov = None
+            dt_deliberacao_geadi = None
+            dt_deliberacao_sumov = None
 
-            if consideracoes_gestor or consideracoes_gestor_sumov:
+            # Se preencheu considerações do Gestor GEADI
+            if consideracoes_gestor:
                 status_documento = 'DELIBERADO'
-                usuario_deliberou = current_user.nome
+                usuario_gestor_geadi = current_user.nome
+                dt_deliberacao_geadi = datetime.utcnow()
+                if not usuario_deliberou:  # Primeiro a deliberar
+                    usuario_deliberou = current_user.nome
+
+            # Se preencheu considerações do Gestor SUMOV
+            if consideracoes_gestor_sumov:
+                status_documento = 'DELIBERADO'
+                usuario_gestor_sumov = current_user.nome
+                dt_deliberacao_sumov = datetime.utcnow()
+                if not usuario_deliberou:  # Primeiro a deliberar
+                    usuario_deliberou = current_user.nome
 
             if deliberacao_existente:
                 # ATUALIZAR registro existente
@@ -1220,11 +1236,19 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
                 deliberacao_existente.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
                 deliberacao_existente.STATUS_DOCUMENTO = status_documento
+                # Atualizar usuário geral (mantém o primeiro)
                 if status_documento == 'DELIBERADO' and not deliberacao_existente.USUARIO_DELIBEROU:
                     deliberacao_existente.USUARIO_DELIBEROU = usuario_deliberou
+                # Atualizar usuário GEADI (sempre atualiza se tiver considerações)
+                if consideracoes_gestor:
+                    deliberacao_existente.USUARIO_GESTOR_GEADI = usuario_gestor_geadi
+                    deliberacao_existente.DT_DELIBERACAO_GEADI = dt_deliberacao_geadi
+                # Atualizar usuário SUMOV (sempre atualiza se tiver considerações)
+                if consideracoes_gestor_sumov:
+                    deliberacao_existente.USUARIO_GESTOR_SUMOV = usuario_gestor_sumov
+                    deliberacao_existente.DT_DELIBERACAO_SUMOV = dt_deliberacao_sumov
                 deliberacao_existente.USUARIO_ATUALIZACAO = current_user.nome
                 deliberacao_existente.UPDATED_AT = datetime.utcnow()
-
                 deliberacao = deliberacao_existente
                 acao_log = 'atualizar'
                 mensagem = 'Deliberação de Pagamento atualizada com sucesso!'
@@ -1272,6 +1296,10 @@ def deliberacao_pagamento_nova():
                     CONSIDERACOES_GESTOR_SUMOV=consideracoes_gestor_sumov,
                     TIPO_PAGAMENTO_VENDA=tipo_pagamento_venda,
                     STATUS_DOCUMENTO=status_documento,
+                    USUARIO_GESTOR_GEADI=usuario_gestor_geadi,  # ← NOVO
+                    USUARIO_GESTOR_SUMOV=usuario_gestor_sumov,  # ← NOVO
+                    DT_DELIBERACAO_GEADI=dt_deliberacao_geadi,  # ← NOVO
+                    DT_DELIBERACAO_SUMOV=dt_deliberacao_sumov,  # ← NOVO
                     USUARIO_DELIBEROU=usuario_deliberou,
                     USUARIO_CRIACAO=current_user.nome,
                     CREATED_AT=datetime.utcnow()
@@ -1679,7 +1707,19 @@ def deliberacao_pagamento_editar(contrato):
                 penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
                 prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
 
-                # Atualizar campos editáveis
+                # ✅ NOVA LÓGICA: Verificar SE MUDOU ANTES de atualizar
+
+                # Verificar se Gestor GEADI preencheu/mudou considerações
+                if consideracoes_gestor_geadi and consideracoes_gestor_geadi != deliberacao.CONSIDERACOES_GESTOR_GEADI:
+                    deliberacao.USUARIO_GESTOR_GEADI = current_user.nome
+                    deliberacao.DT_DELIBERACAO_GEADI = datetime.utcnow()
+
+                # Verificar se Gestor SUMOV preencheu/mudou considerações
+                if consideracoes_gestor_sumov and consideracoes_gestor_sumov != deliberacao.CONSIDERACOES_GESTOR_SUMOV:
+                    deliberacao.USUARIO_GESTOR_SUMOV = current_user.nome
+                    deliberacao.DT_DELIBERACAO_SUMOV = datetime.utcnow()
+
+                # AGORA SIM atualizar os campos editáveis (DEPOIS de verificar)
                 deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
                 deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor_geadi
                 deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
@@ -1779,8 +1819,12 @@ def deliberacao_pagamento_editar(contrato):
                         for t in totais_query
                     ]
 
+                    print(f"[DEBUG EDIÇÃO] Encontrados {len(totais_por_tipo)} tipos de parcela")
+                    for t in totais_por_tipo:
+                        print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
+
         except Exception as e:
-            # Se der erro ao buscar tipos de parcela, apenas não mostra
+            # Se der erro ao buscar tipos de parcela, apenas não mostra (não quebra a página)
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
             traceback.print_exc()

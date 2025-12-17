@@ -21,22 +21,36 @@ def inject_current_year():
 def criar_observacao(descricao, id_detalhamento=None):
     """
     Cria uma observação na tabela PEN_TB005_OBSERVACOES e retorna o ID gerado
+
+    LÓGICA:
+    1. Busca o próximo ID disponível (MAX + 1)
+    2. Insere com ID manual porque a coluna não tem IDENTITY no banco
+    3. Retorna o ID gerado
     """
-    sql = text("""
-        INSERT INTO [BDG].[PEN_TB005_OBSERVACOES] 
-        (ID_DETALHAMENTO, DSC_OBSERVACAO, ULTIMA_ATUALIZACAO)
-        OUTPUT INSERTED.ID_OBSERVACAO
-        VALUES (:id_detalhamento, :descricao, :data_atualizacao)
+    # PASSO 1: Obter próximo ID disponível
+    sql_max = text("""
+        SELECT ISNULL(MAX(ID_OBSERVACAO), 0) + 1 AS PROXIMO_ID 
+        FROM [BDG].[PEN_TB005_OBSERVACOES]
     """)
 
-    result = db.session.execute(sql, {
+    result_max = db.session.execute(sql_max)
+    proximo_id = result_max.fetchone()[0]
+
+    # PASSO 2: Inserir com ID manual
+    sql_insert = text("""
+        INSERT INTO [BDG].[PEN_TB005_OBSERVACOES] 
+        (ID_OBSERVACAO, ID_DETALHAMENTO, DSC_OBSERVACAO, ULTIMA_ATUALIZACAO)
+        VALUES (:id_observacao, :id_detalhamento, :descricao, :data_atualizacao)
+    """)
+
+    db.session.execute(sql_insert, {
+        'id_observacao': proximo_id,
         'id_detalhamento': id_detalhamento,
         'descricao': descricao,
         'data_atualizacao': datetime.utcnow()
     })
 
-    id_observacao = result.fetchone()[0]
-    return id_observacao
+    return proximo_id
 
 
 def criar_especificacao(descricao, id_detalhamento=None):

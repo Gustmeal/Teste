@@ -42,16 +42,15 @@
                     <!-- Filtro por Analista -->
                     <div class="col-md-4">
                         <label for="filtro_analista" class="form-label fw-bold">
-                            <i class="fas fa-user text-info me-1"></i>
+                            <i class="fas fa-user text-success me-1"></i>
                             Analista
                         </label>
                         <select class="form-select" id="filtro_analista" name="filtro_analista">
-                            <option value="">Todos os analistas</option>
+                            <option value="">Todos</option>
                             {% for analista in lista_analistas %}
-                            <option value="{{ analista }}"
-                                    {% if filtro_analista == analista %}selected{% endif %}>
-                                {{ analista }}
-                            </option>
+                                <option value="{{ analista }}" {% if filtro_analista == analista %}selected{% endif %}>
+                                    {{ analista }}
+                                </option>
                             {% endfor %}
                         </select>
                     </div>
@@ -59,22 +58,20 @@
                     <!-- Filtro por Status -->
                     <div class="col-md-4">
                         <label for="filtro_status" class="form-label fw-bold">
-                            <i class="fas fa-flag text-warning me-1"></i>
+                            <i class="fas fa-tasks text-info me-1"></i>
                             Status
                         </label>
                         <select class="form-select" id="filtro_status" name="filtro_status">
-                            <option value="">Todos os status</option>
+                            <option value="">Todos</option>
                             {% for status in lista_status %}
-                            <option value="{{ status }}"
-                                    {% if filtro_status == status %}selected{% endif %}>
-                                {{ status }}
-                            </option>
+                                <option value="{{ status }}" {% if filtro_status == status %}selected{% endif %}>
+                                    {{ status }}
+                                </option>
                             {% endfor %}
                         </select>
                     </div>
                 </div>
 
-                <!-- Botões de Ação dos Filtros -->
                 <div class="d-flex justify-content-end gap-2 mt-3">
                     <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-secondary">
                         <i class="fas fa-eraser me-2"></i>Limpar Filtros
@@ -118,10 +115,19 @@
                                 {{ deliberacao.DT_ANALISE.strftime('%d/%m/%Y') if deliberacao.DT_ANALISE else '-' }}
                             </td>
                             <td class="text-center">
-                                {% if deliberacao.USUARIO_DELIBEROU %}
-                                    <span class="badge bg-info">
-                                        <i class="fas fa-user-check me-1"></i>{{ deliberacao.USUARIO_DELIBEROU }}
-                                    </span>
+                                {% if deliberacao.USUARIO_GESTOR_GEADI or deliberacao.USUARIO_GESTOR_SUMOV %}
+                                    <div class="d-flex flex-column gap-1 align-items-center">
+                                        {% if deliberacao.USUARIO_GESTOR_GEADI %}
+                                            <span class="badge bg-primary" title="Gestor GEADI - {{ deliberacao.DT_DELIBERACAO_GEADI.strftime('%d/%m/%Y %H:%M') if deliberacao.DT_DELIBERACAO_GEADI else '' }}">
+                                                <i class="fas fa-user-tie me-1"></i>GEADI: {{ deliberacao.USUARIO_GESTOR_GEADI }}
+                                            </span>
+                                        {% endif %}
+                                        {% if deliberacao.USUARIO_GESTOR_SUMOV %}
+                                            <span class="badge bg-warning text-dark" title="Gestor SUMOV - {{ deliberacao.DT_DELIBERACAO_SUMOV.strftime('%d/%m/%Y %H:%M') if deliberacao.DT_DELIBERACAO_SUMOV else '' }}">
+                                                <i class="fas fa-user-cog me-1"></i>SUMOV: {{ deliberacao.USUARIO_GESTOR_SUMOV }}
+                                            </span>
+                                        {% endif %}
+                                    </div>
                                 {% else %}
                                     <span class="text-muted">-</span>
                                 {% endif %}
@@ -143,6 +149,8 @@
                                     <span class="badge bg-danger">
                                         <i class="fas fa-times me-1"></i>Rejeitado
                                     </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ deliberacao.STATUS_DOCUMENTO }}</span>
                                 {% endif %}
                             </td>
                             <td class="text-center">

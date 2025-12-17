@@ -114,6 +114,10 @@ class DeliberacaoPagamento(db.Model):
     # ==== CONTROLE ====
     STATUS_DOCUMENTO = db.Column(db.String(50), default='RASCUNHO')
     USUARIO_DELIBEROU = db.Column(db.String(200), nullable=True)
+    USUARIO_GESTOR_GEADI = db.Column(db.String(200), nullable=True)  # ← NOVO
+    USUARIO_GESTOR_SUMOV = db.Column(db.String(200), nullable=True)  # ← NOVO
+    DT_DELIBERACAO_GEADI = db.Column(db.DateTime, nullable=True)  # ← NOVO (opcional)
+    DT_DELIBERACAO_SUMOV = db.Column(db.DateTime, nullable=True)  # ← NOVO (opcional)
 
     # ==== AUDITORIA ====
     USUARIO_CRIACAO = db.Column(db.String(200), nullable=True)
