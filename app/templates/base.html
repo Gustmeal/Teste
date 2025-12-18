@@ -235,10 +235,72 @@
         </div>
     </footer>
 
-    <!-- Botão de alternância de tema -->
+   <!-- Botão de alternância de tema (já existe) -->
     <div class="theme-toggle" id="themeToggle">
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
+
+    <!-- Botão da Calculadora (NOVO) -->
+    <button class="calculator-toggle" id="calculatorToggle" title="Abrir Calculadora">
+        <i class="fas fa-calculator"></i>
+    </button>
+
+    <!-- Modal da Calculadora (NOVO) -->
+    <div class="modal fade calculator-modal" id="calculatorModal" tabindex="-1" aria-labelledby="calculatorModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="calculatorModalLabel">
+                        <i class="fas fa-calculator me-2"></i>Calculadora
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="calculator-display">
+                        <div class="calculator-expression" id="calcExpression"></div>
+                        <div class="calculator-result" id="calcResult">0</div>
+                    </div>
+                    <div class="calculator-buttons">
+                        <!-- Linha 1 -->
+                        <button class="calc-btn clear" onclick="calculatorClear()">C</button>
+                        <button class="calc-btn clear" onclick="calculatorDelete()">
+                            <i class="fas fa-backspace"></i>
+                        </button>
+                        <button class="calc-btn operator" onclick="calculatorAppend('%')">%</button>
+                        <button class="calc-btn operator" onclick="calculatorAppend('/')">÷</button>
+
+                        <!-- Linha 2 -->
+                        <button class="calc-btn" onclick="calculatorAppend('7')">7</button>
+                        <button class="calc-btn" onclick="calculatorAppend('8')">8</button>
+                        <button class="calc-btn" onclick="calculatorAppend('9')">9</button>
+                        <button class="calc-btn operator" onclick="calculatorAppend('*')">×</button>
+
+                        <!-- Linha 3 -->
+                        <button class="calc-btn" onclick="calculatorAppend('4')">4</button>
+                        <button class="calc-btn" onclick="calculatorAppend('5')">5</button>
+                        <button class="calc-btn" onclick="calculatorAppend('6')">6</button>
+                        <button class="calc-btn operator" onclick="calculatorAppend('-')">−</button>
+
+                        <!-- Linha 4 -->
+                        <button class="calc-btn" onclick="calculatorAppend('1')">1</button>
+                        <button class="calc-btn" onclick="calculatorAppend('2')">2</button>
+                        <button class="calc-btn" onclick="calculatorAppend('3')">3</button>
+                        <button class="calc-btn operator" onclick="calculatorAppend('+')">+</button>
+
+                        <!-- Linha 5 -->
+                        <button class="calc-btn zero" onclick="calculatorAppend('0')">0</button>
+                        <button class="calc-btn" onclick="calculatorAppend('.')">.</button>
+                        <button class="calc-btn equals" onclick="calculatorCalculate()">=</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
 
     <!-- Container para toasts -->
     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
