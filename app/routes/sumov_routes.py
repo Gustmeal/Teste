@@ -2985,3 +2985,335 @@ def penalidade_ans_salvar_deliberacao():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+# =====================================================
+# ANÁLISE DE OCORRÊNCIAS DE FATURAMENTO
+# =====================================================
+
+@sumov_bp.route('/faturamento')
+@login_required
+def faturamento_index():
+    """Dashboard principal de Faturamento"""
+    return render_template('sumov/faturamento/index.html')
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias')
+@login_required
+def analise_ocorrencias():
+    """Lista de ocorrências para análise"""
+    from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+
+    # Buscar ocorrências sem análise e analisadas
+    sem_analise = OcorrenciasFaturamento.listar_sem_analise()
+    analisadas = OcorrenciasFaturamento.listar_analisadas()
+
+    return render_template('sumov/faturamento/analise_ocorrencias.html',
+                           sem_analise=sem_analise,
+                           analisadas=analisadas)
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/analisar/<nr_contrato>/<int:nr_ocorrencia>/<identificador>',
+                methods=['GET', 'POST'])
+@login_required
+def analisar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
+    """Formulário para analisar uma ocorrência específica"""
+    from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+    from sqlalchemy import text
+
+    # Buscar ocorrência específica pelo identificador
+    ocorrencia = OcorrenciasFaturamento.buscar_por_identificador(nr_contrato, nr_ocorrencia, identificador)
+
+    if not ocorrencia:
+        flash('Ocorrência não encontrada.', 'danger')
+        return redirect(url_for('sumov.analise_ocorrencias'))
+
+    if request.method == 'POST':
+        try:
+            # Capturar dados do formulário
+            houve_faturamento = request.form.get('houve_faturamento')
+            mes_ano = request.form.get('mes_ano', '').strip()
+
+            # Validações
+            if not houve_faturamento:
+                flash('Por favor, informe se houve faturamento.', 'warning')
+                return redirect(request.url)
+
+            # Determinar ID_FATURAMENTO e MES_ANO_FATURAMENTO
+            if houve_faturamento == 'sim':
+                # Se SIM: ID_FATURAMENTO = 1 e MES_ANO_FATURAMENTO preenchido
+                if not mes_ano:
+                    flash('Por favor, informe o mês/ano do faturamento quando houver faturamento.', 'warning')
+                    return redirect(request.url)
+
+                id_faturamento = 1
+
+                # Converter mes_ano de MM/YYYY para YYYYMM (formato americano)
+                # Exemplo: 05/2025 → 202505
+                try:
+                    mes, ano = mes_ano.split('/')
+                    mes_ano_int = int(f"{ano}{mes}")  # CORRIGIDO: ano primeiro, depois mês
+                except:
+                    flash('Formato de mês/ano inválido. Use MM/AAAA (Ex: 05/2025)', 'danger')
+                    return redirect(request.url)
+
+            else:  # houve_faturamento == 'nao'
+                # Se NÃO: ID_FATURAMENTO = 0 e MES_ANO_FATURAMENTO = NULL
+                id_faturamento = 0
+                mes_ano_int = None
+
+            # Atualizar usando ORM diretamente para garantir que funcione
+            ocorrencia.ID_FATURAMENTO = id_faturamento
+            ocorrencia.MES_ANO_FATURAMENTO = mes_ano_int
+            db.session.commit()
+
+            # Registrar log
+            if houve_faturamento == 'sim':
+                descricao = f'Análise de ocorrência: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Sim, Mês/Ano: {mes_ano}'
+            else:
+                descricao = f'Análise de ocorrência: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Não'
+
+            registrar_log(
+                acao='editar',
+                entidade='ocorrencias_faturamento',
+                entidade_id=f"{nr_contrato}-{nr_ocorrencia}",
+                descricao=descricao
+            )
+
+            flash('Ocorrência analisada com sucesso!', 'success')
+            return redirect(url_for('sumov.analise_ocorrencias'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao analisar ocorrência: {str(e)}', 'danger')
+            return redirect(request.url)
+
+    # GET - Exibir formulário
+    return render_template('sumov/faturamento/analisar_form.html',
+                           ocorrencia=ocorrencia)
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/editar/<nr_contrato>/<int:nr_ocorrencia>/<identificador>',
+                methods=['GET', 'POST'])
+@login_required
+def editar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
+    """Formulário para editar uma ocorrência já analisada"""
+    from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+    from sqlalchemy import text
+
+    # Buscar ocorrência específica pelo identificador
+    ocorrencia = OcorrenciasFaturamento.buscar_por_identificador(nr_contrato, nr_ocorrencia, identificador)
+
+    if not ocorrencia:
+        flash('Ocorrência não encontrada.', 'danger')
+        return redirect(url_for('sumov.analise_ocorrencias'))
+
+    if request.method == 'POST':
+        try:
+            # Capturar dados do formulário
+            houve_faturamento = request.form.get('houve_faturamento')
+            mes_ano = request.form.get('mes_ano', '').strip()
+
+            # Validações
+            if not houve_faturamento:
+                flash('Por favor, informe se houve faturamento.', 'warning')
+                return redirect(request.url)
+
+            # Determinar ID_FATURAMENTO e MES_ANO_FATURAMENTO
+            if houve_faturamento == 'sim':
+                # Se SIM: ID_FATURAMENTO = 1 e MES_ANO_FATURAMENTO preenchido
+                if not mes_ano:
+                    flash('Por favor, informe o mês/ano do faturamento quando houver faturamento.', 'warning')
+                    return redirect(request.url)
+
+                id_faturamento = 1
+
+                # Converter mes_ano de MM/YYYY para YYYYMM (formato americano)
+                try:
+                    mes, ano = mes_ano.split('/')
+                    mes_ano_int = int(f"{ano}{mes}")
+                except:
+                    flash('Formato de mês/ano inválido. Use MM/AAAA (Ex: 05/2025)', 'danger')
+                    return redirect(request.url)
+
+            else:  # houve_faturamento == 'nao'
+                # Se NÃO: ID_FATURAMENTO = 0 e MES_ANO_FATURAMENTO = NULL
+                id_faturamento = 0
+                mes_ano_int = None
+
+            # Atualizar usando ORM diretamente
+            ocorrencia.ID_FATURAMENTO = id_faturamento
+            ocorrencia.MES_ANO_FATURAMENTO = mes_ano_int
+            db.session.commit()
+
+            # Registrar log
+            if houve_faturamento == 'sim':
+                descricao = f'Edição de ocorrência: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Sim, Mês/Ano: {mes_ano}'
+            else:
+                descricao = f'Edição de ocorrência: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Não'
+
+            registrar_log(
+                acao='editar',
+                entidade='ocorrencias_faturamento',
+                entidade_id=f"{nr_contrato}-{nr_ocorrencia}",
+                descricao=descricao
+            )
+
+            flash('Ocorrência editada com sucesso!', 'success')
+            return redirect(url_for('sumov.analise_ocorrencias'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao editar ocorrência: {str(e)}', 'danger')
+            return redirect(request.url)
+
+    # GET - Exibir formulário com dados preenchidos
+    return render_template('sumov/faturamento/editar_form.html',
+                           ocorrencia=ocorrencia)
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/atualizar', methods=['POST'])
+@login_required
+def atualizar_ocorrencias_faturamento():
+    """Executa o UPDATE para sincronizar dados analisados com a tabela de faturamento"""
+    from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+
+    try:
+        # Contar quantos registros serão sincronizados
+        sql_count = text("""
+            SELECT COUNT(*)
+            FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR A
+            WHERE A.ID_FATURAMENTO IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 
+                  FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO] B
+                  WHERE B.NR_CONTRATO = A.NR_CONTRATO
+                    AND B.nrOcorrencia = A.nrOcorrencia
+                    AND B.ID_FATURAMENTO = A.ID_FATURAMENTO
+                    AND (
+                        (B.MES_ANO_FATURAMENTO = A.MES_ANO_FATURAMENTO)
+                        OR (B.MES_ANO_FATURAMENTO IS NULL AND A.MES_ANO_FATURAMENTO IS NULL)
+                    )
+              )
+        """)
+
+        total_para_sincronizar = db.session.execute(sql_count).scalar()
+
+        if total_para_sincronizar == 0:
+            flash('Não há novos registros para sincronizar. Todos os registros analisados já foram processados.',
+                  'info')
+            return redirect(url_for('sumov.analise_ocorrencias'))
+
+        # Executar UPDATE em 2 etapas
+        linhas_afetadas = OcorrenciasFaturamento.atualizar_faturamento_smart()
+
+        # Registrar log
+        registrar_log(
+            acao='atualizar',
+            entidade='faturamento_smart',
+            entidade_id='batch',
+            descricao=f'Atualização em lote de faturamento SMART - {linhas_afetadas} registros sincronizados (Etapa 1: ID_FATURAMENTO=1, Etapa 2: ID_FATURAMENTO=0)'
+        )
+
+        if linhas_afetadas > 0:
+            flash(
+                f'Sincronização concluída com sucesso! {linhas_afetadas} registro(s) atualizado(s) na tabela de faturamento. Os registros foram removidos da lista de Analisadas.',
+                'success')
+        else:
+            flash('Nenhum registro foi atualizado. Pode haver um problema com a sincronização.', 'warning')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao atualizar ocorrências: {str(e)}', 'danger')
+
+    return redirect(url_for('sumov.analise_ocorrencias'))
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/teste-duplicidade')
+@login_required
+def teste_duplicidade_faturamento():
+    """Testa duplicidade de contratos na tabela de faturamento"""
+    from sqlalchemy import text
+
+    try:
+        # Query para buscar contratos duplicados
+        sql = text("""
+            SELECT * 
+            FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
+            WHERE NR_CONTRATO IN (
+                SELECT NR_CONTRATO 
+                FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO] 
+                WHERE MES_ANO_FATURAMENTO IS NOT NULL 
+                GROUP BY NR_CONTRATO 
+                HAVING COUNT(*) > 1
+            )
+            ORDER BY NR_CONTRATO, nrOcorrencia
+        """)
+
+        resultado = db.session.execute(sql).fetchall()
+
+        # Agrupar por contrato para facilitar visualização
+        contratos_duplicados = {}
+        for row in resultado:
+            nr_contrato = int(row[4])  # NR_CONTRATO está na posição 4
+            if nr_contrato not in contratos_duplicados:
+                contratos_duplicados[nr_contrato] = []
+            contratos_duplicados[nr_contrato].append(row)
+
+        return render_template('sumov/faturamento/teste_duplicidade.html',
+                               contratos_duplicados=contratos_duplicados,
+                               total_duplicados=len(contratos_duplicados))
+
+    except Exception as e:
+        flash(f'Erro ao executar teste de duplicidade: {str(e)}', 'danger')
+        return redirect(url_for('sumov.analise_ocorrencias'))
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/inserir-tabela-final', methods=['POST'])
+@login_required
+def inserir_tabela_final_faturamento():
+    """Insere registros analisados na tabela final com VR_TARIFA = 247.48"""
+    from sqlalchemy import text
+
+    try:
+        # Query para inserir na tabela final - Gerando ID sequencial
+        sql = text("""
+            -- Pegar o maior ID da tabela final
+            DECLARE @MaxID INT
+            SELECT @MaxID = ISNULL(MAX(ID), 0) FROM BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL]
+
+            -- Inserir com IDs sequenciais a partir do maior + 1
+            INSERT INTO BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL]
+            ([ID], [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO], 
+             [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR], 
+             [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF], 
+             [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], [VR_TARIFA], [OBS])
+            SELECT 
+                @MaxID + ROW_NUMBER() OVER (ORDER BY [ID]) AS [ID],
+                [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO], 
+                [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR], 
+                [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF], 
+                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], 247.48 AS VR_TARIFA, [OBS]
+            FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
+            WHERE MES_ANO_FATURAMENTO IS NOT NULL
+        """)
+
+        result = db.session.execute(sql)
+        db.session.commit()
+
+        linhas_inseridas = result.rowcount
+
+        # Registrar log
+        registrar_log(
+            acao='inserir',
+            entidade='faturamento_final',
+            entidade_id='batch',
+            descricao=f'Inserção em lote na tabela final de faturamento - {linhas_inseridas} registros inseridos com VR_TARIFA = 247.48'
+        )
+
+        flash(f'Inserção concluída com sucesso! {linhas_inseridas} registro(s) inserido(s) na tabela final.', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao inserir na tabela final: {str(e)}', 'danger')
+
+    return redirect(url_for('sumov.analise_ocorrencias'))

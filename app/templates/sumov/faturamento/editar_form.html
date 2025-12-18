@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.analise_ocorrencias') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-edit text-warning me-2"></i> Editar Ocorrência
+        </h1>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-gradient-warning text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-file-invoice me-2"></i>Dados da Ocorrência
+            </h5>
+        </div>
+        <div class="card-body">
+            <!-- Informações da Ocorrência (somente leitura) -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Contrato:</label>
+                    <input type="text" class="form-control bg-light" value="{{ ocorrencia.NR_CONTRATO|int }}" readonly>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">Ocorrência:</label>
+                    <input type="text" class="form-control bg-light" value="{{ ocorrencia.nrOcorrencia }}" readonly>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Data Justificativa:</label>
+                    <input type="text" class="form-control bg-light"
+                           value="{{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}"
+                           readonly>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">Justificativa:</label>
+                    <textarea class="form-control bg-light" rows="3" readonly>{{ ocorrencia.dsJustificativa or '-' }}</textarea>
+                </div>
+            </div>
+
+            <hr>
+
+            <!-- Formulário de Edição -->
+            <form method="POST" action="{{ url_for('sumov.editar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}" id="formEditar">
+                <h5 class="text-warning mb-3">
+                    <i class="fas fa-clipboard-check me-2"></i>Editar Análise
+                </h5>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            Houve Faturamento? <span class="text-danger">*</span>
+                        </label>
+                        <select class="form-select" name="houve_faturamento" id="houve_faturamento" required>
+                            <option value="">Selecione...</option>
+                            <option value="sim" {% if ocorrencia.ID_FATURAMENTO == 1 %}selected{% endif %}>Sim</option>
+                            <option value="nao" {% if ocorrencia.ID_FATURAMENTO == 0 %}selected{% endif %}>Não</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            Mês/Ano do Faturamento <span class="text-danger" id="asteriscoObrigatorio">*</span>
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               name="mes_ano"
+                               id="mes_ano"
+                               placeholder="MM/AAAA (Ex: 05/2025)"
+                               pattern="\d{2}/\d{4}"
+                               maxlength="7"
+                               value="{{ ocorrencia.formatar_mes_ano() if ocorrencia.MES_ANO_FATURAMENTO else '' }}">
+                        <small class="text-muted">Formato: MM/AAAA (Ex: 05/2025)</small>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <a href="{{ url_for('sumov.analise_ocorrencias') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-save me-2"></i>Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Controle do campo Mês/Ano baseado na seleção de Houve Faturamento
+    document.getElementById('houve_faturamento').addEventListener('change', function() {
+        const mesAnoInput = document.getElementById('mes_ano');
+        const asterisco = document.getElementById('asteriscoObrigatorio');
+
+        if (this.value === 'nao') {
+            // Se escolher "Não", desabilita e limpa o campo
+            mesAnoInput.disabled = true;
+            mesAnoInput.value = '';
+            mesAnoInput.removeAttribute('required');
+            asterisco.style.display = 'none';
+            mesAnoInput.classList.add('bg-light');
+        } else if (this.value === 'sim') {
+            // Se escolher "Sim", habilita o campo e torna obrigatório
+            mesAnoInput.disabled = false;
+            mesAnoInput.setAttribute('required', 'required');
+            asterisco.style.display = 'inline';
+            mesAnoInput.classList.remove('bg-light');
+        } else {
+            // Se limpar a seleção, deixa habilitado mas não obrigatório
+            mesAnoInput.disabled = false;
+            mesAnoInput.removeAttribute('required');
+            asterisco.style.display = 'inline';
+            mesAnoInput.classList.remove('bg-light');
+        }
+    });
+
+    // Aplicar estado inicial baseado no valor selecionado
+    document.addEventListener('DOMContentLoaded', function() {
+        const houveFaturamento = document.getElementById('houve_faturamento').value;
+        const mesAnoInput = document.getElementById('mes_ano');
+        const asterisco = document.getElementById('asteriscoObrigatorio');
+
+        if (houveFaturamento === 'nao') {
+            mesAnoInput.disabled = true;
+            mesAnoInput.removeAttribute('required');
+            asterisco.style.display = 'none';
+            mesAnoInput.classList.add('bg-light');
+        }
+    });
+
+    // Máscara para o campo de mês/ano
+    document.getElementById('mes_ano').addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, ''); // Remove tudo que não é número
+
+        if (value.length >= 2) {
+            value = value.substring(0, 2) + '/' + value.substring(2, 6);
+        }
+
+        e.target.value = value;
+    });
+
+    // Validação antes de enviar
+    document.getElementById('formEditar').addEventListener('submit', function(e) {
+        const houveFaturamento = document.getElementById('houve_faturamento').value;
+        const mesAno = document.getElementById('mes_ano').value;
+
+        if (houveFaturamento === 'sim' && !mesAno) {
+            e.preventDefault();
+            alert('Por favor, informe o Mês/Ano do faturamento quando selecionar "Sim".');
+            return false;
+        }
+    });
+</script>
+{% endblock %}

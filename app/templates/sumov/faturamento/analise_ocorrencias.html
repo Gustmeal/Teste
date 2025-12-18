@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.faturamento_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-chart-line text-primary me-2"></i> Análise de Ocorrências de Faturamento
+        </h1>
+        <div class="btn-group" role="group">
+            <form method="POST" action="{{ url_for('sumov.atualizar_ocorrencias_faturamento') }}" style="display:inline;">
+                <button type="submit" class="btn btn-success" onclick="return confirm('Deseja atualizar as ocorrências na tabela de faturamento?')">
+                    <i class="fas fa-sync-alt me-2"></i>Atualizar Ocorrências
+                </button>
+            </form>
+
+            <a href="{{ url_for('sumov.teste_duplicidade_faturamento') }}" class="btn btn-info ms-2">
+                <i class="fas fa-search me-2"></i>Teste de Duplicidade
+            </a>
+
+            <button type="button" class="btn btn-primary ms-2" onclick="confirmarInsercaoFinal()">
+                <i class="fas fa-database me-2"></i>Inserir na Tabela Final
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabs para Sem Análise e Analisadas -->
+    <ul class="nav nav-tabs mb-4" id="tabOcorrencias" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="sem-analise-tab" data-bs-toggle="tab" data-bs-target="#sem-analise" type="button" role="tab">
+                <i class="fas fa-exclamation-circle me-2"></i>Sem Análise ({{ sem_analise|length }})
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="analisadas-tab" data-bs-toggle="tab" data-bs-target="#analisadas" type="button" role="tab">
+                <i class="fas fa-check-circle me-2"></i>Analisadas ({{ analisadas|length }})
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="tabOcorrenciasContent">
+        <!-- Tab: Sem Análise -->
+        <div class="tab-pane fade show active" id="sem-analise" role="tabpanel">
+            <div class="card shadow">
+                <div class="card-header bg-gradient-warning text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-exclamation-circle me-2"></i>Ocorrências Sem Análise
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if sem_analise %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center">Contrato</th>
+                                    <th class="text-center">Ocorrência</th>
+                                    <th>Justificativa</th>
+                                    <th class="text-center">Data Justificativa</th>
+                                    <th class="text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ocorrencia in sem_analise %}
+                                <tr>
+                                    <td class="text-center">{{ ocorrencia.NR_CONTRATO|int }}</td>
+                                    <td class="text-center">{{ ocorrencia.nrOcorrencia }}</td>
+                                    <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
+                                    <td class="text-center">
+                                        {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('sumov.analisar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
+                                           class="btn btn-sm btn-primary">
+                                            <i class="fas fa-edit"></i> Analisar
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info m-3">
+                        <i class="fas fa-info-circle me-2"></i>Não há ocorrências sem análise no momento.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Analisadas -->
+        <div class="tab-pane fade" id="analisadas" role="tabpanel">
+            <div class="card shadow">
+                <div class="card-header bg-gradient-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle me-2"></i>Ocorrências Analisadas
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if analisadas %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center">Contrato</th>
+                                    <th class="text-center">Ocorrência</th>
+                                    <th>Justificativa</th>
+                                    <th class="text-center">Data Justificativa</th>
+                                    <th class="text-center">Houve Faturamento?</th>
+                                    <th class="text-center">Mês/Ano Faturamento</th>
+                                    <th class="text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ocorrencia in analisadas %}
+                                <tr>
+                                    <td class="text-center">{{ ocorrencia.NR_CONTRATO|int }}</td>
+                                    <td class="text-center">{{ ocorrencia.nrOcorrencia }}</td>
+                                    <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
+                                    <td class="text-center">
+                                        {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if ocorrencia.ID_FATURAMENTO == 1 %}
+                                            <span class="badge bg-success">Sim</span>
+                                        {% elif ocorrencia.ID_FATURAMENTO == 0 %}
+                                            <span class="badge bg-danger">Não</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {{ ocorrencia.formatar_mes_ano() }}
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('sumov.editar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
+                                           class="btn btn-sm btn-warning">
+                                            <i class="fas fa-edit"></i> Editar
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info m-3">
+                        <i class="fas fa-info-circle me-2"></i>Não há ocorrências analisadas no momento.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function confirmarInsercaoFinal() {
+        if (confirm('ATENÇÃO: Isso irá copiar todos os registros com MES_ANO_FATURAMENTO preenchido para a tabela final.\n\nDeseja continuar?')) {
+            // Criar formulário temporário e submeter
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = "{{ url_for('sumov.inserir_tabela_final_faturamento') }}";
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+</script>
+{% endblock %}

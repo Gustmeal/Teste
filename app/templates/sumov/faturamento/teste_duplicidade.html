@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.analise_ocorrencias') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-search text-info me-2"></i> Teste de Duplicidade de Contratos
+        </h1>
+    </div>
+
+    {% if total_duplicados == 0 %}
+    <!-- Nenhuma duplicidade encontrada -->
+    <div class="alert alert-success shadow">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-check-circle fa-3x me-4"></i>
+            <div>
+                <h4 class="alert-heading mb-2">Nenhuma Duplicidade Encontrada!</h4>
+                <p class="mb-0">Não há contratos duplicados na tabela de faturamento. Todos os contratos estão únicos.</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Duplicidades encontradas -->
+    <div class="alert alert-warning shadow mb-4">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-exclamation-triangle fa-3x me-4"></i>
+            <div>
+                <h4 class="alert-heading mb-2">Duplicidades Detectadas!</h4>
+                <p class="mb-0">Foram encontrados <strong>{{ total_duplicados }}</strong> contrato(s) com duplicidade na tabela de faturamento.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lista de contratos duplicados -->
+    {% for nr_contrato, registros in contratos_duplicados.items() %}
+    <div class="card shadow mb-4">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">
+                <i class="fas fa-copy me-2"></i>Contrato: {{ nr_contrato }}
+                <span class="badge bg-danger ms-2">{{ registros|length }} Ocorrências</span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="text-center">ID</th>
+                            <th class="text-center">Nr Ocorrência</th>
+                            <th class="text-center">Item Serviço</th>
+                            <th>Destino</th>
+                            <th class="text-center">ID Faturamento</th>
+                            <th class="text-center">Mês/Ano Faturamento</th>
+                            <th>OBS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in registros %}
+                        <tr>
+                            <td class="text-center">{{ row[0] }}</td>
+                            <td class="text-center">{{ row[3] }}</td>
+                            <td class="text-center">{{ row[5] or '-' }}</td>
+                            <td>{{ row[6] or '-' }}</td>
+                            <td class="text-center">
+                                {% if row[13] == 1 %}
+                                    <span class="badge bg-success">Sim</span>
+                                {% elif row[13] == 0 %}
+                                    <span class="badge bg-danger">Não</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if row[14] %}
+                                    {% set mes_ano_str = row[14]|string %}
+                                    {% if mes_ano_str|length == 6 %}
+                                        {{ mes_ano_str[4:6] }}/{{ mes_ano_str[0:4] }}
+                                    {% else %}
+                                        {{ row[14] }}
+                                    {% endif %}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ row[16] or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Botão para voltar -->
+    <div class="text-center mt-4">
+        <a href="{{ url_for('sumov.analise_ocorrencias') }}" class="btn btn-secondary btn-lg">
+            <i class="fas fa-arrow-left me-2"></i>Voltar para Análise de Ocorrências
+        </a>
+    </div>
+</div>
+
+<style>
+    .alert {
+        border-radius: 15px;
+        border: none;
+    }
+
+    .card {
+        border-radius: 15px;
+    }
+
+    .card-header {
+        border-radius: 15px 15px 0 0 !important;
+    }
+</style>
+{% endblock %}

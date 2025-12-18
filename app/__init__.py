@@ -44,6 +44,7 @@ def create_app():
         from app.models.permissao_sistema import PermissaoSistema, PermissaoArea
         from app.models.deliberacao_pagamento import DeliberacaoPagamento
         from app.models.notificacao import Notificacao, NotificacaoVisualizacao
+        from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
 
         db.create_all()
 
