@@ -21,6 +21,7 @@
             <li>O sistema soma automaticamente os valores e mostra quanto <strong>falta distribuir</strong></li>
             <li>Você só pode finalizar quando <strong>distribuir TODO o valor</strong> disponível</li>
             <li>O depósito original será <strong>zerado</strong> após a operação</li>
+            <li><span class="badge bg-success">NOVO!</span> Os dados preenchidos na <strong>Linha 1</strong> são copiados automaticamente para as outras linhas (exceto Nº Contrato)</li>
         </ul>
     </div>
 
@@ -247,7 +248,83 @@ function adicionarLinha() {
     // Aplicar máscara de moeda no campo adicionado
     aplicarMascaraMoeda(`vr_rateio_${linhaId}`);
 
+    // Se for a primeira linha, configurar os event listeners para copiar dados
+    if (linhaId === 1) {
+        configurarCopiaDadosLinha1();
+    }
+
     calcularRestante();
+}
+
+/**
+ * Configura os event listeners na Linha 1 para copiar dados automaticamente
+ * para as outras linhas (exceto Nº Contrato)
+ */
+function configurarCopiaDadosLinha1() {
+    // Lista de campos que serão copiados da Linha 1
+    const camposParaCopiar = [
+        'nr_processo',
+        'id_area',
+        'id_centro',
+        'dt_identificacao',
+        'dt_ajuste_rm',
+        'dt_siscor',
+        'evento_contabil_anterior',
+        'evento_contabil_atual',
+        'obs'
+    ];
+
+    // Adicionar event listener em cada campo
+    camposParaCopiar.forEach(campo => {
+        const elemento = document.getElementById(`${campo}_1`);
+        if (elemento) {
+            // Detectar mudanças (change para selects e datas, input para texto e números)
+            elemento.addEventListener('change', () => copiarDadosLinha1ParaOutras());
+            elemento.addEventListener('input', () => copiarDadosLinha1ParaOutras());
+        }
+    });
+}
+
+/**
+ * Copia os dados da Linha 1 para todas as outras linhas
+ * (exceto Valor Rateio e Nº Contrato)
+ */
+function copiarDadosLinha1ParaOutras() {
+    // Se houver apenas uma linha, não precisa copiar
+    if (linhas.length <= 1) {
+        return;
+    }
+
+    // Lista de campos que serão copiados
+    const camposParaCopiar = [
+        'nr_processo',
+        'id_area',
+        'id_centro',
+        'dt_identificacao',
+        'dt_ajuste_rm',
+        'dt_siscor',
+        'evento_contabil_anterior',
+        'evento_contabil_atual',
+        'obs'
+    ];
+
+    // Copiar valores da Linha 1 para todas as outras linhas
+    linhas.forEach(linha => {
+        // Pular a própria Linha 1
+        if (linha.id === 1) {
+            return;
+        }
+
+        // Copiar cada campo
+        camposParaCopiar.forEach(campo => {
+            const elementoOrigem = document.getElementById(`${campo}_1`);
+            const elementoDestino = document.getElementById(`${campo}_${linha.id}`);
+
+            if (elementoOrigem && elementoDestino) {
+                elementoDestino.value = elementoOrigem.value;
+            }
+        });
+    });
 }
 
 function removerLinha(linhaId) {
@@ -357,22 +434,50 @@ function validarRateio() {
 
 <style>
 .linha-rateio {
-    animation: fadeIn 0.3s;
+    transition: all 0.3s ease;
+}
+
+.linha-rateio:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.money {
+    text-align: right;
+    font-weight: 600;
+}
+
+.btn-back {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: #6c757d;
+    color: white;
+    text-decoration: none;
+    border-radius: 0.25rem;
+    transition: all 0.3s ease;
+    margin-bottom: 1rem;
+}
+
+.btn-back:hover {
+    background-color: #5a6268;
+    color: white;
+    transform: translateX(-5px);
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
 }
 
 @keyframes fadeIn {
     from {
         opacity: 0;
-        transform: translateY(-10px);
+        transform: translateY(20px);
     }
     to {
         opacity: 1;
         transform: translateY(0);
     }
-}
-
-.money {
-    text-align: right;
 }
 </style>
 {% endblock %}
