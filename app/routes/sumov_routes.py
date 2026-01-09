@@ -830,6 +830,7 @@ def deliberacao_pagamento():
     """Dashboard do sistema de Deliberação de Pagamento com lista de deliberações e filtros"""
     try:
         from datetime import datetime
+        from app.models.usuario import Empregado  # Importar o modelo Empregado
 
         # Capturar parâmetros de filtro
         filtro_contrato = request.args.get('filtro_contrato', '').strip()
@@ -854,14 +855,19 @@ def deliberacao_pagamento():
         # Ordenar e buscar
         deliberacoes = query.order_by(DeliberacaoPagamento.CREATED_AT.desc()).all()
 
-        # Buscar valores distintos para os filtros
-        analistas_distintos = db.session.query(
-            distinct(DeliberacaoPagamento.COLABORADOR_ANALISOU)
-        ).filter(
-            DeliberacaoPagamento.DELETED_AT.is_(None),
-            DeliberacaoPagamento.COLABORADOR_ANALISOU.isnot(None)
-        ).order_by(DeliberacaoPagamento.COLABORADOR_ANALISOU).all()
+        # ===== NOVO: Buscar TODOS os empregados da GEADI =====
+        # Busca todos que têm sgSetor = 'GEADI' e estão ativos (fkStatus = 1)
+        empregados_geadi = Empregado.query.filter(
+            Empregado.sgSetor == 'GEADI',
+            Empregado.fkStatus == 1  # Apenas ativos
+        ).order_by(Empregado.nmPessoa).all()
 
+        # Lista de nomes dos analistas da GEADI
+        lista_analistas = [emp.nmPessoa for emp in empregados_geadi if emp.nmPessoa]
+        # Remove duplicados e ordena (pode haver registros duplicados por data de referência)
+        lista_analistas = sorted(list(set(lista_analistas)))
+
+        # Buscar valores distintos para status
         status_distintos = db.session.query(
             distinct(DeliberacaoPagamento.STATUS_DOCUMENTO)
         ).filter(
@@ -869,8 +875,7 @@ def deliberacao_pagamento():
             DeliberacaoPagamento.STATUS_DOCUMENTO.isnot(None)
         ).order_by(DeliberacaoPagamento.STATUS_DOCUMENTO).all()
 
-        # Transformar em listas simples
-        lista_analistas = [a[0] for a in analistas_distintos if a[0]]
+        # Transformar em lista simples
         lista_status = [s[0] for s in status_distintos if s[0]]
 
         return render_template('sumov/deliberacao_pagamento/index.html',

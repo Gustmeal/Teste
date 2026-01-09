@@ -11,6 +11,14 @@ from sqlalchemy import text
 
 depositos_judiciais_bp = Blueprint('depositos_judiciais', __name__, url_prefix='/depositos-judiciais')
 
+def obter_proximo_nu_linha():
+    """
+    Obtém o próximo NU_LINHA disponível verificando AMBAS as tabelas
+    para evitar conflitos de chave primária.
+    """
+    max_depositos = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar() or 0
+    max_processos = db.session.query(func.max(ProcessosJudiciais.NU_LINHA)).scalar() or 0
+    return max(max_depositos, max_processos) + 1
 
 @depositos_judiciais_bp.context_processor
 def inject_current_year():
@@ -30,9 +38,8 @@ def inclusao():
     """Página de inclusão de novos depósitos"""
     if request.method == 'POST':
         try:
-            # Buscar o próximo NU_LINHA
-            ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
-            proximo_nu_linha = (ultimo_nu_linha or 0) + 1
+            # Buscar o próximo NU_LINHA (verifica ambas as tabelas)
+            proximo_nu_linha = obter_proximo_nu_linha()
 
             # Criar novo registro
             novo_deposito = DepositosSufin()
@@ -515,8 +522,8 @@ def editar(nu_linha):
                 # PROCESSO ESPECIAL: NÃO ALTERA O ORIGINAL, CRIA ESTORNO E NOVA
 
                 # 1. Buscar próximo NU_LINHA para estorno
-                ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
-                proximo_nu_linha_estorno = (ultimo_nu_linha or 0) + 1
+                # 1. Buscar próximo NU_LINHA para estorno (verifica ambas as tabelas)
+                proximo_nu_linha_estorno = obter_proximo_nu_linha()
 
                 # 2. Criar linha de ESTORNO (valor negativo) na carteira ANTIGA
                 estorno = DepositosSufin()
@@ -1339,8 +1346,7 @@ def ratear(nu_linha):
             # ============================================
             # ETAPA 2: BUSCAR PRÓXIMO NU_LINHA
             # ============================================
-            ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
-            proximo_nu_linha = (ultimo_nu_linha or 0) + 1
+            proximo_nu_linha = obter_proximo_nu_linha()
 
             # ============================================
             # ETAPA 3: CRIAR NOVO REGISTRO COM VALOR RATEADO
@@ -1542,9 +1548,8 @@ def ratear_multiplo(nu_linha):
                     f"A soma dos rateios (R$ {valor_total_rateado:.2f}) deve ser igual ao valor original (R$ {valor_original:.2f})"
                 )
 
-            # Buscar próximo NU_LINHA disponível
-            ultimo_nu_linha = db.session.query(func.max(DepositosSufin.NU_LINHA)).scalar()
-            proximo_nu_linha = (ultimo_nu_linha or 0) + 1
+            # Buscar próximo NU_LINHA disponível (verifica ambas as tabelas)
+            proximo_nu_linha = obter_proximo_nu_linha()
 
             # Criar cada linha de rateio
             linhas_criadas = []
