@@ -7,6 +7,9 @@ def selecionar_contratos_distribuiveis():
     """
     Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
     Usa as tabelas do Banco de Dados Gerencial (BDG).
+
+    NOVA LÓGICA: Filtra apenas contratos que existem na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+    com ONDE = 'ASSESSORIA' e SIT_ESPECIAL IS NULL.
     """
     try:
         # Usar uma conexão direta para executar o SQL
@@ -28,47 +31,57 @@ def selecionar_contratos_distribuiveis():
                 count_after_truncate = connection.execute(check_sql).scalar()
                 logging.info(f"Contagem após limpeza: {count_after_truncate}")
 
-                # Em seguida, inserir os contratos selecionados com critérios melhorados
-                logging.info("Selecionando contratos distribuíveis...")
+                # NOVA LÓGICA: Inserir apenas contratos que passam pelo filtro da tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                logging.info(
+                    "Selecionando contratos distribuíveis com novo filtro (TEMP_DISTRIBUICAO_SERASA_ASSESSORIA)...")
                 insert_sql = text("""
-                                  INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                                  SELECT ECA.fkContratoSISCTR
-                                       , CON.NR_CPF_CNPJ
-                                       , SIT.VR_SD_DEVEDOR
-                                       , CREATED_AT = GETDATE()
-                                       , UPDATED_AT = NULL
-                                       , DELETED_AT = NULL
-                                  FROM
-                                      [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                                      INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                                  ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                                      INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                                      ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                                      LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                                      ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                                  WHERE
-                                      SIT.[fkSituacaoCredito] = 1
-                                    AND SDJ.fkContratoSISCTR IS NULL
-                                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422
-                                      , 407)
-                                  -- Garantir que não haja duplicatas
-                                    AND NOT EXISTS (
-                                      SELECT 1 FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] D
-                                      WHERE D.FkContratoSISCTR = ECA.fkContratoSISCTR
-                                      )""")
+                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                    SELECT 
+                        ECA.fkContratoSISCTR,
+                        CON.NR_CPF_CNPJ,
+                        SIT.VR_SD_DEVEDOR,
+                        CREATED_AT = GETDATE(),
+                        UPDATED_AT = NULL,
+                        DELETED_AT = NULL
+                    FROM
+                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                        -- NOVO FILTRO: Apenas contratos que estão na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
+                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                    WHERE
+                        SIT.[fkSituacaoCredito] = 1  -- Contratos ativos
+                        AND SDJ.fkContratoSISCTR IS NULL  -- Sem suspensão judicial
+                        -- FILTROS DA TABELA TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                        AND TEMP.ONDE = 'ASSESSORIA'
+                        AND TEMP.SIT_ESPECIAL IS NULL
+                """)
 
-                # Verificar informações das tabelas de origem
+                # Contar contratos nas tabelas de origem antes da inserção (para debug)
                 origem_count_sql = text("""
-                                        SELECT COUNT(*)
-                                        FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                                            INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                                            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                                        WHERE SIT.[fkSituacaoCredito] = 1
-                                        """)
+                    SELECT COUNT(*) 
+                    FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
+                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                    WHERE
+                        SIT.[fkSituacaoCredito] = 1
+                        AND SDJ.fkContratoSISCTR IS NULL
+                        AND TEMP.ONDE = 'ASSESSORIA'
+                        AND TEMP.SIT_ESPECIAL IS NULL
+                """)
                 origem_count = connection.execute(origem_count_sql).scalar()
-                logging.info(f"Contratos elegíveis nas tabelas de origem: {origem_count}")
+                logging.info(f"Contratos elegíveis com novo filtro nas tabelas de origem: {origem_count}")
 
                 result = connection.execute(insert_sql)
                 logging.info(f"Inserção concluída - linhas afetadas: {result.rowcount}")
@@ -79,7 +92,7 @@ def selecionar_contratos_distribuiveis():
                 result = connection.execute(count_sql)
                 num_contratos = result.scalar()
 
-                logging.info(f"Total de contratos selecionados: {num_contratos}")
+                logging.info(f"Total de contratos selecionados com novo filtro: {num_contratos}")
                 return num_contratos
 
             except Exception as e:
@@ -92,7 +105,6 @@ def selecionar_contratos_distribuiveis():
     except Exception as e:
         logging.error(f"Erro na seleção de contratos: {str(e)}")
         return 0
-
 
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """

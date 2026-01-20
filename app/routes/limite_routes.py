@@ -137,149 +137,108 @@ def lista_limites():
 # - Filtro: Exclui empresas 422 e 407
 # =============================================================================
 
-def selecionar_contratos(aplicar_filtro=False):
+def selecionar_contratos():
     """
-    Seleciona o universo de contratos que serão distribuídos e os armazena
-    na tabela DCA_TB006_DISTRIBUIVEIS.
+    Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
+    Usa as tabelas do Banco de Dados Gerencial (BDG).
 
-    IMPORTANTE: Usa a mesma lógica da função original do sistema para manter
-    consistência nos números.
-
-    Args:
-        aplicar_filtro: Se True, exclui contratos com valor < 1000 e CCFácil/CCFácil Rot
-
-    Returns:
-        Número de contratos selecionados
+    NOVA LÓGICA: Filtra apenas contratos que existem na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+    com ONDE = 'ASSESSORIA' e SIT_ESPECIAL IS NULL.
     """
     try:
-        with db.engine.begin() as connection:
-            # 1. Limpar tabela de distribuíveis
-            connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]"))
-            logging.info("Tabela DCA_TB006_DISTRIBUIVEIS limpa")
-
-            # Limpar tabela de não distribuíveis (se existir)
+        # Usar uma conexão direta para executar o SQL
+        with db.engine.connect() as connection:
             try:
-                connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB020_NÃO_DISTRIBUIVEIS]"))
-                logging.info("Tabela DCA_TB020_NÃO_DISTRIBUIVEIS limpa")
+                # Primeiro, limpar COMPLETAMENTE a tabela de distribuíveis
+                logging.info("Limpando tabela de distribuíveis...")
+                truncate_sql = text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]")
+                connection.execute(truncate_sql)
+                logging.info("Tabela de distribuíveis limpa com sucesso")
+
+                # Limpar TAMBÉM a tabela de arrastaveis, que pode conter dados de processamentos anteriores
+                truncate_arrastaveis_sql = text("TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]")
+                connection.execute(truncate_arrastaveis_sql)
+                logging.info("Tabela de arrastaveis limpa com sucesso")
+
+                # Verificar se a limpeza foi bem-sucedida
+                check_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
+                count_after_truncate = connection.execute(check_sql).scalar()
+                logging.info(f"Contagem após limpeza: {count_after_truncate}")
+
+                # NOVA LÓGICA: Inserir apenas contratos que passam pelo filtro da tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                logging.info(
+                    "Selecionando contratos distribuíveis com novo filtro (TEMP_DISTRIBUICAO_SERASA_ASSESSORIA)...")
+                insert_sql = text("""
+                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                    SELECT 
+                        ECA.fkContratoSISCTR,
+                        CON.NR_CPF_CNPJ,
+                        SIT.VR_SD_DEVEDOR,
+                        CREATED_AT = GETDATE(),
+                        UPDATED_AT = NULL,
+                        DELETED_AT = NULL
+                    FROM
+                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                        -- NOVO FILTRO: Apenas contratos que estão na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
+                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                    WHERE
+                        SIT.[fkSituacaoCredito] = 1  -- Contratos ativos
+                        AND SDJ.fkContratoSISCTR IS NULL  -- Sem suspensão judicial
+                        -- FILTROS DA TABELA TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                        AND TEMP.ONDE = 'ASSESSORIA'
+                        AND TEMP.SIT_ESPECIAL IS NULL
+                """)
+
+                # Contar contratos nas tabelas de origem antes da inserção (para debug)
+                origem_count_sql = text("""
+                    SELECT COUNT(*) 
+                    FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
+                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
+                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                    WHERE
+                        SIT.[fkSituacaoCredito] = 1
+                        AND SDJ.fkContratoSISCTR IS NULL
+                        AND TEMP.ONDE = 'ASSESSORIA'
+                        AND TEMP.SIT_ESPECIAL IS NULL
+                """)
+                origem_count = connection.execute(origem_count_sql).scalar()
+                logging.info(f"Contratos elegíveis com novo filtro nas tabelas de origem: {origem_count}")
+
+                result = connection.execute(insert_sql)
+                logging.info(f"Inserção concluída - linhas afetadas: {result.rowcount}")
+
+                # Contar quantos contratos foram selecionados
+                logging.info("Contando contratos selecionados...")
+                count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
+                result = connection.execute(count_sql)
+                num_contratos = result.scalar()
+
+                logging.info(f"Total de contratos selecionados com novo filtro: {num_contratos}")
+                return num_contratos
+
             except Exception as e:
-                logging.warning(f"Tabela DCA_TB020_NÃO_DISTRIBUIVEIS não existe ou erro ao limpar: {e}")
-
-            if aplicar_filtro:
-                # =====================================================
-                # MODO FILTRADO: Separa contratos não distribuíveis
-                # =====================================================
-
-                # 2. Inserir contratos NÃO distribuíveis na tabela separada
-                # Critérios: VR_CONTRATADO < 1000 OU CCFácil/CCFácil Rot
-                sql_nao_distribuiveis = text("""
-                    INSERT INTO [BDG].[DCA_TB020_NÃO_DISTRIBUIVEIS]
-                    (FkContratoSISCTR, NR_CPF_CNPJ, VR_SD_DEVEDOR, CREATED_AT, UPDATED_AT, DELETED_AT)
-                    SELECT 
-                        ECA.fkContratoSISCTR,
-                        CON.NR_CPF_CNPJ,
-                        SIT.VR_SD_DEVEDOR,
-                        GETDATE(),
-                        NULL,
-                        NULL
-                    FROM 
-                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                        INNER JOIN [BDG].[PAR_TB001_PRODUTOS] P
-                            ON P.pkSistemaOriginario = CON.COD_PRODUTO
-                    WHERE
-                        SIT.[fkSituacaoCredito] = 1
-                        AND SDJ.fkContratoSISCTR IS NULL
-                        AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                        AND (
-                            SIT.VR_SD_DEVEDOR <= 1000.00
-                            OR P.NO_ABREVIADO_PRODUTO IN ('CCFácil', 'CCFácil Rot')
-                        )
-                """)
-                result_nao_dist = connection.execute(sql_nao_distribuiveis)
-                qtde_nao_distribuiveis = result_nao_dist.rowcount
-                logging.info(f"Contratos não distribuíveis inseridos: {qtde_nao_distribuiveis}")
-
-                # 3. Inserir contratos DISTRIBUÍVEIS (excluindo os não distribuíveis)
-                sql_distribuiveis = text("""
-                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    (FkContratoSISCTR, NR_CPF_CNPJ, VR_SD_DEVEDOR, CREATED_AT, UPDATED_AT, DELETED_AT)
-                    SELECT 
-                        ECA.fkContratoSISCTR,
-                        CON.NR_CPF_CNPJ,
-                        SIT.VR_SD_DEVEDOR,
-                        GETDATE(),
-                        NULL,
-                        NULL
-                    FROM 
-                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                        INNER JOIN [BDG].[PAR_TB001_PRODUTOS] P
-                            ON P.pkSistemaOriginario = CON.COD_PRODUTO
-                    WHERE
-                        SIT.[fkSituacaoCredito] = 1
-                        AND SDJ.fkContratoSISCTR IS NULL
-                        AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                        AND SIT.VR_SD_DEVEDOR > 1000.00
-                        AND P.NO_ABREVIADO_PRODUTO NOT IN ('CCFácil', 'CCFácil Rot')
-                """)
-                result_dist = connection.execute(sql_distribuiveis)
-                qtde_distribuiveis = result_dist.rowcount
-                logging.info(f"Contratos distribuíveis (filtrados) inseridos: {qtde_distribuiveis}")
-
-            else:
-                # =====================================================
-                # MODO COMPLETO: Usa todos os contratos (QUERY ORIGINAL)
-                # =====================================================
-
-                sql_todos = text("""
-                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    (FkContratoSISCTR, NR_CPF_CNPJ, VR_SD_DEVEDOR, CREATED_AT, UPDATED_AT, DELETED_AT)
-                    SELECT 
-                        ECA.fkContratoSISCTR,
-                        CON.NR_CPF_CNPJ,
-                        SIT.VR_SD_DEVEDOR,
-                        GETDATE(),
-                        NULL,
-                        NULL
-                    FROM 
-                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                    WHERE
-                        SIT.[fkSituacaoCredito] = 1
-                        AND SDJ.fkContratoSISCTR IS NULL
-                        AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                """)
-                result_todos = connection.execute(sql_todos)
-                qtde_distribuiveis = result_todos.rowcount
-                logging.info(f"Contratos distribuíveis (completo) inseridos: {qtde_distribuiveis}")
-
-            # Retornar contagem
-            sql_count = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-            count = connection.execute(sql_count).scalar()
-
-            return count if count else 0
+                logging.error(f"Erro durante a execução das consultas SQL: {str(e)}")
+                # Log mais detalhado caso ocorra erro
+                import traceback
+                logging.error(traceback.format_exc())
+                raise
 
     except Exception as e:
-        logging.error(f"Erro ao selecionar contratos: {str(e)}")
-        import traceback
-        logging.error(traceback.format_exc())
+        logging.error(f"Erro na seleção de contratos: {str(e)}")
         return 0
-
 
 # =============================================================================
 # FUNÇÃO CORRIGIDA: obter_estatisticas_contratos()
