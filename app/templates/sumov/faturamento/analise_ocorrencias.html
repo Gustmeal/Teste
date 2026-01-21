@@ -21,79 +21,162 @@
                 <i class="fas fa-search me-2"></i>Teste de Duplicidade
             </a>
 
+            <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#modalExportarExcel">
+                <i class="fas fa-file-excel me-2"></i>Exportar para Excel
+            </button>
+
             <button type="button" class="btn btn-primary ms-2" onclick="confirmarInsercaoFinal()">
                 <i class="fas fa-database me-2"></i>Inserir na Tabela Final
             </button>
         </div>
     </div>
 
-    <!-- Tabs para Sem Análise e Analisadas -->
+    <!-- Filtros Globais -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label for="filtroContrato" class="form-label fw-bold">
+                        <i class="fas fa-filter me-2"></i>Filtrar por Contrato
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="filtroContrato"
+                           placeholder="Digite o número do contrato..."
+                           autocomplete="off">
+                </div>
+                <div class="col-md-5">
+                    <label for="filtroOcorrencia" class="form-label fw-bold">
+                        <i class="fas fa-filter me-2"></i>Filtrar por Ocorrência
+                    </label>
+                    <input type="text"
+                           class="form-control"
+                           id="filtroOcorrencia"
+                           placeholder="Digite o número da ocorrência..."
+                           autocomplete="off">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="button"
+                            class="btn btn-secondary w-100"
+                            onclick="limparFiltros()">
+                        <i class="fas fa-times me-2"></i>Limpar Filtros
+                    </button>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Os filtros funcionam em todas as abas simultaneamente. Digite para filtrar em tempo real.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs dinâmicas baseadas em STATUS + Analisadas -->
     <ul class="nav nav-tabs mb-4" id="tabOcorrencias" role="tablist">
+        {% if ocorrencias_por_status %}
+            {% for status, ocorrencias in ocorrencias_por_status.items() %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if loop.first %}active{% endif %}"
+                            id="tab-{{ loop.index }}"
+                            data-bs-toggle="tab"
+                            data-bs-target="#status-{{ loop.index }}"
+                            type="button"
+                            role="tab">
+                        <i class="fas fa-folder me-2"></i>{{ status }}
+                        <span class="badge bg-secondary contador-aba" data-aba="{{ loop.index }}">{{ ocorrencias|length }}</span>
+                    </button>
+                </li>
+            {% endfor %}
+        {% endif %}
+
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="sem-analise-tab" data-bs-toggle="tab" data-bs-target="#sem-analise" type="button" role="tab">
-                <i class="fas fa-exclamation-circle me-2"></i>Sem Análise ({{ sem_analise|length }})
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="analisadas-tab" data-bs-toggle="tab" data-bs-target="#analisadas" type="button" role="tab">
-                <i class="fas fa-check-circle me-2"></i>Analisadas ({{ analisadas|length }})
+            <button class="nav-link {% if not ocorrencias_por_status %}active{% endif %}"
+                    id="analisadas-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#analisadas"
+                    type="button"
+                    role="tab">
+                <i class="fas fa-check-circle me-2"></i>Analisadas
+                <span class="badge bg-secondary contador-aba" data-aba="analisadas">{{ analisadas|length }}</span>
             </button>
         </li>
     </ul>
 
     <div class="tab-content" id="tabOcorrenciasContent">
-        <!-- Tab: Sem Análise -->
-        <div class="tab-pane fade show active" id="sem-analise" role="tabpanel">
-            <div class="card shadow">
-                <div class="card-header bg-gradient-warning text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-exclamation-circle me-2"></i>Ocorrências Sem Análise
-                    </h5>
-                </div>
-                <div class="card-body p-0">
-                    {% if sem_analise %}
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="text-center">Contrato</th>
-                                    <th class="text-center">Ocorrência</th>
-                                    <th>Justificativa</th>
-                                    <th class="text-center">Data Justificativa</th>
-                                    <th class="text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for ocorrencia in sem_analise %}
-                                <tr>
-                                    <td class="text-center">{{ ocorrencia.NR_CONTRATO|int }}</td>
-                                    <td class="text-center">{{ ocorrencia.nrOcorrencia }}</td>
-                                    <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
-                                    <td class="text-center">
-                                        {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
-                                    </td>
-                                    <td class="text-center">
-                                        <a href="{{ url_for('sumov.analisar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
-                                           class="btn btn-sm btn-primary">
-                                            <i class="fas fa-edit"></i> Analisar
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+        <!-- Abas dinâmicas por STATUS -->
+        {% if ocorrencias_por_status %}
+            {% for status, ocorrencias in ocorrencias_por_status.items() %}
+                <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                     id="status-{{ loop.index }}"
+                     role="tabpanel">
+                    <div class="card shadow">
+                        <div class="card-header bg-gradient-info text-white">
+                            <h5 class="mb-0">
+                                <i class="fas fa-folder-open me-2"></i>{{ status }}
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            {% if ocorrencias %}
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0 tabela-ocorrencias" data-status="{{ loop.index }}" data-aba="{{ loop.index }}">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Contrato</th>
+                                            <th class="text-center">Ocorrência</th>
+                                            <th>Justificativa</th>
+                                            <th class="text-center">Data Justificativa</th>
+                                            <th class="text-center">Status</th>
+                                            <th class="text-center">Item Serviço</th>
+                                            <th class="text-center">OBS</th>
+                                            <th class="text-center">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for ocorrencia in ocorrencias %}
+                                        <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}" data-ocorrencia="{{ ocorrencia.nrOcorrencia }}">
+                                            <td class="text-center contrato-cell">{{ ocorrencia.NR_CONTRATO|int }}</td>
+                                            <td class="text-center ocorrencia-cell">{{ ocorrencia.nrOcorrencia }}</td>
+                                            <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
+                                            <td class="text-center">
+                                                {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="badge bg-info">{{ ocorrencia.STATUS or 'Sem Status' }}</span>
+                                            </td>
+                                            <td class="text-center">{{ ocorrencia.ITEM_SERVICO or '-' }}</td>
+                                            <td class="text-center">{{ ocorrencia.OBS or '-' }}</td>
+                                            <td class="text-center">
+                                                <a href="{{ url_for('sumov.analisar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
+                                                   class="btn btn-sm btn-primary">
+                                                    <i class="fas fa-edit"></i> Analisar
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="alert alert-warning m-3 alerta-sem-resultados" style="display: none;">
+                                <i class="fas fa-exclamation-triangle me-2"></i>Nenhuma ocorrência encontrada com os filtros aplicados.
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info m-3">
+                                <i class="fas fa-info-circle me-2"></i>Não há ocorrências neste status.
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
-                    {% else %}
-                    <div class="alert alert-info m-3">
-                        <i class="fas fa-info-circle me-2"></i>Não há ocorrências sem análise no momento.
-                    </div>
-                    {% endif %}
                 </div>
-            </div>
-        </div>
+            {% endfor %}
+        {% endif %}
 
         <!-- Tab: Analisadas -->
-        <div class="tab-pane fade" id="analisadas" role="tabpanel">
+        <div class="tab-pane fade {% if not ocorrencias_por_status %}show active{% endif %}"
+             id="analisadas"
+             role="tabpanel">
             <div class="card shadow">
                 <div class="card-header bg-gradient-success text-white">
                     <h5 class="mb-0">
@@ -103,7 +186,7 @@
                 <div class="card-body p-0">
                     {% if analisadas %}
                     <div class="table-responsive">
-                        <table class="table table-hover mb-0">
+                        <table class="table table-hover mb-0 tabela-ocorrencias" data-aba="analisadas">
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center">Contrato</th>
@@ -111,15 +194,15 @@
                                     <th>Justificativa</th>
                                     <th class="text-center">Data Justificativa</th>
                                     <th class="text-center">Houve Faturamento?</th>
-                                    <th class="text-center">Mês/Ano Faturamento</th>
+                                    <th class="text-center">Mês/Ano</th>
                                     <th class="text-center">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for ocorrencia in analisadas %}
-                                <tr>
-                                    <td class="text-center">{{ ocorrencia.NR_CONTRATO|int }}</td>
-                                    <td class="text-center">{{ ocorrencia.nrOcorrencia }}</td>
+                                <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}" data-ocorrencia="{{ ocorrencia.nrOcorrencia }}">
+                                    <td class="text-center contrato-cell">{{ ocorrencia.NR_CONTRATO|int }}</td>
+                                    <td class="text-center ocorrencia-cell">{{ ocorrencia.nrOcorrencia }}</td>
                                     <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
                                     <td class="text-center">
                                         {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
@@ -133,9 +216,7 @@
                                             <span class="badge bg-secondary">-</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
-                                        {{ ocorrencia.formatar_mes_ano() }}
-                                    </td>
+                                    <td class="text-center">{{ ocorrencia.formatar_mes_ano() }}</td>
                                     <td class="text-center">
                                         <a href="{{ url_for('sumov.editar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
                                            class="btn btn-sm btn-warning">
@@ -147,9 +228,12 @@
                             </tbody>
                         </table>
                     </div>
+                    <div class="alert alert-warning m-3 alerta-sem-resultados" style="display: none;">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Nenhuma ocorrência encontrada com os filtros aplicados.
+                    </div>
                     {% else %}
                     <div class="alert alert-info m-3">
-                        <i class="fas fa-info-circle me-2"></i>Não há ocorrências analisadas no momento.
+                        <i class="fas fa-info-circle me-2"></i>Não há ocorrências analisadas aguardando sincronização.
                     </div>
                     {% endif %}
                 </div>
@@ -157,16 +241,332 @@
         </div>
     </div>
 </div>
+
+<!-- Modal para Exportar Excel -->
+<div class="modal fade" id="modalExportarExcel" tabindex="-1" aria-labelledby="modalExportarExcelLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="modalExportarExcelLabel">
+                    <i class="fas fa-file-excel me-2"></i>Exportar para Excel
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="POST" action="{{ url_for('sumov.exportar_excel_ocorrencias') }}" id="formExportarExcel">
+                <div class="modal-body">
+                    <p class="text-muted mb-3">
+                        <i class="fas fa-info-circle me-2"></i>Selecione quais abas deseja exportar para o Excel:
+                    </p>
+
+                    <div class="form-check mb-3 p-3 border rounded bg-light">
+                        <input class="form-check-input" type="checkbox" id="selecionarTodas" onchange="selecionarTodasAbas()">
+                        <label class="form-check-label fw-bold" for="selecionarTodas">
+                            <i class="fas fa-check-double text-success me-2"></i>Selecionar Todas as Abas
+                        </label>
+                    </div>
+
+                    <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                        {% if ocorrencias_por_status %}
+                            {% for status, ocorrencias in ocorrencias_por_status.items() %}
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input checkbox-aba" type="checkbox" name="abas_selecionadas"
+                                           value="{{ status }}" id="aba_{{ loop.index }}">
+                                    <label class="form-check-label" for="aba_{{ loop.index }}">
+                                        <i class="fas fa-folder text-info me-2"></i>{{ status }}
+                                        <span class="badge bg-secondary ms-2">{{ ocorrencias|length }}</span>
+                                    </label>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input checkbox-aba" type="checkbox" name="abas_selecionadas"
+                                   value="Analisadas" id="aba_analisadas">
+                            <label class="form-check-label" for="aba_analisadas">
+                                <i class="fas fa-check-circle text-success me-2"></i>Analisadas
+                                <span class="badge bg-secondary ms-2">{{ analisadas|length }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Atenção:</strong> Selecione pelo menos uma aba para exportar.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success" onclick="return validarExportacao()">
+                        <i class="fas fa-download me-2"></i>Exportar Excel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
-    function confirmarInsercaoFinal() {
-        if (confirm('ATENÇÃO: Isso irá copiar todos os registros com MES_ANO_FATURAMENTO preenchido para a tabela final.\n\nDeseja continuar?')) {
-            // Criar formulário temporário e submeter
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = "{{ url_for('sumov.inserir_tabela_final_faturamento') }}";
-            document.body.appendChild(form);
-            form.submit();
+function confirmarInsercaoFinal() {
+    if (confirm('Deseja inserir os registros analisados na tabela final de faturamento?')) {
+        // Criar formulário temporário para POST
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = "{{ url_for('sumov.inserir_tabela_final_faturamento') }}";
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+// Função para destacar contratos duplicados em cada tabela
+function destacarContratosDuplicados() {
+    // Cores para destacar contratos duplicados (tons pastéis)
+    const coresDuplicados = [
+        '#ffe6e6',  // Vermelho claro
+        '#fff4e6',  // Laranja claro
+        '#fff9e6',  // Amarelo claro
+        '#f0f9ff',  // Azul claro
+        '#f0fff4',  // Verde claro
+        '#fef3ff',  // Roxo claro
+        '#fff0f3',  // Rosa claro
+        '#f5f5f5'   // Cinza claro
+    ];
+
+    // Processar cada tabela de ocorrências
+    document.querySelectorAll('.tabela-ocorrencias').forEach(function(tabela) {
+        // Contar ocorrências de cada contrato nesta tabela
+        const contadorContratos = {};
+        const linhas = tabela.querySelectorAll('tbody tr');
+
+        linhas.forEach(function(linha) {
+            const contrato = linha.getAttribute('data-contrato');
+            if (contrato) {
+                contadorContratos[contrato] = (contadorContratos[contrato] || 0) + 1;
+            }
+        });
+
+        // Identificar contratos duplicados (aparecem mais de uma vez)
+        const contratosDuplicados = Object.keys(contadorContratos).filter(
+            contrato => contadorContratos[contrato] > 1
+        );
+
+        // Se houver contratos duplicados, aplicar cores
+        if (contratosDuplicados.length > 0) {
+            let corIndex = 0;
+            const mapaCorContratos = {};
+
+            // Atribuir uma cor para cada contrato duplicado
+            contratosDuplicados.forEach(function(contrato) {
+                mapaCorContratos[contrato] = coresDuplicados[corIndex % coresDuplicados.length];
+                corIndex++;
+            });
+
+            // Aplicar as cores nas linhas
+            linhas.forEach(function(linha) {
+                const contrato = linha.getAttribute('data-contrato');
+                if (contratosDuplicados.includes(contrato)) {
+                    linha.style.backgroundColor = mapaCorContratos[contrato];
+                    linha.classList.add('contrato-duplicado');
+
+                    // Adicionar ícone de alerta na célula do contrato
+                    const contratoCell = linha.querySelector('.contrato-cell');
+                    if (contratoCell && !contratoCell.querySelector('.icone-duplicado')) {
+                        const icone = document.createElement('i');
+                        icone.className = 'fas fa-exclamation-triangle text-warning ms-2 icone-duplicado';
+                        icone.title = 'Contrato duplicado nesta aba';
+                        contratoCell.appendChild(icone);
+                    }
+                }
+            });
+        }
+    });
+}
+
+// Função para aplicar filtros em todas as tabelas
+function aplicarFiltros() {
+    const filtroContrato = document.getElementById('filtroContrato').value.toLowerCase().trim();
+    const filtroOcorrencia = document.getElementById('filtroOcorrencia').value.toLowerCase().trim();
+
+    // Percorrer todas as tabelas
+    document.querySelectorAll('.tabela-ocorrencias').forEach(function(tabela) {
+        const linhas = tabela.querySelectorAll('tbody tr');
+        let linhasVisiveis = 0;
+        const abaId = tabela.getAttribute('data-aba');
+
+        linhas.forEach(function(linha) {
+            const contrato = linha.getAttribute('data-contrato').toLowerCase();
+            const ocorrencia = linha.getAttribute('data-ocorrencia').toLowerCase();
+
+            // Verificar se a linha atende aos filtros
+            const atendeContrato = !filtroContrato || contrato.includes(filtroContrato);
+            const atendeOcorrencia = !filtroOcorrencia || ocorrencia.includes(filtroOcorrencia);
+
+            if (atendeContrato && atendeOcorrencia) {
+                linha.style.display = '';
+                linhasVisiveis++;
+            } else {
+                linha.style.display = 'none';
+            }
+        });
+
+        // Atualizar contador da aba
+        const contadorAba = document.querySelector(`.contador-aba[data-aba="${abaId}"]`);
+        if (contadorAba) {
+            contadorAba.textContent = linhasVisiveis;
+        }
+
+        // Mostrar/ocultar alerta de sem resultados
+        const alertaSemResultados = tabela.closest('.card-body').querySelector('.alerta-sem-resultados');
+        if (alertaSemResultados) {
+            if (linhasVisiveis === 0 && linhas.length > 0) {
+                alertaSemResultados.style.display = 'block';
+                tabela.closest('.table-responsive').style.display = 'none';
+            } else {
+                alertaSemResultados.style.display = 'none';
+                tabela.closest('.table-responsive').style.display = 'block';
+            }
+        }
+    });
+}
+
+// Função para limpar filtros
+function limparFiltros() {
+    document.getElementById('filtroContrato').value = '';
+    document.getElementById('filtroOcorrencia').value = '';
+    aplicarFiltros();
+}
+
+// Função para selecionar/desselecionar todas as abas
+function selecionarTodasAbas() {
+    const checkboxTodas = document.getElementById('selecionarTodas');
+    const checkboxesAbas = document.querySelectorAll('.checkbox-aba');
+
+    checkboxesAbas.forEach(function(checkbox) {
+        checkbox.checked = checkboxTodas.checked;
+    });
+}
+
+// Validar se pelo menos uma aba foi selecionada
+function validarExportacao() {
+    const checkboxesAbas = document.querySelectorAll('.checkbox-aba:checked');
+
+    if (checkboxesAbas.length === 0) {
+        alert('Por favor, selecione pelo menos uma aba para exportar.');
+        return false;
+    }
+
+    return true;
+}
+
+// Executar quando a página carregar
+document.addEventListener('DOMContentLoaded', function() {
+    destacarContratosDuplicados();
+
+    // Adicionar event listeners para os campos de filtro
+    document.getElementById('filtroContrato').addEventListener('input', aplicarFiltros);
+    document.getElementById('filtroOcorrencia').addEventListener('input', aplicarFiltros);
+
+    // Permitir limpar com ESC
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            limparFiltros();
+        }
+    });
+});
+</script>
+
+<style>
+    .nav-tabs .nav-link {
+        color: #495057;
+        border: 2px solid transparent;
+        transition: all 0.3s ease;
+    }
+
+    .nav-tabs .nav-link:hover {
+        border-color: #dee2e6 #dee2e6 #fff;
+        background-color: #f8f9fa;
+    }
+
+    .nav-tabs .nav-link.active {
+        color: #0d6efd;
+        font-weight: bold;
+        border-color: #dee2e6 #dee2e6 #fff;
+        background-color: #fff;
+    }
+
+    .card {
+        border-radius: 15px;
+    }
+
+    .card-header {
+        border-radius: 15px 15px 0 0 !important;
+    }
+
+    .bg-gradient-info {
+        background: linear-gradient(135deg, #17a2b8 0%, #117a8b 100%);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    }
+
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    }
+
+    .table-hover tbody tr:hover {
+        cursor: pointer;
+    }
+
+    /* Estilo para linhas de contratos duplicados */
+    .contrato-duplicado {
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+
+    .contrato-duplicado:hover {
+        filter: brightness(0.95);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Ícone de alerta para contratos duplicados */
+    .icone-duplicado {
+        font-size: 0.85rem;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.6;
         }
     }
-</script>
+
+    .badge {
+        padding: 0.5em 0.75em;
+        font-size: 0.875rem;
+    }
+
+    /* Estilos para os campos de filtro */
+    .form-control:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+
+    /* Contador nas abas */
+    .contador-aba {
+        font-size: 0.75rem;
+        padding: 0.25em 0.6em;
+        border-radius: 10px;
+        margin-left: 5px;
+    }
+
+    /* Alerta sem resultados */
+    .alerta-sem-resultados {
+        border-radius: 10px;
+    }
+</style>
 {% endblock %}

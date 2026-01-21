@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.teste_duplicidade_faturamento') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar para Duplicidade
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-edit text-warning me-2"></i> Editar Faturamento - Duplicidade
+        </h1>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-gradient-warning text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-file-invoice me-2"></i>Dados do Registro de Faturamento
+            </h5>
+        </div>
+        <div class="card-body">
+            <!-- Informações do Registro (somente leitura) -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-hashtag text-primary me-1"></i>ID:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.ID }}" readonly>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-file-contract text-primary me-1"></i>Contrato:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.NR_CONTRATO|int }}" readonly>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-list-ol text-primary me-1"></i>Ocorrência:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.nrOcorrencia }}" readonly>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-calendar text-primary me-1"></i>Data Referência:
+                    </label>
+                    <input type="text" class="form-control bg-light"
+                           value="{{ registro.DT_REFERENCIA.strftime('%d/%m/%Y') if registro.DT_REFERENCIA else '-' }}"
+                           readonly>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-tools text-primary me-1"></i>Item Serviço:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.itemServico or '-' }}" readonly>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-map-marker-alt text-primary me-1"></i>Destino:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.NO_DESTINO or '-' }}" readonly>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-user text-primary me-1"></i>Devedor:
+                    </label>
+                    <input type="text" class="form-control bg-light" value="{{ registro.NO_DEVEDOR or '-' }}" readonly>
+                </div>
+            </div>
+
+            {% if registro.JUST_APRESENT %}
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-comment text-primary me-1"></i>Justificativa Apresentada:
+                    </label>
+                    <textarea class="form-control bg-light" rows="3" readonly>{{ registro.JUST_APRESENT }}</textarea>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if registro.OBS %}
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-sticky-note text-secondary me-1"></i>Observações Atuais:
+                    </label>
+                    <textarea class="form-control bg-light" rows="2" readonly>{{ registro.OBS }}</textarea>
+                </div>
+            </div>
+            {% endif %}
+
+            <hr>
+
+            <!-- Formulário de Edição -->
+            <form method="POST"
+                  action="{{ url_for('sumov.editar_faturamento_duplicidade', nr_contrato=registro.NR_CONTRATO|int, nr_ocorrencia=registro.nrOcorrencia) }}"
+                  id="formEditarDuplicidade">
+                <h5 class="text-warning mb-3">
+                    <i class="fas fa-clipboard-check me-2"></i>Editar Análise de Faturamento
+                </h5>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">
+                            Houve Faturamento? <span class="text-danger">*</span>
+                        </label>
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="radio"
+                                   name="houve_faturamento"
+                                   id="faturamentoSim"
+                                   value="sim"
+                                   {% if registro.ID_FATURAMENTO == 1 %}checked{% endif %}
+                                   required>
+                            <label class="form-check-label" for="faturamentoSim">
+                                <i class="fas fa-check-circle text-success me-1"></i>Sim
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input"
+                                   type="radio"
+                                   name="houve_faturamento"
+                                   id="faturamentoNao"
+                                   value="nao"
+                                   {% if registro.ID_FATURAMENTO == 0 %}checked{% endif %}
+                                   required>
+                            <label class="form-check-label" for="faturamentoNao">
+                                <i class="fas fa-times-circle text-danger me-1"></i>Não
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6" id="campoMesAno">
+                        <label for="mes_ano" class="form-label fw-bold">
+                            Mês/Ano do Faturamento <span class="text-danger" id="obrigatorioMesAno">*</span>
+                        </label>
+                        <input type="text"
+                               class="form-control"
+                               id="mes_ano"
+                               name="mes_ano"
+                               placeholder="MM/AAAA (Ex: 05/2025)"
+                               {% if registro.MES_ANO_FATURAMENTO %}
+                                   {% set mes_ano_str = registro.MES_ANO_FATURAMENTO|string %}
+                                   {% if mes_ano_str|length == 6 %}
+                                       value="{{ mes_ano_str[4:6] }}/{{ mes_ano_str[0:4] }}"
+                                   {% endif %}
+                               {% endif %}
+                               maxlength="7">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>Formato: MM/AAAA (obrigatório apenas se Sim)
+                        </small>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Atenção:</strong> A edição atualizará diretamente a tabela <code>MOV_TB034_SMART_FATURAMENTO</code>
+                    e marcará o campo OBS como "EDITADO VIA DUPLICIDADE".
+                </div>
+
+                <hr>
+
+                <!-- Botões de ação -->
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('sumov.teste_duplicidade_faturamento') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-2"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-warning">
+                        <i class="fas fa-save me-2"></i>Salvar Alterações
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Controlar visibilidade do campo Mês/Ano
+document.addEventListener('DOMContentLoaded', function() {
+    const radioSim = document.getElementById('faturamentoSim');
+    const radioNao = document.getElementById('faturamentoNao');
+    const campoMesAno = document.getElementById('campoMesAno');
+    const inputMesAno = document.getElementById('mes_ano');
+    const obrigatorioMesAno = document.getElementById('obrigatorioMesAno');
+
+    function atualizarCampoMesAno() {
+        if (radioSim.checked) {
+            campoMesAno.style.display = 'block';
+            inputMesAno.required = true;
+            obrigatorioMesAno.style.display = 'inline';
+        } else {
+            campoMesAno.style.display = 'none';
+            inputMesAno.required = false;
+            obrigatorioMesAno.style.display = 'none';
+            inputMesAno.value = '';
+        }
+    }
+
+    radioSim.addEventListener('change', atualizarCampoMesAno);
+    radioNao.addEventListener('change', atualizarCampoMesAno);
+
+    // Executar na carga da página
+    atualizarCampoMesAno();
+
+    // Máscara para MM/AAAA
+    inputMesAno.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length >= 2) {
+            value = value.substring(0, 2) + '/' + value.substring(2, 6);
+        }
+        e.target.value = value;
+    });
+});
+</script>
+
+<style>
+    .bg-gradient-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+    }
+
+    .card {
+        border-radius: 15px;
+    }
+
+    .card-header {
+        border-radius: 15px 15px 0 0 !important;
+    }
+
+    .form-check {
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        transition: background-color 0.3s ease;
+    }
+
+    .form-check:hover {
+        background-color: #f8f9fa;
+    }
+
+    .form-check-input:checked + .form-check-label {
+        font-weight: bold;
+    }
+</style>
+{% endblock %}

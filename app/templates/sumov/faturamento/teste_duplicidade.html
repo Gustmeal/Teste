@@ -8,40 +8,22 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back">
-            <i class="fas fa-search text-info me-2"></i> Teste de Duplicidade de Contratos
+            <i class="fas fa-search text-info me-2"></i> Teste de Duplicidade
         </h1>
     </div>
 
-    {% if total_duplicados == 0 %}
-    <!-- Nenhuma duplicidade encontrada -->
-    <div class="alert alert-success shadow">
-        <div class="d-flex align-items-center">
-            <i class="fas fa-check-circle fa-3x me-4"></i>
-            <div>
-                <h4 class="alert-heading mb-2">Nenhuma Duplicidade Encontrada!</h4>
-                <p class="mb-0">Não há contratos duplicados na tabela de faturamento. Todos os contratos estão únicos.</p>
-            </div>
-        </div>
-    </div>
-    {% else %}
-    <!-- Duplicidades encontradas -->
-    <div class="alert alert-warning shadow mb-4">
-        <div class="d-flex align-items-center">
-            <i class="fas fa-exclamation-triangle fa-3x me-4"></i>
-            <div>
-                <h4 class="alert-heading mb-2">Duplicidades Detectadas!</h4>
-                <p class="mb-0">Foram encontrados <strong>{{ total_duplicados }}</strong> contrato(s) com duplicidade na tabela de faturamento.</p>
-            </div>
-        </div>
+    {% if total_duplicados > 0 %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>Atenção!</strong> Foram encontrados <strong>{{ total_duplicados }}</strong> contrato(s) com registros duplicados na tabela de faturamento.
     </div>
 
-    <!-- Lista de contratos duplicados -->
     {% for nr_contrato, registros in contratos_duplicados.items() %}
     <div class="card shadow mb-4">
-        <div class="card-header bg-warning text-dark">
+        <div class="card-header bg-gradient-danger text-white">
             <h5 class="mb-0">
-                <i class="fas fa-copy me-2"></i>Contrato: {{ nr_contrato }}
-                <span class="badge bg-danger ms-2">{{ registros|length }} Ocorrências</span>
+                <i class="fas fa-file-contract me-2"></i>Contrato: {{ nr_contrato }}
+                <span class="badge bg-light text-dark ms-2">{{ registros|length }} Registro(s)</span>
             </h5>
         </div>
         <div class="card-body p-0">
@@ -50,18 +32,21 @@
                     <thead class="table-light">
                         <tr>
                             <th class="text-center">ID</th>
+                            <th class="text-center">Contrato SISCTR</th>
                             <th class="text-center">Nr Ocorrência</th>
                             <th class="text-center">Item Serviço</th>
                             <th>Destino</th>
                             <th class="text-center">ID Faturamento</th>
                             <th class="text-center">Mês/Ano Faturamento</th>
                             <th>OBS</th>
+                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in registros %}
                         <tr>
                             <td class="text-center">{{ row[0] }}</td>
+                            <td class="text-center">{{ row[2] }}</td>
                             <td class="text-center">{{ row[3] }}</td>
                             <td class="text-center">{{ row[5] or '-' }}</td>
                             <td>{{ row[6] or '-' }}</td>
@@ -86,7 +71,13 @@
                                     -
                                 {% endif %}
                             </td>
-                            <td>{{ row[16] or '-' }}</td>
+                            <td>{{ row[15] or '-' }}</td>
+                            <td class="text-center">
+                                <a href="{{ url_for('sumov.editar_faturamento_duplicidade', nr_contrato=row[4]|int, nr_ocorrencia=row[3]) }}"
+                                   class="btn btn-sm btn-warning">
+                                    <i class="fas fa-edit"></i> Editar
+                                </a>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -95,6 +86,12 @@
         </div>
     </div>
     {% endfor %}
+
+    {% else %}
+    <div class="alert alert-success">
+        <i class="fas fa-check-circle me-2"></i>
+        <strong>Tudo certo!</strong> Não foram encontrados contratos duplicados na tabela de faturamento.
+    </div>
     {% endif %}
 
     <!-- Botão para voltar -->
@@ -117,6 +114,14 @@
 
     .card-header {
         border-radius: 15px 15px 0 0 !important;
+    }
+
+    .bg-gradient-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #bd2130 100%);
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: #fff3cd;
     }
 </style>
 {% endblock %}

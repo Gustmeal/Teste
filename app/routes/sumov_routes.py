@@ -3006,17 +3006,175 @@ def faturamento_index():
 @sumov_bp.route('/faturamento/analise-ocorrencias')
 @login_required
 def analise_ocorrencias():
-    """Lista de ocorrências para análise"""
+    """Lista de ocorrências para análise - agrupadas por STATUS"""
     from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
 
-    # Buscar ocorrências sem análise e analisadas
-    sem_analise = OcorrenciasFaturamento.listar_sem_analise()
+    # Buscar ocorrências agrupadas por STATUS
+    ocorrencias_por_status = OcorrenciasFaturamento.listar_por_status()
+
+    # Buscar ocorrências analisadas (mantém como está)
     analisadas = OcorrenciasFaturamento.listar_analisadas()
 
-    return render_template('sumov/faturamento/analise_ocorrencias.html',
-                           sem_analise=sem_analise,
-                           analisadas=analisadas)
+    # Calcular total de ocorrências sem análise
+    total_sem_analise = sum(len(ocorrencias) for ocorrencias in ocorrencias_por_status.values())
 
+    return render_template('sumov/faturamento/analise_ocorrencias.html',
+                           ocorrencias_por_status=ocorrencias_por_status,
+                           analisadas=analisadas,
+                           total_sem_analise=total_sem_analise)
+
+
+@sumov_bp.route('/faturamento/analise-ocorrencias/exportar-excel', methods=['POST'])
+@login_required
+def exportar_excel_ocorrencias():
+    """Exporta ocorrências selecionadas para Excel formatado"""
+    from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+    from io import BytesIO
+    from datetime import datetime
+    from app.utils.audit import registrar_log  # CORREÇÃO: import correto
+
+    try:
+        # Capturar abas selecionadas
+        abas_selecionadas = request.form.getlist('abas_selecionadas')
+
+        if not abas_selecionadas:
+            flash('Nenhuma aba foi selecionada para exportação.', 'warning')
+            return redirect(url_for('sumov.analise_ocorrencias'))
+
+        # Buscar dados
+        ocorrencias_por_status = OcorrenciasFaturamento.listar_por_status()
+        analisadas = OcorrenciasFaturamento.listar_analisadas()
+
+        # Criar workbook
+        wb = Workbook()
+        wb.remove(wb.active)  # Remover sheet padrão
+
+        # Estilos para formatação
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(color="FFFFFF", bold=True, size=11)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        center_alignment = Alignment(horizontal='center', vertical='center')
+
+        # Função auxiliar para criar sheet formatada
+        def criar_sheet(wb, nome_sheet, dados, incluir_houve_faturamento=False):
+            ws = wb.create_sheet(title=nome_sheet[:31])  # Limite de 31 caracteres
+
+            # Definir cabeçalhos
+            if incluir_houve_faturamento:
+                headers = ['Contrato', 'Ocorrência', 'Justificativa', 'Data Justificativa',
+                           'Houve Faturamento?', 'Mês/Ano', 'Status', 'Item Serviço', 'OBS']
+            else:
+                headers = ['Contrato', 'Ocorrência', 'Justificativa', 'Data Justificativa',
+                           'Status', 'Item Serviço', 'OBS']
+
+            # Escrever cabeçalhos
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_alignment
+                cell.border = border
+
+            # Escrever dados
+            for row_num, ocorrencia in enumerate(dados, 2):
+                ws.cell(row=row_num, column=1, value=int(ocorrencia.NR_CONTRATO))
+                ws.cell(row=row_num, column=2, value=ocorrencia.nrOcorrencia)
+                ws.cell(row=row_num, column=3, value=ocorrencia.dsJustificativa or '-')
+
+                # Data Justificativa
+                if ocorrencia.DT_JUSTIFICATIVA:
+                    ws.cell(row=row_num, column=4, value=ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y'))
+                else:
+                    ws.cell(row=row_num, column=4, value='-')
+
+                col_offset = 5
+
+                # Se incluir houve faturamento (aba Analisadas)
+                if incluir_houve_faturamento:
+                    if hasattr(ocorrencia, 'ID_FATURAMENTO'):
+                        if ocorrencia.ID_FATURAMENTO == 1:
+                            ws.cell(row=row_num, column=5, value='Sim')
+                        elif ocorrencia.ID_FATURAMENTO == 0:
+                            ws.cell(row=row_num, column=5, value='Não')
+                        else:
+                            ws.cell(row=row_num, column=5, value='-')
+                    else:
+                        ws.cell(row=row_num, column=5, value='-')
+
+                    ws.cell(row=row_num, column=6, value=ocorrencia.formatar_mes_ano())
+                    col_offset = 7
+
+                ws.cell(row=row_num, column=col_offset, value=ocorrencia.STATUS or 'Sem Status')
+                ws.cell(row=row_num, column=col_offset + 1, value=ocorrencia.ITEM_SERVICO or '-')
+                ws.cell(row=row_num, column=col_offset + 2, value=ocorrencia.OBS or '-')
+
+                # Aplicar bordas e alinhamento
+                for col_num in range(1, len(headers) + 1):
+                    cell = ws.cell(row=row_num, column=col_num)
+                    cell.border = border
+                    if col_num in [1, 2, 4, col_offset]:  # Colunas centralizadas
+                        cell.alignment = center_alignment
+
+            # Ajustar largura das colunas
+            column_widths = [15, 12, 50, 18, 15, 20, 20]
+            if incluir_houve_faturamento:
+                column_widths = [15, 12, 50, 18, 18, 15, 15, 20, 20]
+
+            for i, width in enumerate(column_widths, 1):
+                ws.column_dimensions[get_column_letter(i)].width = width
+
+            # Congelar primeira linha
+            ws.freeze_panes = 'A2'
+
+        # Criar sheets para cada aba selecionada
+        for aba_nome in abas_selecionadas:
+            if aba_nome == 'Analisadas':
+                criar_sheet(wb, 'Analisadas', analisadas, incluir_houve_faturamento=True)
+            else:
+                # Buscar dados do status específico
+                if aba_nome in ocorrencias_por_status:
+                    dados = ocorrencias_por_status[aba_nome]
+                    criar_sheet(wb, aba_nome, dados, incluir_houve_faturamento=False)
+
+        # Salvar em BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Nome do arquivo com timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'Ocorrencias_Faturamento_{timestamp}.xlsx'
+
+        # Registrar log
+        registrar_log(
+            acao='exportar',
+            entidade='ocorrencias_faturamento_excel',
+            entidade_id='batch',
+            descricao=f'Exportação de ocorrências para Excel - Abas: {", ".join(abas_selecionadas)}'
+        )
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao exportar para Excel: {str(e)}', 'danger')
+        return redirect(url_for('sumov.analise_ocorrencias'))
 
 @sumov_bp.route('/faturamento/analise-ocorrencias/analisar/<nr_contrato>/<int:nr_ocorrencia>/<identificador>',
                 methods=['GET', 'POST'])
@@ -3233,6 +3391,7 @@ def atualizar_ocorrencias_faturamento():
 
     return redirect(url_for('sumov.analise_ocorrencias'))
 
+
 @sumov_bp.route('/faturamento/analise-ocorrencias/teste-duplicidade')
 @login_required
 def teste_duplicidade_faturamento():
@@ -3240,9 +3399,25 @@ def teste_duplicidade_faturamento():
     from sqlalchemy import text
 
     try:
-        # Query para buscar contratos duplicados
+        # Query para buscar contratos duplicados - SEM VR_TARIFA (não existe nesta tabela)
         sql = text("""
-            SELECT * 
+            SELECT 
+                [ID], 
+                [DT_REFERENCIA], 
+                [fkContratoSISCTR], 
+                [nrOcorrencia], 
+                [NR_CONTRATO],
+                [itemServico], 
+                [NO_DESTINO], 
+                [DT_ULTIMO_TRAMITE], 
+                [NO_DEVEDOR],
+                [DT_JUSTIF], 
+                [JUST_APRESENT], 
+                [ANO_MES_ABERTURA], 
+                [ANO_MES_JUSTIF],
+                [ID_FATURAMENTO], 
+                [MES_ANO_FATURAMENTO], 
+                [OBS]
             FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
             WHERE NR_CONTRATO IN (
                 SELECT NR_CONTRATO 
@@ -3259,7 +3434,9 @@ def teste_duplicidade_faturamento():
         # Agrupar por contrato para facilitar visualização
         contratos_duplicados = {}
         for row in resultado:
-            nr_contrato = int(row[4])  # NR_CONTRATO está na posição 4
+            # NR_CONTRATO agora está na posição 4 (índice 4) - garantido pela query explícita
+            nr_contrato = int(row[4]) if row[4] is not None else 0
+
             if nr_contrato not in contratos_duplicados:
                 contratos_duplicados[nr_contrato] = []
             contratos_duplicados[nr_contrato].append(row)
@@ -3269,8 +3446,137 @@ def teste_duplicidade_faturamento():
                                total_duplicados=len(contratos_duplicados))
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         flash(f'Erro ao executar teste de duplicidade: {str(e)}', 'danger')
         return redirect(url_for('sumov.analise_ocorrencias'))
+
+
+@sumov_bp.route('/faturamento/teste-duplicidade/editar/<nr_contrato>/<int:nr_ocorrencia>',
+                methods=['GET', 'POST'])
+@login_required
+def editar_faturamento_duplicidade(nr_contrato, nr_ocorrencia):
+    """Formulário para editar ID_FATURAMENTO e MES_ANO_FATURAMENTO diretamente na tabela SMART_FATURAMENTO"""
+    from sqlalchemy import text
+    from app.utils.audit import registrar_log
+
+    try:
+        # Buscar o registro específico na tabela MOV_TB034_SMART_FATURAMENTO
+        sql_buscar = text("""
+            SELECT TOP 1 
+                [ID], [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO],
+                [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR],
+                [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF],
+                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], [OBS]
+            FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
+            WHERE NR_CONTRATO = :nr_contrato 
+              AND nrOcorrencia = :nr_ocorrencia
+            ORDER BY ID DESC
+        """)
+
+        resultado = db.session.execute(sql_buscar, {
+            'nr_contrato': nr_contrato,
+            'nr_ocorrencia': nr_ocorrencia
+        }).fetchone()
+
+        if not resultado:
+            flash('Registro não encontrado na tabela de faturamento.', 'danger')
+            return redirect(url_for('sumov.teste_duplicidade_faturamento'))
+
+        # Converter resultado em dicionário
+        registro = {
+            'ID': resultado[0],
+            'DT_REFERENCIA': resultado[1],
+            'fkContratoSISCTR': resultado[2],
+            'nrOcorrencia': resultado[3],
+            'NR_CONTRATO': resultado[4],
+            'itemServico': resultado[5],
+            'NO_DESTINO': resultado[6],
+            'DT_ULTIMO_TRAMITE': resultado[7],
+            'NO_DEVEDOR': resultado[8],
+            'DT_JUSTIF': resultado[9],
+            'JUST_APRESENT': resultado[10],
+            'ANO_MES_ABERTURA': resultado[11],
+            'ANO_MES_JUSTIF': resultado[12],
+            'ID_FATURAMENTO': resultado[13],
+            'MES_ANO_FATURAMENTO': resultado[14],
+            'OBS': resultado[15]
+        }
+
+        if request.method == 'POST':
+            # Capturar dados do formulário
+            houve_faturamento = request.form.get('houve_faturamento')
+            mes_ano = request.form.get('mes_ano', '').strip()
+
+            # Validações
+            if not houve_faturamento:
+                flash('Por favor, informe se houve faturamento.', 'warning')
+                return redirect(request.url)
+
+            # Determinar ID_FATURAMENTO e MES_ANO_FATURAMENTO
+            if houve_faturamento == 'sim':
+                # Se SIM: ID_FATURAMENTO = 1 e MES_ANO_FATURAMENTO preenchido
+                if not mes_ano:
+                    flash('Por favor, informe o mês/ano do faturamento quando houver faturamento.', 'warning')
+                    return redirect(request.url)
+
+                id_faturamento = 1
+
+                # Converter mes_ano de MM/YYYY para YYYYMM (formato americano)
+                try:
+                    mes, ano = mes_ano.split('/')
+                    mes_ano_int = int(f"{ano}{mes}")
+                except:
+                    flash('Formato de mês/ano inválido. Use MM/AAAA (Ex: 05/2025)', 'danger')
+                    return redirect(request.url)
+
+            else:  # houve_faturamento == 'nao'
+                # Se NÃO: ID_FATURAMENTO = 0 e MES_ANO_FATURAMENTO = NULL
+                id_faturamento = 0
+                mes_ano_int = None
+
+            # Atualizar o registro na tabela MOV_TB034_SMART_FATURAMENTO
+            sql_atualizar = text("""
+                UPDATE BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
+                SET [ID_FATURAMENTO] = :id_faturamento,
+                    [MES_ANO_FATURAMENTO] = :mes_ano_faturamento,
+                    [OBS] = 'EDITADO VIA DUPLICIDADE'
+                WHERE NR_CONTRATO = :nr_contrato 
+                  AND nrOcorrencia = :nr_ocorrencia
+            """)
+
+            db.session.execute(sql_atualizar, {
+                'id_faturamento': id_faturamento,
+                'mes_ano_faturamento': mes_ano_int,
+                'nr_contrato': nr_contrato,
+                'nr_ocorrencia': nr_ocorrencia
+            })
+            db.session.commit()
+
+            # Registrar log
+            if houve_faturamento == 'sim':
+                descricao = f'Edição via duplicidade: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Sim, Mês/Ano: {mes_ano}'
+            else:
+                descricao = f'Edição via duplicidade: Contrato {nr_contrato}, Ocorrência {nr_ocorrencia}, Faturamento: Não'
+
+            registrar_log(
+                acao='editar',
+                entidade='faturamento_duplicidade',
+                entidade_id=f"{nr_contrato}-{nr_ocorrencia}",
+                descricao=descricao
+            )
+
+            flash('Registro de faturamento editado com sucesso!', 'success')
+            return redirect(url_for('sumov.teste_duplicidade_faturamento'))
+
+        # GET - Exibir formulário com dados preenchidos
+        return render_template('sumov/faturamento/editar_duplicidade_form.html',
+                               registro=registro)
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao editar registro de faturamento: {str(e)}', 'danger')
+        return redirect(url_for('sumov.teste_duplicidade_faturamento'))
 
 
 @sumov_bp.route('/faturamento/analise-ocorrencias/inserir-tabela-final', methods=['POST'])
