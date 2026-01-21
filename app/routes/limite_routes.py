@@ -38,21 +38,6 @@ def truncate_2dec_filter(value):
         return "{0:.2f}".format(int(value * 100) / 100)
     return value
 
-def contar_contratos_distribuiveis():
-    """
-    Conta os contratos já selecionados na tabela DCA_TB006_DISTRIBUIVEIS.
-    Esta função NÃO seleciona contratos novamente, apenas conta os existentes.
-    """
-    try:
-        with db.engine.connect() as connection:
-            sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-            count = connection.execute(sql).scalar()
-            return count if count else 0
-    except Exception as e:
-        logging.error(f"Erro ao contar contratos: {str(e)}")
-        return 0
-
-
 @limite_bp.route('/limites')
 @login_required
 def lista_limites():
@@ -126,16 +111,6 @@ def lista_limites():
         filtro_criterio_id=criterio_id
     )
 
-
-# =============================================================================
-# FUNÇÃO CORRIGIDA: selecionar_contratos()
-# =============================================================================
-# AGORA USA A MESMA LÓGICA DA FUNÇÃO ORIGINAL DO SISTEMA:
-# - Tabela base: COM_TB011_EMPRESA_COBRANCA_ATUAL
-# - Filtro: fkSituacaoCredito = 1 (ativos)
-# - Filtro: Sem suspensão judicial
-# - Filtro: Exclui empresas 422 e 407
-# =============================================================================
 
 def selecionar_contratos():
     """
@@ -240,135 +215,7 @@ def selecionar_contratos():
         logging.error(f"Erro na seleção de contratos: {str(e)}")
         return 0
 
-# =============================================================================
-# FUNÇÃO CORRIGIDA: obter_estatisticas_contratos()
-# USA A MESMA LÓGICA DA QUERY ORIGINAL
-# =============================================================================
-def obter_estatisticas_contratos():
-    """
-    Obtém estatísticas dos contratos para exibir na página de seleção.
-    Usa os mesmos critérios da função original de seleção.
-    """
-    try:
-        with db.engine.connect() as connection:
-            # Total de contratos (MESMA LÓGICA DA QUERY ORIGINAL)
-            sql_total = text("""
-                SELECT COUNT(*) AS qtde, ISNULL(SUM(SIT.VR_SD_DEVEDOR), 0) AS saldo
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL
-                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-            """)
-            result_total = connection.execute(sql_total).fetchone()
-            total_completo = result_total[0] if result_total else 0
 
-            # Contratos com valor < R$ 1.000,00
-            sql_valor_baixo = text("""
-                SELECT COUNT(*) AS qtde, ISNULL(SUM(SIT.VR_SD_DEVEDOR), 0) AS saldo
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL
-                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                    AND SIT.VR_SD_DEVEDOR < 1000.00
-            """)
-            result_valor_baixo = connection.execute(sql_valor_baixo).fetchone()
-            qtde_valor_baixo = result_valor_baixo[0] if result_valor_baixo else 0
-            saldo_valor_baixo = float(result_valor_baixo[1]) if result_valor_baixo and result_valor_baixo[1] else 0.0
-
-            # Contratos CCFácil e CCFácil Rot (que NÃO estão no critério de valor baixo)
-            sql_ccfacil = text("""
-                SELECT COUNT(*) AS qtde, ISNULL(SUM(SIT.VR_SD_DEVEDOR), 0) AS saldo
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                    INNER JOIN [BDG].[PAR_TB001_PRODUTOS] P
-                        ON P.pkSistemaOriginario = CON.COD_PRODUTO
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL
-                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                    AND P.NO_ABREVIADO_PRODUTO IN ('CCFácil', 'CCFácil Rot')
-                    AND SIT.VR_SD_DEVEDOR > 1000.00
-            """)
-            result_ccfacil = connection.execute(sql_ccfacil).fetchone()
-            qtde_ccfacil = result_ccfacil[0] if result_ccfacil else 0
-            saldo_ccfacil = float(result_ccfacil[1]) if result_ccfacil and result_ccfacil[1] else 0.0
-
-            # Total de contratos que serão excluídos (combinação dos critérios)
-            sql_excluidos = text("""
-                SELECT COUNT(*) AS qtde, ISNULL(SUM(SIT.VR_SD_DEVEDOR), 0) AS saldo
-                FROM 
-                    [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
-                    INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
-                        ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
-                    INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
-                        ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                    LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                        ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                    INNER JOIN [BDG].[PAR_TB001_PRODUTOS] P
-                        ON P.pkSistemaOriginario = CON.COD_PRODUTO
-                WHERE
-                    SIT.[fkSituacaoCredito] = 1
-                    AND SDJ.fkContratoSISCTR IS NULL
-                    AND ECA.COD_EMPRESA_COBRANCA NOT IN (422, 407)
-                    AND (
-                        SIT.VR_SD_DEVEDOR <= 1000.00
-                        OR P.NO_ABREVIADO_PRODUTO IN ('CCFácil', 'CCFácil Rot')
-                    )
-            """)
-            result_excluidos = connection.execute(sql_excluidos).fetchone()
-            total_excluidos = result_excluidos[0] if result_excluidos else 0
-            saldo_total_excluidos = float(result_excluidos[1]) if result_excluidos and result_excluidos[1] else 0.0
-
-            # Total filtrado
-            total_filtrado = total_completo - total_excluidos
-
-            return {
-                'total_completo': total_completo,
-                'total_filtrado': total_filtrado,
-                'total_excluidos': total_excluidos,
-                'qtde_valor_baixo': qtde_valor_baixo,
-                'saldo_valor_baixo': saldo_valor_baixo,
-                'qtde_ccfacil': qtde_ccfacil,
-                'saldo_ccfacil': saldo_ccfacil,
-                'saldo_total_excluidos': saldo_total_excluidos
-            }
-
-    except Exception as e:
-        print(f"Erro ao obter estatísticas: {str(e)}")
-        import traceback
-        print(traceback.format_exc())
-        return {
-            'total_completo': 0,
-            'total_filtrado': 0,
-            'total_excluidos': 0,
-            'qtde_valor_baixo': 0,
-            'saldo_valor_baixo': 0.0,
-            'qtde_ccfacil': 0,
-            'saldo_ccfacil': 0.0,
-            'saldo_total_excluidos': 0.0
-        }
 def ajustar_percentuais_tabela1(empresas, include_total=False):
     """
     Ajusta os percentuais na tabela de participação na arrecadação (Tabela 1)
@@ -745,7 +592,7 @@ def calcular_limites_empresas_permanece(ultimo_edital, ultimo_periodo, periodo_a
     """
     try:
         # Obter os contratos distribuíveis
-        num_contratos = contar_contratos_distribuiveis()
+        num_contratos = selecionar_contratos()
         if num_contratos <= 0:
             return None
 
@@ -928,7 +775,7 @@ def calcular_limites_empresas_novas(ultimo_edital, ultimo_periodo, empresas):
     """
     try:
         # Obter o número de contratos distribuíveis
-        num_contratos = contar_contratos_distribuiveis()
+        num_contratos = selecionar_contratos()
         if num_contratos <= 0:
             return None
 
@@ -1050,7 +897,7 @@ def calcular_limites_empresas_mistas(ultimo_edital, ultimo_periodo, periodo_ante
     """
     try:
         # 1) Obter total de contratos distribuíveis (Tabela 2)
-        num_contratos = contar_contratos_distribuiveis()
+        num_contratos = selecionar_contratos()
         if num_contratos <= 0:
             return None
 
@@ -1296,24 +1143,9 @@ def ajustar_percentuais_finais(empresas):
 @limite_bp.route('/limites/analise')
 @login_required
 def analise_limites():
-    """
-    Realiza a análise e cálculo dos limites de distribuição.
-
-    Parâmetros:
-        filtrar: 'S' para aplicar filtro (excluir valor < 1000 e CCFácil)
-                 'N' para usar todos os contratos
-    """
     try:
-        # Verificar parâmetro de filtro
-        filtrar = request.args.get('filtrar', 'N').upper()
-        aplicar_filtro = (filtrar == 'S')
-
-        logging.info(f"Iniciando análise de limites - Filtrar: {aplicar_filtro}")
-
-        # Buscar edital mais recente
-        ultimo_edital = Edital.query.filter(
-            Edital.DELETED_AT == None
-        ).order_by(Edital.ID.desc()).first()
+        # Obter o edital mais recente
+        ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
 
         if not ultimo_edital:
             flash('Não foram encontrados editais cadastrados.', 'warning')
@@ -1347,7 +1179,7 @@ def analise_limites():
 
         # Obter período anterior para os cálculos
         periodo_anterior = None
-        if not todas_novas:
+        if not todas_novas:  # Se todas são novas, não precisamos do período anterior
             periodo_anterior = PeriodoAvaliacao.query.filter(
                 PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
                 PeriodoAvaliacao.ID_PERIODO < ultimo_periodo.ID_PERIODO,
@@ -1358,18 +1190,9 @@ def analise_limites():
                 flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
                 return redirect(url_for('limite.lista_limites'))
 
-        # =====================================================
-        # SELECIONAR CONTRATOS COM OU SEM FILTRO
-        # =====================================================
-        num_contratos = selecionar_contratos(aplicar_filtro=aplicar_filtro)
-
-        if aplicar_filtro:
-            logging.info(f"Contratos selecionados (FILTRADO): {num_contratos}")
-        else:
-            logging.info(f"Contratos selecionados (COMPLETO): {num_contratos}")
-
         # Realizar cálculos conforme a condição das empresas
         resultado_calculo = None
+        num_contratos = selecionar_contratos()
 
         if todas_permanece:
             if periodo_anterior:
@@ -1382,6 +1205,7 @@ def analise_limites():
             resultado_calculo = calcular_limites_empresas_novas(
                 ultimo_edital, ultimo_periodo, empresas)
         elif alguma_permanece:
+            # Empresas mistas (PERMANECE + NOVAS)
             if periodo_anterior:
                 resultado_calculo = calcular_limites_empresas_mistas(
                     ultimo_edital, ultimo_periodo, periodo_anterior, empresas)
@@ -1390,6 +1214,7 @@ def analise_limites():
                 return redirect(url_for('limite.lista_limites'))
 
         if not resultado_calculo:
+            # Se não for possível calcular, redirecionar com mensagem
             flash('Não foi possível realizar o cálculo dos limites. Verifique a configuração das empresas e períodos.',
                   'warning')
             return redirect(url_for('limite.lista_limites'))
@@ -1401,6 +1226,7 @@ def analise_limites():
             metadados = resultado_calculo.get('metadados', {})
             num_contratos = resultado_calculo.get('num_contratos', 0)
 
+            # Pega a variável diretamente se ela não vier no metadados
             todas_empresas_anteriores = resultado_calculo.get('todas_empresas_anteriores', {})
 
             dados_template = {
@@ -1414,8 +1240,7 @@ def analise_limites():
                 'resultados_calculo': resultados_calculo,
                 'num_contratos': num_contratos,
                 'tipo_calculo': tipo_calculo,
-                'todas_empresas_anteriores': todas_empresas_anteriores,
-                'filtro_aplicado': aplicar_filtro  # Novo: indica se o filtro foi aplicado
+                'todas_empresas_anteriores': todas_empresas_anteriores  # ✅ adiciona aqui
             }
 
             # Adiciona outras variáveis extras (mistas)
@@ -2800,62 +2625,3 @@ def gerar_analitico_distribuicao(edital_id, periodo_id, empresa_id):
         import traceback
         logging.error(traceback.format_exc())
         return redirect(url_for('limite.analitico_distribuicao'))
-# -----------------------------------------------------------------------------
-# NOVA ROTA: Página de seleção do tipo de limite
-# Esta rota deve ser chamada quando o usuário clicar em "Novo Limite"
-# -----------------------------------------------------------------------------
-@limite_bp.route('/limites/selecao-tipo')
-@login_required
-def selecao_tipo_limite():
-    """
-    Página intermediária para o usuário escolher entre:
-    - Calcular limites com TODOS os contratos
-    - Calcular limites com contratos FILTRADOS (excluindo valor < 1000 e CCFácil)
-    """
-    try:
-        # Buscar edital mais recente
-        ultimo_edital = Edital.query.filter(
-            Edital.DELETED_AT == None
-        ).order_by(Edital.ID.desc()).first()
-
-        if not ultimo_edital:
-            flash('Não foram encontrados editais cadastrados.', 'warning')
-            return redirect(url_for('edital.lista_editais'))
-
-        # Buscar período mais recente do edital
-        ultimo_periodo = PeriodoAvaliacao.query.filter(
-            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
-            PeriodoAvaliacao.DELETED_AT == None
-        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
-
-        if not ultimo_periodo:
-            flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
-            return redirect(url_for('periodo.lista_periodos'))
-
-        # Obter estatísticas dos contratos
-        estatisticas = obter_estatisticas_contratos()
-
-        return render_template(
-            'credenciamento/selecao_tipo_limite.html',
-            edital=ultimo_edital,
-            periodo=ultimo_periodo,
-            total_contratos_completo=estatisticas['total_completo'],
-            total_contratos_filtrado=estatisticas['total_filtrado'],
-            total_excluidos=estatisticas['total_excluidos'],
-            qtde_valor_baixo=estatisticas['qtde_valor_baixo'],
-            saldo_valor_baixo=estatisticas['saldo_valor_baixo'],
-            qtde_ccfacil=estatisticas['qtde_ccfacil'],
-            saldo_ccfacil=estatisticas['saldo_ccfacil'],
-            saldo_total_excluidos=estatisticas['saldo_total_excluidos']
-        )
-
-    except Exception as e:
-        flash(f'Erro ao carregar página de seleção: {str(e)}', 'danger')
-        import traceback
-        print(f"Erro detalhado: {traceback.format_exc()}")
-        return redirect(url_for('limite.lista_limites'))
-
-
-
-
-

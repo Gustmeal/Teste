@@ -29,28 +29,15 @@
         </div>
     </div>
 
-    <!-- Indicador do tipo de cálculo -->
-    {% if filtro_aplicado %}
-    <div class="alert alert-warning mb-4">
-        <i class="fas fa-filter me-2"></i>
-        <strong>Cálculo com FILTRO aplicado:</strong> Contratos com valor &lt; R$ 1.000,00 e produtos CCFácil/CCFácil Rot foram excluídos antes do cálculo.
-    </div>
-    {% else %}
-    <div class="alert alert-success mb-4">
-        <i class="fas fa-check-double me-2"></i>
-        <strong>Cálculo COMPLETO:</strong> Todos os contratos estão sendo considerados.
-    </div>
-    {% endif %}
-
     <!-- Card com quantidade total de contratos -->
     {% if num_contratos %}
-    <div class="card shadow mb-4 sticky-top" id="cardTotalContratos">
+    <div class="card shadow mb-4 sticky-top">
         <div class="card-body d-flex align-items-center justify-content-between">
             <div>
                 <h5 class="mb-0 fw-bold text-primary">Total de Contratos Distribuíveis</h5>
             </div>
             <div>
-                <h3 class="mb-0 fw-bold text-success">{{ "{:,}".format(num_contratos).replace(',', '.') }}</h3>
+                <h3 class="mb-0 fw-bold text-success">{{ num_contratos }}</h3>
             </div>
         </div>
     </div>
@@ -75,25 +62,72 @@
                     <th>% Redistribuído</th>
                     <th>% Novo</th>
                     <th>Ajuste</th>
-                    <th>% Novo Final</th>
+                    <th>% NovoFinal</th>
                 </tr>
             </thead>
             <tbody>
-                {% for item in resultados_calculo %}
-                <tr {% if item.idx == 'TOTAL' %}class="table-secondary"{% endif %}>
+                {% for item in resultados_calculo if item.idx != 'TOTAL' and item.situacao != 'NOVA' %}
+                <tr>
                     <td>{{ item.idx }}</td>
                     <td>{{ item.empresa }}</td>
                     <td>
                         {% if item.situacao == 'PERMANECE' %}
                             <span class="badge bg-success">PERMANECE</span>
-                        {% elif item.situacao == 'NOVA' %}
-                            <span class="badge bg-info">NOVA</span>
-                        {% elif item.situacao in ['DESCREDENCIADA','SAI'] %}
+                        {% elif item.situacao == 'DESCREDENCIADA' or item.situacao == 'SAI' %}
                             <span class="badge bg-danger">DESCREDENCIADA</span>
-                        {% else %}
-                            {{ item.situacao }}
                         {% endif %}
                     </td>
+                    <td class="text-end">
+                        {% set arrec = item.arrecadacao|default(0) %}
+                        {% if arrec > 0 %}
+                            {{ "R$ {:,.2f}".format(arrec).replace(",", "#").replace(".", ",").replace("#", ".") }}
+                        {% else %}
+                            {{ "R$ 0,00" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% set pct = item.pct_arrecadacao|default(0) %}
+                        {{ "%.6f%%"|format(pct) }}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set redistrib = item.pct_redistribuido|default(0) %}
+                            {{ "%.6f%%"|format(redistrib) }}
+                        {% else %}
+                            {{ "0,000000%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set pct_novo = item.pct_novo_truncado|default(0) %}
+                            {{ "%.2f%%"|format(pct_novo) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set ajuste = item.ajuste|default(0) %}
+                            {{ "%.2f%%"|format(ajuste) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if item.situacao == 'PERMANECE' %}
+                            {% set pct_novofinal = item.pct_novofinal|default(0) %}
+                            {{ "%.2f%%"|format(pct_novofinal) }}
+                        {% else %}
+                            {{ "0,00%" }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+
+                <!-- Linha de totais -->
+                {% for item in resultados_calculo if item.idx == 'TOTAL' %}
+                <tr class="table-secondary">
+                    <td colspan="3"><strong>TOTAL</strong></td>
                     <td class="text-end"><strong>{{ "R$ {:,.2f}".format(item.arrecadacao).replace(",", "#").replace(".", ",").replace("#", ".") }}</strong></td>
                     <td class="text-end"><strong>{{ "%.6f%%"|format(item.pct_arrecadacao) }}</strong></td>
                     <td class="text-end"><strong>{{ "%.6f%%"|format(item.pct_redistribuido) }}</strong></td>
@@ -315,19 +349,19 @@
               {{ "{:,}".format(c).replace(',', '.') }}
             </td>
             <td class="text-end">
-              {% set pct_base = item.pct_novo|default(0) %}
-              {% set total_pct_base.valor = total_pct_base.valor + pct_base %}
-              {{ "%.2f%%"|format(pct_base) }}
+              {% set pb = item.pct_distribuicao|default(0) %}
+              {% set total_pct_base.valor = total_pct_base.valor + pb %}
+              {{ "%.2f%%"|format(pb) }}
             </td>
             <td class="text-end">
-              {% set ajuste = item.ajuste|default(0) %}
-              {% set total_ajustes.valor = total_ajustes.valor + ajuste %}
-              {{ "%+.2f%%"|format(ajuste) }}
+              {% set aj = item.ajuste_pct|default(0) %}
+              {% set total_ajustes.valor = total_ajustes.valor + aj %}
+              {{ "%.2f%%"|format(aj) }}
             </td>
             <td class="text-end">
-              {% set pct_final = item.pct_final|default(item.pct_novofinal|default(0)) %}
-              {% set total_pct_final.valor = total_pct_final.valor + pct_final %}
-              {{ "%.2f%%"|format(pct_final) }}
+              {% set pf = item.pct_final|default(0) %}
+              {% set total_pct_final.valor = total_pct_final.valor + pf %}
+              {{ "%.2f%%"|format(pf) }}
             </td>
           </tr>
         {% endfor %}
@@ -398,14 +432,15 @@
                                 {{ "%+.2f%%"|format(ajuste_item) }}
                             </td>
                             <td class="text-end">
-                                {% set pct_final_item = item.pct_final|default(item.pct_novofinal|default(0)) %}
+                                {% set pct_final_item = item.pct_final|default(0) %}
                                 {% set total_pct_final_permanece.valor = total_pct_final_permanece.valor + pct_final_item %}
                                 {{ "%.2f%%"|format(pct_final_item) }}
                             </td>
                         </tr>
                         {% endfor %}
+
                         <tr class="table-secondary">
-                            <td colspan="2"><strong>TOTAL</strong></td>
+                            <td colspan="2"><strong>Total</strong></td>
                             <td class="text-end">
                                 <strong>
                                     {{ "R$ {:,.2f}".format(total_arrecadacao_permanece.valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}
@@ -468,9 +503,9 @@
                                 {{ "{:,.0f}".format(contratos_item).replace(',', '.') }}
                             </td>
                             <td class="text-end">
-                                {% set pct_base_item = item.pct_novo|default(0) %}
-                                {% set total_pct_distribuicao_novas.valor = total_pct_distribuicao_novas.valor + pct_base_item %}
-                                {{ "%.2f%%"|format(pct_base_item) }}
+                                {% set pct_distribuicao_item = item.pct_distribuicao|default(0) %}
+                                {% set total_pct_distribuicao_novas.valor = total_pct_distribuicao_novas.valor + pct_distribuicao_item %}
+                                {{ "%.2f%%"|format(pct_distribuicao_item) }}
                             </td>
                             <td class="text-end">
                                 {% set ajuste_item = item.ajuste|default(0) %}
@@ -478,25 +513,27 @@
                                 {{ "%+.2f%%"|format(ajuste_item) }}
                             </td>
                             <td class="text-end">
-                                {% set pct_final_item = item.pct_final|default(item.pct_novofinal|default(0)) %}
+                                {% set pct_final_item = item.pct_final|default(0) %}
                                 {% set total_pct_final_novas.valor = total_pct_final_novas.valor + pct_final_item %}
                                 {{ "%.2f%%"|format(pct_final_item) }}
                             </td>
                         </tr>
                         {% endfor %}
+
+                        <!-- Linha de totais -->
                         <tr class="table-secondary">
                             <td colspan="3"><strong>TOTAL</strong></td>
                             <td class="text-end">
-                                <strong>{{ "{:,.0f}".format(total_contratos_novas_final.valor).replace(',', '.') }}</strong>
+                                <strong>{{ "{:,}".format(total_contratos_final.valor).replace(",", ".") }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f%%"|format(total_pct_distribuicao_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_base.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%+.2f%%"|format(total_ajuste_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_ajustes.valor) }}</strong>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f%%"|format(total_pct_final_novas.valor) }}</strong>
+                                <strong>{{ "%.2f%%"|format(total_pct_final.valor) }}</strong>
                             </td>
                         </tr>
                     </tbody>
@@ -531,7 +568,7 @@
     {% endif %}
     </div>
 
-<!-- Modal de confirmação para salvar limites -->
+<!-- Modal de confirmação -->
 <div class="modal fade" id="salvarLimitesModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -556,7 +593,6 @@
         </div>
     </div>
 </div>
-
 <style>
     .table thead th { text-align: center; vertical-align: middle; background-color: #007bff; color: white; }
     .table th, .table td {
@@ -575,85 +611,88 @@
         box-shadow: 0 10px 20px rgba(0,0,0,0.15);
     }
     .card-header.bg-primary {
-        background-color: #0d6efd !important;
-        color: white !important;
-        font-weight: bold;
-    }
+    background-color: #0d6efd !important;
+    color: white !important;
+    font-weight: bold;
+  }
 
-    /* [1] Arrecadação do Período Anterior */
-    .card:nth-of-type(1) .card-header {
-        background-color: #0d6efd !important;
-        border-bottom: 3px solid #0a58ca;
-    }
+  /* [1] Arrecadação do Período Anterior */
+  .card:nth-of-type(1) .card-header {
+    background-color: #0d6efd !important; /* Azul forte */
+    border-bottom: 3px solid #0a58ca;
+  }
 
-    /* [2] Distribuição de Contratos por Situação */
-    .card:nth-of-type(3) .card-header {
-        background-color: #198754 !important;
-        border-bottom: 3px solid #157347;
-        color: white !important;
-    }
+  /* [2] Distribuição de Contratos por Situação */
+  .card:nth-of-type(3) .card-header {
+    background-color: #198754 !important; /* Verde */
+    border-bottom: 3px solid #157347;
+    color: white !important;
+  }
 
-    /* [3] Redistribuição das Empresas que Saem */
-    .card:nth-of-type(4) .card-header {
-        background-color: #dc3545 !important;
-        border-bottom: 3px solid #bb2d3b;
-        color: white !important;
-    }
+  /* [3] Redistribuição das Empresas que Saem */
+  .card:nth-of-type(4) .card-header {
+    background-color: #dc3545 !important; /* Vermelho */
+    border-bottom: 3px solid #bb2d3b;
+    color: white !important;
+  }
 
-    /* [4] Distribuição para Empresas que Permanecem */
-    .card:nth-of-type(5) .card-header {
-        background-color: #6f42c1 !important;
-        border-bottom: 3px solid #6610f2;
-        color: white !important;
-    }
+  /* [4] Distribuição para Empresas que Permanecem */
+  .card:nth-of-type(5) .card-header {
+    background-color: #6f42c1 !important; /* Roxo */
+    border-bottom: 3px solid #6610f2;
+    color: white !important;
+  }
 
-    /* [5] Distribuição para Empresas Novas */
-    .card:nth-of-type(6) .card-header {
-        background-color: #fd7e14 !important;
-        border-bottom: 3px solid #e76b00;
-        color: white !important;
-    }
+  /* [5] Distribuição para Empresas Novas */
+  .card:nth-of-type(6) .card-header {
+    background-color: #fd7e14 !important; /* Laranja */
+    border-bottom: 3px solid #e76b00;
+    color: white !important;
+  }
 
-    /* [6] Percentuais Finais */
-    .card:nth-of-type(7) .card-header {
-        background-color: #0dcaf0 !important;
-        border-bottom: 3px solid #0aa2c0;
-        color: white !important;
-    }
+  /* [6] Percentuais Finais */
+  .card:nth-of-type(7) .card-header {
+    background-color: #0dcaf0 !important; /* Azul claro */
+    border-bottom: 3px solid #0aa2c0;
+    color: white !important;
+  }
 </style>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const btnConfirmarSalvamento = document.getElementById('btnConfirmarSalvamento');
-    const formSalvarLimites = document.getElementById('formSalvarLimites');
-    const salvarLimitesModal = document.getElementById('salvarLimitesModal');
+    document.addEventListener('DOMContentLoaded', function() {
+        const btnConfirmarSalvamento = document.getElementById('btnConfirmarSalvamento');
+        const formSalvarLimites = document.getElementById('formSalvarLimites');
+        const salvarLimitesModal = document.getElementById('salvarLimitesModal');
 
-    if (btnConfirmarSalvamento && formSalvarLimites && salvarLimitesModal) {
-        const modal = new bootstrap.Modal(salvarLimitesModal);
+        if (btnConfirmarSalvamento && formSalvarLimites && salvarLimitesModal) {
+            const modal = new bootstrap.Modal(salvarLimitesModal);
 
-        btnConfirmarSalvamento.addEventListener('click', function() {
-            const btnText = btnConfirmarSalvamento.querySelector('.btn-text');
-            const spinner = btnConfirmarSalvamento.querySelector('.spinner');
+            btnConfirmarSalvamento.addEventListener('click', function() {
+                const btnText = btnConfirmarSalvamento.querySelector('.btn-text');
+                const spinner = btnConfirmarSalvamento.querySelector('.spinner');
 
-            if (btnText && spinner) {
-                btnText.classList.add('d-none');
-                spinner.classList.remove('d-none');
-            }
-
-            btnConfirmarSalvamento.disabled = true;
-            formSalvarLimites.submit();
-
-            setTimeout(() => {
-                modal.hide();
-                if (typeof showToast === 'function') {
-                    showToast('Processando limites...', 'info');
+                if (btnText && spinner) {
+                    btnText.classList.add('d-none');
+                    spinner.classList.remove('d-none');
                 }
-            }, 500);
-        });
-    }
 
-    // Rolar para o topo ao carregar a página
-    window.scrollTo(0, 0);
-});
+                btnConfirmarSalvamento.disabled = true;
+
+                // Submeter o formulário
+                formSalvarLimites.submit();
+
+                // Esconder o modal após um breve delay
+                setTimeout(() => {
+                    modal.hide();
+                    if (typeof showToast === 'function') {
+                        showToast('Processando limites...', 'info');
+                    }
+                }, 500);
+            });
+        }
+
+        // Rolar para o topo ao carregar a página
+        window.scrollTo(0, 0);
+    });
 </script>
 {% endblock %}

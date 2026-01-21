@@ -106,6 +106,7 @@ def selecionar_contratos_distribuiveis():
         logging.error(f"Erro na seleção de contratos: {str(e)}")
         return 0
 
+
 def distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id):
     """
     Distribui contratos com acordos vigentes para empresas que permanecem.
