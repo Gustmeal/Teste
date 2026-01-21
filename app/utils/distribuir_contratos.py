@@ -5,105 +5,188 @@ import logging
 
 def selecionar_contratos_distribuiveis():
     """
-    Seleciona o universo de contratos que serão distribuídos e os armazena na tabela DCA_TB006_DISTRIBUIVEIS.
-    Usa as tabelas do Banco de Dados Gerencial (BDG).
-
-    NOVA LÓGICA: Filtra apenas contratos que existem na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
-    com ONDE = 'ASSESSORIA' e SIT_ESPECIAL IS NULL.
+    VERSÃO COM COMMIT EXPLÍCITO E LOGS DE DEBUG
     """
     try:
-        # Usar uma conexão direta para executar o SQL
         with db.engine.connect() as connection:
+            # *** CRÍTICO: Iniciar transação explícita ***
+            trans = connection.begin()
+
             try:
-                # Primeiro, limpar COMPLETAMENTE a tabela de distribuíveis
-                logging.info("Limpando tabela de distribuíveis...")
-                truncate_sql = text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-                connection.execute(truncate_sql)
-                logging.info("Tabela de distribuíveis limpa com sucesso")
+                logging.info("Limpando tabelas...")
+                connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]"))
+                connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]"))
 
-                # Limpar TAMBÉM a tabela de arrastaveis, que pode conter dados de processamentos anteriores
-                truncate_arrastaveis_sql = text("TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]")
-                connection.execute(truncate_arrastaveis_sql)
-                logging.info("Tabela de arrastaveis limpa com sucesso")
+                # *** VERIFICAR SE A TEMP TEM DADOS ***
+                verificar_temp = text("""
+                    SELECT COUNT(*) 
+                    FROM [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA]
+                    WHERE ONDE = 'ASSESSORIA' AND SIT_ESPECIAL IS NULL
+                """)
+                qtde_temp = connection.execute(verificar_temp).scalar()
+                logging.info(f"*** VERIFICAÇÃO TEMP: {qtde_temp} contratos ASSESSORIA disponíveis ***")
 
-                # Verificar se a limpeza foi bem-sucedida
-                check_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
-                count_after_truncate = connection.execute(check_sql).scalar()
-                logging.info(f"Contagem após limpeza: {count_after_truncate}")
+                if qtde_temp == 0:
+                    logging.error("ERRO: Tabela TEMP está VAZIA! Não há contratos para selecionar!")
+                    trans.rollback()
+                    return 0
 
-                # NOVA LÓGICA: Inserir apenas contratos que passam pelo filtro da tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
-                logging.info(
-                    "Selecionando contratos distribuíveis com novo filtro (TEMP_DISTRIBUICAO_SERASA_ASSESSORIA)...")
                 insert_sql = text("""
+                    -- ================================================================
+                    -- PREPARAÇÃO
+                    -- ================================================================
+                    DECLARE @UltimoEdital INT = (
+                        SELECT TOP 1 ID 
+                        FROM [BDG].[DCA_TB008_EDITAIS] 
+                        WHERE DELETED_AT IS NULL 
+                        ORDER BY ID DESC
+                    );
+
+                    DECLARE @UltimoPeriodo INT = (
+                        SELECT TOP 1 ID_PERIODO 
+                        FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO] 
+                        WHERE DELETED_AT IS NULL 
+                        ORDER BY ID_PERIODO DESC
+                    );
+
+                    PRINT '========================================';
+                    PRINT 'Edital: ' + CAST(@UltimoEdital AS VARCHAR(10)) + ' | Período: ' + CAST(@UltimoPeriodo AS VARCHAR(10));
+
+                    -- CPFs que têm contrato no SERASA
+                    IF OBJECT_ID('tempdb..#CPFsNoSerasa') IS NOT NULL
+                        DROP TABLE #CPFsNoSerasa;
+
+                    SELECT DISTINCT NR_CPF_CNPJ
+                    INTO #CPFsNoSerasa
+                    FROM [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA]
+                    WHERE ONDE = 'SERASA';
+
+                    CREATE INDEX IX_CPF ON #CPFsNoSerasa(NR_CPF_CNPJ);
+
+                    DECLARE @QtdeCPFsSerasa INT;
+                    SELECT @QtdeCPFsSerasa = COUNT(*) FROM #CPFsNoSerasa;
+                    PRINT 'CPFs no SERASA (para exclusão): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
+
+                    -- ================================================================
+                    -- ETAPA 1: Contratos ASSESSORIA (EXCLUINDO CPFs no SERASA)
+                    -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
                     SELECT 
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
                         SIT.VR_SD_DEVEDOR,
-                        CREATED_AT = GETDATE(),
-                        UPDATED_AT = NULL,
-                        DELETED_AT = NULL
+                        GETDATE(),
+                        NULL,
+                        NULL
                     FROM
                         [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
                         INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
                             ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
                         INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
                             ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                        -- NOVO FILTRO: Apenas contratos que estão na tabela TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
                         INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
                             ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                        LEFT JOIN #CPFsNoSerasa AS SERASA
+                            ON CON.NR_CPF_CNPJ = SERASA.NR_CPF_CNPJ
                     WHERE
-                        SIT.[fkSituacaoCredito] = 1  -- Contratos ativos
-                        AND SDJ.fkContratoSISCTR IS NULL  -- Sem suspensão judicial
-                        -- FILTROS DA TABELA TEMP_DISTRIBUICAO_SERASA_ASSESSORIA
+                        SIT.[fkSituacaoCredito] = 1
                         AND TEMP.ONDE = 'ASSESSORIA'
                         AND TEMP.SIT_ESPECIAL IS NULL
-                """)
+                        AND SERASA.NR_CPF_CNPJ IS NULL;
 
-                # Contar contratos nas tabelas de origem antes da inserção (para debug)
-                origem_count_sql = text("""
-                    SELECT COUNT(*) 
+                    DECLARE @QtdeEtapa1 INT = @@ROWCOUNT;
+                    PRINT 'ETAPA 1 - Contratos ASSESSORIA: ' + CAST(@QtdeEtapa1 AS VARCHAR(10));
+
+                    -- ================================================================
+                    -- ETAPA 2: CPFs com acordo em empresas PERMANECE
+                    -- ================================================================
+                    IF OBJECT_ID('tempdb..#CPFsComAcordo') IS NOT NULL
+                        DROP TABLE #CPFsComAcordo;
+
+                    SELECT DISTINCT CON.NR_CPF_CNPJ
+                    INTO #CPFsComAcordo
                     FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
                         INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
                             ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
                         INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
                             ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        LEFT JOIN [BDG].[COM_TB013_SUSPENSO_DECISAO_JUDICIAL] AS SDJ
-                            ON ECA.fkContratoSISCTR = SDJ.fkContratoSISCTR
-                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
+                        INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] AS ALV
+                            ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
+                        INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                            ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+                            AND EMP.ID_EDITAL = @UltimoEdital
+                            AND EMP.ID_PERIODO = @UltimoPeriodo
+                            AND EMP.DS_CONDICAO = 'PERMANECE'
+                        LEFT JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
                             ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
+                            AND TEMP.ONDE = 'ASSESSORIA'
+                            AND TEMP.SIT_ESPECIAL IS NULL
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
-                        AND SDJ.fkContratoSISCTR IS NULL
-                        AND TEMP.ONDE = 'ASSESSORIA'
-                        AND TEMP.SIT_ESPECIAL IS NULL
+                        AND ALV.fkEstadoAcordo = 1
+                        AND TEMP.fkContratoSISCTR IS NULL;
+
+                    CREATE INDEX IX_CPF ON #CPFsComAcordo(NR_CPF_CNPJ);
+
+                    DECLARE @QtdeCPFsComAcordo INT;
+                    SELECT @QtdeCPFsComAcordo = COUNT(*) FROM #CPFsComAcordo;
+                    PRINT 'ETAPA 2 - CPFs com acordo: ' + CAST(@QtdeCPFsComAcordo AS VARCHAR(10));
+
+                    -- ================================================================
+                    -- ETAPA 3: Adicionar contratos dos CPFs com acordo
+                    -- ================================================================
+                    INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
+                    SELECT 
+                        ECA.fkContratoSISCTR,
+                        CON.NR_CPF_CNPJ,
+                        SIT.VR_SD_DEVEDOR,
+                        GETDATE(),
+                        NULL,
+                        NULL
+                    FROM
+                        [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
+                        INNER JOIN [BDG].[COM_TB001_CONTRATO] AS CON
+                            ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        INNER JOIN #CPFsComAcordo AS CPF_ACORDO
+                            ON CON.NR_CPF_CNPJ = CPF_ACORDO.NR_CPF_CNPJ
+                        LEFT JOIN [BDG].[DCA_TB006_DISTRIBUIVEIS] AS JA_INS
+                            ON ECA.fkContratoSISCTR = JA_INS.FkContratoSISCTR
+                    WHERE
+                        SIT.[fkSituacaoCredito] = 1
+                        AND JA_INS.FkContratoSISCTR IS NULL;
+
+                    DECLARE @QtdeEtapa3 INT = @@ROWCOUNT;
+                    PRINT 'ETAPA 3 - Contratos arrastados: ' + CAST(@QtdeEtapa3 AS VARCHAR(10));
+                    PRINT 'TOTAL: ' + CAST(@QtdeEtapa1 + @QtdeEtapa3 AS VARCHAR(10));
+                    PRINT '========================================';
+
+                    DROP TABLE #CPFsNoSerasa;
+                    DROP TABLE #CPFsComAcordo;
                 """)
-                origem_count = connection.execute(origem_count_sql).scalar()
-                logging.info(f"Contratos elegíveis com novo filtro nas tabelas de origem: {origem_count}")
 
-                result = connection.execute(insert_sql)
-                logging.info(f"Inserção concluída - linhas afetadas: {result.rowcount}")
+                connection.execute(insert_sql)
 
-                # Contar quantos contratos foram selecionados
-                logging.info("Contando contratos selecionados...")
-                count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS] WHERE DELETED_AT IS NULL")
-                result = connection.execute(count_sql)
-                num_contratos = result.scalar()
+                # *** COMMIT EXPLÍCITO ***
+                trans.commit()
+                logging.info("*** TRANSAÇÃO COMMITADA COM SUCESSO ***")
 
-                logging.info(f"Total de contratos selecionados com novo filtro: {num_contratos}")
+                count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
+                num_contratos = connection.execute(count_sql).scalar()
+
+                logging.info(f"Total final: {num_contratos}")
                 return num_contratos
 
             except Exception as e:
-                logging.error(f"Erro durante a execução das consultas SQL: {str(e)}")
-                # Log mais detalhado caso ocorra erro
+                trans.rollback()
+                logging.error(f"ERRO - Transação revertida: {str(e)}")
                 import traceback
                 logging.error(traceback.format_exc())
                 raise
 
     except Exception as e:
-        logging.error(f"Erro na seleção de contratos: {str(e)}")
+        logging.error(f"Erro fatal: {str(e)}")
         return 0
 
 
