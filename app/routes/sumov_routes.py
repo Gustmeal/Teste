@@ -3008,6 +3008,7 @@ def faturamento_index():
 def analise_ocorrencias():
     """Lista de ocorrências para análise - agrupadas por STATUS"""
     from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+    from sqlalchemy import text
 
     # Buscar ocorrências agrupadas por STATUS
     ocorrencias_por_status = OcorrenciasFaturamento.listar_por_status()
@@ -3018,10 +3019,21 @@ def analise_ocorrencias():
     # Calcular total de ocorrências sem análise
     total_sem_analise = sum(len(ocorrencias) for ocorrencias in ocorrencias_por_status.values())
 
+    # Buscar responsáveis distintos para o filtro
+    sql_responsaveis = text("""
+        SELECT DISTINCT RESPONSAVEL
+        FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
+        WHERE RESPONSAVEL IS NOT NULL
+        ORDER BY RESPONSAVEL
+    """)
+    resultado_responsaveis = db.session.execute(sql_responsaveis).fetchall()
+    responsaveis = [row[0] for row in resultado_responsaveis]
+
     return render_template('sumov/faturamento/analise_ocorrencias.html',
                            ocorrencias_por_status=ocorrencias_por_status,
                            analisadas=analisadas,
-                           total_sem_analise=total_sem_analise)
+                           total_sem_analise=total_sem_analise,
+                           responsaveis=responsaveis)
 
 
 @sumov_bp.route('/faturamento/analise-ocorrencias/exportar-excel', methods=['POST'])
@@ -3035,7 +3047,7 @@ def exportar_excel_ocorrencias():
     from flask import send_file
     from io import BytesIO
     from datetime import datetime
-    from app.utils.audit import registrar_log  # CORREÇÃO: import correto
+    from app.utils.audit import registrar_log
 
     try:
         # Capturar abas selecionadas
@@ -3071,10 +3083,11 @@ def exportar_excel_ocorrencias():
             # Definir cabeçalhos
             if incluir_houve_faturamento:
                 headers = ['Contrato', 'Ocorrência', 'Justificativa', 'Data Justificativa',
-                           'Houve Faturamento?', 'Mês/Ano', 'Status', 'Item Serviço', 'OBS']
+                           'Houve Faturamento?', 'Mês/Ano', 'Status', 'Item Serviço', 'OBS',
+                           'Estado', 'Responsável']
             else:
                 headers = ['Contrato', 'Ocorrência', 'Justificativa', 'Data Justificativa',
-                           'Status', 'Item Serviço', 'OBS']
+                           'Status', 'Item Serviço', 'OBS', 'Estado', 'Responsável']
 
             # Escrever cabeçalhos
             for col_num, header in enumerate(headers, 1):
@@ -3114,21 +3127,25 @@ def exportar_excel_ocorrencias():
                     ws.cell(row=row_num, column=6, value=ocorrencia.formatar_mes_ano())
                     col_offset = 7
 
+                # Colunas comuns
                 ws.cell(row=row_num, column=col_offset, value=ocorrencia.STATUS or 'Sem Status')
                 ws.cell(row=row_num, column=col_offset + 1, value=ocorrencia.ITEM_SERVICO or '-')
                 ws.cell(row=row_num, column=col_offset + 2, value=ocorrencia.OBS or '-')
+                ws.cell(row=row_num, column=col_offset + 3, value=ocorrencia.DSC_ESTADO or '-')
+                ws.cell(row=row_num, column=col_offset + 4, value=ocorrencia.RESPONSAVEL or '-')
 
                 # Aplicar bordas e alinhamento
                 for col_num in range(1, len(headers) + 1):
                     cell = ws.cell(row=row_num, column=col_num)
                     cell.border = border
-                    if col_num in [1, 2, 4, col_offset]:  # Colunas centralizadas
+                    if col_num in [1, 2, 4, col_offset, col_offset + 3, col_offset + 4]:  # Colunas centralizadas
                         cell.alignment = center_alignment
 
             # Ajustar largura das colunas
-            column_widths = [15, 12, 50, 18, 15, 20, 20]
             if incluir_houve_faturamento:
-                column_widths = [15, 12, 50, 18, 18, 15, 15, 20, 20]
+                column_widths = [15, 12, 50, 18, 18, 15, 15, 20, 20, 20, 25]
+            else:
+                column_widths = [15, 12, 50, 18, 15, 20, 20, 20, 25]
 
             for i, width in enumerate(column_widths, 1):
                 ws.column_dimensions[get_column_letter(i)].width = width
@@ -3395,11 +3412,11 @@ def atualizar_ocorrencias_faturamento():
 @sumov_bp.route('/faturamento/analise-ocorrencias/teste-duplicidade')
 @login_required
 def teste_duplicidade_faturamento():
-    """Testa duplicidade de contratos na tabela de faturamento"""
+    """Testa duplicidade de contratos na tabela de faturamento - apenas ID_FATURAMENTO = 1"""
     from sqlalchemy import text
 
     try:
-        # Query para buscar contratos duplicados - SEM VR_TARIFA (não existe nesta tabela)
+        # Query para buscar contratos duplicados - APENAS ID_FATURAMENTO = 1
         sql = text("""
             SELECT 
                 [ID], 
@@ -3419,10 +3436,12 @@ def teste_duplicidade_faturamento():
                 [MES_ANO_FATURAMENTO], 
                 [OBS]
             FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
-            WHERE NR_CONTRATO IN (
+            WHERE ID_FATURAMENTO = 1
+              AND NR_CONTRATO IN (
                 SELECT NR_CONTRATO 
                 FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO] 
-                WHERE MES_ANO_FATURAMENTO IS NOT NULL 
+                WHERE ID_FATURAMENTO = 1
+                  AND MES_ANO_FATURAMENTO IS NOT NULL 
                 GROUP BY NR_CONTRATO 
                 HAVING COUNT(*) > 1
             )

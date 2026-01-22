@@ -22,7 +22,7 @@
     <div class="card shadow mb-4">
         <div class="card-header bg-gradient-danger text-white">
             <h5 class="mb-0">
-                <i class="fas fa-file-contract me-2"></i>Contrato: {{ nr_contrato }}
+                <i class="fas fa-file-contract me-2"></i>Contrato: <span class="numero-contrato-destaque">{{ nr_contrato }}</span>
                 <span class="badge bg-light text-dark ms-2">{{ registros|length }} Registro(s)</span>
             </h5>
         </div>
@@ -122,6 +122,14 @@
 
     .table-hover tbody tr:hover {
         background-color: #fff3cd;
+    }
+
+    /* Destaque para o número do contrato */
+    .numero-contrato-destaque {
+        color: #ffffff;
+        font-weight: bold;
+        font-size: 1.1em;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
     }
 </style>
 {% endblock %}

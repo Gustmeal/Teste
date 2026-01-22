@@ -35,7 +35,7 @@
     <div class="card shadow mb-4">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-5">
+                <div class="col-md-3">
                     <label for="filtroContrato" class="form-label fw-bold">
                         <i class="fas fa-filter me-2"></i>Filtrar por Contrato
                     </label>
@@ -45,7 +45,7 @@
                            placeholder="Digite o número do contrato..."
                            autocomplete="off">
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-3">
                     <label for="filtroOcorrencia" class="form-label fw-bold">
                         <i class="fas fa-filter me-2"></i>Filtrar por Ocorrência
                     </label>
@@ -54,6 +54,17 @@
                            id="filtroOcorrencia"
                            placeholder="Digite o número da ocorrência..."
                            autocomplete="off">
+                </div>
+                <div class="col-md-4">
+                    <label for="filtroResponsavel" class="form-label fw-bold">
+                        <i class="fas fa-user me-2"></i>Filtrar por Responsável
+                    </label>
+                    <select class="form-select" id="filtroResponsavel">
+                        <option value="">Todos os Responsáveis</option>
+                        {% for responsavel in responsaveis %}
+                            <option value="{{ responsavel }}">{{ responsavel }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="col-md-2 d-flex align-items-end">
                     <button type="button"
@@ -120,34 +131,36 @@
                         </div>
                         <div class="card-body p-0">
                             {% if ocorrencias %}
-                            <div class="table-responsive">
-                                <table class="table table-hover mb-0 tabela-ocorrencias" data-status="{{ loop.index }}" data-aba="{{ loop.index }}">
+                            <div class="table-responsive" style="overflow-x: auto;">
+                                <table class="table table-hover mb-0 tabela-ocorrencias" data-status="{{ loop.index }}" data-aba="{{ loop.index }}" style="min-width: 1400px;">
                                     <thead class="table-light">
                                         <tr>
                                             <th class="text-center">Contrato</th>
                                             <th class="text-center">Ocorrência</th>
                                             <th>Justificativa</th>
                                             <th class="text-center">Data Justificativa</th>
-                                            <th class="text-center">Status</th>
                                             <th class="text-center">Item Serviço</th>
                                             <th class="text-center">OBS</th>
+                                            <th class="text-center">Estado</th>
+                                            <th class="text-center">Responsável</th>
                                             <th class="text-center">Ações</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {% for ocorrencia in ocorrencias %}
-                                        <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}" data-ocorrencia="{{ ocorrencia.nrOcorrencia }}">
+                                        <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}"
+                                            data-ocorrencia="{{ ocorrencia.nrOcorrencia }}"
+                                            data-responsavel="{{ ocorrencia.RESPONSAVEL or '' }}">
                                             <td class="text-center contrato-cell">{{ ocorrencia.NR_CONTRATO|int }}</td>
                                             <td class="text-center ocorrencia-cell">{{ ocorrencia.nrOcorrencia }}</td>
                                             <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
                                             <td class="text-center">
                                                 {{ ocorrencia.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if ocorrencia.DT_JUSTIFICATIVA else '-' }}
                                             </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-info">{{ ocorrencia.STATUS or 'Sem Status' }}</span>
-                                            </td>
                                             <td class="text-center">{{ ocorrencia.ITEM_SERVICO or '-' }}</td>
                                             <td class="text-center">{{ ocorrencia.OBS or '-' }}</td>
+                                            <td class="text-center">{{ ocorrencia.DSC_ESTADO or '-' }}</td>
+                                            <td class="text-center responsavel-cell">{{ ocorrencia.RESPONSAVEL or '-' }}</td>
                                             <td class="text-center">
                                                 <a href="{{ url_for('sumov.analisar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
                                                    class="btn btn-sm btn-primary">
@@ -185,8 +198,8 @@
                 </div>
                 <div class="card-body p-0">
                     {% if analisadas %}
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0 tabela-ocorrencias" data-aba="analisadas">
+                    <div class="table-responsive" style="overflow-x: auto;">
+                        <table class="table table-hover mb-0 tabela-ocorrencias" data-aba="analisadas" style="min-width: 1300px;">
                             <thead class="table-light">
                                 <tr>
                                     <th class="text-center">Contrato</th>
@@ -195,12 +208,16 @@
                                     <th class="text-center">Data Justificativa</th>
                                     <th class="text-center">Houve Faturamento?</th>
                                     <th class="text-center">Mês/Ano</th>
+                                    <th class="text-center">Estado</th>
+                                    <th class="text-center">Responsável</th>
                                     <th class="text-center">Ações</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for ocorrencia in analisadas %}
-                                <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}" data-ocorrencia="{{ ocorrencia.nrOcorrencia }}">
+                                <tr data-contrato="{{ ocorrencia.NR_CONTRATO|int }}"
+                                    data-ocorrencia="{{ ocorrencia.nrOcorrencia }}"
+                                    data-responsavel="{{ ocorrencia.RESPONSAVEL or '' }}">
                                     <td class="text-center contrato-cell">{{ ocorrencia.NR_CONTRATO|int }}</td>
                                     <td class="text-center ocorrencia-cell">{{ ocorrencia.nrOcorrencia }}</td>
                                     <td>{{ ocorrencia.dsJustificativa or '-' }}</td>
@@ -217,6 +234,8 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center">{{ ocorrencia.formatar_mes_ano() }}</td>
+                                    <td class="text-center">{{ ocorrencia.DSC_ESTADO or '-' }}</td>
+                                    <td class="text-center responsavel-cell">{{ ocorrencia.RESPONSAVEL or '-' }}</td>
                                     <td class="text-center">
                                         <a href="{{ url_for('sumov.editar_ocorrencia', nr_contrato=ocorrencia.NR_CONTRATO|int, nr_ocorrencia=ocorrencia.nrOcorrencia, identificador=ocorrencia.gerar_identificador()) }}"
                                            class="btn btn-sm btn-warning">
@@ -387,6 +406,9 @@ function destacarContratosDuplicados() {
 function aplicarFiltros() {
     const filtroContrato = document.getElementById('filtroContrato').value.toLowerCase().trim();
     const filtroOcorrencia = document.getElementById('filtroOcorrencia').value.toLowerCase().trim();
+    const filtroResponsavel = document.getElementById('filtroResponsavel').value.trim();
+
+    console.log('Filtro Responsável selecionado:', filtroResponsavel); // DEBUG
 
     // Percorrer todas as tabelas
     document.querySelectorAll('.tabela-ocorrencias').forEach(function(tabela) {
@@ -397,12 +419,25 @@ function aplicarFiltros() {
         linhas.forEach(function(linha) {
             const contrato = linha.getAttribute('data-contrato').toLowerCase();
             const ocorrencia = linha.getAttribute('data-ocorrencia').toLowerCase();
+            const responsavelAttr = linha.getAttribute('data-responsavel');
+            const responsavel = responsavelAttr ? responsavelAttr.trim() : '';
+
+            console.log('Responsável da linha:', `"${responsavel}"`); // DEBUG
 
             // Verificar se a linha atende aos filtros
             const atendeContrato = !filtroContrato || contrato.includes(filtroContrato);
             const atendeOcorrencia = !filtroOcorrencia || ocorrencia.includes(filtroOcorrencia);
 
-            if (atendeContrato && atendeOcorrencia) {
+            // Comparação de responsável melhorada
+            let atendeResponsavel = true;
+            if (filtroResponsavel !== '') {
+                // Se o filtro está preenchido, comparar exatamente
+                atendeResponsavel = (responsavel === filtroResponsavel);
+            }
+
+            console.log('Atende responsável?', atendeResponsavel, 'Filtro:', `"${filtroResponsavel}"`, 'Valor:', `"${responsavel}"`); // DEBUG
+
+            if (atendeContrato && atendeOcorrencia && atendeResponsavel) {
                 linha.style.display = '';
                 linhasVisiveis++;
             } else {
@@ -434,6 +469,7 @@ function aplicarFiltros() {
 function limparFiltros() {
     document.getElementById('filtroContrato').value = '';
     document.getElementById('filtroOcorrencia').value = '';
+    document.getElementById('filtroResponsavel').value = '';
     aplicarFiltros();
 }
 
@@ -466,6 +502,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Adicionar event listeners para os campos de filtro
     document.getElementById('filtroContrato').addEventListener('input', aplicarFiltros);
     document.getElementById('filtroOcorrencia').addEventListener('input', aplicarFiltros);
+    document.getElementById('filtroResponsavel').addEventListener('change', aplicarFiltros);
 
     // Permitir limpar com ESC
     document.addEventListener('keydown', function(event) {
@@ -551,7 +588,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /* Estilos para os campos de filtro */
-    .form-control:focus {
+    .form-control:focus, .form-select:focus {
         border-color: #0d6efd;
         box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
     }
@@ -567,6 +604,30 @@ document.addEventListener('DOMContentLoaded', function() {
     /* Alerta sem resultados */
     .alerta-sem-resultados {
         border-radius: 10px;
+    }
+
+    /* Estilo para scroll horizontal nas tabelas */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-responsive::-webkit-scrollbar {
+        height: 10px;
+    }
+
+    .table-responsive::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb:hover {
+        background: #555;
     }
 </style>
 {% endblock %}

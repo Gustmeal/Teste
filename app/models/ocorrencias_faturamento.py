@@ -19,6 +19,8 @@ class OcorrenciasFaturamento(db.Model):
     STATUS = Column('STATUS', String(100), nullable=True)
     ITEM_SERVICO = Column('ITEM_SERVICO', String(100), nullable=True)
     OBS = Column('OBS', String(100), nullable=True)
+    DSC_ESTADO = Column('DSC_ESTADO', String(100), nullable=True)
+    RESPONSAVEL = Column('RESPONSAVEL', String(100), nullable=True)
 
     def __repr__(self):
         return f'<OcorrenciasFaturamento {self.NR_CONTRATO}-{self.nrOcorrencia}>'
@@ -47,7 +49,8 @@ class OcorrenciasFaturamento(db.Model):
         """
         sql = text("""
             SELECT NR_CONTRATO, nrOcorrencia, dsJustificativa, ID_FATURAMENTO, 
-                   MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS
+                   MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS,
+                   DSC_ESTADO, RESPONSAVEL
             FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
             WHERE ID_FATURAMENTO IS NULL
             ORDER BY NR_CONTRATO, nrOcorrencia
@@ -68,6 +71,8 @@ class OcorrenciasFaturamento(db.Model):
             obj.STATUS = row[6]
             obj.ITEM_SERVICO = row[7]
             obj.OBS = row[8]
+            obj.DSC_ESTADO = row[9]
+            obj.RESPONSAVEL = row[10]
             ocorrencias.append(obj)
 
         return ocorrencias
@@ -80,7 +85,8 @@ class OcorrenciasFaturamento(db.Model):
         """
         sql = text("""
             SELECT NR_CONTRATO, nrOcorrencia, dsJustificativa, ID_FATURAMENTO, 
-                   MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS
+                   MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS,
+                   DSC_ESTADO, RESPONSAVEL
             FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
             WHERE ID_FATURAMENTO IS NULL
             ORDER BY STATUS, NR_CONTRATO, nrOcorrencia
@@ -101,6 +107,8 @@ class OcorrenciasFaturamento(db.Model):
             obj.STATUS = row[6]
             obj.ITEM_SERVICO = row[7]
             obj.OBS = row[8]
+            obj.DSC_ESTADO = row[9]
+            obj.RESPONSAVEL = row[10]
 
             # Agrupar por STATUS (se STATUS for NULL, usa 'Sem Status')
             status_chave = obj.STATUS if obj.STATUS else 'Sem Status'
@@ -120,7 +128,8 @@ class OcorrenciasFaturamento(db.Model):
         """
         sql = text("""
                 SELECT A.NR_CONTRATO, A.nrOcorrencia, A.dsJustificativa, A.ID_FATURAMENTO, 
-                       A.MES_ANO_FATURAMENTO, A.DT_JUSTIFICATIVA, A.STATUS, A.ITEM_SERVICO, A.OBS
+                       A.MES_ANO_FATURAMENTO, A.DT_JUSTIFICATIVA, A.STATUS, A.ITEM_SERVICO, A.OBS,
+                       A.DSC_ESTADO, A.RESPONSAVEL
                 FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR A
                 WHERE A.ID_FATURAMENTO IS NOT NULL
                   AND NOT EXISTS (
@@ -152,6 +161,8 @@ class OcorrenciasFaturamento(db.Model):
             obj.STATUS = row[6]
             obj.ITEM_SERVICO = row[7]
             obj.OBS = row[8]
+            obj.DSC_ESTADO = row[9]
+            obj.RESPONSAVEL = row[10]
             ocorrencias.append(obj)
 
         return ocorrencias
