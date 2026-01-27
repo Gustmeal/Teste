@@ -24,83 +24,78 @@ def inject_current_year():
 @meta_bp.route('/metas')
 @login_required
 def lista_metas():
+    """Lista de metas usando a tabela DCA_TB019_DISTRIBUICAO_MENSAL"""
     # Parâmetros para filtro
     edital_id = request.args.get('edital_id', type=int)
     periodo_id = request.args.get('periodo_id', type=int)
     empresa_id = request.args.get('empresa_id', type=int)
     competencia = request.args.get('competencia', type=str)
 
-    # Montar query base - usando os nomes corretos das colunas
+    # Query usando DCA_TB019_DISTRIBUICAO_MENSAL - CORRIGIDA OS JOINS
     query = """
         SELECT 
-            m.ID,
-            m.ID_EDITAL,
-            m.ID_PERIODO,
-            m.ID_EMPRESA,
-            m.COMPETENCIA,
-            m.META_ARRECADACAO,
-            m.META_ACIONAMENTO,
-            m.META_LIQUIDACAO,
-            m.META_BONIFICACAO,
-            e.NO_EMPRESA,
-            e.NO_EMPRESA_ABREVIADA,
-            ed.DESCRICAO,
+            dm.MES_COMPETENCIA,
+            dm.VR_META_MES,
+            dm.ID_EMPRESA,
+            dm.ID_EDITAL,
+            dm.ID_PERIODO,
+            ds.NO_EMPRESA_ABREVIADA,
+            ed.DESCRICAO as DESCRICAO_EDITAL,
             ed.NU_EDITAL,
-            ed.ANO,
+            ed.ANO as ANO_EDITAL,
             p.ID_PERIODO as NUM_PERIODO,
             p.DT_INICIO,
-            p.DT_FIM
-        FROM BDG.DCA_TB009_META_AVALIACAO m
-        LEFT JOIN BDG.DCA_TB002_EMPRESAS_PARTICIPANTES e 
-            ON m.ID_EMPRESA = e.ID_EMPRESA 
-            AND m.ID_EDITAL = e.ID_EDITAL 
-            AND m.ID_PERIODO = e.ID_PERIODO
-        LEFT JOIN BDG.DCA_TB008_EDITAIS ed ON m.ID_EDITAL = ed.ID
-        LEFT JOIN BDG.DCA_TB001_PERIODO_AVALIACAO p ON m.ID_PERIODO = p.ID
-        WHERE m.DELETED_AT IS NULL
+            p.DT_FIM,
+            p.ID as PERIODO_PK
+        FROM BDG.DCA_TB019_DISTRIBUICAO_MENSAL dm
+        INNER JOIN BDG.DCA_TB017_DISTRIBUICAO_SUMARIO ds
+            ON dm.ID_DISTRIBUICAO_SUMARIO = ds.ID
+            AND ds.DELETED_AT IS NULL
+        LEFT JOIN BDG.DCA_TB008_EDITAIS ed 
+            ON ed.ID = ds.ID_EDITAL
+        LEFT JOIN BDG.DCA_TB001_PERIODO_AVALIACAO p 
+            ON p.ID_PERIODO = ds.ID_PERIODO
+            AND p.ID_EDITAL = ds.ID_EDITAL
+        WHERE dm.DELETED_AT IS NULL
     """
 
     params = {}
 
     # Aplicar filtros
     if edital_id:
-        query += " AND m.ID_EDITAL = :edital_id"
+        query += " AND ds.ID_EDITAL = :edital_id"
         params['edital_id'] = edital_id
     if periodo_id:
-        query += " AND m.ID_PERIODO = :periodo_id"
+        query += " AND p.ID = :periodo_id"
         params['periodo_id'] = periodo_id
     if empresa_id:
-        query += " AND m.ID_EMPRESA = :empresa_id"
+        query += " AND ds.ID_EMPRESA = :empresa_id"
         params['empresa_id'] = empresa_id
     if competencia:
-        query += " AND m.COMPETENCIA = :competencia"
+        query += " AND dm.MES_COMPETENCIA = :competencia"
         params['competencia'] = competencia
 
     # Ordenar por maior edital e período primeiro
-    query += " ORDER BY m.ID_EDITAL DESC, p.ID_PERIODO DESC, m.COMPETENCIA, e.NO_EMPRESA_ABREVIADA"
+    query += " ORDER BY ds.ID_EDITAL DESC, p.ID_PERIODO DESC, dm.MES_COMPETENCIA, ds.NO_EMPRESA_ABREVIADA"
 
     result = db.session.execute(text(query), params)
 
     metas = []
     for row in result:
         meta = {
-            'ID': row[0],
-            'ID_EDITAL': row[1],
-            'ID_PERIODO': row[2],
-            'ID_EMPRESA': row[3],
-            'COMPETENCIA': row[4],
-            'META_ARRECADACAO': float(row[5]) if row[5] else 0,
-            'META_ACIONAMENTO': float(row[6]) if row[6] else None,
-            'META_LIQUIDACAO': float(row[7]) if row[7] else None,
-            'META_BONIFICACAO': float(row[8]) if row[8] else 0,
-            'NO_EMPRESA': row[9],
-            'NO_EMPRESA_ABREVIADA': row[10],
-            'DESCRICAO_EDITAL': row[11],
-            'NU_EDITAL': row[12],
-            'ANO_EDITAL': row[13],
-            'NUM_PERIODO': row[14],
-            'DT_INICIO': row[15],
-            'DT_FIM': row[16]
+            'MES_COMPETENCIA': row[0],
+            'VR_META_MES': float(row[1]) if row[1] else 0,
+            'ID_EMPRESA': row[2],
+            'ID_EDITAL': row[3],
+            'ID_PERIODO': row[4],
+            'NO_EMPRESA_ABREVIADA': row[5],
+            'DESCRICAO_EDITAL': row[6],
+            'NU_EDITAL': row[7],
+            'ANO_EDITAL': row[8],
+            'NUM_PERIODO': row[9],
+            'DT_INICIO': row[10],
+            'DT_FIM': row[11],
+            'PERIODO_PK': row[12]
         }
         metas.append(meta)
 
@@ -111,28 +106,27 @@ def lista_metas():
         PeriodoAvaliacao.ID_PERIODO.desc()
     ).all()
 
-    # Buscar empresas distintas
+    # Buscar empresas distintas da tabela DCA_TB017_DISTRIBUICAO_SUMARIO
     sql_empresas = text("""
-        SELECT DISTINCT ID_EMPRESA, NO_EMPRESA, NO_EMPRESA_ABREVIADA
-        FROM BDG.DCA_TB002_EMPRESAS_PARTICIPANTES
-        WHERE DELETED_AT IS NULL
-        ORDER BY NO_EMPRESA_ABREVIADA
+        SELECT DISTINCT ds.ID_EMPRESA, ds.NO_EMPRESA_ABREVIADA
+        FROM BDG.DCA_TB017_DISTRIBUICAO_SUMARIO ds
+        WHERE ds.DELETED_AT IS NULL
+        ORDER BY ds.NO_EMPRESA_ABREVIADA
     """)
     result_empresas = db.session.execute(sql_empresas)
     empresas = []
     for row in result_empresas:
         empresas.append({
             'ID': row[0],
-            'NO_EMPRESA': row[1],
-            'NO_EMPRESA_ABREVIADA': row[2]
+            'NO_EMPRESA_ABREVIADA': row[1]
         })
 
-    # Buscar competências distintas
+    # Buscar competências distintas da tabela DCA_TB019_DISTRIBUICAO_MENSAL
     sql_comp = text("""
-        SELECT DISTINCT COMPETENCIA 
-        FROM BDG.DCA_TB009_META_AVALIACAO 
+        SELECT DISTINCT MES_COMPETENCIA 
+        FROM BDG.DCA_TB019_DISTRIBUICAO_MENSAL 
         WHERE DELETED_AT IS NULL 
-        ORDER BY COMPETENCIA DESC
+        ORDER BY MES_COMPETENCIA DESC
     """)
     competencias = [row[0] for row in db.session.execute(sql_comp)]
 
@@ -146,7 +140,6 @@ def lista_metas():
                            filtro_periodo_id=periodo_id,
                            filtro_empresa_id=empresa_id,
                            filtro_competencia=competencia)
-
 
 @meta_bp.route('/metas/visualizar-redistribuicao')
 @login_required

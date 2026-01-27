@@ -1,62 +1,46 @@
 {% extends "base.html" %}
 
+{% block title %}Lista de Metas - Portal GEINC{% endblock %}
+
 {% block content %}
-<style>
-    .table-wrapper {
-        overflow-x: auto;
-        border-radius: 8px;
-        background-color: white;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .filter-container {
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    .meta-value {
-        font-weight: 600;
-        color: #28a745;
-    }
-
-    .percentage-value {
-        font-weight: 600;
-        color: #007bff;
-    }
-
-    .null-value {
-        color: #6c757d;
-        font-style: italic;
-    }
-</style>
-
-<div class="container-fluid">
+<div class="container-fluid px-4 py-4">
+    <!-- Cabeçalho -->
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="header-with-back">
-            <i class="fas fa-chart-line me-2"></i>Metas de Avaliação
-        </h1>
         <div>
-            <a href="{{ url_for('meta.nova_meta_distribuicao') }}" class="btn btn-primary me-2">
-                <i class="fas fa-plus me-2"></i> Nova Meta
+            <h2 class="mb-1">
+                <i class="fas fa-chart-line text-primary me-2"></i>
+                Lista de Metas Mensais
+            </h2>
+            <p class="text-muted mb-0">Visualize e gerencie as metas de distribuição mensal</p>
+        </div>
+        <div class="btn-group">
+            <a href="{{ url_for('meta.nova_meta_distribuicao') }}" class="btn btn-success" data-bs-toggle="tooltip" title="Criar nova distribuição inicial de metas">
+                <i class="fas fa-plus me-2"></i>Nova Distribuição
             </a>
-            <a href="{{ url_for('meta.redistribuicao_metas') }}" class="btn btn-success">
-                <i class="fas fa-exchange-alt me-2"></i> Redistribuição de Metas
+            <a href="{{ url_for('meta.redistribuicao_metas') }}" class="btn btn-warning" data-bs-toggle="tooltip" title="Redistribuir metas quando uma empresa sai">
+                <i class="fas fa-sync-alt me-2"></i>Redistribuição
+            </a>
+            <a href="{{ url_for('meta.visualizar_redistribuicao') }}" class="btn btn-info" data-bs-toggle="tooltip" title="Visualizar cálculos de redistribuição">
+                <i class="fas fa-eye me-2"></i>Visualizar Redistribuição
             </a>
         </div>
     </div>
 
-    <!-- Filtros -->
-    <div class="filter-container">
-        <form method="get" action="{{ url_for('meta.lista_metas') }}" class="row g-3">
+    <!-- Card de Filtros -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="fas fa-filter me-2"></i>Filtros
+            </h5>
+        </div>
+        <form method="GET" action="{{ url_for('meta.lista_metas') }}" class="card-body row g-3">
             <div class="col-md-3">
                 <label for="edital_id" class="form-label">Edital</label>
-                <select class="form-select" id="edital_id" name="edital_id">
+                <select name="edital_id" id="edital_id" class="form-select">
                     <option value="">Todos</option>
                     {% for edital in editais %}
                     <option value="{{ edital.ID }}" {% if filtro_edital_id == edital.ID %}selected{% endif %}>
-                        {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                        {{ edital.DESCRICAO }}
                     </option>
                     {% endfor %}
                 </select>
@@ -64,7 +48,7 @@
 
             <div class="col-md-3">
                 <label for="periodo_id" class="form-label">Período</label>
-                <select class="form-select" id="periodo_id" name="periodo_id">
+                <select name="periodo_id" id="periodo_id" class="form-select">
                     <option value="">Todos</option>
                     {% for periodo in periodos %}
                     <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
@@ -76,11 +60,11 @@
 
             <div class="col-md-3">
                 <label for="empresa_id" class="form-label">Empresa</label>
-                <select class="form-select" id="empresa_id" name="empresa_id">
+                <select name="empresa_id" id="empresa_id" class="form-select">
                     <option value="">Todas</option>
                     {% for empresa in empresas %}
                     <option value="{{ empresa.ID }}" {% if filtro_empresa_id == empresa.ID %}selected{% endif %}>
-                        {{ empresa.NO_EMPRESA_ABREVIADA or empresa.NO_EMPRESA }}
+                        {{ empresa.NO_EMPRESA_ABREVIADA }}
                     </option>
                     {% endfor %}
                 </select>
@@ -88,7 +72,7 @@
 
             <div class="col-md-3">
                 <label for="competencia" class="form-label">Competência</label>
-                <select class="form-select" id="competencia" name="competencia">
+                <select name="competencia" id="competencia" class="form-select">
                     <option value="">Todas</option>
                     {% for comp in competencias %}
                     <option value="{{ comp }}" {% if filtro_competencia == comp %}selected{% endif %}>
@@ -100,240 +84,137 @@
 
             <div class="col-12">
                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-search me-2"></i> Filtrar
+                    <i class="fas fa-search me-2"></i>Filtrar
                 </button>
                 <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
-                    <i class="fas fa-undo me-2"></i> Limpar Filtros
+                    <i class="fas fa-undo me-2"></i>Limpar Filtros
                 </a>
             </div>
         </form>
     </div>
 
     <!-- Tabela de Metas -->
-    <div class="table-wrapper">
-        <table class="table table-hover mb-0">
-            <thead class="table-light">
-                <tr>
-                    <th>Edital</th>
-                    <th>Período</th>
-                    <th>Empresa</th>
-                    <th>Competência</th>
-                    <th class="text-end">Meta Arrecadação</th>
-                    <th class="text-center">Meta Acionamento</th>
-                    <th class="text-center">Meta Liquidação</th>
-                    <th class="text-end">Meta Bonificação</th>
-                    <th class="text-center">Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if metas %}
-                    {% for meta in metas %}
-                    <tr>
-                        <td>{{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}</td>
-                        <td>Período {{ meta.NUM_PERIODO }}</td>
-                        <td>{{ meta.NO_EMPRESA_ABREVIADA or meta.NO_EMPRESA }}</td>
-                        <td class="text-center">{{ meta.COMPETENCIA|replace('-', '/') }}</td>
-                        <td class="text-end meta-value">R$ {{ "{:,.2f}".format(meta.META_ARRECADACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">
-                            {% if meta.META_ACIONAMENTO is none %}
-                                <span class="null-value">-</span>
-                            {% else %}
-                                {{ "{:,.0f}".format(meta.META_ACIONAMENTO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% endif %}
-                        </td>
-                        <td class="text-center">
-                            {% if meta.META_LIQUIDACAO is none %}
-                                <span class="null-value">-</span>
-                            {% else %}
-                                {{ "{:,.0f}".format(meta.META_LIQUIDACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% endif %}
-                        </td>
-                        <td class="text-end">R$ {{ "{:,.2f}".format(meta.META_BONIFICACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                        <td class="text-center">
-                            <div class="btn-group btn-group-sm">
-                                <a href="#"
-                                   class="btn btn-outline-info btn-view-details"
-                                   data-bs-toggle="tooltip"
-                                   title="Ver detalhes"
-                                   data-meta-id="{{ meta.ID }}"
-                                   data-edital="{{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}"
-                                   data-periodo="{{ meta.NUM_PERIODO }}"
-                                   data-empresa="{{ meta.NO_EMPRESA_ABREVIADA or meta.NO_EMPRESA }}"
-                                   data-competencia="{{ meta.COMPETENCIA }}"
-                                   data-arrecadacao="{{ meta.META_ARRECADACAO }}"
-                                   data-acionamento="{{ meta.META_ACIONAMENTO }}"
-                                   data-liquidacao="{{ meta.META_LIQUIDACAO }}"
-                                   data-bonificacao="{{ meta.META_BONIFICACAO }}">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <a href="{{ url_for('meta.excluir_meta', id=meta.ID) }}"
-                                   class="btn btn-outline-danger"
-                                   data-bs-toggle="tooltip"
-                                   title="Excluir"
-                                   onclick="return confirm('Tem certeza que deseja excluir esta meta?')">
-                                    <i class="fas fa-trash"></i>
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="9" class="text-center py-4">
-                            <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
-                            <p class="text-muted">Nenhuma meta cadastrada</p>
-                        </td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<!-- Modal de Detalhes -->
-<div class="modal fade" id="detalhesModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">
-                    <i class="fas fa-chart-line me-2"></i>Detalhes da Meta
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <h6>Edital:</h6>
-                        <p id="modal-edital" class="fw-bold"></p>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Período:</h6>
-                        <p id="modal-periodo" class="fw-bold"></p>
-                    </div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <h6>Empresa:</h6>
-                        <p id="modal-empresa" class="fw-bold"></p>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Competência:</h6>
-                        <p id="modal-competencia" class="fw-bold"></p>
-                    </div>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">Meta de Arrecadação</h6>
-                                <h3 class="text-success" id="modal-arrecadacao"></h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">Meta de Acionamento</h6>
-                                <h3 class="text-primary" id="modal-acionamento"></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="row mt-3">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">Meta de Liquidação</h6>
-                                <h3 class="text-info" id="modal-liquidacao"></h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <h6 class="text-muted">Meta de Bonificação</h6>
-                                <h3 class="text-warning" id="modal-bonificacao"></h3>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Edital</th>
+                            <th>Período</th>
+                            <th>Empresa</th>
+                            <th>Competência</th>
+                            <th class="text-end">Valor Meta Mês</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if metas %}
+                            {% for meta in metas %}
+                            <tr>
+                                <td>
+                                    {% if meta.DESCRICAO_EDITAL %}
+                                        {{ meta.DESCRICAO_EDITAL }}
+                                    {% else %}
+                                        Edital {{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if meta.NUM_PERIODO %}
+                                        Período {{ meta.NUM_PERIODO }}
+                                    {% else %}
+                                        Período não identificado
+                                    {% endif %}
+                                </td>
+                                <td>{{ meta.NO_EMPRESA_ABREVIADA }}</td>
+                                <td>{{ meta.MES_COMPETENCIA|replace('-', '/') }}</td>
+                                <td class="text-end">
+                                    <span class="badge bg-success fs-6">
+                                        R$ {{ "{:,.2f}".format(meta.VR_META_MES).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-5">
+                                    <i class="fas fa-chart-line fa-3x text-muted mb-3 d-block"></i>
+                                    <p class="text-muted mb-0">Nenhuma meta encontrada com os filtros aplicados</p>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
+
+    <!-- Informações adicionais -->
+    {% if metas %}
+    <div class="mt-3">
+        <small class="text-muted">
+            <i class="fas fa-info-circle me-1"></i>
+            Total de registros: {{ metas|length }}
+        </small>
+    </div>
+    {% endif %}
 </div>
 
+<style>
+    .table th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .table td {
+        vertical-align: middle;
+    }
+
+    .badge {
+        padding: 0.5rem 0.75rem;
+        font-weight: 500;
+    }
+
+    .card {
+        border: none;
+        border-radius: 0.5rem;
+    }
+
+    .card-header {
+        border-bottom: 1px solid #dee2e6;
+        padding: 1rem 1.5rem;
+    }
+
+    .form-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .btn-group .btn {
+        border-radius: 0;
+    }
+
+    .btn-group .btn:first-child {
+        border-top-left-radius: 0.375rem;
+        border-bottom-left-radius: 0.375rem;
+    }
+
+    .btn-group .btn:last-child {
+        border-top-right-radius: 0.375rem;
+        border-bottom-right-radius: 0.375rem;
+    }
+</style>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Inicializar tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-
-    // Modal de detalhes
-    const detalhesModal = new bootstrap.Modal(document.getElementById('detalhesModal'));
-
-    // Função para formatar número brasileiro
-    function formatarMoedaBR(valor) {
-        return new Intl.NumberFormat('pt-BR', {
-            style: 'currency',
-            currency: 'BRL'
-        }).format(valor);
-    }
-
-    function formatarNumeroBR(valor) {
-        return new Intl.NumberFormat('pt-BR').format(valor);
-    }
-
-    // Adicionar evento de clique para ver detalhes
-    document.querySelectorAll('.btn-view-details').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-
-            // Obter dados do botão
-            const edital = this.dataset.edital;
-            const periodo = this.dataset.periodo;
-            const empresa = this.dataset.empresa;
-            const competencia = this.dataset.competencia;
-            const arrecadacao = parseFloat(this.dataset.arrecadacao);
-            const acionamento = this.dataset.acionamento;
-            const liquidacao = this.dataset.liquidacao;
-            const bonificacao = parseFloat(this.dataset.bonificacao);
-
-            // Preencher modal
-            document.getElementById('modal-edital').textContent = edital;
-            document.getElementById('modal-periodo').textContent = 'Período ' + periodo;
-            document.getElementById('modal-empresa').textContent = empresa;
-            document.getElementById('modal-competencia').textContent = competencia.replace('-', '/');
-            document.getElementById('modal-arrecadacao').textContent = formatarMoedaBR(arrecadacao);
-
-            // Tratar valores NULL
-            if (acionamento === 'None' || acionamento === null) {
-                document.getElementById('modal-acionamento').textContent = '-';
-                document.getElementById('modal-acionamento').className = 'text-muted';
-            } else {
-                document.getElementById('modal-acionamento').textContent = formatarNumeroBR(parseFloat(acionamento));
-                document.getElementById('modal-acionamento').className = 'text-primary';
-            }
-
-            if (liquidacao === 'None' || liquidacao === null) {
-                document.getElementById('modal-liquidacao').textContent = '-';
-                document.getElementById('modal-liquidacao').className = 'text-muted';
-            } else {
-                document.getElementById('modal-liquidacao').textContent = formatarNumeroBR(parseFloat(liquidacao));
-                document.getElementById('modal-liquidacao').className = 'text-info';
-            }
-
-            document.getElementById('modal-bonificacao').textContent = formatarMoedaBR(bonificacao);
-
-            // Mostrar modal
-            detalhesModal.show();
+    // Ativar tooltips do Bootstrap
+    document.addEventListener('DOMContentLoaded', function() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
         });
     });
-});
 </script>
 {% endblock %}
