@@ -3037,8 +3037,10 @@ def gerar_pdf_resumo(edital_id, periodo_id):
 def gerar_excel_empresas(edital_id, periodo_id):
     """
     Gera múltiplos arquivos Excel, um para cada empresa do período.
-    Usa o segundo SQL (analítico) para buscar os dados detalhados.
-    CORRIGIDO: Formatação de números longos para evitar notação científica.
+    OTIMIZADO:
+    - Removida coluna "Faixa Propensão" (FX_PROPENSAO_ATUAL_CREDITO)
+    - Mantém JOIN com COM_TB007_SITUACAO_CONTRATOS para buscar QT_DIAS_ATRASO e VR_SD_DEVEDOR
+    - Formatação de números longos para evitar notação científica
     """
     try:
         from io import BytesIO
@@ -3085,7 +3087,8 @@ def gerar_excel_empresas(edital_id, periodo_id):
                 cod_empresa = empresa.COD_EMPRESA_COBRANCA
                 nome_abreviado = empresa.NO_ABREVIADO_EMPRESA or empresa.nmEmpresaResponsavelCobranca[:20]
 
-                # Buscar dados analíticos para a empresa usando o segundo SQL
+                # ✅ QUERY CORRIGIDA: Mantém JOIN com COM_TB007_SITUACAO_CONTRATOS
+                # Mas REMOVE a coluna FX_PROPENSAO_ATUAL_CREDITO
                 with db.engine.connect() as connection:
                     sql_analitico = text("""
                         SELECT 
@@ -3096,7 +3099,6 @@ def gerar_excel_empresas(edital_id, periodo_id):
                             CTR.[NR_CPF_CNPJ] AS CPF,
                             SIT.QT_DIAS_ATRASO,
                             SIT.[VR_SD_DEVEDOR],
-                            SIT.FX_PROPENSAO_ATUAL_CREDITO,
                             CRI.DS_CRITERIO_SELECAO
                         FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS 
                         INNER JOIN [BDG].[COM_TB001_CONTRATO] CTR
@@ -3144,15 +3146,15 @@ def gerar_excel_empresas(edital_id, periodo_id):
                 )
 
                 # Título
-                ws.merge_cells('A1:I1')
+                ws.merge_cells('A1:H1')  # ✅ 8 colunas (sem Faixa Propensão)
                 cell_titulo = ws['A1']
                 cell_titulo.value = f"Distribuição Analítica - {nome_abreviado} - Período {periodo_id}"
                 cell_titulo.font = Font(bold=True, size=14)
                 cell_titulo.alignment = Alignment(horizontal="center")
 
-                # Cabeçalhos
+                # ✅ Cabeçalhos SEM "Faixa Propensão"
                 headers = ['Produto', 'Cód. Empresa', 'Assessoria', 'Nº Contrato', 'CPF/CNPJ',
-                           'Dias Atraso', 'Saldo Devedor', 'Faixa Propensão', 'Critério Seleção']
+                           'Dias Atraso', 'Saldo Devedor', 'Critério Seleção']
 
                 for col, header in enumerate(headers, start=1):
                     cell = ws.cell(row=3, column=col)
@@ -3162,15 +3164,12 @@ def gerar_excel_empresas(edital_id, periodo_id):
                     cell.alignment = header_alignment
                     cell.border = border_style
 
-                # ✅ CORREÇÃO: Formatar colunas como texto ANTES de inserir dados
-                # Isso evita notação científica em números longos
-                max_rows = len(dados_empresa) + 10  # Adicionar margem de segurança
+                # ✅ Formatar colunas como texto ANTES de inserir dados
+                max_rows = len(dados_empresa) + 10
 
                 for row in range(4, max_rows + 4):
-                    # Coluna D (4) = Nº Contrato - formatar como texto
-                    ws.cell(row=row, column=4).number_format = '@'
-                    # Coluna E (5) = CPF/CNPJ - formatar como texto
-                    ws.cell(row=row, column=5).number_format = '@'
+                    ws.cell(row=row, column=4).number_format = '@'  # Coluna D (Nº Contrato)
+                    ws.cell(row=row, column=5).number_format = '@'  # Coluna E (CPF/CNPJ)
 
                 # Dados
                 row_idx = 4
@@ -3181,7 +3180,7 @@ def gerar_excel_empresas(edital_id, periodo_id):
                     ws.cell(row=row_idx, column=2, value=row_data.COD_EMPRESA)
                     ws.cell(row=row_idx, column=3, value=row_data.Assessoria)
 
-                    # ✅ Inserir como string para garantir formato texto
+                    # Inserir como string para garantir formato texto
                     ws.cell(row=row_idx, column=4, value=str(row_data.Nr_Contrato))
                     ws.cell(row=row_idx, column=5, value=str(row_data.CPF))
 
@@ -3193,11 +3192,11 @@ def gerar_excel_empresas(edital_id, periodo_id):
                     cell_saldo = ws.cell(row=row_idx, column=7, value=saldo)
                     cell_saldo.number_format = 'R$ #,##0.00'
 
-                    ws.cell(row=row_idx, column=8, value=row_data.FX_PROPENSAO_ATUAL_CREDITO)
-                    ws.cell(row=row_idx, column=9, value=row_data.DS_CRITERIO_SELECAO)
+                    # ✅ Coluna H = Critério Seleção (sem Faixa Propensão)
+                    ws.cell(row=row_idx, column=8, value=row_data.DS_CRITERIO_SELECAO)
 
                     # Aplicar bordas
-                    for col in range(1, 10):
+                    for col in range(1, 9):  # ✅ 8 colunas
                         ws.cell(row=row_idx, column=col).border = border_style
                         ws.cell(row=row_idx, column=col).alignment = Alignment(vertical="center")
 
@@ -3211,17 +3210,16 @@ def gerar_excel_empresas(edital_id, periodo_id):
                 cell_total.number_format = 'R$ #,##0.00'
                 cell_total.fill = PatternFill(start_color="E8F4F8", end_color="E8F4F8", fill_type="solid")
 
-                # Ajustar largura das colunas
+                # ✅ Ajustar largura das colunas (8 colunas - sem Faixa Propensão)
                 column_widths = {
                     'A': 15,  # Produto
                     'B': 12,  # Cód. Empresa
                     'C': 20,  # Assessoria
-                    'D': 18,  # Nº Contrato (aumentado para números longos)
-                    'E': 18,  # CPF/CNPJ (aumentado)
+                    'D': 18,  # Nº Contrato
+                    'E': 18,  # CPF/CNPJ
                     'F': 12,  # Dias Atraso
                     'G': 18,  # Saldo Devedor
-                    'H': 18,  # Faixa Propensão
-                    'I': 25  # Critério Seleção
+                    'H': 25   # Critério Seleção
                 }
 
                 for col, width in column_widths.items():
@@ -3244,7 +3242,7 @@ def gerar_excel_empresas(edital_id, periodo_id):
             acao='gerar',
             entidade='relatorio_excel_empresas',
             entidade_id=periodo_id,
-            descricao=f'Arquivos Excel gerados para {len(empresas)} empresas do período {periodo_id}'
+            descricao=f'Arquivos Excel gerados para {len(empresas)} empresas do período {periodo_id} (otimizado)'
         )
 
         nome_arquivo_zip = f'analiticos_empresas_periodo_{periodo_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.zip'
@@ -3259,6 +3257,243 @@ def gerar_excel_empresas(edital_id, periodo_id):
     except Exception as e:
         flash(f'Erro ao gerar arquivos Excel: {str(e)}', 'danger')
         logging.error(f"Erro ao gerar Excel empresas: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return redirect(url_for('limite.gerar_arquivos_analiticos'))
+
+
+@limite_bp.route('/limites/gerar-pdf-analitico-cpf/<int:edital_id>/<int:periodo_id>', methods=['POST'])
+@login_required
+def gerar_pdf_analitico_cpf(edital_id, periodo_id):
+    """
+    Gera PDF com análise agregada por empresa de cobrança.
+    Mostra: Quantidade de contratos, quantidade de CPFs únicos e saldo devedor total.
+    Baseado no SQL fornecido pelo usuário.
+    """
+    try:
+        from io import BytesIO
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        from datetime import datetime
+
+        # ✅ SQL CORRIGIDO: Buscar VR_SD_DEVEDOR da tabela COM_TB007_SITUACAO_CONTRATOS
+        with db.engine.connect() as connection:
+            sql = text("""
+                SELECT 
+                    [COD_EMPRESA_COBRANCA],
+                    COUNT(DIS.[fkContratoSISCTR]) AS QTDE,
+                    COUNT(DISTINCT(DIS.[NR_CPF_CNPJ])) AS QTDE_CPF,
+                    SUM(SIT.[VR_SD_DEVEDOR]) AS SD
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[COM_TB001_CONTRATO] CTR 
+                    ON DIS.[fkContratoSISCTR] = CTR.fkContratoSISCTR
+                INNER JOIN BDG.PAR_TB001_PRODUTOS PR 
+                    ON PR.pkSistemaOriginario = CTR.COD_PRODUTO
+                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                    ON DIS.fkContratoSISCTR = SIT.fkContratoSISCTR
+                WHERE [ID_PERIODO] = :periodo_id
+                    AND [ID_EDITAL] = :edital_id
+                    AND DIS.DELETED_AT IS NULL
+                    AND SIT.[fkSituacaoCredito] = 1
+                GROUP BY [COD_EMPRESA_COBRANCA]
+                ORDER BY [COD_EMPRESA_COBRANCA]
+            """)
+
+            result = connection.execute(sql, {
+                'periodo_id': periodo_id,
+                'edital_id': edital_id
+            })
+
+            dados = result.fetchall()
+
+        if not dados:
+            flash('Não há dados de distribuição para este período.', 'warning')
+            return redirect(url_for('limite.gerar_arquivos_analiticos'))
+
+        # Buscar nome das empresas
+        empresas_nomes = {}
+        with db.engine.connect() as connection:
+            sql_empresas = text("""
+                SELECT DISTINCT
+                    DIS.COD_EMPRESA_COBRANCA,
+                    EM.NO_ABREVIADO_EMPRESA,
+                    EM.nmEmpresaResponsavelCobranca
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN BDG.PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA EM
+                    ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                WHERE DIS.ID_EDITAL = :edital_id
+                    AND DIS.ID_PERIODO = :periodo_id
+                    AND DIS.DELETED_AT IS NULL
+            """)
+
+            empresas = connection.execute(sql_empresas, {
+                'edital_id': edital_id,
+                'periodo_id': periodo_id
+            }).fetchall()
+
+            for emp in empresas:
+                empresas_nomes[emp.COD_EMPRESA_COBRANCA] = emp.NO_ABREVIADO_EMPRESA or emp.nmEmpresaResponsavelCobranca
+
+        # Buscar informações do edital e período
+        edital = Edital.query.get_or_404(edital_id)
+        periodo = PeriodoAvaliacao.query.filter_by(ID_PERIODO=periodo_id).first_or_404()
+
+        # Criar buffer para o PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=15 * mm, leftMargin=15 * mm,
+                                topMargin=15 * mm, bottomMargin=15 * mm)
+
+        story = []
+        styles = getSampleStyleSheet()
+
+        # Título principal (MESMAS CORES DO PDF RESUMO NORMAL)
+        titulo_style = ParagraphStyle(
+            'TituloPrincipal',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#2c3e50'),  # ✅ Cinza escuro (igual ao PDF resumo)
+            alignment=TA_CENTER,
+            spaceAfter=3 * mm,
+            fontName='Helvetica-Bold'
+        )
+        story.append(Paragraph("Resumo da Distribuição por CPF/CNPJ", titulo_style))
+
+        # Subtítulo com informações do período
+        subtitulo_style = ParagraphStyle(
+            'Subtitulo',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#7f8c8d'),  # ✅ Cinza médio (igual ao PDF resumo)
+            alignment=TA_CENTER,
+            spaceAfter=8 * mm
+        )
+        subtitulo_texto = f"Edital: {edital.NU_EDITAL}/{edital.ANO} | Período: {periodo.ID_PERIODO} | " \
+                          f"{periodo.DT_INICIO.strftime('%d/%m/%Y')} a {periodo.DT_FIM.strftime('%d/%m/%Y')}"
+        story.append(Paragraph(subtitulo_texto, subtitulo_style))
+
+        # Preparar dados da tabela
+        table_data = [['Cód. Empresa', 'Assessoria', 'Qtde Contratos', 'Qtde CPFs', 'Saldo Devedor (R$)']]
+
+        total_qtde = 0
+        total_cpfs = 0
+        total_saldo = 0.0
+
+        for row in dados:
+            cod_empresa = row.COD_EMPRESA_COBRANCA
+            qtde = row.QTDE
+            qtde_cpf = row.QTDE_CPF
+            saldo = float(row.SD or 0)
+
+            total_qtde += qtde
+            total_cpfs += qtde_cpf
+            total_saldo += saldo
+
+            nome_empresa = empresas_nomes.get(cod_empresa, f"Empresa {cod_empresa}")
+
+            table_data.append([
+                str(cod_empresa),
+                nome_empresa,
+                f"{qtde:,}".replace(',', '.'),
+                f"{qtde_cpf:,}".replace(',', '.'),
+                f"R$ {saldo:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            ])
+
+        # Linha de total
+        table_data.append([
+            '',
+            'TOTAL',
+            f"{total_qtde:,}".replace(',', '.'),
+            f"{total_cpfs:,}".replace(',', '.'),
+            f"R$ {total_saldo:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        ])
+
+        # Criar tabela
+        table = Table(table_data, colWidths=[25 * mm, 60 * mm, 30 * mm, 25 * mm, 40 * mm])
+
+        # Estilo da tabela (MESMAS CORES DO PDF RESUMO NORMAL)
+        table_style = [
+            # Cabeçalho (igual ao PDF resumo)
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),  # ✅ Cinza escuro
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8 * mm),
+            ('TOPPADDING', (0, 0), (-1, 0), 8 * mm),
+
+            # Corpo da tabela
+            ('BACKGROUND', (0, 1), (-1, -2), colors.HexColor('#ffffff')),
+            ('TEXTCOLOR', (0, 1), (-1, -2), colors.black),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Código empresa centralizado
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),  # Nome empresa à esquerda
+            ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),  # Números à direita
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -2), 10),
+            ('TOPPADDING', (0, 1), (-1, -2), 5 * mm),
+            ('BOTTOMPADDING', (0, 1), (-1, -2), 5 * mm),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6 * mm),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6 * mm),
+
+            # Linha de total (igual ao PDF resumo - azul)
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#3498db')),  # ✅ Azul
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.whitesmoke),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 11),
+            ('TOPPADDING', (0, -1), (-1, -1), 5 * mm),
+            ('BOTTOMPADDING', (0, -1), (-1, -1), 5 * mm),
+
+            # Bordas (igual ao PDF resumo)
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#bdc3c7')),  # ✅ Cinza claro
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#34495e')),  # ✅ Cinza escuro
+        ]
+
+        # Zebrar linhas (alternar cores - igual ao PDF resumo)
+        for i in range(1, len(table_data) - 1):
+            if i % 2 == 0:
+                table_style.append(('BACKGROUND', (0, i), (-1, i), colors.HexColor('#f8f9fa')))
+
+        table.setStyle(TableStyle(table_style))
+        story.append(table)
+
+        # Rodapé com data
+        story.append(Spacer(1, 10 * mm))
+        rodape_style = ParagraphStyle(
+            'Rodape',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#7f8c8d'),
+            alignment=TA_LEFT
+        )
+        story.append(Paragraph(f"Posição: {datetime.now().strftime('%d/%m/%Y')}", rodape_style))
+
+        # Gerar PDF
+        doc.build(story)
+        buffer.seek(0)
+
+        # Registrar log
+        registrar_log(
+            acao='gerar',
+            entidade='relatorio_pdf_analitico_cpf',
+            entidade_id=periodo_id,
+            descricao=f'PDF analítico por CPF gerado para período {periodo_id}'
+        )
+
+        nome_arquivo = f'analitico_cpf_periodo_{periodo_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=nome_arquivo
+        )
+
+    except Exception as e:
+        flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
+        logging.error(f"Erro ao gerar PDF analítico por CPF: {str(e)}")
         import traceback
         logging.error(traceback.format_exc())
         return redirect(url_for('limite.gerar_arquivos_analiticos'))

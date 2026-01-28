@@ -34,7 +34,7 @@
 
     <!-- Card 1: Relatório Resumo em PDF -->
     <div class="card shadow mb-4">
-        <div class="card-header bg-primary text-white">
+        <div class="card-header bg-success text-white">
             <h5 class="mb-0">
                 <i class="fas fa-file-pdf me-2"></i>Relatório Resumo - PDF
             </h5>
@@ -84,6 +84,26 @@
                 Não há empresas credenciadas com distribuição para este período.
             </div>
             {% endif %}
+        </div>
+    </div>
+
+    <!-- Card 3: Relatório Analítico por CPF - PDF (NOVO) -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-file-pdf me-2"></i>Resumo da Distribuição por CPF/CNPJ - PDF
+            </h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">
+                Gera um arquivo PDF com o resumo da distribuição agregado por empresa de cobrança, mostrando
+                <strong>quantidade de contratos, quantidade de CPFs/CNPJs únicos e saldo devedor total</strong>.
+            </p>
+            <form method="POST" action="{{ url_for('limite.gerar_pdf_analitico_cpf', edital_id=edital.ID, periodo_id=periodo.ID_PERIODO) }}" class="mt-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-download me-2"></i>Gerar PDF Analítico por CPF
+                </button>
+            </form>
         </div>
     </div>
 
