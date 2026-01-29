@@ -3,6 +3,10 @@
 {% block title %}Lista de Metas - Portal GEINC{% endblock %}
 
 {% block content %}
+<a href="{{ url_for('credenciamento.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
 <div class="container-fluid px-4 py-4">
     <!-- Cabeçalho -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -15,10 +19,10 @@
         </div>
         <div class="btn-group">
             <a href="{{ url_for('meta.nova_meta_distribuicao') }}" class="btn btn-success" data-bs-toggle="tooltip" title="Criar nova distribuição inicial de metas">
-                <i class="fas fa-plus me-2"></i>Nova Distribuição
+                <i class="fas fa-plus me-2"></i>Gerar Metas
             </a>
             <a href="{{ url_for('meta.redistribuicao_metas') }}" class="btn btn-warning" data-bs-toggle="tooltip" title="Redistribuir metas quando uma empresa sai">
-                <i class="fas fa-sync-alt me-2"></i>Redistribuição
+                <i class="fas fa-sync-alt me-2"></i>Gerar Metas empresas descredenciadas
             </a>
             <a href="{{ url_for('meta.visualizar_redistribuicao') }}" class="btn btn-info" data-bs-toggle="tooltip" title="Visualizar cálculos de redistribuição">
                 <i class="fas fa-eye me-2"></i>Visualizar Redistribuição
@@ -33,64 +37,66 @@
                 <i class="fas fa-filter me-2"></i>Filtros
             </h5>
         </div>
-        <form method="GET" action="{{ url_for('meta.lista_metas') }}" class="card-body row g-3">
-            <div class="col-md-3">
-                <label for="edital_id" class="form-label">Edital</label>
-                <select name="edital_id" id="edital_id" class="form-select">
-                    <option value="">Todos</option>
-                    {% for edital in editais %}
-                    <option value="{{ edital.ID }}" {% if filtro_edital_id == edital.ID %}selected{% endif %}>
-                        {{ edital.DESCRICAO }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('meta.lista_metas') }}" class="row g-3">
+                <div class="col-md-3">
+                    <label for="edital_id" class="form-label">Edital</label>
+                    <select name="edital_id" id="edital_id" class="form-select">
+                        <option value="">Todos</option>
+                        {% for edital in editais %}
+                        <option value="{{ edital.ID }}" {% if filtro_edital_id == edital.ID %}selected{% endif %}>
+                            {{ edital.NU_EDITAL }}/{{ edital.ANO }} - {{ edital.DESCRICAO }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            <div class="col-md-3">
-                <label for="periodo_id" class="form-label">Período</label>
-                <select name="periodo_id" id="periodo_id" class="form-select">
-                    <option value="">Todos</option>
-                    {% for periodo in periodos %}
-                    <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
-                        Período {{ periodo.ID_PERIODO }} - {{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} a {{ periodo.DT_FIM.strftime('%d/%m/%Y') }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
+                <div class="col-md-3">
+                    <label for="periodo_id" class="form-label">Período</label>
+                    <select name="periodo_id" id="periodo_id" class="form-select">
+                        <option value="">Todos</option>
+                        {% for periodo in periodos %}
+                        <option value="{{ periodo.ID }}" {% if filtro_periodo_id == periodo.ID %}selected{% endif %}>
+                            Período {{ periodo.ID_PERIODO }} ({{ periodo.DT_INICIO.strftime('%d/%m/%Y') }} - {{ periodo.DT_FIM.strftime('%d/%m/%Y') }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            <div class="col-md-3">
-                <label for="empresa_id" class="form-label">Empresa</label>
-                <select name="empresa_id" id="empresa_id" class="form-select">
-                    <option value="">Todas</option>
-                    {% for empresa in empresas %}
-                    <option value="{{ empresa.ID }}" {% if filtro_empresa_id == empresa.ID %}selected{% endif %}>
-                        {{ empresa.NO_EMPRESA_ABREVIADA }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
+                <div class="col-md-3">
+                    <label for="empresa_id" class="form-label">Empresa</label>
+                    <select name="empresa_id" id="empresa_id" class="form-select">
+                        <option value="">Todas</option>
+                        {% for empresa in empresas %}
+                        <option value="{{ empresa.ID }}" {% if filtro_empresa_id == empresa.ID %}selected{% endif %}>
+                            {{ empresa.NO_EMPRESA_ABREVIADA }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            <div class="col-md-3">
-                <label for="competencia" class="form-label">Competência</label>
-                <select name="competencia" id="competencia" class="form-select">
-                    <option value="">Todas</option>
-                    {% for comp in competencias %}
-                    <option value="{{ comp }}" {% if filtro_competencia == comp %}selected{% endif %}>
-                        {{ comp|replace('-', '/') }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
+                <div class="col-md-3">
+                    <label for="competencia" class="form-label">Competência</label>
+                    <select name="competencia" id="competencia" class="form-select">
+                        <option value="">Todas</option>
+                        {% for comp in competencias %}
+                        <option value="{{ comp }}" {% if filtro_competencia == comp %}selected{% endif %}>
+                            {{ comp|replace('-', '/') }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-search me-2"></i>Filtrar
-                </button>
-                <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
-                    <i class="fas fa-undo me-2"></i>Limpar Filtros
-                </a>
-            </div>
-        </form>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-2"></i>Filtrar
+                    </button>
+                    <a href="{{ url_for('meta.lista_metas') }}" class="btn btn-secondary">
+                        <i class="fas fa-undo me-2"></i>Limpar Filtros
+                    </a>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Tabela de Metas -->
@@ -104,7 +110,7 @@
                             <th>Período</th>
                             <th>Empresa</th>
                             <th>Competência</th>
-                            <th class="text-end">Valor Meta Mês</th>
+                            <th class="text-end">Meta (R$)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -112,24 +118,23 @@
                             {% for meta in metas %}
                             <tr>
                                 <td>
-                                    {% if meta.DESCRICAO_EDITAL %}
-                                        {{ meta.DESCRICAO_EDITAL }}
-                                    {% else %}
-                                        Edital {{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}
-                                    {% endif %}
+                                    <span class="badge bg-primary">
+                                        {{ meta.NU_EDITAL }}/{{ meta.ANO_EDITAL }}
+                                    </span>
+                                    {{ meta.DESCRICAO_EDITAL }}
                                 </td>
                                 <td>
-                                    {% if meta.NUM_PERIODO %}
-                                        Período {{ meta.NUM_PERIODO }}
-                                    {% else %}
-                                        Período não identificado
-                                    {% endif %}
+                                    Período {{ meta.NUM_PERIODO }}
+                                    <br>
+                                    <small class="text-muted">
+                                        {{ meta.DT_INICIO.strftime('%d/%m/%Y') }} - {{ meta.DT_FIM.strftime('%d/%m/%Y') }}
+                                    </small>
                                 </td>
                                 <td>{{ meta.NO_EMPRESA_ABREVIADA }}</td>
                                 <td>{{ meta.MES_COMPETENCIA|replace('-', '/') }}</td>
                                 <td class="text-end">
-                                    <span class="badge bg-success fs-6">
-                                        R$ {{ "{:,.2f}".format(meta.VR_META_MES).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                    <span class="meta-valor">
+                                        R$ {{ '{:,.2f}'.format(meta.VR_META_MES).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                                     </span>
                                 </td>
                             </tr>

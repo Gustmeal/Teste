@@ -573,35 +573,21 @@ def salvar_distribuicao_inicial():
                 'erro': 'Dados de cálculo não encontrados na sessão. Por favor, calcule a distribuição novamente.'
             })
 
-        # Verificar se já existe distribuição para este período
-        periodo = PeriodoAvaliacao.query.get(periodo_id)
-        sql_check = text("""
-            SELECT COUNT(*) as total
-            FROM BDG.DCA_TB017_DISTRIBUICAO_SUMARIO
-            WHERE ID_EDITAL = :edital_id
-            AND ID_PERIODO = :periodo_id
-            AND DELETED_AT IS NULL
-        """)
-
-        result = db.session.execute(sql_check, {
-            'edital_id': edital_id,
-            'periodo_id': periodo.ID_PERIODO
-        }).fetchone()
-
-        if result and result.total > 0:
-            return jsonify({
-                'sucesso': False,
-                'erro': 'Já existe uma distribuição de metas para este período!'
-            })
+        # ====================================================================
+        # REMOVIDA A VALIDAÇÃO QUE IMPEDIA SALVAR SE JÁ EXISTISSE
+        # Agora o soft delete é feito automaticamente na função salvar_distribuicao()
+        # ====================================================================
 
         # Buscar dados calculados da sessão
         dados_calculados = session.get('distribuicao_calculada')
         incremento_salvar = session.get('distribuicao_incremento', 1.0)
 
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
+
         from app.utils.distribuicao_inicial import DistribuicaoInicial
         distribuidor = DistribuicaoInicial(edital_id, periodo_id, incremento_salvar)
 
-        # Salvar distribuição
+        # Salvar distribuição (com soft delete automático dentro)
         if distribuidor.salvar_distribuicao(dados_calculados):
             # Limpar dados da sessão após o salvamento
             session.pop('distribuicao_calculada', None)

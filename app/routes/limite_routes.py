@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file
+from flask import Blueprint, render_template, redirect, url_for, request, flash, send_file, jsonify
 from app.models.limite_distribuicao import LimiteDistribuicao
 from app.models.edital import Edital
 from app.models.periodo import PeriodoAvaliacao
@@ -3497,3 +3497,301 @@ def gerar_pdf_analitico_cpf(edital_id, periodo_id):
         import traceback
         logging.error(traceback.format_exc())
         return redirect(url_for('limite.gerar_arquivos_analiticos'))
+
+
+@limite_bp.route('/limites/dashboard')
+@login_required
+def dashboard_distribuicao():
+    """
+    Dashboard principal de distribuição de contratos.
+    Exibe KPIs, gráficos e informações consolidadas.
+    """
+    try:
+        # Buscar último edital e período
+        ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+
+        if not ultimo_edital:
+            flash('Não foram encontrados editais cadastrados.', 'warning')
+            return redirect(url_for('edital.lista_editais'))
+
+        ultimo_periodo = PeriodoAvaliacao.query.filter(
+            PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
+            PeriodoAvaliacao.DELETED_AT == None
+        ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+
+        # Buscar todos os editais e períodos para filtros
+        editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+        periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).order_by(
+            PeriodoAvaliacao.ID_PERIODO.desc()).all()
+
+        # NOVO: Buscar empresas participantes para o filtro
+        with db.engine.connect() as connection:
+            sql_empresas = text("""
+                SELECT DISTINCT
+                    EM.pkEmpresaResponsavelCobranca,
+                    EM.NO_ABREVIADO_EMPRESA,
+                    EM.nmEmpresaResponsavelCobranca
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA] EM
+                    ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                WHERE DIS.DELETED_AT IS NULL
+                ORDER BY EM.NO_ABREVIADO_EMPRESA
+            """)
+
+            resultado_empresas = connection.execute(sql_empresas).fetchall()
+            empresas = [
+                {
+                    'id': row[0],
+                    'nome_abreviado': row[1],
+                    'nome_completo': row[2]
+                }
+                for row in resultado_empresas
+            ]
+
+        return render_template(
+            'credenciamento/dashboard_distribuicao.html',
+            ultimo_edital=ultimo_edital,
+            ultimo_periodo=ultimo_periodo,
+            editais=editais,
+            periodos=periodos,
+            empresas=empresas  # NOVO
+        )
+
+    except Exception as e:
+        flash(f'Erro ao carregar dashboard: {str(e)}', 'danger')
+        logging.error(f"Erro em dashboard_distribuicao: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return redirect(url_for('credenciamento.index'))
+
+
+@limite_bp.route('/limites/api/dashboard-data')
+@login_required
+def api_dashboard_data():
+    """
+    API para buscar dados do dashboard de forma assíncrona.
+    Retorna JSON com KPIs e dados para gráficos.
+    """
+    try:
+        edital_id = request.args.get('edital_id', type=int)
+        periodo_id = request.args.get('periodo_id', type=int)
+        empresa_id = request.args.get('empresa_id', type=int)  # NOVO FILTRO
+
+        # Se não informado, buscar o mais recente
+        if not edital_id or not periodo_id:
+            ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
+            if ultimo_edital:
+                edital_id = ultimo_edital.ID
+                ultimo_periodo = PeriodoAvaliacao.query.filter(
+                    PeriodoAvaliacao.ID_EDITAL == edital_id,
+                    PeriodoAvaliacao.DELETED_AT == None
+                ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
+                if ultimo_periodo:
+                    periodo_id = ultimo_periodo.ID_PERIODO
+
+        with db.engine.connect() as connection:
+            # Construir WHERE clause com filtro de empresa
+            where_empresa = ""
+            params = {
+                'edital_id': edital_id,
+                'periodo_id': periodo_id
+            }
+
+            if empresa_id:
+                where_empresa = "AND DIS.COD_EMPRESA_COBRANCA = :empresa_id"
+                params['empresa_id'] = empresa_id
+
+            # KPIs Gerais
+            sql_kpis = text(f"""
+                SELECT 
+                    COUNT(DISTINCT DIS.fkContratoSISCTR) AS total_contratos,
+                    COUNT(DISTINCT DIS.NR_CPF_CNPJ) AS total_cpfs,
+                    COUNT(DISTINCT DIS.COD_EMPRESA_COBRANCA) AS total_empresas,
+                    SUM(DIS.VR_SD_DEVEDOR) AS valor_total,
+                    COUNT(DISTINCT DIS.COD_CRITERIO_SELECAO) AS total_criterios
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                WHERE DIS.ID_EDITAL = :edital_id
+                    AND DIS.ID_PERIODO = :periodo_id
+                    {where_empresa}
+                    AND DIS.DELETED_AT IS NULL
+            """)
+
+            kpis = connection.execute(sql_kpis, params).fetchone()
+
+            # Distribuição por Empresa
+            sql_empresas = text(f"""
+                SELECT 
+                    EM.NO_ABREVIADO_EMPRESA AS empresa,
+                    COUNT(DISTINCT DIS.fkContratoSISCTR) AS qtde_contratos,
+                    SUM(DIS.VR_SD_DEVEDOR) AS valor_total
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA] EM
+                    ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                WHERE DIS.ID_EDITAL = :edital_id
+                    AND DIS.ID_PERIODO = :periodo_id
+                    {where_empresa}
+                    AND DIS.DELETED_AT IS NULL
+                GROUP BY EM.NO_ABREVIADO_EMPRESA
+                ORDER BY qtde_contratos DESC
+            """)
+
+            empresas = connection.execute(sql_empresas, params).fetchall()
+
+            # Distribuição por Critério
+            sql_criterios = text(f"""
+                SELECT 
+                    CR.DS_CRITERIO_SELECAO AS criterio,
+                    COUNT(DISTINCT DIS.fkContratoSISCTR) AS qtde_contratos,
+                    SUM(DIS.VR_SD_DEVEDOR) AS valor_total
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[DCA_TB004_CRITERIO_SELECAO] CR
+                    ON DIS.COD_CRITERIO_SELECAO = CR.COD
+                WHERE DIS.ID_EDITAL = :edital_id
+                    AND DIS.ID_PERIODO = :periodo_id
+                    {where_empresa}
+                    AND DIS.DELETED_AT IS NULL
+                GROUP BY CR.DS_CRITERIO_SELECAO
+                ORDER BY qtde_contratos DESC
+            """)
+
+            criterios = connection.execute(sql_criterios, params).fetchall()
+
+            # Distribuição por Produto
+            sql_produtos = text(f"""
+                SELECT 
+                    PR.NO_ABREVIADO_PRODUTO AS produto,
+                    COUNT(DISTINCT DIS.fkContratoSISCTR) AS qtde_contratos,
+                    SUM(DIS.VR_SD_DEVEDOR) AS valor_total
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[COM_TB001_CONTRATO] CTR
+                    ON DIS.fkContratoSISCTR = CTR.fkContratoSISCTR
+                INNER JOIN [BDG].[PAR_TB001_PRODUTOS] PR
+                    ON CTR.COD_PRODUTO = PR.pkSistemaOriginario
+                WHERE DIS.ID_EDITAL = :edital_id
+                    AND DIS.ID_PERIODO = :periodo_id
+                    {where_empresa}
+                    AND DIS.DELETED_AT IS NULL
+                GROUP BY PR.NO_ABREVIADO_PRODUTO
+                ORDER BY qtde_contratos DESC
+            """)
+
+            produtos = connection.execute(sql_produtos, params).fetchall()
+
+        # Montar resposta JSON
+        response_data = {
+            'kpis': {
+                'total_contratos': kpis[0] if kpis else 0,
+                'total_cpfs': kpis[1] if kpis else 0,
+                'total_empresas': kpis[2] if kpis else 0,
+                'valor_total': float(kpis[3]) if kpis and kpis[3] else 0,
+                'total_criterios': kpis[4] if kpis else 0
+            },
+            'empresas': [
+                {
+                    'nome': row[0],
+                    'qtde_contratos': row[1],
+                    'valor_total': float(row[2]) if row[2] else 0
+                }
+                for row in empresas
+            ],
+            'criterios': [
+                {
+                    'nome': row[0],
+                    'qtde_contratos': row[1],
+                    'valor_total': float(row[2]) if row[2] else 0
+                }
+                for row in criterios
+            ],
+            'produtos': [
+                {
+                    'nome': row[0],
+                    'qtde_contratos': row[1],
+                    'valor_total': float(row[2]) if row[2] else 0
+                }
+                for row in produtos
+            ]
+        }
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        logging.error(f"Erro na API dashboard: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+@limite_bp.route('/limites/api/buscar-contrato')
+@login_required
+def api_buscar_contrato():
+    """
+    API para buscar informações detalhadas de um contrato específico.
+    Aceita tanto fkContratoSISCTR quanto NR_CONTRATO
+    """
+    try:
+        contrato_busca = request.args.get('contrato', '').strip()
+
+        if not contrato_busca:
+            return jsonify({'error': 'Informe o número do contrato'}), 400
+
+        with db.engine.connect() as connection:
+            # Tentar buscar por fkContratoSISCTR (número) ou NR_CONTRATO (string)
+            sql = text("""
+                SELECT 
+                    CTR.NR_CONTRATO,
+                    DIS.NR_CPF_CNPJ,
+                    EM.NO_ABREVIADO_EMPRESA AS empresa,
+                    CR.DS_CRITERIO_SELECAO AS criterio,
+                    PR.NO_ABREVIADO_PRODUTO AS produto,
+                    DIS.VR_SD_DEVEDOR,
+                    SIT.QT_DIAS_ATRASO,
+                    DIS.DT_REFERENCIA,
+                    ED.NU_EDITAL,
+                    ED.ANO AS ANO_EDITAL,
+                    DIS.ID_PERIODO,
+                    DIS.fkContratoSISCTR
+                FROM [BDG].[DCA_TB005_DISTRIBUICAO] DIS
+                INNER JOIN [BDG].[COM_TB001_CONTRATO] CTR
+                    ON DIS.fkContratoSISCTR = CTR.fkContratoSISCTR
+                INNER JOIN [BDG].[PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA] EM
+                    ON DIS.COD_EMPRESA_COBRANCA = EM.pkEmpresaResponsavelCobranca
+                INNER JOIN [BDG].[DCA_TB004_CRITERIO_SELECAO] CR
+                    ON DIS.COD_CRITERIO_SELECAO = CR.COD
+                INNER JOIN [BDG].[PAR_TB001_PRODUTOS] PR
+                    ON CTR.COD_PRODUTO = PR.pkSistemaOriginario
+                INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                    ON DIS.fkContratoSISCTR = SIT.fkContratoSISCTR
+                INNER JOIN [BDG].[DCA_TB001_EDITAIS] ED
+                    ON DIS.ID_EDITAL = ED.ID
+                WHERE DIS.DELETED_AT IS NULL
+                    AND SIT.fkSituacaoCredito = 1
+                    AND (
+                        CAST(DIS.fkContratoSISCTR AS VARCHAR) = :contrato
+                        OR CTR.NR_CONTRATO LIKE '%' + :contrato + '%'
+                    )
+            """)
+
+            resultado = connection.execute(sql, {'contrato': contrato_busca}).fetchone()
+
+            if not resultado:
+                return jsonify({'error': 'Contrato não encontrado na distribuição atual'}), 404
+
+            return jsonify({
+                'nr_contrato': resultado[0],
+                'cpf_cnpj': resultado[1],
+                'empresa': resultado[2],
+                'criterio': resultado[3],
+                'produto': resultado[4],
+                'saldo_devedor': float(resultado[5]) if resultado[5] else 0,
+                'dias_atraso': resultado[6] if resultado[6] else 0,
+                'data_referencia': resultado[7].strftime('%d/%m/%Y') if resultado[7] else None,
+                'edital': f"{resultado[8]}/{resultado[9]}",
+                'periodo': resultado[10],
+                'fk_contrato': resultado[11]
+            })
+
+    except Exception as e:
+        logging.error(f"Erro ao buscar contrato: {str(e)}")
+        import traceback
+        logging.error(traceback.format_exc())
+        return jsonify({'error': f'Erro ao buscar contrato: {str(e)}'}), 500

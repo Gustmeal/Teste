@@ -1,0 +1,1043 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-container fade-in">
+    <a href="{{ url_for('credenciamento.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <!-- Header com Filtros -->
+    <div class="dashboard-header">
+        <div class="row align-items-center mb-4">
+            <div class="col-md-12">
+                <h1 class="dashboard-title">
+                    <i class="fas fa-chart-line text-white me-2"></i>
+                    Dashboard de Distribuição
+                </h1>
+                <p class="text-white-50 mb-3">Visão consolidada da distribuição de contratos</p>
+
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-file-alt me-1"></i>Edital
+                                </label>
+                                <select id="filtroEdital" class="form-select form-select-lg">
+                                    {% for edital in editais %}
+                                    <option value="{{ edital.ID }}" {% if edital.ID == ultimo_edital.ID %}selected{% endif %}>
+                                        Edital {{ edital.NU_EDITAL }}/{{ edital.ANO }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-calendar me-1"></i>Período
+                                </label>
+                                <select id="filtroPeriodo" class="form-select form-select-lg">
+                                    {% for periodo in periodos %}
+                                    <option value="{{ periodo.ID_PERIODO }}"
+                                            data-edital="{{ periodo.ID_EDITAL }}"
+                                            {% if ultimo_periodo and periodo.ID_PERIODO == ultimo_periodo.ID_PERIODO %}selected{% endif %}>
+                                        Período {{ periodo.ID_PERIODO }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">
+                                    <i class="fas fa-building me-1"></i>Empresa
+                                </label>
+                                <select id="filtroEmpresa" class="form-select form-select-lg">
+                                    <option value="">Todas as Empresas</option>
+                                    {% for empresa in empresas %}
+                                    <option value="{{ empresa.id }}">
+                                        {{ empresa.nome_abreviado or empresa.nome_completo }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="carregarDados()" class="btn btn-primary btn-lg w-100">
+                                    <i class="fas fa-search me-2"></i>Pesquisar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Área de Loading -->
+    <div id="loadingArea" style="display: none;" class="text-center py-5">
+        <div class="spinner-border text-white" style="width: 4rem; height: 4rem;" role="status"></div>
+        <p class="mt-3 text-white fs-5">Carregando dados do dashboard...</p>
+    </div>
+
+    <!-- Área de Conteúdo -->
+    <div id="contentArea">
+        <div class="text-center text-white py-5">
+            <i class="fas fa-info-circle fa-3x mb-3 d-block opacity-75"></i>
+            <p class="fs-5">Selecione os filtros e clique em <strong>Pesquisar</strong> para visualizar os dados.</p>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Detalhes do Contrato -->
+<div class="modal fade" id="modalContrato" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-contract me-2"></i>Detalhes do Contrato
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalContratoBody">
+                <!-- Conteúdo será preenchido via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Dashboard Styles */
+.dashboard-container {
+    padding: 2rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+}
+
+.dashboard-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.dashboard-header .card {
+    background: rgba(255,255,255,0.98);
+    border: none;
+}
+
+.dashboard-header .form-label {
+    color: #495057 !important;
+    font-size: 0.9rem;
+}
+
+/* KPI Cards - OTIMIZADOS COM TOOLTIP */
+.kpi-card {
+    border-radius: 15px;
+    padding: 1.25rem 1.5rem;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    animation: slideUp 0.5s ease-out;
+    min-height: 130px;
+    height: 130px;
+}
+
+.kpi-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.kpi-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.kpi-success {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.kpi-warning {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.kpi-info {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.kpi-icon {
+    font-size: 2.25rem;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+}
+
+.kpi-content {
+    width: 100%;
+}
+
+.kpi-label {
+    font-size: 0.7rem;
+    opacity: 0.95;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+}
+
+.kpi-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    cursor: help;
+}
+
+/* Responsividade dos KPI Cards */
+@media (min-width: 1600px) {
+    .kpi-value {
+        font-size: 1.65rem;
+    }
+    .kpi-card {
+        min-height: 135px;
+        height: 135px;
+    }
+}
+
+@media (max-width: 1400px) {
+    .kpi-value {
+        font-size: 1.4rem;
+    }
+    .kpi-card {
+        min-height: 125px;
+        height: 125px;
+    }
+}
+
+@media (max-width: 1200px) {
+    .kpi-value {
+        font-size: 1.3rem;
+    }
+    .kpi-card {
+        min-height: 120px;
+        height: 120px;
+    }
+    .kpi-icon {
+        font-size: 2rem;
+    }
+}
+
+@media (max-width: 992px) {
+    .kpi-value {
+        font-size: 1.6rem;
+    }
+    .kpi-card {
+        min-height: 130px;
+        height: auto;
+        margin-bottom: 1rem;
+    }
+    .kpi-value {
+        white-space: normal;
+        word-break: break-word;
+    }
+}
+
+@media (max-width: 768px) {
+    .kpi-value {
+        font-size: 1.4rem;
+    }
+    .kpi-card {
+        min-height: 120px;
+    }
+}
+
+@media (max-width: 576px) {
+    .kpi-value {
+        font-size: 1.2rem;
+    }
+    .kpi-card {
+        min-height: 110px;
+        padding: 1rem;
+    }
+    .kpi-label {
+        font-size: 0.65rem;
+    }
+}
+
+/* Card Headers com Gradiente */
+.bg-gradient-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.bg-gradient-success {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+}
+
+.bg-gradient-warning {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important;
+}
+
+.bg-gradient-info {
+    background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%) !important;
+}
+
+/* Tabelas */
+.table-card {
+    background: white;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.table-card .card-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: none;
+}
+
+.table-card .card-header h5 {
+    color: white !important;
+    font-weight: 600;
+    margin: 0;
+}
+
+.table thead th {
+    background-color: #f8f9fa;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #dee2e6;
+    color: #495057 !important;
+    white-space: nowrap;
+}
+
+.table tbody tr {
+    transition: all 0.2s ease;
+}
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+    transform: scale(1.005);
+}
+
+.table tbody td {
+    vertical-align: middle;
+    font-size: 0.9rem;
+}
+
+/* Progress Bar */
+.progress {
+    height: 25px;
+    border-radius: 10px;
+    background-color: #e9ecef;
+}
+
+.progress-bar {
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Badges */
+.badge-rank {
+    font-size: 1.1rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.rank-1 { background: linear-gradient(135deg, #FFD700, #FFA500); color: #fff; }
+.rank-2 { background: linear-gradient(135deg, #C0C0C0, #808080); color: #fff; }
+.rank-3 { background: linear-gradient(135deg, #CD7F32, #8B4513); color: #fff; }
+
+/* Animações */
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+/* Info Group no Modal */
+.info-group {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.info-group label {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+/* Tooltip personalizado para KPIs */
+.tooltip {
+    font-size: 1rem;
+}
+
+.tooltip-inner {
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.tooltip.bs-tooltip-top .tooltip-arrow::before {
+    border-top-color: #2c3e50;
+}
+
+.tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+    border-bottom-color: #2c3e50;
+}
+
+.tooltip.bs-tooltip-start .tooltip-arrow::before {
+    border-left-color: #2c3e50;
+}
+
+.tooltip.bs-tooltip-end .tooltip-arrow::before {
+    border-right-color: #2c3e50;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let chartEmpresas, chartCriterios, chartProdutos;
+let currentData = null;
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('filtroEdital').addEventListener('change', filtrarPeriodos);
+});
+
+// Filtrar períodos baseado no edital
+function filtrarPeriodos() {
+    const editalId = document.getElementById('filtroEdital').value;
+    const selectPeriodo = document.getElementById('filtroPeriodo');
+    const opcoes = selectPeriodo.querySelectorAll('option');
+
+    opcoes.forEach(opcao => {
+        if (opcao.dataset.edital == editalId) {
+            opcao.style.display = 'block';
+        } else {
+            opcao.style.display = 'none';
+        }
+    });
+
+    const primeiroVisivel = Array.from(opcoes).find(op => op.style.display !== 'none');
+    if (primeiroVisivel) {
+        selectPeriodo.value = primeiroVisivel.value;
+    }
+}
+
+// Carregar dados
+function carregarDados() {
+    const editalId = document.getElementById('filtroEdital').value;
+    const periodoId = document.getElementById('filtroPeriodo').value;
+    const empresaId = document.getElementById('filtroEmpresa').value;
+
+    document.getElementById('loadingArea').style.display = 'block';
+    document.getElementById('contentArea').style.display = 'none';
+
+    let url = `/credenciamento/limites/api/dashboard-data?edital_id=${editalId}&periodo_id=${periodoId}`;
+    if (empresaId) {
+        url += `&empresa_id=${empresaId}`;
+    }
+
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            currentData = data;
+            renderizarDashboard(data);
+            document.getElementById('loadingArea').style.display = 'none';
+            document.getElementById('contentArea').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Erro:', error);
+            alert('Erro ao carregar dados do dashboard');
+            document.getElementById('loadingArea').style.display = 'none';
+            document.getElementById('contentArea').innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Erro ao carregar dados. Tente novamente.
+                </div>
+            `;
+            document.getElementById('contentArea').style.display = 'block';
+        });
+}
+
+// Renderizar dashboard
+function renderizarDashboard(data) {
+    const html = `
+        <!-- KPI Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3 col-sm-6">
+                <div class="kpi-card kpi-primary">
+                    <div class="kpi-icon">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <div class="kpi-content">
+                        <div class="kpi-label">Total Contratos</div>
+                        <div class="kpi-value"
+                             id="kpiContratos"
+                             data-bs-toggle="tooltip"
+                             data-bs-placement="top"
+                             title="">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="kpi-card kpi-success">
+                    <div class="kpi-icon">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+                    <div class="kpi-content">
+                        <div class="kpi-label">Saldo Devedor</div>
+                        <div class="kpi-value"
+                             id="kpiValor"
+                             data-bs-toggle="tooltip"
+                             data-bs-placement="top"
+                             title="">R$ 0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="kpi-card kpi-warning">
+                    <div class="kpi-icon">
+                        <i class="fas fa-building"></i>
+                    </div>
+                    <div class="kpi-content">
+                        <div class="kpi-label">Empresas</div>
+                        <div class="kpi-value"
+                             id="kpiEmpresas"
+                             data-bs-toggle="tooltip"
+                             data-bs-placement="top"
+                             title="">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3 col-sm-6">
+                <div class="kpi-card kpi-info">
+                    <div class="kpi-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="kpi-content">
+                        <div class="kpi-label">CPFs Únicos</div>
+                        <div class="kpi-value"
+                             id="kpiCpfs"
+                             data-bs-toggle="tooltip"
+                             data-bs-placement="top"
+                             title="">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pesquisa -->
+        <div class="card shadow-sm mb-4" style="background: white;">
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-10">
+                        <label class="form-label fw-bold">
+                            <i class="fas fa-search me-2"></i>Pesquisar Contrato
+                        </label>
+                        <input type="text" id="buscaContrato" class="form-control form-control-lg"
+                               placeholder="Digite o ID ou número do contrato">
+                    </div>
+                    <div class="col-md-2">
+                        <button onclick="buscarContrato()" class="btn btn-primary btn-lg w-100">
+                            <i class="fas fa-search me-2"></i>Buscar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+                <div class="table-card">
+                    <div class="card-header bg-gradient-primary">
+                        <h5><i class="fas fa-chart-pie me-2"></i>Distribuição por Empresa</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartEmpresas" style="max-height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="table-card">
+                    <div class="card-header bg-gradient-success">
+                        <h5><i class="fas fa-chart-bar me-2"></i>Distribuição por Critério</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartCriterios" style="max-height: 300px;"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-12">
+                <div class="table-card">
+                    <div class="card-header bg-gradient-warning">
+                        <h5><i class="fas fa-chart-area me-2"></i>Distribuição por Produto</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartProdutos" style="max-height: 250px;"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabelas -->
+        <div class="row g-4">
+            <div class="col-lg-12">
+                <div class="table-card">
+                    <div class="card-header bg-dark text-white">
+                        <h5><i class="fas fa-trophy me-2"></i>Ranking de Empresas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th width="8%" class="text-white bg-dark">#</th>
+                                        <th width="35%" class="text-white bg-dark">Empresa</th>
+                                        <th width="17%" class="text-end text-white bg-dark">Contratos</th>
+                                        <th width="22%" class="text-end text-white bg-dark">Saldo Devedor</th>
+                                        <th width="18%" class="text-center text-white bg-dark">Participação</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaEmpresas"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="table-card">
+                    <div class="card-header bg-gradient-success">
+                        <h5><i class="fas fa-list-check me-2"></i>Contratos por Critério</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-white bg-success">Critério</th>
+                                        <th class="text-end text-white bg-success">Qtde</th>
+                                        <th class="text-end text-white bg-success">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaCriterios"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="table-card">
+                    <div class="card-header bg-gradient-info">
+                        <h5><i class="fas fa-box me-2"></i>Contratos por Produto</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th class="text-white bg-info">Produto</th>
+                                        <th class="text-end text-white bg-info">Qtde</th>
+                                        <th class="text-end text-white bg-info">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabelaProdutos"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('contentArea').innerHTML = html;
+
+    atualizarKPIs(data.kpis);
+    atualizarGraficoEmpresas(data.empresas);
+    atualizarGraficoCriterios(data.criterios);
+    atualizarGraficoProdutos(data.produtos);
+    atualizarTabelaEmpresas(data.empresas);
+    atualizarTabelaCriterios(data.criterios);
+    atualizarTabelaProdutos(data.produtos);
+
+    // Inicializar tooltips
+    inicializarTooltips();
+
+    document.getElementById('buscaContrato').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') buscarContrato();
+    });
+}
+
+// Atualizar KPIs com tooltips
+function atualizarKPIs(kpis) {
+    // Guardar valores completos para os tooltips
+    const valorContratos = formatNumber(kpis.total_contratos);
+    const valorMonetario = formatCurrency(kpis.valor_total);
+    const valorEmpresas = formatNumber(kpis.total_empresas);
+    const valorCpfs = formatNumber(kpis.total_cpfs);
+
+    // Animar e atualizar tooltips
+    animateValueWithTooltip('kpiContratos', 0, kpis.total_contratos, 1000, formatNumber, valorContratos);
+    animateValueWithTooltip('kpiValor', 0, kpis.valor_total, 1000, formatCurrency, valorMonetario);
+    animateValueWithTooltip('kpiEmpresas', 0, kpis.total_empresas, 1000, formatNumber, valorEmpresas);
+    animateValueWithTooltip('kpiCpfs', 0, kpis.total_cpfs, 1000, formatNumber, valorCpfs);
+}
+
+// Animar valor com tooltip
+function animateValueWithTooltip(id, start, end, duration, formatter, tooltipText) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    const range = end - start;
+    const increment = range / (duration / 16);
+    let current = start;
+
+    const timer = setInterval(() => {
+        current += increment;
+        if ((increment > 0 && current >= end) || (increment < 0 && current <= end)) {
+            current = end;
+            clearInterval(timer);
+
+            // Atualizar tooltip com valor completo
+            element.setAttribute('title', tooltipText);
+            element.setAttribute('data-bs-original-title', tooltipText);
+
+            // Reinicializar tooltip
+            const tooltip = bootstrap.Tooltip.getInstance(element);
+            if (tooltip) {
+                tooltip.dispose();
+            }
+            new bootstrap.Tooltip(element);
+        }
+        element.textContent = formatter(current);
+    }, 16);
+}
+
+// Inicializar todos os tooltips
+function inicializarTooltips() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+            trigger: 'hover focus',
+            delay: { show: 200, hide: 100 }
+        });
+    });
+}
+
+// Formatadores
+function formatNumber(value) {
+    return Math.round(value).toLocaleString('pt-BR');
+}
+
+function formatCurrency(value) {
+    return 'R$ ' + value.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+// Gráfico de Empresas (Pizza)
+function atualizarGraficoEmpresas(empresas) {
+    const ctx = document.getElementById('chartEmpresas');
+    if (!ctx) return;
+
+    if (chartEmpresas) chartEmpresas.destroy();
+
+    const cores = [
+        '#667eea', '#764ba2', '#f093fb', '#f5576c',
+        '#4facfe', '#00f2fe', '#43e97b', '#38f9d7',
+        '#fa709a', '#fee140', '#30cfd0', '#330867'
+    ];
+
+    chartEmpresas = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: empresas.map(e => e.nome),
+            datasets: [{
+                data: empresas.map(e => e.qtde_contratos),
+                backgroundColor: cores,
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { padding: 15, font: { size: 11 } }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${context.label}: ${value.toLocaleString('pt-BR')} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Gráfico de Critérios (Barras)
+function atualizarGraficoCriterios(criterios) {
+    const ctx = document.getElementById('chartCriterios');
+    if (!ctx) return;
+
+    if (chartCriterios) chartCriterios.destroy();
+
+    chartCriterios = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: criterios.map(c => c.nome.length > 30 ? c.nome.substring(0, 30) + '...' : c.nome),
+            datasets: [{
+                label: 'Quantidade',
+                data: criterios.map(c => c.qtde_contratos),
+                backgroundColor: 'rgba(240, 147, 251, 0.8)',
+                borderColor: 'rgb(240, 147, 251)',
+                borderWidth: 2,
+                borderRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+
+// Gráfico de Produtos
+function atualizarGraficoProdutos(produtos) {
+    const ctx = document.getElementById('chartProdutos');
+    if (!ctx) return;
+
+    if (chartProdutos) chartProdutos.destroy();
+
+    chartProdutos = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: produtos.map(p => p.nome),
+            datasets: [{
+                label: 'Quantidade',
+                data: produtos.map(p => p.qtde_contratos),
+                backgroundColor: 'rgba(79, 172, 254, 0.8)',
+                borderColor: 'rgb(79, 172, 254)',
+                borderWidth: 2,
+                borderRadius: 8
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { x: { beginAtZero: true } }
+        }
+    });
+}
+
+// Tabela de Empresas
+function atualizarTabelaEmpresas(empresas) {
+    const tbody = document.getElementById('tabelaEmpresas');
+    if (!tbody) return;
+
+    const totalContratos = empresas.reduce((sum, e) => sum + e.qtde_contratos, 0);
+
+    let html = '';
+    empresas.forEach((empresa, index) => {
+        const percentual = ((empresa.qtde_contratos / totalContratos) * 100).toFixed(1);
+        const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : '';
+
+        html += `
+            <tr>
+                <td><span class="badge badge-rank ${rankClass}">${index + 1}º</span></td>
+                <td class="fw-bold">${empresa.nome}</td>
+                <td class="text-end">${empresa.qtde_contratos.toLocaleString('pt-BR')}</td>
+                <td class="text-end">${formatCurrency(empresa.valor_total)}</td>
+                <td>
+                    <div class="progress">
+                        <div class="progress-bar" style="width: ${percentual}%">${percentual}%</div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// Tabela de Critérios
+function atualizarTabelaCriterios(criterios) {
+    const tbody = document.getElementById('tabelaCriterios');
+    if (!tbody) return;
+
+    let html = '';
+    criterios.forEach(criterio => {
+        html += `
+            <tr>
+                <td class="fw-bold">${criterio.nome}</td>
+                <td class="text-end">${criterio.qtde_contratos.toLocaleString('pt-BR')}</td>
+                <td class="text-end">${formatCurrency(criterio.valor_total)}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html || '<tr><td colspan="3" class="text-center text-muted">Sem dados</td></tr>';
+}
+
+// Tabela de Produtos
+function atualizarTabelaProdutos(produtos) {
+    const tbody = document.getElementById('tabelaProdutos');
+    if (!tbody) return;
+
+    let html = '';
+    produtos.forEach(produto => {
+        html += `
+            <tr>
+                <td class="fw-bold">${produto.nome}</td>
+                <td class="text-end">${produto.qtde_contratos.toLocaleString('pt-BR')}</td>
+                <td class="text-end">${formatCurrency(produto.valor_total)}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = html || '<tr><td colspan="3" class="text-center text-muted">Sem dados</td></tr>';
+}
+
+// Buscar contrato
+function buscarContrato() {
+    const contratoBusca = document.getElementById('buscaContrato').value.trim();
+
+    if (!contratoBusca) {
+        alert('Digite o número do contrato');
+        return;
+    }
+
+    fetch(`/credenciamento/limites/api/buscar-contrato?contrato=${encodeURIComponent(contratoBusca)}`)
+        .then(response => {
+            if (!response.ok) throw new Error('Contrato não encontrado');
+            return response.json();
+        })
+        .then(data => {
+            mostrarDetalhesContrato(data);
+        })
+        .catch(error => {
+            alert('Contrato não encontrado na distribuição atual');
+            console.error(error);
+        });
+}
+
+// Modal com detalhes
+function mostrarDetalhesContrato(contrato) {
+    const modalBody = document.getElementById('modalContratoBody');
+
+    modalBody.innerHTML = `
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>Número do Contrato</label>
+                    <div class="fw-bold fs-5">${contrato.nr_contrato}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>CPF/CNPJ</label>
+                    <div class="fw-bold fs-5">${contrato.cpf_cnpj}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>Empresa</label>
+                    <div class="fw-bold">${contrato.empresa}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>Produto</label>
+                    <div class="fw-bold">${contrato.produto}</div>
+                </div>
+            </div>
+            <div class="col-md-12">
+                <div class="info-group">
+                    <label>Critério de Seleção</label>
+                    <div class="fw-bold">${contrato.criterio}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-group">
+                    <label>Saldo Devedor</label>
+                    <div class="fw-bold text-success fs-5">${formatCurrency(contrato.saldo_devedor)}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-group">
+                    <label>Dias em Atraso</label>
+                    <div class="fw-bold text-danger fs-5">${contrato.dias_atraso}</div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="info-group">
+                    <label>Data Referência</label>
+                    <div class="fw-bold">${contrato.data_referencia}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>Edital</label>
+                    <div class="fw-bold">${contrato.edital}</div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="info-group">
+                    <label>Período</label>
+                    <div class="fw-bold">${contrato.periodo}</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const modal = new bootstrap.Modal(document.getElementById('modalContrato'));
+    modal.show();
+}
+</script>
+{% endblock %}

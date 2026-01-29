@@ -206,13 +206,81 @@ class DistribuicaoInicial:
     def salvar_distribuicao(self, dados_calculados=None):
         """
         Salva a distribuição calculada nas três tabelas:
-        1. TB016_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
-        2. TB017_DISTRIBUICAO_SUMARIO (nova - resumo)
-        3. TB019_DISTRIBUICAO_MENSAL (nova - detalhes)
+        1. TB017_DISTRIBUICAO_SUMARIO (resumo)
+        2. TB019_DISTRIBUICAO_MENSAL (detalhes)
+        3. TB018_METAS_REDISTRIBUIDAS_MENSAL (compatibilidade)
+
+        NOVO: Faz soft delete automático de registros antigos com mesmo EDITAL e PERÍODO
         """
         try:
             if not dados_calculados:
                 dados_calculados = self.calcular_distribuicao()
+
+            # ====================================================================
+            # NOVO: SOFT DELETE DOS REGISTROS ANTIGOS ANTES DE INSERIR OS NOVOS
+            # ====================================================================
+            print(
+                f"Fazendo soft delete de metas antigas para Edital {self.edital_id} e Período {self.periodo_business_id}")
+
+            # Soft delete na TB017_DISTRIBUICAO_SUMARIO
+            sql_delete_sumario = text("""
+                UPDATE BDG.DCA_TB017_DISTRIBUICAO_SUMARIO
+                SET DELETED_AT = :deleted_at,
+                    UPDATED_AT = :updated_at
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND DELETED_AT IS NULL
+            """)
+
+            result_sumario = db.session.execute(sql_delete_sumario, {
+                'deleted_at': datetime.now(),
+                'updated_at': datetime.now(),
+                'edital_id': self.edital_id,
+                'periodo_id': self.periodo_business_id
+            })
+            print(f"  - TB017_DISTRIBUICAO_SUMARIO: {result_sumario.rowcount} registros marcados como deletados")
+
+            # Soft delete na TB019_DISTRIBUICAO_MENSAL
+            sql_delete_mensal = text("""
+                UPDATE BDG.DCA_TB019_DISTRIBUICAO_MENSAL
+                SET DELETED_AT = :deleted_at,
+                    UPDATED_AT = :updated_at
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND DELETED_AT IS NULL
+            """)
+
+            result_mensal = db.session.execute(sql_delete_mensal, {
+                'deleted_at': datetime.now(),
+                'updated_at': datetime.now(),
+                'edital_id': self.edital_id,
+                'periodo_id': self.periodo_business_id
+            })
+            print(f"  - TB019_DISTRIBUICAO_MENSAL: {result_mensal.rowcount} registros marcados como deletados")
+
+            # Soft delete na TB018_METAS_REDISTRIBUIDAS_MENSAL
+            sql_delete_redistribuidas = text("""
+                UPDATE BDG.DCA_TB018_METAS_REDISTRIBUIDAS_MENSAL
+                SET DELETED_AT = :deleted_at,
+                    UPDATED_AT = :updated_at
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND DELETED_AT IS NULL
+            """)
+
+            result_redistribuidas = db.session.execute(sql_delete_redistribuidas, {
+                'deleted_at': datetime.now(),
+                'updated_at': datetime.now(),
+                'edital_id': self.edital_id,
+                'periodo_id': self.periodo_business_id
+            })
+            print(
+                f"  - TB018_METAS_REDISTRIBUIDAS_MENSAL: {result_redistribuidas.rowcount} registros marcados como deletados")
+
+            # ====================================================================
+            # INSERÇÃO DOS NOVOS REGISTROS (CÓDIGO ORIGINAL)
+            # ====================================================================
+            print(f"Inserindo novos registros de metas...")
 
             # Para cada empresa, salvar nas três tabelas
             for empresa in dados_calculados['empresas']:
@@ -242,14 +310,12 @@ class DistribuicaoInicial:
 
                 # 2. Inserir os detalhes mensais na TB019
                 for competencia, valor_meta in empresa['metas'].items():
-                    # CORREÇÃO: Adicionadas as colunas ID_EDITAL e ID_PERIODO
                     sql_detalhe = text("""
                         INSERT INTO BDG.DCA_TB019_DISTRIBUICAO_MENSAL
                         (ID_DISTRIBUICAO_SUMARIO, ID_EDITAL, ID_PERIODO, ID_EMPRESA, MES_COMPETENCIA, VR_META_MES, CREATED_AT)
                         VALUES (:id_sumario, :id_edital, :id_periodo, :id_empresa, :mes_competencia, :valor_meta, :created_at)
                     """)
 
-                    # CORREÇÃO: Adicionados os parâmetros id_edital e id_periodo
                     db.session.execute(sql_detalhe, {
                         'id_sumario': id_sumario,
                         'id_edital': self.edital_id,
@@ -284,8 +350,10 @@ class DistribuicaoInicial:
                     })
 
             db.session.commit()
+            print("Distribuição salva com sucesso!")
             return True
 
         except Exception as e:
             db.session.rollback()
+            print(f"Erro ao salvar distribuição: {str(e)}")
             raise Exception(f"Erro ao salvar distribuição: {str(e)}")

@@ -6,24 +6,57 @@
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Limites de Distribuição</h1>
         <div>
-            <a href="{{ url_for('limite.lista_limites') }}" class="btn btn-info me-2">
+            <a href="{{ url_for('limite.lista_limites') }}"
+               class="btn btn-info me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Exibe todos os limites de distribuição cadastrados no sistema">
                 <i class="fas fa-list"></i> Visualizar Tudo
             </a>
-            <a href="{{ url_for('limite.distribuir_contratos') }}" class="btn btn-warning me-2">
+            <a href="{{ url_for('limite.analise_limites') }}"
+               class="btn btn-success"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Inicia o processo de criação de novos limites de distribuição, gerando os percentuais máximos que cada empresa pode receber com base nos critérios estabelecidos e no estado de credenciamento das empresas participantes">
+                <i class="fas fa-plus-circle"></i> Novo Limite
+            </a>
+            <a href="{{ url_for('limite.distribuir_contratos') }}"
+               class="btn btn-warning me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Executa a distribuição de contratos entre as empresas credenciadas, aplicando as regras de acordo, arrasto e outros critérios estabelecidos. Este processo efetua e homologa a distribuição final">
                 <i class="fas fa-random"></i> Distribuir Contratos
             </a>
-            <a href="{{ url_for('limite.analitico_distribuicao') }}" class="btn btn-info me-2">
+            <a href="{{ url_for('limite.analitico_distribuicao') }}"
+               class="btn btn-info me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Gera arquivo analítico em formato TXT contendo os detalhes da distribuição realizada para envio ao departamento de TI">
                 <i class="fas fa-file-excel"></i> Analítico Distribuição TI
             </a>
-            <a href="{{ url_for('limite.gerar_arquivos_analiticos') }}" class="btn btn-success me-2">
+            <a href="{{ url_for('limite.gerar_arquivos_analiticos') }}"
+               class="btn btn-success me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Acessa a página de geração de relatórios detalhados da distribuição, permitindo criar análises por produto, por CPF e arquivos Excel personalizados para cada empresa participante">
                 <i class="fas fa-file-download"></i> Gerar Arquivos Analítico
             </a>
-            <a href="{{ url_for('limite.redistribuir_contratos') }}" class="btn btn-secondary me-2">
+            <a href="{{ url_for('limite.redistribuir_contratos') }}"
+               class="btn btn-secondary me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Processo especial utilizado quando uma empresa é descredenciada durante o período vigente. Redistribui os contratos que estavam alocados na empresa descredenciada entre as empresas que permanecem ativas no credenciamento">
                 <i class="fas fa-exchange-alt"></i> Redistribuir Contratos
             </a>
-            <a href="{{ url_for('limite.analise_limites') }}" class="btn btn-success">
-                + Novo Limite
+            <a href="{{ url_for('limite.dashboard_distribuicao') }}"
+               class="btn btn-info me-2"
+               data-bs-toggle="tooltip"
+               data-bs-placement="bottom"
+               title="Acessa o dashboard com visão consolidada e gráficos da distribuição">
+                <i class="fas fa-chart-line"></i> Dashboard
             </a>
         </div>
     </div>
@@ -95,10 +128,13 @@
                         <td>{{ limite.criterio_descricao }}</td>
                         <td class="text-end">{{ limite.QTDE_MAXIMA|br_number if limite.QTDE_MAXIMA else "-" }}</td>
                         <td class="text-end">{{ limite.VALOR_MAXIMO|br_currency if limite.VALOR_MAXIMO else "-" }}</td>
-                       <td class="text-end">{{ "%.2f%%"|format(limite.PERCENTUAL_FINAL) if limite.PERCENTUAL_FINAL else "-" }}</td>
+                        <td class="text-end">{{ "%.2f%%"|format(limite.PERCENTUAL_FINAL) if limite.PERCENTUAL_FINAL else "-" }}</td>
                         <td class="text-center">
                             <a href="{{ url_for('limite.editar_limite', id=limite.ID) }}"
-                               class="btn btn-sm btn-outline-primary me-1">
+                               class="btn btn-sm btn-outline-primary me-1"
+                               data-bs-toggle="tooltip"
+                               data-bs-placement="top"
+                               title="Editar limite de distribuição">
                                 <i class="fas fa-edit"></i>
                             </a>
                         </td>
@@ -117,12 +153,69 @@
     </div>
 </div>
 
+<!-- Modal de Confirmação de Exclusão -->
+<div class="modal fade" id="confirmarExclusaoModal" tabindex="-1" aria-labelledby="confirmarExclusaoModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="confirmarExclusaoModalLabel">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja excluir este limite de distribuição?</p>
+                <p class="text-danger mb-0"><strong>Esta ação não pode ser desfeita!</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <a href="#" id="btnConfirmarExclusao" class="btn btn-danger">Excluir</a>
+            </div>
+        </div>
+    </div>
+</div>
 
+<style>
+    /* Customização dos tooltips */
+    .tooltip-inner {
+        max-width: 350px;
+        text-align: left;
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        background-color: #2c3e50;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .tooltip.bs-tooltip-bottom .tooltip-arrow::before {
+        border-bottom-color: #2c3e50;
+    }
+
+    .tooltip.bs-tooltip-top .tooltip-arrow::before {
+        border-top-color: #2c3e50;
+    }
+
+    /* Efeito hover nos botões */
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        transition: all 0.2s ease-in-out;
+    }
+</style>
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Inicializar filtro de tabela
         setupTableFilter('limitesSearch', 'limitesTable');
 
+        // Inicializar todos os tooltips do Bootstrap
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl, {
+                trigger: 'hover focus',
+                delay: { show: 300, hide: 100 }
+            });
+        });
+
+        // Função de confirmação de exclusão
         window.confirmarExclusao = function(id) {
             document.getElementById('btnConfirmarExclusao').href = "{{ url_for('limite.excluir_limite', id=0) }}".replace('0', id);
             const modal = new bootstrap.Modal(document.getElementById('confirmarExclusaoModal'));
