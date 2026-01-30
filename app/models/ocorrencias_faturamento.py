@@ -80,17 +80,23 @@ class OcorrenciasFaturamento(db.Model):
     @classmethod
     def listar_por_status(cls):
         """
-        Lista ocorrências SEM ANÁLISE (ID_FATURAMENTO NULL) agrupadas por STATUS
+        Lista ocorrências agrupadas por STATUS
+        REGRA ESPECIAL: Status 'Faturar no Mês - Prévia' e 'Não Faturar no Mês - Prévia'
+        aparecem na aba do status MESMO após análise (ID_FATURAMENTO preenchido)
+
         Retorna um dicionário onde a chave é o STATUS e o valor é uma lista de ocorrências
         """
         sql = text("""
-            SELECT NR_CONTRATO, nrOcorrencia, dsJustificativa, ID_FATURAMENTO, 
-                   MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS,
-                   DSC_ESTADO, RESPONSAVEL
-            FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
-            WHERE ID_FATURAMENTO IS NULL
-            ORDER BY STATUS, NR_CONTRATO, nrOcorrencia
-        """)
+                SELECT NR_CONTRATO, nrOcorrencia, dsJustificativa, ID_FATURAMENTO, 
+                       MES_ANO_FATURAMENTO, DT_JUSTIFICATIVA, STATUS, ITEM_SERVICO, OBS,
+                       DSC_ESTADO, RESPONSAVEL
+                FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
+                WHERE (
+                    ID_FATURAMENTO IS NULL
+                    OR STATUS IN ('Faturar no Mês - Prévia', 'Não Faturar no Mês - Prévia')
+                )
+                ORDER BY STATUS, NR_CONTRATO, nrOcorrencia
+            """)
 
         resultado = db.session.execute(sql).fetchall()
 
@@ -119,6 +125,55 @@ class OcorrenciasFaturamento(db.Model):
             ocorrencias_por_status[status_chave].append(obj)
 
         return ocorrencias_por_status
+
+    @classmethod
+    def listar_analisadas(cls):
+        """
+        Lista ocorrências já analisadas (ID_FATURAMENTO preenchido)
+        MAS QUE AINDA NÃO FORAM SINCRONIZADAS COM A TABELA SMART_FATURAMENTO
+
+        INCLUI também os status 'Faturar no Mês - Prévia' e 'Não Faturar no Mês - Prévia'
+        """
+        sql = text("""
+                    SELECT A.NR_CONTRATO, A.nrOcorrencia, A.dsJustificativa, A.ID_FATURAMENTO, 
+                           A.MES_ANO_FATURAMENTO, A.DT_JUSTIFICATIVA, A.STATUS, A.ITEM_SERVICO, A.OBS,
+                           A.DSC_ESTADO, A.RESPONSAVEL
+                    FROM BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR A
+                    WHERE A.ID_FATURAMENTO IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 
+                          FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO] B
+                          WHERE B.NR_CONTRATO = A.NR_CONTRATO
+                            AND B.nrOcorrencia = A.nrOcorrencia
+                            AND B.ID_FATURAMENTO = A.ID_FATURAMENTO
+                            AND (
+                                (B.MES_ANO_FATURAMENTO = A.MES_ANO_FATURAMENTO)
+                                OR (B.MES_ANO_FATURAMENTO IS NULL AND A.MES_ANO_FATURAMENTO IS NULL)
+                            )
+                      )
+                    ORDER BY A.NR_CONTRATO, A.nrOcorrencia
+                """)
+
+        resultado = db.session.execute(sql).fetchall()
+
+        # Converter para objetos
+        ocorrencias = []
+        for row in resultado:
+            obj = cls()
+            obj.NR_CONTRATO = row[0]
+            obj.nrOcorrencia = row[1]
+            obj.dsJustificativa = row[2]
+            obj.ID_FATURAMENTO = row[3]
+            obj.MES_ANO_FATURAMENTO = row[4]
+            obj.DT_JUSTIFICATIVA = row[5]
+            obj.STATUS = row[6]
+            obj.ITEM_SERVICO = row[7]
+            obj.OBS = row[8]
+            obj.DSC_ESTADO = row[9]
+            obj.RESPONSAVEL = row[10]
+            ocorrencias.append(obj)
+
+        return ocorrencias
 
     @classmethod
     def listar_analisadas(cls):
