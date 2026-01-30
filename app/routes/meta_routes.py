@@ -1,5 +1,5 @@
 # app/routes/meta_routes.py
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, send_file
 from app.models.metas_redistribuicao import MetasPercentuaisDistribuicao, Metas, MetasPeriodoAvaliativo
 from app.models.meta_avaliacao import MetaAvaliacao, MetaSemestral
 from app.models.edital import Edital
@@ -775,3 +775,286 @@ def exportar_distribuicao_excel():
         import traceback
         traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
+
+
+# =====================================================
+# NOVA FUNCIONALIDADE: META TERMO
+# =====================================================
+
+@meta_bp.route('/metas/meta-termo')
+@login_required
+def meta_termo():
+    """Página para visualizar cálculo de Meta Termo"""
+    # Buscar editais e períodos para os filtros
+    editais = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).all()
+    periodos = PeriodoAvaliacao.query.filter(PeriodoAvaliacao.DELETED_AT == None).order_by(
+        PeriodoAvaliacao.ID_EDITAL.desc(),
+        PeriodoAvaliacao.ID_PERIODO.desc()
+    ).all()
+
+    return render_template('credenciamento/meta_termo.html',
+                           editais=editais,
+                           periodos=periodos)
+
+
+@meta_bp.route('/metas/buscar-meta-termo')
+@login_required
+def buscar_meta_termo():
+    """Busca e calcula os dados de Meta Termo"""
+    try:
+        # Buscar o edital e período mais atual da tabela DCA_TB021_PERCENTUAL_TERMO
+        sql_query = text("""
+            SELECT TOP 1
+                EDITAL,
+                PERIODO
+            FROM BDDASHBOARDBI.BDG.DCA_TB021_PERCENTUAL_TERMO
+            ORDER BY EDITAL DESC, PERIODO DESC
+        """)
+
+        resultado_filtro = db.session.execute(sql_query).fetchone()
+
+        if not resultado_filtro:
+            return jsonify({
+                'sucesso': False,
+                'erro': 'Nenhum dado encontrado na tabela DCA_TB021_PERCENTUAL_TERMO'
+            })
+
+        edital_atual = resultado_filtro[0]
+        periodo_atual = resultado_filtro[1]
+
+        # Buscar os dados filtrados pelo edital e período mais atual
+        # JOIN com a tabela DCA_TB017_DISTRIBUICAO_SUMARIO para pegar o nome da empresa
+        sql_dados = text("""
+            SELECT 
+                PT.EDITAL,
+                PT.PERIODO,
+                PT.COD_EMPRESA_COBRANCA,
+                COALESCE(DS.NO_EMPRESA_ABREVIADA, 'Empresa ' + CAST(PT.COD_EMPRESA_COBRANCA AS VARCHAR)) AS NO_EMPRESA,
+                PT.VR_SD_DEVEDOR,
+                PT.PERC,
+                PT.META_PERC
+            FROM BDDASHBOARDBI.BDG.DCA_TB021_PERCENTUAL_TERMO PT
+            LEFT JOIN BDG.DCA_TB017_DISTRIBUICAO_SUMARIO DS
+                ON PT.COD_EMPRESA_COBRANCA = DS.ID_EMPRESA
+                AND PT.EDITAL = DS.ID_EDITAL
+                AND PT.PERIODO = DS.ID_PERIODO
+                AND DS.DELETED_AT IS NULL
+            WHERE PT.EDITAL = :edital
+                AND PT.PERIODO = :periodo
+            ORDER BY PT.COD_EMPRESA_COBRANCA
+        """)
+
+        resultado_dados = db.session.execute(
+            sql_dados,
+            {'edital': edital_atual, 'periodo': periodo_atual}
+        ).fetchall()
+
+        # Processar os dados e calcular META_TERMO
+        dados_processados = []
+        for row in resultado_dados:
+            edital = row[0]
+            periodo = row[1]
+            cod_empresa = row[2]
+            nome_empresa = row[3]
+            vr_sd_devedor = float(row[4]) if row[4] else 0
+            perc = float(row[5]) if row[5] else 0
+            meta_perc = float(row[6]) if row[6] else 0
+
+            # Calcular META_TERMO = (META_PERC / VR_SD_DEVEDOR) * 100
+            # Tratamento para divisão por zero
+            if vr_sd_devedor != 0:
+                meta_termo = (meta_perc / vr_sd_devedor) * 100
+            else:
+                meta_termo = 0
+
+            dados_processados.append({
+                'edital': edital,
+                'periodo': periodo,
+                'cod_empresa_cobranca': cod_empresa,
+                'nome_empresa': nome_empresa,
+                'vr_sd_devedor': vr_sd_devedor,
+                'perc': perc,
+                'meta_perc': meta_perc,
+                'meta_termo': round(meta_termo, 10)  # 10 casas decimais
+            })
+
+        return jsonify({
+            'sucesso': True,
+            'dados': dados_processados,
+            'edital': edital_atual,
+            'periodo': periodo_atual
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'sucesso': False,
+            'erro': str(e)
+        })
+
+
+@meta_bp.route('/metas/exportar-meta-termo')
+@login_required
+def exportar_meta_termo():
+    """Exporta os dados de Meta Termo para Excel"""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+
+        # Buscar o edital e período mais atual
+        sql_query = text("""
+            SELECT TOP 1
+                EDITAL,
+                PERIODO
+            FROM BDDASHBOARDBI.BDG.DCA_TB021_PERCENTUAL_TERMO
+            ORDER BY EDITAL DESC, PERIODO DESC
+        """)
+
+        resultado_filtro = db.session.execute(sql_query).fetchone()
+
+        if not resultado_filtro:
+            flash('Nenhum dado encontrado para exportação.', 'warning')
+            return redirect(url_for('meta.meta_termo'))
+
+        edital_atual = resultado_filtro[0]
+        periodo_atual = resultado_filtro[1]
+
+        # Buscar os dados com JOIN para pegar o nome da empresa
+        sql_dados = text("""
+            SELECT 
+                PT.EDITAL,
+                PT.PERIODO,
+                PT.COD_EMPRESA_COBRANCA,
+                COALESCE(DS.NO_EMPRESA_ABREVIADA, 'Empresa ' + CAST(PT.COD_EMPRESA_COBRANCA AS VARCHAR)) AS NO_EMPRESA,
+                PT.VR_SD_DEVEDOR,
+                PT.PERC,
+                PT.META_PERC
+            FROM BDDASHBOARDBI.BDG.DCA_TB021_PERCENTUAL_TERMO PT
+            LEFT JOIN BDG.DCA_TB017_DISTRIBUICAO_SUMARIO DS
+                ON PT.COD_EMPRESA_COBRANCA = DS.ID_EMPRESA
+                AND PT.EDITAL = DS.ID_EDITAL
+                AND PT.PERIODO = DS.ID_PERIODO
+                AND DS.DELETED_AT IS NULL
+            WHERE PT.EDITAL = :edital
+                AND PT.PERIODO = :periodo
+            ORDER BY PT.COD_EMPRESA_COBRANCA
+        """)
+
+        resultado_dados = db.session.execute(
+            sql_dados,
+            {'edital': edital_atual, 'periodo': periodo_atual}
+        ).fetchall()
+
+        # Criar workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Meta Termo"
+
+        # Estilos
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        header_fill = PatternFill(start_color="5b52e5", end_color="5b52e5", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+
+        # Título
+        ws.merge_cells('A1:G1')
+        titulo_cell = ws['A1']
+        titulo_cell.value = f'Meta Termo - Edital {edital_atual} - Período {periodo_atual}'
+        titulo_cell.font = Font(bold=True, size=14)
+        titulo_cell.alignment = Alignment(horizontal="center", vertical="center")
+        titulo_cell.fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+
+        # Data de geração
+        ws.merge_cells('A2:G2')
+        data_cell = ws['A2']
+        data_cell.value = f'Gerado em: {datetime.now().strftime("%d/%m/%Y %H:%M:%S")}'
+        data_cell.alignment = Alignment(horizontal="center")
+
+        # Cabeçalhos
+        headers = ['Edital', 'Período', 'Empresa', 'Saldo Devedor', 'Perc', 'Meta Perc', 'Meta Termo (%)']
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=4, column=col_num)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = border
+
+        # Dados
+        for row_num, row_data in enumerate(resultado_dados, 5):
+            edital = row_data[0]
+            periodo = row_data[1]
+            cod_empresa = row_data[2]
+            nome_empresa = row_data[3]
+            vr_sd_devedor = float(row_data[4]) if row_data[4] else 0
+            perc = float(row_data[5]) if row_data[5] else 0
+            meta_perc = float(row_data[6]) if row_data[6] else 0
+
+            # Calcular META_TERMO
+            if vr_sd_devedor != 0:
+                meta_termo = (meta_perc / vr_sd_devedor) * 100
+            else:
+                meta_termo = 0
+
+            # Escrever dados
+            ws.cell(row=row_num, column=1).value = edital
+            ws.cell(row=row_num, column=2).value = periodo
+            ws.cell(row=row_num, column=3).value = nome_empresa
+            ws.cell(row=row_num, column=4).value = vr_sd_devedor
+            ws.cell(row=row_num, column=4).number_format = '#,##0.00'
+            ws.cell(row=row_num, column=5).value = perc
+            ws.cell(row=row_num, column=5).number_format = '#,##0.0000000000'
+            ws.cell(row=row_num, column=6).value = meta_perc
+            ws.cell(row=row_num, column=6).number_format = '#,##0.00'
+            ws.cell(row=row_num, column=7).value = meta_termo
+            ws.cell(row=row_num, column=7).number_format = '#,##0.0000000000'
+
+            # Aplicar bordas
+            for col_num in range(1, 8):
+                ws.cell(row=row_num, column=col_num).border = border
+
+        # Ajustar largura das colunas
+        column_widths = [12, 12, 30, 18, 15, 18, 20]
+        for i, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = width
+
+        # Salvar em BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Registrar no log
+        registrar_log(
+            acao='exportar_meta_termo',
+            entidade='meta',
+            entidade_id=f"{edital_atual}-{periodo_atual}",
+            descricao=f'Exportação de Meta Termo para Edital {edital_atual} Período {periodo_atual}',
+            dados_novos={'edital': edital_atual, 'periodo': periodo_atual, 'total_registros': len(resultado_dados)}
+        )
+
+        # Nome do arquivo
+        nome_arquivo = f'meta_termo_{edital_atual}_{periodo_atual}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=nome_arquivo
+        )
+
+    except ImportError:
+        flash('É necessário instalar a biblioteca openpyxl para exportar dados: pip install openpyxl', 'warning')
+        return redirect(url_for('meta.meta_termo'))
+    except Exception as e:
+        flash(f'Erro ao exportar dados: {str(e)}', 'danger')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('meta.meta_termo'))
