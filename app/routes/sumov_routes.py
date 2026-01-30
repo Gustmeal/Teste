@@ -3193,6 +3193,7 @@ def exportar_excel_ocorrencias():
         flash(f'Erro ao exportar para Excel: {str(e)}', 'danger')
         return redirect(url_for('sumov.analise_ocorrencias'))
 
+
 @sumov_bp.route('/faturamento/analise-ocorrencias/analisar/<nr_contrato>/<int:nr_ocorrencia>/<identificador>',
                 methods=['GET', 'POST'])
 @login_required
@@ -3200,6 +3201,7 @@ def analisar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
     """Formulário para analisar uma ocorrência específica"""
     from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
     from sqlalchemy import text
+    from app.utils.audit import registrar_log
 
     # Buscar ocorrência específica pelo identificador
     ocorrencia = OcorrenciasFaturamento.buscar_por_identificador(nr_contrato, nr_ocorrencia, identificador)
@@ -3232,7 +3234,7 @@ def analisar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
                 # Exemplo: 05/2025 → 202505
                 try:
                     mes, ano = mes_ano.split('/')
-                    mes_ano_int = int(f"{ano}{mes}")  # CORRIGIDO: ano primeiro, depois mês
+                    mes_ano_int = int(f"{ano}{mes}")  # ano primeiro, depois mês
                 except:
                     flash('Formato de mês/ano inválido. Use MM/AAAA (Ex: 05/2025)', 'danger')
                     return redirect(request.url)
@@ -3242,9 +3244,51 @@ def analisar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
                 id_faturamento = 0
                 mes_ano_int = None
 
-            # Atualizar usando ORM diretamente para garantir que funcione
-            ocorrencia.ID_FATURAMENTO = id_faturamento
-            ocorrencia.MES_ANO_FATURAMENTO = mes_ano_int
+            # ===================================================================
+            # CORREÇÃO: Usar SQL bruto puro - tabela não tem chave primária
+            # Identificar registro por NR_CONTRATO, nrOcorrencia e dsJustificativa
+            # ===================================================================
+
+            # Pegar o valor da justificativa (pode ser NULL)
+            justificativa_valor = ocorrencia.dsJustificativa
+
+            # Construir UPDATE com tratamento adequado de NULL
+            if justificativa_valor is None:
+                # Se justificativa é NULL, usar IS NULL no WHERE
+                sql_update = text("""
+                    UPDATE BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
+                    SET ID_FATURAMENTO = :id_faturamento,
+                        MES_ANO_FATURAMENTO = :mes_ano_faturamento
+                    WHERE NR_CONTRATO = :nr_contrato
+                      AND nrOcorrencia = :nr_ocorrencia
+                      AND dsJustificativa IS NULL
+                """)
+
+                db.session.execute(sql_update, {
+                    'id_faturamento': id_faturamento,
+                    'mes_ano_faturamento': mes_ano_int,
+                    'nr_contrato': nr_contrato,
+                    'nr_ocorrencia': nr_ocorrencia
+                })
+            else:
+                # Se justificativa tem valor, usar comparação normal
+                sql_update = text("""
+                    UPDATE BDG.MOV_TB039_SMART_OCORRENCIAS_ANALISAR
+                    SET ID_FATURAMENTO = :id_faturamento,
+                        MES_ANO_FATURAMENTO = :mes_ano_faturamento
+                    WHERE NR_CONTRATO = :nr_contrato
+                      AND nrOcorrencia = :nr_ocorrencia
+                      AND dsJustificativa = :ds_justificativa
+                """)
+
+                db.session.execute(sql_update, {
+                    'id_faturamento': id_faturamento,
+                    'mes_ano_faturamento': mes_ano_int,
+                    'nr_contrato': nr_contrato,
+                    'nr_ocorrencia': nr_ocorrencia,
+                    'ds_justificativa': justificativa_valor
+                })
+
             db.session.commit()
 
             # Registrar log
@@ -3266,6 +3310,8 @@ def analisar_ocorrencia(nr_contrato, nr_ocorrencia, identificador):
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao analisar ocorrência: {str(e)}', 'danger')
+            import traceback
+            traceback.print_exc()
             return redirect(request.url)
 
     # GET - Exibir formulário
