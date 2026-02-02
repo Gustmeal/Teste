@@ -3668,7 +3668,7 @@ def inserir_tabela_final_faturamento():
                 [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO], 
                 [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR], 
                 [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF], 
-                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], 247.48 AS VR_TARIFA, [OBS]
+                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], 247.78 AS VR_TARIFA, [OBS]
             FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
             WHERE MES_ANO_FATURAMENTO IS NOT NULL
         """)
