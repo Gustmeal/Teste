@@ -1085,6 +1085,7 @@ def exportar_relatorio_metas_excel():
         # Query para buscar todas as metas do edital/período
         query = text("""
             SELECT 
+                ds.ID_EMPRESA,
                 ds.NO_EMPRESA_ABREVIADA,
                 dm.MES_COMPETENCIA,
                 dm.VR_META_MES,
@@ -1108,26 +1109,70 @@ def exportar_relatorio_metas_excel():
         # Estruturar dados
         dados_empresas = {}
         meses_unicos = set()
+        empresas_ids = set()
 
         for row in result:
-            empresa = row[0]
-            mes_comp = row[1]
-            valor_meta = float(row[2]) if row[2] else 0
-            saldo_devedor = float(row[3]) if row[3] else 0
-            percentual = float(row[4]) if row[4] else 0
+            id_empresa = row[0]
+            empresa = row[1]
+            mes_comp = row[2]
+            valor_meta = float(row[3]) if row[3] else 0
+            saldo_devedor = float(row[4]) if row[4] else 0
+            percentual = float(row[5]) if row[5] else 0
 
             meses_unicos.add(mes_comp)
+            empresas_ids.add(id_empresa)
 
             if empresa not in dados_empresas:
                 dados_empresas[empresa] = {
+                    'id_empresa': id_empresa,
                     'saldo_devedor': saldo_devedor,
                     'percentual': percentual,
                     'metas': {},
-                    'total': 0
+                    'total': 0,
+                    'qtde_contratos': 0,
+                    'qtde_cpfs': 0
                 }
 
             dados_empresas[empresa]['metas'][mes_comp] = valor_meta
             dados_empresas[empresa]['total'] += valor_meta
+
+        # Buscar quantidade de contratos e CPFs por empresa
+        if empresas_ids:
+            # CORREÇÃO: Converter IDs para string e usar formatação segura
+            empresas_ids_str = ','.join(str(int(id_emp)) for id_emp in empresas_ids)
+
+            query_distribuicao = text(f"""
+                SELECT 
+                    COD_EMPRESA_COBRANCA,
+                    COUNT(DISTINCT fkContratoSISCTR) AS QTDE_CONTRATOS,
+                    COUNT(DISTINCT NR_CPF_CNPJ) AS QTDE_CPFS
+                FROM BDG.DCA_TB005_DISTRIBUICAO
+                WHERE ID_EDITAL = :edital_id
+                AND ID_PERIODO = :periodo_id
+                AND COD_EMPRESA_COBRANCA IN ({empresas_ids_str})
+                AND DELETED_AT IS NULL
+                GROUP BY COD_EMPRESA_COBRANCA
+            """)
+
+            result_dist = db.session.execute(query_distribuicao, {
+                'edital_id': edital_id,
+                'periodo_id': periodo.ID_PERIODO
+            })
+
+            # Mapear contagens para empresas
+            distribuicao_map = {}
+            for row in result_dist:
+                distribuicao_map[row[0]] = {
+                    'qtde_contratos': int(row[1]) if row[1] else 0,
+                    'qtde_cpfs': int(row[2]) if row[2] else 0
+                }
+
+            # Atualizar dados das empresas com as contagens
+            for empresa, info in dados_empresas.items():
+                id_emp = info['id_empresa']
+                if id_emp in distribuicao_map:
+                    info['qtde_contratos'] = distribuicao_map[id_emp]['qtde_contratos']
+                    info['qtde_cpfs'] = distribuicao_map[id_emp]['qtde_cpfs']
 
         # Ordenar meses
         meses_ordenados = sorted(list(meses_unicos))
@@ -1139,6 +1184,8 @@ def exportar_relatorio_metas_excel():
         for empresa, info in sorted(dados_empresas.items()):
             linha = {
                 'Empresa': empresa,
+                'Qtde Contratos': info['qtde_contratos'],
+                'Qtde CPFs': info['qtde_cpfs'],
                 'Saldo Devedor': info['saldo_devedor'],
                 'Percentual (%)': info['percentual']
             }
@@ -1160,6 +1207,8 @@ def exportar_relatorio_metas_excel():
         # Adicionar linha de TOTAL
         linha_total = {
             'Empresa': 'TOTAL GERAL',
+            'Qtde Contratos': sum(emp['qtde_contratos'] for emp in dados_empresas.values()),
+            'Qtde CPFs': sum(emp['qtde_cpfs'] for emp in dados_empresas.values()),
             'Saldo Devedor': sum(emp['saldo_devedor'] for emp in dados_empresas.values()),
             'Percentual (%)': sum(emp['percentual'] for emp in dados_empresas.values())
         }
@@ -1207,6 +1256,13 @@ def exportar_relatorio_metas_excel():
                 'border': 1
             })
 
+            # Formatar números inteiros
+            number_format = workbook.add_format({
+                'num_format': '#,##0',
+                'border': 1,
+                'align': 'center'
+            })
+
             # Formatar percentuais
             percent_format = workbook.add_format({
                 'num_format': '0.00000000"%"',
@@ -1221,38 +1277,58 @@ def exportar_relatorio_metas_excel():
                 'border': 1
             })
 
+            total_number_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#f0f0f0',
+                'num_format': '#,##0',
+                'border': 1,
+                'align': 'center'
+            })
+
             # Aplicar formatação ao cabeçalho
             for col_num, value in enumerate(df.columns.values):
                 worksheet.write(0, col_num, value, header_format)
 
             # Aplicar formatação às colunas
             for row_num in range(1, len(df) + 1):
+                is_total = df.iloc[row_num - 1]['Empresa'] == 'TOTAL GERAL'
+
                 # Empresa (texto)
                 worksheet.write(row_num, 0, df.iloc[row_num - 1]['Empresa'])
 
+                # Qtde Contratos (número inteiro)
+                formato_num = total_number_format if is_total else number_format
+                worksheet.write(row_num, 1, df.iloc[row_num - 1]['Qtde Contratos'], formato_num)
+
+                # Qtde CPFs (número inteiro)
+                worksheet.write(row_num, 2, df.iloc[row_num - 1]['Qtde CPFs'], formato_num)
+
                 # Saldo Devedor (moeda)
-                worksheet.write(row_num, 1, df.iloc[row_num - 1]['Saldo Devedor'], money_format)
+                formato_money = total_format if is_total else money_format
+                worksheet.write(row_num, 3, df.iloc[row_num - 1]['Saldo Devedor'], formato_money)
 
                 # Percentual
-                worksheet.write(row_num, 2, df.iloc[row_num - 1]['Percentual (%)'] / 100, percent_format)
+                worksheet.write(row_num, 4, df.iloc[row_num - 1]['Percentual (%)'] / 100, percent_format)
 
                 # Metas mensais (moeda)
-                for col_num in range(3, len(df.columns)):
-                    formato = total_format if df.iloc[row_num - 1]['Empresa'] == 'TOTAL GERAL' else money_format
+                for col_num in range(5, len(df.columns)):
+                    formato = total_format if is_total else money_format
                     worksheet.write(row_num, col_num, df.iloc[row_num - 1, col_num], formato)
 
             # Ajustar largura das colunas
             worksheet.set_column('A:A', 20)  # Empresa
-            worksheet.set_column('B:B', 18)  # Saldo Devedor
-            worksheet.set_column('C:C', 18)  # Percentual
-            worksheet.set_column('D:Z', 15)  # Meses
+            worksheet.set_column('B:B', 16)  # Qtde Contratos
+            worksheet.set_column('C:C', 14)  # Qtde CPFs
+            worksheet.set_column('D:D', 18)  # Saldo Devedor
+            worksheet.set_column('E:E', 18)  # Percentual
+            worksheet.set_column('F:Z', 15)  # Meses
 
         output.seek(0)
 
         # Nome do arquivo
         nome_arquivo = f"metas_{edital.NU_EDITAL}_{edital.ANO}_periodo_{periodo.ID_PERIODO}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
-        # Registrar log - CORREÇÃO AQUI
+        # Registrar log
         registrar_log(
             acao='exportar',
             entidade='distribuicao_mensal',
