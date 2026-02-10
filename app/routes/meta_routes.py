@@ -1058,3 +1058,216 @@ def exportar_meta_termo():
         import traceback
         traceback.print_exc()
         return redirect(url_for('meta.meta_termo'))
+
+
+@meta_bp.route('/metas/exportar-relatorio-excel', methods=['POST'])
+@login_required
+def exportar_relatorio_metas_excel():
+    """Exporta relatório consolidado de metas para Excel"""
+    try:
+        import io
+        import pandas as pd
+
+        data = request.json
+        edital_id = data.get('edital_id')
+        periodo_id = data.get('periodo_id')
+
+        if not edital_id or not periodo_id:
+            return jsonify({'erro': 'Edital e Período são obrigatórios'}), 400
+
+        # Buscar dados do edital e período
+        edital = Edital.query.get(edital_id)
+        periodo = PeriodoAvaliacao.query.get(periodo_id)
+
+        if not edital or not periodo:
+            return jsonify({'erro': 'Edital ou Período não encontrado'}), 404
+
+        # Query para buscar todas as metas do edital/período
+        query = text("""
+            SELECT 
+                ds.NO_EMPRESA_ABREVIADA,
+                dm.MES_COMPETENCIA,
+                dm.VR_META_MES,
+                ds.VR_SALDO_DEVEDOR_DISTRIBUIDO,
+                ds.PERCENTUAL_SALDO_DEVEDOR
+            FROM BDG.DCA_TB019_DISTRIBUICAO_MENSAL dm
+            INNER JOIN BDG.DCA_TB017_DISTRIBUICAO_SUMARIO ds
+                ON dm.ID_DISTRIBUICAO_SUMARIO = ds.ID
+                AND ds.DELETED_AT IS NULL
+            WHERE ds.ID_EDITAL = :edital_id
+            AND ds.ID_PERIODO = :periodo_id
+            AND dm.DELETED_AT IS NULL
+            ORDER BY ds.NO_EMPRESA_ABREVIADA, dm.MES_COMPETENCIA
+        """)
+
+        result = db.session.execute(query, {
+            'edital_id': edital_id,
+            'periodo_id': periodo.ID_PERIODO
+        })
+
+        # Estruturar dados
+        dados_empresas = {}
+        meses_unicos = set()
+
+        for row in result:
+            empresa = row[0]
+            mes_comp = row[1]
+            valor_meta = float(row[2]) if row[2] else 0
+            saldo_devedor = float(row[3]) if row[3] else 0
+            percentual = float(row[4]) if row[4] else 0
+
+            meses_unicos.add(mes_comp)
+
+            if empresa not in dados_empresas:
+                dados_empresas[empresa] = {
+                    'saldo_devedor': saldo_devedor,
+                    'percentual': percentual,
+                    'metas': {},
+                    'total': 0
+                }
+
+            dados_empresas[empresa]['metas'][mes_comp] = valor_meta
+            dados_empresas[empresa]['total'] += valor_meta
+
+        # Ordenar meses
+        meses_ordenados = sorted(list(meses_unicos))
+
+        # Preparar dados para DataFrame
+        dados_excel = []
+
+        # Adicionar dados das empresas
+        for empresa, info in sorted(dados_empresas.items()):
+            linha = {
+                'Empresa': empresa,
+                'Saldo Devedor': info['saldo_devedor'],
+                'Percentual (%)': info['percentual']
+            }
+
+            # Adicionar colunas dos meses
+            for mes in meses_ordenados:
+                # Formatar mês como JAN/2025
+                ano = mes.split('-')[0]
+                mes_num = int(mes.split('-')[1])
+                meses_nomes = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+                               'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+                nome_mes = f"{meses_nomes[mes_num - 1]}/{ano}"
+
+                linha[nome_mes] = info['metas'].get(mes, 0)
+
+            linha['Total Meta'] = info['total']
+            dados_excel.append(linha)
+
+        # Adicionar linha de TOTAL
+        linha_total = {
+            'Empresa': 'TOTAL GERAL',
+            'Saldo Devedor': sum(emp['saldo_devedor'] for emp in dados_empresas.values()),
+            'Percentual (%)': sum(emp['percentual'] for emp in dados_empresas.values())
+        }
+
+        for mes in meses_ordenados:
+            ano = mes.split('-')[0]
+            mes_num = int(mes.split('-')[1])
+            meses_nomes = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+                           'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
+            nome_mes = f"{meses_nomes[mes_num - 1]}/{ano}"
+
+            linha_total[nome_mes] = sum(
+                emp['metas'].get(mes, 0) for emp in dados_empresas.values()
+            )
+
+        linha_total['Total Meta'] = sum(emp['total'] for emp in dados_empresas.values())
+        dados_excel.append(linha_total)
+
+        # Criar DataFrame
+        df = pd.DataFrame(dados_excel)
+
+        # Criar arquivo Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name='Metas Mensais', index=False)
+
+            # Obter workbook e worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Metas Mensais']
+
+            # Formatar cabeçalho
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'center',
+                'align': 'center',
+                'fg_color': '#6c63ff',
+                'font_color': 'white',
+                'border': 1
+            })
+
+            # Formatar valores monetários
+            money_format = workbook.add_format({
+                'num_format': 'R$ #,##0.00',
+                'border': 1
+            })
+
+            # Formatar percentuais
+            percent_format = workbook.add_format({
+                'num_format': '0.00000000"%"',
+                'border': 1
+            })
+
+            # Formatar linha de total
+            total_format = workbook.add_format({
+                'bold': True,
+                'bg_color': '#f0f0f0',
+                'num_format': 'R$ #,##0.00',
+                'border': 1
+            })
+
+            # Aplicar formatação ao cabeçalho
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+
+            # Aplicar formatação às colunas
+            for row_num in range(1, len(df) + 1):
+                # Empresa (texto)
+                worksheet.write(row_num, 0, df.iloc[row_num - 1]['Empresa'])
+
+                # Saldo Devedor (moeda)
+                worksheet.write(row_num, 1, df.iloc[row_num - 1]['Saldo Devedor'], money_format)
+
+                # Percentual
+                worksheet.write(row_num, 2, df.iloc[row_num - 1]['Percentual (%)'] / 100, percent_format)
+
+                # Metas mensais (moeda)
+                for col_num in range(3, len(df.columns)):
+                    formato = total_format if df.iloc[row_num - 1]['Empresa'] == 'TOTAL GERAL' else money_format
+                    worksheet.write(row_num, col_num, df.iloc[row_num - 1, col_num], formato)
+
+            # Ajustar largura das colunas
+            worksheet.set_column('A:A', 20)  # Empresa
+            worksheet.set_column('B:B', 18)  # Saldo Devedor
+            worksheet.set_column('C:C', 18)  # Percentual
+            worksheet.set_column('D:Z', 15)  # Meses
+
+        output.seek(0)
+
+        # Nome do arquivo
+        nome_arquivo = f"metas_{edital.NU_EDITAL}_{edital.ANO}_periodo_{periodo.ID_PERIODO}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        # Registrar log - CORREÇÃO AQUI
+        registrar_log(
+            acao='exportar',
+            entidade='distribuicao_mensal',
+            entidade_id=None,
+            descricao=f'Exportação de metas - Edital {edital.NU_EDITAL}/{edital.ANO} - Período {periodo.ID_PERIODO}'
+        )
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=nome_arquivo
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'erro': str(e)}), 500
