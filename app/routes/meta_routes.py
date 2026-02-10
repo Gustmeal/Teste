@@ -1083,13 +1083,12 @@ def exportar_relatorio_metas_excel():
             return jsonify({'erro': 'Edital ou Período não encontrado'}), 404
 
         # Query para buscar todas as metas do edital/período
-        query = text("""
+        query_metas = text("""
             SELECT 
                 ds.ID_EMPRESA,
                 ds.NO_EMPRESA_ABREVIADA,
                 dm.MES_COMPETENCIA,
                 dm.VR_META_MES,
-                ds.VR_SALDO_DEVEDOR_DISTRIBUIDO,
                 ds.PERCENTUAL_SALDO_DEVEDOR
             FROM BDG.DCA_TB019_DISTRIBUICAO_MENSAL dm
             INNER JOIN BDG.DCA_TB017_DISTRIBUICAO_SUMARIO ds
@@ -1101,7 +1100,7 @@ def exportar_relatorio_metas_excel():
             ORDER BY ds.NO_EMPRESA_ABREVIADA, dm.MES_COMPETENCIA
         """)
 
-        result = db.session.execute(query, {
+        result_metas = db.session.execute(query_metas, {
             'edital_id': edital_id,
             'periodo_id': periodo.ID_PERIODO
         })
@@ -1111,13 +1110,12 @@ def exportar_relatorio_metas_excel():
         meses_unicos = set()
         empresas_ids = set()
 
-        for row in result:
+        for row in result_metas:
             id_empresa = row[0]
             empresa = row[1]
             mes_comp = row[2]
             valor_meta = float(row[3]) if row[3] else 0
-            saldo_devedor = float(row[4]) if row[4] else 0
-            percentual = float(row[5]) if row[5] else 0
+            percentual = float(row[4]) if row[4] else 0
 
             meses_unicos.add(mes_comp)
             empresas_ids.add(id_empresa)
@@ -1125,7 +1123,7 @@ def exportar_relatorio_metas_excel():
             if empresa not in dados_empresas:
                 dados_empresas[empresa] = {
                     'id_empresa': id_empresa,
-                    'saldo_devedor': saldo_devedor,
+                    'saldo_devedor': 0,  # Será preenchido depois
                     'percentual': percentual,
                     'metas': {},
                     'total': 0,
@@ -1136,14 +1134,15 @@ def exportar_relatorio_metas_excel():
             dados_empresas[empresa]['metas'][mes_comp] = valor_meta
             dados_empresas[empresa]['total'] += valor_meta
 
-        # Buscar quantidade de contratos e CPFs por empresa
+        # Buscar SALDO DEVEDOR, quantidade de contratos e CPFs da tabela DCA_TB005_DISTRIBUICAO
         if empresas_ids:
-            # CORREÇÃO: Converter IDs para string e usar formatação segura
+            # Converter IDs para string
             empresas_ids_str = ','.join(str(int(id_emp)) for id_emp in empresas_ids)
 
             query_distribuicao = text(f"""
                 SELECT 
                     COD_EMPRESA_COBRANCA,
+                    SUM(VR_SD_DEVEDOR) AS TOTAL_SALDO_DEVEDOR,
                     COUNT(DISTINCT fkContratoSISCTR) AS QTDE_CONTRATOS,
                     COUNT(DISTINCT NR_CPF_CNPJ) AS QTDE_CPFS
                 FROM BDG.DCA_TB005_DISTRIBUICAO
@@ -1159,18 +1158,20 @@ def exportar_relatorio_metas_excel():
                 'periodo_id': periodo.ID_PERIODO
             })
 
-            # Mapear contagens para empresas
+            # Mapear contagens e saldo devedor para empresas
             distribuicao_map = {}
             for row in result_dist:
                 distribuicao_map[row[0]] = {
-                    'qtde_contratos': int(row[1]) if row[1] else 0,
-                    'qtde_cpfs': int(row[2]) if row[2] else 0
+                    'saldo_devedor': float(row[1]) if row[1] else 0,
+                    'qtde_contratos': int(row[2]) if row[2] else 0,
+                    'qtde_cpfs': int(row[3]) if row[3] else 0
                 }
 
-            # Atualizar dados das empresas com as contagens
+            # Atualizar dados das empresas com os valores da distribuição
             for empresa, info in dados_empresas.items():
                 id_emp = info['id_empresa']
                 if id_emp in distribuicao_map:
+                    info['saldo_devedor'] = distribuicao_map[id_emp]['saldo_devedor']
                     info['qtde_contratos'] = distribuicao_map[id_emp]['qtde_contratos']
                     info['qtde_cpfs'] = distribuicao_map[id_emp]['qtde_cpfs']
 
