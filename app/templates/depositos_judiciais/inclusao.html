@@ -158,157 +158,161 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const moneyInput = document.getElementById('vr_rateio');
-    const btnToggleSinal = document.getElementById('btn_toggle_sinal');
-    const inputNegativo = document.getElementById('vr_rateio_negativo');
 
-    /**
-     * Formata valor monetário (formato brasileiro)
-     */
-    function formatarValorMonetario(valor) {
-        valor = valor.replace(/\D/g, '');
-        if (valor === '') return '0,00';
-        valor = (parseInt(valor) / 100).toFixed(2);
-        valor = valor.replace('.', ',');
-        valor = valor.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1.');
-        return valor;
+    // =========================================================
+    // FUNÇÃO: Calcular último dia do mês de uma data
+    // =========================================================
+    function ultimoDiaDoMes(data) {
+        // Cria data com dia 0 do mês seguinte = último dia do mês atual
+        return new Date(data.getFullYear(), data.getMonth() + 1, 0).getDate();
     }
 
-    /**
-     * Atualiza a aparência do botão conforme o sinal
-     */
-    function atualizarBotaoSinal() {
-        const isNegativo = inputNegativo.value === 'true';
-
-        if (isNegativo) {
-            btnToggleSinal.classList.remove('btn-outline-secondary');
-            btnToggleSinal.classList.add('btn-danger');
-            btnToggleSinal.innerHTML = '<i class="fas fa-minus"></i>';
-            btnToggleSinal.title = 'Valor NEGATIVO - Clique para positivar';
-            moneyInput.style.color = '#dc3545';
-            moneyInput.style.fontWeight = 'bold';
-        } else {
-            btnToggleSinal.classList.remove('btn-danger');
-            btnToggleSinal.classList.add('btn-outline-secondary');
-            btnToggleSinal.innerHTML = '<i class="fas fa-plus-minus"></i>';
-            btnToggleSinal.title = 'Valor POSITIVO - Clique para negativar';
-            moneyInput.style.color = '#000';
-            moneyInput.style.fontWeight = 'normal';
-        }
-    }
-
-    /**
-     * Toggle do sinal (positivo/negativo)
-     */
-    btnToggleSinal.addEventListener('click', function() {
-        const isNegativo = inputNegativo.value === 'true';
-        inputNegativo.value = isNegativo ? 'false' : 'true';
-        atualizarBotaoSinal();
-    });
-
-    // Evento de input para aplicar a máscara
-    moneyInput.addEventListener('input', function(e) {
-        let valor = e.target.value;
-
-        // Salva a posição do cursor
-        let cursorPos = e.target.selectionStart;
-        let valorAnterior = e.target.value;
-
-        // Formata o valor
-        let valorFormatado = formatarValorMonetario(valor);
-
-        // Atualiza o campo
-        e.target.value = valorFormatado;
-
-        // Ajusta a posição do cursor
-        let diff = valorFormatado.length - valorAnterior.length;
-        e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
-    });
-
-    // Evento de paste (colar) para formatar valores colados
-    moneyInput.addEventListener('paste', function(e) {
-        e.preventDefault();
-
-        // Pega o texto colado
-        let textoColado = (e.clipboardData || window.clipboardData).getData('text');
-
-        // Remove caracteres não numéricos e formata
-        let valorFormatado = formatarValorMonetario(textoColado);
-
-        // Insere o valor formatado
-        e.target.value = valorFormatado;
-    });
-
-    // Evento de focus para selecionar todo o texto
-    moneyInput.addEventListener('focus', function(e) {
-        if (e.target.value === '0,00') {
-            e.target.select();
-        }
-    });
-
-    // Validação do formulário
-    document.getElementById('formInclusao').addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        // Aplicar sinal negativo ao valor antes de enviar
-        const isNegativo = inputNegativo.value === 'true';
-        if (isNegativo) {
-            const valorAtual = moneyInput.value;
-            if (!valorAtual.startsWith('-')) {
-                moneyInput.value = '-' + valorAtual;
+    // =========================================================
+    // FUNÇÃO: Calcular o 5º dia útil de um mês/ano
+    // Considera apenas sábado(6) e domingo(0) como não úteis
+    // =========================================================
+    function quintosDiaUtil(ano, mes) {
+        // mes aqui é 0-indexed (0 = janeiro)
+        let diasUteis = 0;
+        let dia = 1;
+        while (diasUteis < 5) {
+            let d = new Date(ano, mes, dia);
+            let diaSemana = d.getDay(); // 0=dom, 6=sab
+            if (diaSemana !== 0 && diaSemana !== 6) {
+                diasUteis++;
             }
+            if (diasUteis < 5) dia++;
         }
+        return new Date(ano, mes, dia);
+    }
 
-        // Validar campos obrigatórios
-        const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
-        let valido = true;
+    // =========================================================
+    // VALIDAÇÃO DT_SISCOR: Somente último dia do mês permitido
+    // =========================================================
+    const dtSiscor = document.getElementById('dt_siscor');
+    if (dtSiscor) {
+        dtSiscor.addEventListener('change', function() {
+            const val = this.value;
+            if (!val) return;
 
-        camposObrigatorios.forEach(campo => {
-            const input = document.getElementById(campo);
-            const valor = input.value.replace('-', ''); // Ignora o sinal na validação
-            if (!valor || (campo === 'vr_rateio' && valor === '0,00')) {
-                input.classList.add('is-invalid');
-                valido = false;
-            } else {
-                input.classList.remove('is-invalid');
+            const partes = val.split('-'); // yyyy-mm-dd
+            const ano = parseInt(partes[0]);
+            const mes = parseInt(partes[1]) - 1; // 0-indexed
+            const dia = parseInt(partes[2]);
+
+            const ultimo = ultimoDiaDoMes(new Date(ano, mes, 1));
+
+            if (dia !== ultimo) {
+                alert(
+                    'Atenção!\n\n' +
+                    'A Data SISCOR só pode ser o último dia do mês.\n' +
+                    'Para o mês selecionado, a data válida é: ' +
+                    String(ultimo).padStart(2, '0') + '/' +
+                    String(mes + 1).padStart(2, '0') + '/' + ano
+                );
+                this.value = ''; // Limpa o campo
             }
         });
-
-        if (valido) {
-            // Confirmar antes de enviar
-            const botaoClicado = e.submitter.name;
-            const mensagem = botaoClicado === 'salvar_e_continuar'
-                ? 'Confirma a inclusão do depósito judicial e deseja incluir outro?'
-                : 'Confirma a inclusão do depósito judicial?';
-
-            if (confirm(mensagem)) {
-                this.submit();
-            }
-        } else {
-            alert('Por favor, preencha todos os campos obrigatórios.');
-        }
-    });
-
-    // Inicializar estado do botão
-    atualizarBotaoSinal();
-});
-
-function limparFormulario() {
-    if (confirm('Deseja limpar todos os campos?')) {
-        document.getElementById('formInclusao').reset();
-        document.getElementById('vr_rateio').value = '0,00';
-        document.getElementById('vr_rateio_negativo').value = 'false';
-
-        // Resetar aparência do botão
-        const btnToggleSinal = document.getElementById('btn_toggle_sinal');
-        btnToggleSinal.classList.remove('btn-danger');
-        btnToggleSinal.classList.add('btn-outline-secondary');
-        btnToggleSinal.innerHTML = '<i class="fas fa-plus-minus"></i>';
-
-        const moneyInput = document.getElementById('vr_rateio');
-        moneyInput.style.color = '#000';
-        moneyInput.style.fontWeight = 'normal';
     }
-}
+
+    // =========================================================
+    // MÁSCARA MONETÁRIA - VR_RATEIO
+    // =========================================================
+    const moneyInput = document.getElementById('vr_rateio');
+    if (moneyInput) {
+        function formatarValorMonetario(valor) {
+            valor = valor.replace(/\D/g, '');
+            if (!valor) return '0,00';
+            valor = (parseInt(valor, 10) / 100).toFixed(2);
+            let partes = valor.split('.');
+            partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            return partes.join(',');
+        }
+
+        moneyInput.addEventListener('input', function(e) {
+            let valorAnterior = e.target.value;
+            let cursorPos = e.target.selectionStart;
+            let valorFormatado = formatarValorMonetario(valorAnterior);
+            e.target.value = valorFormatado;
+            let diff = valorFormatado.length - valorAnterior.length;
+            e.target.setSelectionRange(cursorPos + diff, cursorPos + diff);
+        });
+
+        moneyInput.addEventListener('focus', function(e) {
+            if (e.target.value === '0,00') {
+                e.target.select();
+            }
+        });
+    }
+
+    // =========================================================
+    // SUBMIT DO FORMULÁRIO - Validações ao salvar
+    // =========================================================
+    const form = document.getElementById('formInclusao');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            // 1. Validar campos obrigatórios
+            const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_area', 'id_centro'];
+            let valido = true;
+
+            camposObrigatorios.forEach(function(campo) {
+                const input = document.getElementById(campo);
+                if (!input) return;
+                if (!input.value || input.value === '0,00') {
+                    input.classList.add('is-invalid');
+                    valido = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                }
+            });
+
+            if (!valido) {
+                alert('Por favor, preencha todos os campos obrigatórios.');
+                return;
+            }
+
+            // 2. Validação DT_AJUSTE_RM: aviso se antes do 5º dia útil
+            const dtAjuste = document.getElementById('dt_ajuste_rm');
+            if (dtAjuste && dtAjuste.value) {
+                const partesAjuste = dtAjuste.value.split('-');
+                const anoAjuste = parseInt(partesAjuste[0]);
+                const mesAjuste = parseInt(partesAjuste[1]) - 1; // 0-indexed
+                const diaAjuste = parseInt(partesAjuste[2]);
+
+                const dataAjuste = new Date(anoAjuste, mesAjuste, diaAjuste);
+                const quintoDiaUtil = quintosDiaUtil(anoAjuste, mesAjuste);
+
+                if (dataAjuste < quintoDiaUtil) {
+                    const continuar = confirm(
+                        'Atenção!\n\n' +
+                        'A data de ajuste informada é anterior ao quinto dia útil do mês.\n\n' +
+                        'Caso tente salvar uma data de ajuste antes do quinto dia útil do mês, ' +
+                        'ele será incluído no mês anterior ao atual.\n\n' +
+                        'Deseja salvar mesmo assim?\n\n' +
+                        'Clique em "OK" para salvar ou "Cancelar" para corrigir a data.'
+                    );
+                    if (!continuar) {
+                        return; // Usuário optou por corrigir
+                    }
+                }
+            }
+
+            // 3. Tudo ok, submete o formulário
+            this.submit();
+        });
+    }
+
+    // =========================================================
+    // FUNÇÃO: Limpar formulário
+    // =========================================================
+    window.limparFormulario = function() {
+        if (confirm('Deseja limpar todos os campos do formulário?')) {
+            form.reset();
+        }
+    };
+
+});
 </script>
 {% endblock %}

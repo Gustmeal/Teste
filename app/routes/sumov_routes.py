@@ -1443,23 +1443,25 @@ def buscar_dados_contrato():
         qtd_prescrito = result_prescrito[1] if result_prescrito and result_prescrito[1] else 0
 
         # ===== BUSCA 5: Índices disponíveis no SISCalculo COM TOTAIS POR TIPO =====
+        # CORREÇÃO: VR_TOTAL no banco NÃO inclui honorários.
+        # Logo: VR_DIVIDA = SUM(VR_TOTAL), honorários são somados por fora.
         sql_indices = text("""
-            SELECT 
-                C.ID_INDICE_ECONOMICO,
-                SUM(C.VR_TOTAL - (C.VR_TOTAL * C.PERC_HONORARIOS / 100.0)) as VR_DIVIDA,
-                MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
-                SUM(C.VR_TOTAL * C.PERC_HONORARIOS / 100.0) as VR_HONORARIOS,
-                SUM(C.VR_TOTAL) as VR_TOTAL_COM_HONORARIOS
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
-            WHERE C.[IMOVEL] = :contrato
-            AND C.[DT_ATUALIZACAO] = (
-                SELECT MAX([DT_ATUALIZACAO])
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
-                WHERE [IMOVEL] = :contrato
-            )
-            GROUP BY C.ID_INDICE_ECONOMICO
-            ORDER BY C.ID_INDICE_ECONOMICO
-        """)
+                    SELECT 
+                        C.ID_INDICE_ECONOMICO,
+                        SUM(C.VR_TOTAL) as VR_DIVIDA,
+                        MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
+                        SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0 as VR_HONORARIOS,
+                        SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) as VR_TOTAL_COM_HONORARIOS
+                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
+                    WHERE C.[IMOVEL] = :contrato
+                    AND C.[DT_ATUALIZACAO] = (
+                        SELECT MAX([DT_ATUALIZACAO])
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+                        WHERE [IMOVEL] = :contrato
+                    )
+                    GROUP BY C.ID_INDICE_ECONOMICO
+                    ORDER BY C.ID_INDICE_ECONOMICO
+                """)
         result_indices = db.session.execute(sql_indices, {'contrato': contrato}).fetchall()
 
         indices_disponiveis = []
@@ -1468,10 +1470,10 @@ def buscar_dados_contrato():
 
             for idx, row in enumerate(result_indices):
                 id_indice = row[0]
-                vr_total_sem_honorarios = float(row[1]) if row[1] else 0
+                vr_total_sem_honorarios = float(row[1]) if row[1] else 0  # SUM(VR_TOTAL) = dívida sem honorários
                 perc_honorarios = float(row[2]) if row[2] else 0
                 vr_honorarios = float(row[3]) if row[3] else 0
-                vr_total_com_honorarios = float(row[4]) if row[4] else 0
+                vr_total_com_honorarios = float(row[4]) if row[4] else 0  # dívida + honorários
 
                 indice_obj = ParamIndicesEconomicos.query.get(id_indice)
                 nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
