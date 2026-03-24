@@ -1338,6 +1338,7 @@ def deliberacao_pagamento_nova():
     # GET - Carregar página do formulário
     return render_template('sumov/deliberacao_pagamento/nova.html')
 
+
 @sumov_bp.route('/deliberacao-pagamento/buscar-dados-contrato', methods=['POST'])
 @login_required
 def buscar_dados_contrato():
@@ -1443,8 +1444,8 @@ def buscar_dados_contrato():
         qtd_prescrito = result_prescrito[1] if result_prescrito and result_prescrito[1] else 0
 
         # ===== BUSCA 5: Índices disponíveis no SISCalculo COM TOTAIS POR TIPO =====
-        # CORREÇÃO: VR_TOTAL no banco NÃO inclui honorários.
-        # Logo: VR_DIVIDA = SUM(VR_TOTAL), honorários são somados por fora.
+        # ✅ CORREÇÃO: Adicionado AND C.[PRESCRITO] = 0 no WHERE principal
+        # para que só traga parcelas válidas (não prescritas)
         sql_indices = text("""
                     SELECT 
                         C.ID_INDICE_ECONOMICO,
@@ -1454,10 +1455,12 @@ def buscar_dados_contrato():
                         SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) as VR_TOTAL_COM_HONORARIOS
                     FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
                     WHERE C.[IMOVEL] = :contrato
+                    AND C.[PRESCRITO] = 0
                     AND C.[DT_ATUALIZACAO] = (
                         SELECT MAX([DT_ATUALIZACAO])
                         FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
                         WHERE [IMOVEL] = :contrato
+                        AND [PRESCRITO] = 0
                     )
                     GROUP BY C.ID_INDICE_ECONOMICO
                     ORDER BY C.ID_INDICE_ECONOMICO
@@ -1470,15 +1473,15 @@ def buscar_dados_contrato():
 
             for idx, row in enumerate(result_indices):
                 id_indice = row[0]
-                vr_total_sem_honorarios = float(row[1]) if row[1] else 0  # SUM(VR_TOTAL) = dívida sem honorários
+                vr_total_sem_honorarios = float(row[1]) if row[1] else 0
                 perc_honorarios = float(row[2]) if row[2] else 0
                 vr_honorarios = float(row[3]) if row[3] else 0
-                vr_total_com_honorarios = float(row[4]) if row[4] else 0  # dívida + honorários
+                vr_total_com_honorarios = float(row[4]) if row[4] else 0
 
                 indice_obj = ParamIndicesEconomicos.query.get(id_indice)
                 nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
 
-                # Buscar totais por tipo de parcela para este índice específico
+                # ✅ CORREÇÃO: Adicionado filtro PRESCRITO == False nos totais por tipo
                 totais_por_tipo = db.session.query(
                     SiscalculoCalculos.ID_TIPO,
                     TipoParcela.DSC_TIPO,
@@ -1490,10 +1493,12 @@ def buscar_dados_contrato():
                 ).filter(
                     SiscalculoCalculos.IMOVEL == contrato,
                     SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
+                    SiscalculoCalculos.PRESCRITO == False,  # ✅ NOVO: Só válidas
                     SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
                         db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
                     ).filter(
-                        SiscalculoCalculos.IMOVEL == contrato
+                        SiscalculoCalculos.IMOVEL == contrato,
+                        SiscalculoCalculos.PRESCRITO == False  # ✅ NOVO: Só válidas na subquery
                     ).scalar_subquery()
                 ).group_by(
                     SiscalculoCalculos.ID_TIPO,
@@ -1674,7 +1679,7 @@ def buscar_dados_contrato():
             'processos_judiciais': processos_judiciais,
             'vr_debitos_sisdex': vr_sisdex,
             'vr_debitos_sisgea': vr_sisgea,
-            'vr_debitos_sisinc': vr_sisinc,  # NOVO
+            'vr_debitos_sisinc': vr_sisinc,
             'vr_debitos_total': vr_total_debitos
         })
 

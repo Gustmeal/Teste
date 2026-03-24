@@ -93,6 +93,7 @@ class SiscalculoCalculos(db.Model):
     VR_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
     PERC_HONORARIOS = db.Column(db.Numeric(5, 2), nullable=True)
     ID_TIPO = db.Column(db.Integer, primary_key=True, nullable=False, default=1)
+    PRESCRITO = db.Column(db.Boolean, default=False, nullable=False, server_default='0')  # ✅ NOVO CAMPO
 
     def __repr__(self):
         return f'<SiscalculoCalculo {self.DT_ATUALIZACAO} - Índice {self.ID_INDICE_ECONOMICO} - {self.IMOVEL}>'

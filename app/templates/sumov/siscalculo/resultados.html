@@ -18,7 +18,6 @@
             </p>
         </div>
         <div class="col-auto">
-            <!-- Adicionada a classe 'btn-secondary' para que o script auto-loading.js ignore este botão -->
             <a href="{{ url_for('siscalculo.exportar_pdf', dt_atualizacao=dt_atualizacao.strftime('%Y-%m-%d'), imovel=imovel, id_indice=indice.ID_INDICE_ECONOMICO if indice else '', perc_honorarios=totais.perc_honorarios, periodo_prescricao=periodo_prescricao) }}"
                class="btn btn-danger btn-secondary"
                id="btnExportarPDF"
@@ -48,118 +47,154 @@
                 </div>
                 {% endif %}
 
-                <div>
+                <div class="mb-2">
                     <strong>Imóvel:</strong> {{ imovel }} |
+                    <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO if indice else 'N/A' }} |
                     <strong>Data de Atualização:</strong> {{ dt_atualizacao.strftime('%d/%m/%Y') }}
-                    {% if indice %}
-                    | <strong>Índice:</strong> {{ indice.DSC_INDICE_ECONOMICO }}
-                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
     {% endif %}
 
-    <!-- Alerta de Prescrição -->
-    {% if periodo_prescricao %}
-    <div class="alert alert-warning" role="alert">
-        <i class="fas fa-exclamation-triangle me-2"></i>
-        <strong>Atenção:</strong> Foi aplicado filtro de prescrição no período <strong>{{ periodo_prescricao }}</strong>.
-        Parcelas fora deste período foram excluídas do cálculo.
-    </div>
-    {% endif %}
-
-    <!-- ✅ NOVO: Card de Totais por Tipo de Parcela -->
-    {% if totais_por_tipo %}
+    <!-- ============================================================ -->
+    <!-- ✅ TABELA 1: COMPLETA (com prescritos) - SÓ APARECE SE HOUVER PRESCRIÇÃO -->
+    <!-- ============================================================ -->
+    {% if tem_prescricao and parcelas_todas %}
     <div class="card shadow mb-3">
-        <div class="card-header bg-success text-white py-2">
-            <h6 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Resumo por Tipo de Parcela</h6>
+        <div class="card-header bg-primary text-white py-2">
+            <h6 class="mb-0">
+                <i class="fas fa-list-alt me-2"></i>
+                Demonstrativo Completo (Com Valores Prescritos)
+                <span class="badge bg-light text-primary ms-2">{{ parcelas_todas|length }} parcela(s)</span>
+            </h6>
         </div>
-        <div class="card-body py-3">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm table-bordered table-hover mb-0">
-                    <thead class="table-light">
+                <table class="table table-striped table-hover table-sm mb-0">
+                    <thead class="table-dark">
                         <tr>
-                            <th class="text-center" style="width: 15%;">ID Tipo</th>
-                            <th style="width: 35%;">Descrição do Tipo</th>
-                            <th class="text-center" style="width: 20%;">Quantidade</th>
-                            <th class="text-end" style="width: 30%;">Valor Total</th>
+                            <th class="text-center" style="width: 40px;">#</th>
+                            <th class="text-center">Vencimento</th>
+                            <th class="text-end">Valor Cota</th>
+                            <th class="text-center">Meses</th>
+                            <th class="text-end">Correção (%)</th>
+                            <th class="text-end">ATM</th>
+                            <th class="text-end">Juros</th>
+                            <th class="text-end">Multa</th>
+                            <th class="text-end">Total</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for tipo in totais_por_tipo %}
-                        <tr>
-                            <td class="text-center">{{ tipo.id_tipo }}</td>
-                            <td>{{ tipo.descricao }}</td>
-                            <td class="text-center">{{ tipo.quantidade }}</td>
-                            <td class="text-end"><strong>{{ "R$ {:,.2f}".format(tipo.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                        {% for parcela in parcelas_todas %}
+                        <tr{% if parcela.PRESCRITO %} class="table-warning"{% endif %}>
+                            <td class="text-center">
+                                {{ loop.index }}
+                                {% if parcela.PRESCRITO %}
+                                <i class="fas fa-exclamation-circle text-warning" title="Prescrita"></i>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">{{ parcela.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-center">{{ parcela.TEMPO_ATRASO }}</td>
+                            <td class="text-end">{{ "{:,.4f}".format(parcela.PERC_ATUALIZACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.ATM).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_JUROS).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_MULTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_TOTAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr class="table-info">
-                            <th colspan="2" class="text-end">TOTAL GERAL:</th>
-                            <th class="text-center"><strong>{{ totais_por_tipo|sum(attribute='quantidade') }}</strong></th>
-                            <th class="text-end"><strong>{{ "R$ {:,.2f}".format(totais_por_tipo|sum(attribute='valor_total')).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        <tr class="table-secondary">
+                            <th colspan="2" class="text-end">SUBTOTAL:</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_todas.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th></th>
+                            <th></th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_todas.atm).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_todas.juros).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_todas.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais_todas.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                        <tr style="background-color: #d1ecf1;">
+                            <th colspan="8" class="text-end">Honorários ({{ "{:.2f}".format(totais_todas.perc_honorarios) }}%):</th>
+                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais_todas.honorarios).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                        <tr style="background-color: #bee5eb;">
+                            <th colspan="8" class="text-end" style="font-size: 1.1rem;">TOTAL COMPLETO:</th>
+                            <th class="text-end" style="font-size: 1.1rem;"><strong>{{ "{:,.2f}".format(totais_todas.total_final).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
     </div>
+
+    <div class="alert alert-info mb-3">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Legenda:</strong> As linhas destacadas em <span class="badge bg-warning text-dark">amarelo</span> representam parcelas do período prescrito ({{ periodo_prescricao }}).
+    </div>
     {% endif %}
 
-    <!-- Tabela de Resultados -->
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white py-2">
-            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Detalhamento das Parcelas</h5>
+    <!-- ============================================================ -->
+    <!-- TABELA 2: SOMENTE VÁLIDAS (Cálculo Oficial) - SEMPRE APARECE -->
+    <!-- ============================================================ -->
+    <div class="card shadow mb-3">
+        <div class="card-header {% if tem_prescricao %}bg-success{% else %}bg-primary{% endif %} text-white py-2">
+            <h6 class="mb-0">
+                <i class="fas fa-calculator me-2"></i>
+                {% if tem_prescricao %}
+                Demonstrativo Sem Valores Prescritos (Cálculo Oficial)
+                {% else %}
+                Demonstrativo de Cálculo
+                {% endif %}
+                <span class="badge bg-light {% if tem_prescricao %}text-success{% else %}text-primary{% endif %} ms-2">{{ parcelas|length }} parcela(s)</span>
+            </h6>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="table-light">
+                <table class="table table-striped table-hover table-sm mb-0">
+                    <thead class="table-dark">
                         <tr>
-                            <th class="text-center" style="width: 10%;">Vencimento</th>
-                            <th class="text-center" style="width: 8%;">Meses Atraso</th>
-                            <th class="text-end" style="width: 11%;">Valor Original</th>
-                            <th class="text-end" style="width: 10%;">% Atualização</th>
-                            <th class="text-end" style="width: 11%;">ATM</th>
-                            <th class="text-end" style="width: 11%;">Juros</th>
-                            <th class="text-end" style="width: 11%;">Multa</th>
-                            <th class="text-end" style="width: 11%;">Desconto</th>
-                            <th class="text-end" style="width: 12%;">Total</th>
+                            <th class="text-center" style="width: 40px;">#</th>
+                            <th class="text-center">Vencimento</th>
+                            <th class="text-end">Valor Cota</th>
+                            <th class="text-center">Meses</th>
+                            <th class="text-end">Correção (%)</th>
+                            <th class="text-end">ATM</th>
+                            <th class="text-end">Juros</th>
+                            <th class="text-end">Multa</th>
+                            <th class="text-end">Total</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for p in parcelas %}
+                        {% for parcela in parcelas %}
                         <tr>
-                            <td class="text-center">{{ p.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
-                            <td class="text-center">{{ p.TEMPO_ATRASO }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(p.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:.4f}".format(p.PERC_ATUALIZACAO * 100 if p.PERC_ATUALIZACAO else 0).replace('.', ',') }}%</td>
-                            <td class="text-end {% if p.ATM and p.ATM < 0 %}text-danger{% endif %}">
-                                {{ "{:,.2f}".format(p.ATM if p.ATM else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            </td>
-                            <td class="text-end">{{ "{:,.2f}".format(p.VR_JUROS if p.VR_JUROS else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(p.VR_MULTA if p.VR_MULTA else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(p.VR_DESCONTO if p.VR_DESCONTO else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
-                            <td class="text-end"><strong>{{ "{:,.2f}".format(p.VR_TOTAL if p.VR_TOTAL else 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></td>
+                            <td class="text-center">{{ loop.index }}</td>
+                            <td class="text-center">{{ parcela.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-center">{{ parcela.TEMPO_ATRASO }}</td>
+                            <td class="text-end">{{ "{:,.4f}".format(parcela.PERC_ATUALIZACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.ATM).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_JUROS).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_MULTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_TOTAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr style="background-color: #e2e8f0;">
-                            <th colspan="2" class="text-end">Total de Parcelas: {{ totais.quantidade }}</th>
-                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        <tr class="table-secondary">
+                            <th colspan="2" class="text-end">SUBTOTAL:</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
                             <th></th>
-                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais.atm).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
-                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais.juros).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
-                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
-                            <th class="text-end"><strong>{{ "{:,.2f}".format(0).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
-                            <th class="text-end"><strong class="text-primary">{{ "{:,.2f}".format(totais.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                            <th></th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais.atm).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais.juros).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
                         </tr>
-                        <tr style="background-color: #bee3f8;">
-                            <th colspan="8" class="text-end">Honorários Advocatícios: {{ "{:.2f}".format(totais.perc_honorarios) }}%</th>
+                        <tr style="background-color: #d4edda;">
+                            <th colspan="8" class="text-end">Honorários ({{ "{:.2f}".format(totais.perc_honorarios) }}%):</th>
                             <th class="text-end"><strong>{{ "{:,.2f}".format(totais.honorarios).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
                         </tr>
                         <tr style="background-color: #c6f6d5;">
@@ -171,6 +206,108 @@
             </div>
         </div>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- ✅ TABELA 3: SOMENTE PRESCRITAS - SÓ APARECE SE HOUVER PRESCRIÇÃO -->
+    <!-- ============================================================ -->
+    {% if tem_prescricao and parcelas_prescritas %}
+    <div class="card shadow mb-3">
+        <div class="card-header bg-warning text-dark py-2">
+            <h6 class="mb-0">
+                <i class="fas fa-ban me-2"></i>
+                Valores Prescritos ({{ periodo_prescricao }})
+                <span class="badge bg-dark ms-2">{{ parcelas_prescritas|length }} parcela(s)</span>
+            </h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover table-sm mb-0">
+                    <thead style="background-color: #856404; color: white;">
+                        <tr>
+                            <th class="text-center" style="width: 40px;">#</th>
+                            <th class="text-center">Vencimento</th>
+                            <th class="text-end">Valor Cota</th>
+                            <th class="text-center">Meses</th>
+                            <th class="text-end">Correção (%)</th>
+                            <th class="text-end">ATM</th>
+                            <th class="text-end">Juros</th>
+                            <th class="text-end">Multa</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for parcela in parcelas_prescritas %}
+                        <tr>
+                            <td class="text-center">{{ loop.index }}</td>
+                            <td class="text-center">{{ parcela.DT_VENCIMENTO.strftime('%d/%m/%Y') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_COTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-center">{{ parcela.TEMPO_ATRASO }}</td>
+                            <td class="text-end">{{ "{:,.4f}".format(parcela.PERC_ATUALIZACAO).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.ATM).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_JUROS).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_MULTA).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(parcela.VR_TOTAL).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-secondary">
+                            <th colspan="2" class="text-end">SUBTOTAL:</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_prescritas.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th></th>
+                            <th></th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_prescritas.atm).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_prescritas.juros).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end">{{ "{:,.2f}".format(totais_prescritas.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</th>
+                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais_prescritas.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                        <tr style="background-color: #fff3cd;">
+                            <th colspan="8" class="text-end">Honorários ({{ "{:.2f}".format(totais_prescritas.perc_honorarios) }}%):</th>
+                            <th class="text-end"><strong>{{ "{:,.2f}".format(totais_prescritas.honorarios).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                        <tr style="background-color: #ffeeba;">
+                            <th colspan="8" class="text-end" style="font-size: 1.1rem;">TOTAL PRESCRITOS:</th>
+                            <th class="text-end" style="font-size: 1.1rem;"><strong>{{ "{:,.2f}".format(totais_prescritas.total_final).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Resumo por Tipo de Parcela (mantido como estava) -->
+    {% if totais_por_tipo and totais_por_tipo|length > 0 %}
+    <div class="card shadow mb-3">
+        <div class="card-header bg-secondary text-white py-2">
+            <h6 class="mb-0"><i class="fas fa-layer-group me-2"></i>Resumo por Tipo de Parcela</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-sm mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Tipo</th>
+                            <th class="text-center">Qtd</th>
+                            <th class="text-end">Valor Original</th>
+                            <th class="text-end">Valor Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tipo in totais_por_tipo %}
+                        <tr>
+                            <td>{{ tipo.descricao }}</td>
+                            <td class="text-center">{{ tipo.quantidade }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(tipo.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(tipo.vr_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Informações Complementares -->
     <div class="card shadow mt-3">
@@ -188,17 +325,24 @@
                         <li><strong>Juros de Mora:</strong> Valor Atualizado × 1% × Meses de Atraso (Juros Simples)</li>
                         <li><strong>Multa:</strong> Valor Atualizado × 2% (após 10/01/2003) ou 10% (antes)</li>
                         <li><strong>Honorários:</strong> {{ "{:.2f}".format(totais.perc_honorarios) }}% sobre o total</li>
+                        {% if periodo_prescricao %}
+                        <li><strong>Prescrição:</strong> Período de {{ periodo_prescricao }} excluído do cálculo oficial</li>
+                        {% endif %}
                     </ul>
                 </div>
                 <div class="col-md-6">
                     <p class="mb-2"><strong>Resumo:</strong></p>
                     <ul class="mb-0" style="font-size: 0.9rem;">
-                        <li><strong>Total de Parcelas:</strong> {{ totais.quantidade }}</li>
+                        <li><strong>Total de Parcelas (válidas):</strong> {{ totais.quantidade }}</li>
                         <li><strong>Valor Original:</strong> R$ {{ "{:,.2f}".format(totais.vr_cota).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
                         <li><strong>Total de Encargos:</strong> R$ {{ "{:,.2f}".format(totais.atm + totais.juros + totais.multa).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
                         <li><strong>Total sem Honorários:</strong> R$ {{ "{:,.2f}".format(totais.total_geral).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
                         <li><strong>Honorários ({{ "{:.2f}".format(totais.perc_honorarios) }}%):</strong> R$ {{ "{:,.2f}".format(totais.honorarios).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
                         <li><strong>Total com Honorários:</strong> R$ {{ "{:,.2f}".format(totais.total_final).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
+                        {% if tem_prescricao %}
+                        <li class="mt-2"><strong>Parcelas Prescritas:</strong> {{ parcelas_prescritas|length }}</li>
+                        <li><strong>Total Prescritos (com hon.):</strong> R$ {{ "{:,.2f}".format(totais_prescritas.total_final).replace(',', 'X').replace('.', ',').replace('X', '.') }}</li>
+                        {% endif %}
                     </ul>
                 </div>
             </div>
@@ -206,72 +350,60 @@
     </div>
 </div>
 
+<!-- iframe invisível para download silencioso -->
+<iframe id="downloadFrame" style="display:none;"></iframe>
+
 <style>
 @media print {
-    .btn, .page-header .col-auto { display: none !important; }
-    .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
-    .table { font-size: 9pt; }
-    .table th, .table td { padding: 0.25rem !important; }
+    .btn, .page-header .col-auto {
+        display: none !important;
+    }
+
+    .card {
+        border: 1px solid #dee2e6 !important;
+        box-shadow: none !important;
+    }
+
+    .table {
+        font-size: 9pt;
+    }
+
+    .table th, .table td {
+        padding: 0.25rem !important;
+    }
 }
+
 .table thead th {
     font-weight: 600;
     vertical-align: middle;
     padding: 0.5rem !important;
 }
-.table tbody tr:hover { background-color: #f8f9fa; }
-.table tfoot tr { font-weight: 600; }
+
+.table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.table tfoot tr {
+    font-weight: 600;
+}
 </style>
 
 <script>
-async function downloadPdf(event, button) {
-    // ✅ CORREÇÃO: Impede a propagação para o auto-loading.js não interceptar
+function downloadPdf(event, btn) {
     event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
+    var originalHTML = btn.innerHTML;
+    var url = btn.href;
 
-    const originalText = button.innerHTML;
-    const downloadUrl = button.href;
-    const filename = "SISCalculo_{{ imovel }}_{{ dt_atualizacao.strftime('%Y%m%d') }}.pdf";
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Gerando PDF...';
+    btn.classList.add('disabled');
 
-    // Desabilita o botão para feedback visual
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-cog fa-spin me-2"></i>Preparando...';
+    var iframe = document.getElementById('downloadFrame');
+    iframe.src = url;
 
-    try {
-        // Busca o arquivo PDF em segundo plano com header especial
-        const response = await fetch(downloadUrl, {
-            headers: {
-                'X-Silent-Request': 'true'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Erro na rede: ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-
-        // Cria e clica no link fantasma para forçar o download
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-
-        // Limpa a memória
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-
-    } catch (error) {
-        console.error('Erro ao baixar o PDF:', error);
-        alert('Ocorreu um erro ao tentar baixar o PDF. Por favor, tente novamente.');
-    } finally {
-        // Restaura o botão
-        button.disabled = false;
-        button.innerHTML = originalText;
-    }
+    setTimeout(function() {
+        btn.innerHTML = originalHTML;
+        btn.classList.remove('disabled');
+    }, 3000);
 }
 </script>
 {% endblock %}

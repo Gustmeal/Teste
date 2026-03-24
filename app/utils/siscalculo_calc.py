@@ -77,20 +77,22 @@ class CalculadorSiscalculo:
             print(f"Usuário: {self.usuario}")
             print("=" * 80)
 
-            # Buscar dados importados (cada registro = uma parcela)
+            # ============================================================
+            # ETAPA 1: Buscar e calcular parcelas VÁLIDAS (fluxo original)
+            # ============================================================
             print("\n[1] Buscando parcelas importadas...")
             query = SiscalculoDados.query.filter_by(
                 DT_ATUALIZACAO=self.dt_atualizacao
             )
 
-            # ✅ NOVO: Filtrar por imóvel se informado
+            # Filtrar por imóvel se informado
             if self.imovel:
                 query = query.filter_by(IMOVEL=self.imovel)
                 print(f"[1] Filtrando por imóvel: {self.imovel}")
 
             dados = query.order_by(
-                SiscalculoDados.DT_VENCIMENTO,  # ✅ CORRETO - data primeiro
-                SiscalculoDados.ID_TIPO  # Depois tipo
+                SiscalculoDados.DT_VENCIMENTO,
+                SiscalculoDados.ID_TIPO
             ).all()
 
             print(f"[1] Total de parcelas encontradas: {len(dados)}")
@@ -105,10 +107,7 @@ class CalculadorSiscalculo:
             imovel = dados[0].IMOVEL if dados else 'N/A'
             print(f"[1] Imóvel: {imovel}")
 
-            # --- INÍCIO DA CORREÇÃO ---
-            # A limpeza deve ser específica para a data de atualização, imóvel E índice.
-            # Isso impede que cálculos de outras datas ou para outros índices do mesmo
-            # imóvel sejam afetados ou se misturem nos resultados.
+            # Limpeza de cálculos anteriores (específica por data + imóvel + índice)
             print(
                 f"\n[2] Limpando cálculos anteriores para DT: {self.dt_atualizacao}, Imóvel: {imovel}, Índice: {self.id_indice}...")
             registros_deletados = SiscalculoCalculos.query.filter_by(
@@ -117,14 +116,13 @@ class CalculadorSiscalculo:
                 ID_INDICE_ECONOMICO=self.id_indice
             ).delete()
             print(f"[2] Registros deletados: {registros_deletados}")
-            # --- FIM DA CORREÇÃO ---
 
             db.session.commit()
 
             total_processado = Decimal('0')
             registros_calculados = 0
 
-            print(f"\n[3] Processando {len(dados)} parcelas...")
+            print(f"\n[3] Processando {len(dados)} parcelas válidas...")
 
             for idx, dado in enumerate(dados, 1):
                 try:
@@ -148,7 +146,8 @@ class CalculadorSiscalculo:
                         VR_DESCONTO=resultado_parcela['total_desconto'],
                         VR_TOTAL=resultado_parcela['valor_total'],
                         PERC_HONORARIOS=self.perc_honorarios,
-                        ID_TIPO=dado.ID_TIPO
+                        ID_TIPO=dado.ID_TIPO,
+                        PRESCRITO=False  # ✅ NOVO: Marcada como válida
                     )
                     db.session.add(novo_calculo)
                     total_processado += resultado_parcela['valor_total']
@@ -161,7 +160,7 @@ class CalculadorSiscalculo:
                     traceback.print_exc()
                     continue
 
-            print(f"\n[4] Realizando commit de {registros_calculados} registros...")
+            print(f"\n[4] Realizando commit de {registros_calculados} registros válidos...")
             try:
                 db.session.commit()
                 print("[4] Commit realizado com sucesso!")
@@ -170,16 +169,97 @@ class CalculadorSiscalculo:
                 db.session.rollback()
                 return {'sucesso': False, 'erro': f'Erro ao salvar cálculos: {str(e)}'}
 
+            # ============================================================
+            # ETAPA 2: ✅ NOVO - Calcular parcelas PRESCRITAS
+            # ============================================================
+            print(f"\n[5] ✅ NOVO: Buscando parcelas prescritas para calcular...")
+
+            from app.models.siscalculo import SiscalculoPrescricoes
+
+            query_prescricoes = SiscalculoPrescricoes.query.filter_by(
+                DT_ATUALIZACAO=self.dt_atualizacao
+            )
+            if self.imovel:
+                query_prescricoes = query_prescricoes.filter_by(IMOVEL=self.imovel)
+            elif imovel and imovel != 'N/A':
+                query_prescricoes = query_prescricoes.filter_by(IMOVEL=imovel)
+
+            prescricoes = query_prescricoes.order_by(SiscalculoPrescricoes.DT_VENCIMENTO).all()
+
+            registros_prescritos = 0
+
+            if prescricoes:
+                print(f"[5] Encontradas {len(prescricoes)} parcelas prescritas para calcular.")
+
+                for i, prescricao in enumerate(prescricoes, 1):
+                    try:
+                        print(
+                            f"\n[5.{i}] Parcela prescrita {i}/{len(prescricoes)}: Vencimento {prescricao.DT_VENCIMENTO}")
+
+                        # Criar objeto temporário com a mesma interface de SiscalculoDados
+                        # para reutilizar calcular_parcela_completa() sem modificá-la
+                        class DadoTemporario:
+                            pass
+
+                        dado_temp = DadoTemporario()
+                        dado_temp.IMOVEL = prescricao.IMOVEL
+                        dado_temp.DT_VENCIMENTO = prescricao.DT_VENCIMENTO
+                        dado_temp.VR_COTA = prescricao.VR_COTA
+                        dado_temp.ID_TIPO = getattr(prescricao, 'ID_TIPO', None)
+
+                        resultado_parcela = self.calcular_parcela_completa(dado_temp)
+
+                        if resultado_parcela:
+                            calculo_prescrito = SiscalculoCalculos(
+                                IMOVEL=prescricao.IMOVEL or '',
+                                DT_VENCIMENTO=prescricao.DT_VENCIMENTO,
+                                VR_COTA=prescricao.VR_COTA,
+                                DT_ATUALIZACAO=self.dt_atualizacao,
+                                ID_INDICE_ECONOMICO=self.id_indice,
+                                TEMPO_ATRASO=resultado_parcela['meses_atraso_total'],
+                                PERC_ATUALIZACAO=resultado_parcela['percentual_total'],
+                                ATM=resultado_parcela['atm'],
+                                VR_JUROS=resultado_parcela['total_juros'],
+                                VR_MULTA=resultado_parcela['total_multa'],
+                                VR_DESCONTO=resultado_parcela['total_desconto'],
+                                VR_TOTAL=resultado_parcela['valor_total'],
+                                PERC_HONORARIOS=self.perc_honorarios,
+                                ID_TIPO=getattr(prescricao, 'ID_TIPO', None),
+                                PRESCRITO=True  # ✅ Marcada como prescrita
+                            )
+                            db.session.add(calculo_prescrito)
+                            registros_prescritos += 1
+                            print(f"  ✅ Prescrita calculada - VR_TOTAL: R$ {resultado_parcela['valor_total']}")
+                        else:
+                            print(f"  [AVISO] Parcela prescrita sem resultado")
+
+                    except Exception as e:
+                        print(f"  [ERRO] Prescrita {prescricao.DT_VENCIMENTO}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        continue
+
+                try:
+                    db.session.commit()
+                    print(f"\n[5] ✅ {registros_prescritos} prescritas calculadas e salvas com PRESCRITO=True.")
+                except Exception as e:
+                    print(f"[ERRO] Falha no commit das prescritas: {str(e)}")
+                    db.session.rollback()
+            else:
+                print("[5] Nenhuma parcela prescrita encontrada (sem prescrição aplicada).")
+
             print("\n" + "=" * 80)
             print("PROCESSAMENTO CONCLUÍDO")
-            print(f"Total de parcelas calculadas: {registros_calculados}")
-            print(f"Valor total processado: R$ {total_processado:,.4f}")
+            print(f"Total de parcelas válidas calculadas: {registros_calculados}")
+            print(f"Total de parcelas prescritas calculadas: {registros_prescritos}")
+            print(f"Valor total processado (válidas): R$ {total_processado:,.4f}")
             print("=" * 80)
 
             return {
                 'sucesso': True,
                 'registros_processados': registros_calculados,
                 'valor_total': float(total_processado),
+                'registros_prescritos': registros_prescritos,
                 'erros': 0
             }
 
