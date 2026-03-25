@@ -3700,3 +3700,123 @@ def inserir_tabela_final_faturamento():
         flash(f'Erro ao inserir na tabela final: {str(e)}', 'danger')
 
     return redirect(url_for('sumov.analise_ocorrencias'))
+
+
+@sumov_bp.route('/faturamento/ans-glosas')
+@login_required
+def ans_glosas():
+    """Página principal do módulo ANS Glosas."""
+    from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
+
+    dt_apuracao = '2025-12-31'
+
+    ocorrencias_por_grupo = AnsApuracao.listar_por_grupo(dt_apuracao)
+    analisadas = AnsApuracao.listar_analisadas(dt_apuracao)
+    stats = AnsApuracao.obter_estatisticas(dt_apuracao)
+    itens_faturamento = AnsItensFaturamento.listar_todos()
+    total_pendentes = sum(len(ocs) for ocs in ocorrencias_por_grupo.values())
+
+    return render_template('sumov/faturamento/ans_glosas.html',
+                           ocorrencias_por_grupo=ocorrencias_por_grupo,
+                           analisadas=analisadas,
+                           stats=stats,
+                           itens_faturamento=itens_faturamento,
+                           total_pendentes=total_pendentes,
+                           dt_apuracao=dt_apuracao)
+
+
+@sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
+@login_required
+def ans_glosas_salvar():
+    """
+    Salva análise individual. Sempre retorna JSON.
+    O frontend faz fetch com X-Silent-Request e trata a resposta.
+    """
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    try:
+        dt_apuracao = request.form.get('dt_apuracao', '2025-12-31')
+        nr_ocorrencia = request.form.get('nr_ocorrencia', type=int)
+        just_aceita = request.form.get('just_aceita', type=int)
+
+        if nr_ocorrencia is None or just_aceita is None:
+            return jsonify({'success': False, 'message': 'Dados incompletos.'}), 400
+
+        sucesso, resultado = AnsApuracao.salvar_analise(dt_apuracao, nr_ocorrencia, just_aceita)
+
+        if sucesso:
+            registrar_log(
+                acao='editar',
+                entidade='ans_apuracao',
+                entidade_id=nr_ocorrencia,
+                descricao=(
+                    f'ANS Glosas - Ocorrência {nr_ocorrencia}: '
+                    f'Justificativa {"Aceita" if just_aceita == 1 else "Rejeitada"}, '
+                    f'QTDE_DIAS={resultado["qtde_dias"]}, '
+                    f'NO_PRAZO={"Sim" if resultado["no_prazo"] == 1 else "Não"}'
+                )
+            )
+
+            status_just = 'aceita' if just_aceita == 1 else 'rejeitada'
+            status_prazo = 'Dentro do prazo' if resultado['no_prazo'] == 1 else 'Fora do prazo'
+
+            return jsonify({
+                'success': True,
+                'message': (
+                    f'Ocorrência {nr_ocorrencia} analisada! '
+                    f'Justificativa {status_just}. '
+                    f'Qtde dias: {resultado["qtde_dias"]}. '
+                    f'{status_prazo} (Prazo: {resultado["prazo"]} dias).'
+                )
+            })
+        else:
+            return jsonify({'success': False, 'message': str(resultado)}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/salvar-lote', methods=['POST'])
+@login_required
+def ans_glosas_salvar_lote():
+    """Salva análises em lote via JSON."""
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    try:
+        dados = request.get_json()
+        if not dados or 'analises' not in dados:
+            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
+
+        dt_apuracao = dados.get('dt_apuracao', '2025-12-31')
+        analises = dados.get('analises', [])
+
+        if not analises:
+            return jsonify({'success': False, 'message': 'Nenhuma análise para processar'}), 400
+
+        sucesso_count, erro_count, erros = AnsApuracao.salvar_analise_lote(dt_apuracao, analises)
+
+        registrar_log(
+            acao='editar',
+            entidade='ans_apuracao_lote',
+            entidade_id='batch',
+            descricao=f'ANS Glosas - Lote: {sucesso_count} sucesso, {erro_count} erros'
+        )
+
+        return jsonify({
+            'success': True,
+            'message': f'{sucesso_count} ocorrência(s) analisada(s) com sucesso.',
+            'sucesso_count': sucesso_count,
+            'erro_count': erro_count,
+            'erros': erros
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500

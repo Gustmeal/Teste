@@ -55,10 +55,15 @@ class Usuario(db.Model):
     DELETED_AT = db.Column(db.DateTime)
 
     def set_senha(self, senha):
-        self.SENHA_HASH = generate_password_hash(senha)
+        """Gera hash da senha usando pbkdf2:sha256 para compatibilidade universal"""
+        self.SENHA_HASH = generate_password_hash(senha, method='pbkdf2:sha256')
 
     def verificar_senha(self, senha):
-        return check_password_hash(self.SENHA_HASH, senha)
+        """Verifica a senha com tratamento para hash incompatível"""
+        try:
+            return check_password_hash(self.SENHA_HASH, senha)
+        except ValueError:
+            return False
 
     def is_active(self):
         return self.ATIVO and self.DELETED_AT is None

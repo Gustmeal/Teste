@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.faturamento_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao Faturamento
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas
+        </h1>
+        <span class="badge bg-secondary fs-6">
+            <i class="fas fa-calendar-alt me-1"></i> Apuração: {{ dt_apuracao }}
+        </span>
+    </div>
+
+    <!-- Cards de Estatísticas -->
+    <div class="row mb-4">
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#4e73df,#224abe);"><i class="fas fa-list-ol text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">{{ stats.total if stats else 0 }}</h4>
+                <small class="text-muted">Total</small>
+            </div></div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#f6c23e,#dda20a);"><i class="fas fa-hourglass-half text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">{{ stats.pendentes if stats else 0 }}</h4>
+                <small class="text-muted">Pendentes</small>
+            </div></div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#1cc88a,#13855c);"><i class="fas fa-check-circle text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">{{ stats.analisadas if stats else 0 }}</h4>
+                <small class="text-muted">Analisadas</small>
+            </div></div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#36b9cc,#258391);"><i class="fas fa-thumbs-up text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">{{ stats.aceitas if stats else 0 }}</h4>
+                <small class="text-muted">Aceitas</small>
+            </div></div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#e74a3b,#be2617);"><i class="fas fa-thumbs-down text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">{{ stats.rejeitadas if stats else 0 }}</h4>
+                <small class="text-muted">Rejeitadas</small>
+            </div></div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 mb-3">
+            <div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3">
+                <div class="d-flex align-items-center justify-content-center mb-2">
+                    <div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#858796,#60616f);"><i class="fas fa-clock text-white"></i></div>
+                </div>
+                <h4 class="fw-bold mb-0">
+                    {{ stats.dentro_prazo if stats else 0 }}<small class="text-success fs-6"><i class="fas fa-check"></i></small>
+                    / {{ stats.fora_prazo if stats else 0 }}<small class="text-danger fs-6"><i class="fas fa-times"></i></small>
+                </h4>
+                <small class="text-muted">Prazo (Dentro/Fora)</small>
+            </div></div>
+        </div>
+    </div>
+
+    <!-- Legenda TB043 -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light py-2"><h6 class="mb-0"><i class="fas fa-info-circle text-info me-2"></i>Referência: Itens de Faturamento por Grupo (Prazos ANS)</h6></div>
+        <div class="card-body py-2"><div class="row">
+            {% for item in itens_faturamento %}
+            <div class="col-lg-4 col-md-6 mb-2">
+                <div class="d-flex align-items-center p-2 rounded" style="background-color: rgba(78,115,223,0.08);">
+                    <span class="badge bg-primary me-2">Grupo {{ item.GRUPO }}</span>
+                    <small class="me-auto fw-bold">{{ item.itemServico }}</small>
+                    <span class="badge bg-warning text-dark">Prazo: {{ item.PRAZO }} dias</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div></div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="tabAnsGlosas" role="tablist">
+        {% if ocorrencias_por_grupo %}
+            {% for grupo, ocorrencias in ocorrencias_por_grupo.items() %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if loop.first %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#grupo-{{ grupo }}" type="button" role="tab">
+                    <i class="fas fa-folder me-1"></i> Grupo {{ grupo }} <span class="badge bg-secondary ms-1">{{ ocorrencias|length }}</span>
+                </button>
+            </li>
+            {% endfor %}
+        {% endif %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if not ocorrencias_por_grupo %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#analisadas" type="button" role="tab">
+                <i class="fas fa-check-circle me-1"></i> Analisadas <span class="badge bg-success ms-1">{{ analisadas|length }}</span>
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="tabAnsGlosasContent">
+        {% if ocorrencias_por_grupo %}
+            {% for grupo, ocorrencias in ocorrencias_por_grupo.items() %}
+            <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="grupo-{{ grupo }}" role="tabpanel">
+                <div class="card shadow">
+                    <div class="card-header bg-gradient-info text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-folder-open me-2"></i>Grupo {{ grupo }}
+                            {% for item in itens_faturamento %}{% if item.GRUPO == grupo %} — {{ item.itemServico }} (Prazo: {{ item.PRAZO }} dias){% endif %}{% endfor %}
+                        </h5>
+                        <span class="btn btn-light btn-sm" onclick="salvarLoteGrupo({{ grupo }})" style="cursor:pointer;"><i class="fas fa-save me-1"></i> Salvar Grupo</span>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if ocorrencias %}
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped mb-0" id="tabela-grupo-{{ grupo }}">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-center" style="width:100px;">Ocorrência</th>
+                                        <th class="text-center" style="width:110px;">Dt. Abertura</th>
+                                        <th class="text-center" style="width:110px;">Dt. Andamento</th>
+                                        <th class="text-center" style="width:120px;">Dt. Justificativa</th>
+                                        <th style="min-width:300px;">Descrição da Justificativa</th>
+                                        <th class="text-center" style="width:160px;">Justificativa Aceita?</th>
+                                        <th class="text-center" style="width:80px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for oc in ocorrencias %}
+                                    <tr id="row-{{ grupo }}-{{ oc.nrOcorrencia }}" data-nr-ocorrencia="{{ oc.nrOcorrencia }}" data-grupo="{{ grupo }}">
+                                        <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
+                                        <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
+                                        <td class="text-center">{{ oc.DT_ANDAMENTO.strftime('%d/%m/%Y') if oc.DT_ANDAMENTO else '-' }}</td>
+                                        <td class="text-center">{{ oc.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if oc.DT_JUSTIFICATIVA else '-' }}</td>
+                                        <td><div class="dsc-justificativa" title="{{ oc.DSC_JUSTIFICATIVA or '' }}">{{ oc.DSC_JUSTIFICATIVA or '-' }}</div></td>
+                                        <td class="text-center">
+                                            <div class="d-flex justify-content-center gap-2">
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input just-aceita-radio js-ignore-loading" type="radio"
+                                                           name="just_aceita_{{ grupo }}_{{ oc.nrOcorrencia }}"
+                                                           id="just_sim_{{ grupo }}_{{ oc.nrOcorrencia }}" value="1"
+                                                           onclick="handleRadioClick({{ grupo }}, {{ oc.nrOcorrencia }}, 1)">
+                                                    <label class="form-check-label text-success fw-bold" for="just_sim_{{ grupo }}_{{ oc.nrOcorrencia }}">Sim</label>
+                                                </div>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input just-aceita-radio js-ignore-loading" type="radio"
+                                                           name="just_aceita_{{ grupo }}_{{ oc.nrOcorrencia }}"
+                                                           id="just_nao_{{ grupo }}_{{ oc.nrOcorrencia }}" value="0"
+                                                           onclick="handleRadioClick({{ grupo }}, {{ oc.nrOcorrencia }}, 0)">
+                                                    <label class="form-check-label text-danger fw-bold" for="just_nao_{{ grupo }}_{{ oc.nrOcorrencia }}">Não</label>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="btn btn-sm btn-outline-primary" onclick="salvarIndividual({{ grupo }}, {{ oc.nrOcorrencia }})" style="cursor:pointer;" title="Salvar"><i class="fas fa-save"></i></span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info m-3"><i class="fas fa-info-circle me-2"></i>Não há ocorrências pendentes neste grupo.</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% endif %}
+
+        <!-- Analisadas -->
+        <div class="tab-pane fade {% if not ocorrencias_por_grupo %}show active{% endif %}" id="analisadas" role="tabpanel">
+            <div class="card shadow">
+                <div class="card-header bg-gradient-success text-white"><h5 class="mb-0"><i class="fas fa-check-circle me-2"></i> Ocorrências Analisadas</h5></div>
+                <div class="card-body p-0">
+                    {% if analisadas %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="text-center">Grupo</th><th class="text-center">Ocorrência</th>
+                                    <th class="text-center">Dt. Abertura</th><th class="text-center">Dt. Justificativa</th>
+                                    <th>Descrição da Justificativa</th><th class="text-center">Just. Aceita?</th>
+                                    <th class="text-center">Qtde Dias</th><th class="text-center">Prazo ANS</th><th class="text-center">No Prazo?</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for oc in analisadas %}
+                                <tr>
+                                    <td class="text-center"><span class="badge bg-primary">{{ oc.GRUPO }}</span></td>
+                                    <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
+                                    <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
+                                    <td class="text-center">{{ oc.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if oc.DT_JUSTIFICATIVA else '-' }}</td>
+                                    <td><div class="dsc-justificativa">{{ oc.DSC_JUSTIFICATIVA or '-' }}</div></td>
+                                    <td class="text-center">
+                                        {% if oc.JUST_ACEITA == 1 %}<span class="badge bg-success"><i class="fas fa-check me-1"></i>Sim</span>
+                                        {% elif oc.JUST_ACEITA == 0 %}<span class="badge bg-danger"><i class="fas fa-times me-1"></i>Não</span>
+                                        {% else %}<span class="badge bg-secondary">-</span>{% endif %}
+                                    </td>
+                                    <td class="text-center"><span class="fw-bold">{{ oc.QTDE_DIAS if oc.QTDE_DIAS is not none else '-' }}</span></td>
+                                    <td class="text-center"><span class="badge bg-warning text-dark">{{ oc.PRAZO if oc.PRAZO is not none else '-' }}</span></td>
+                                    <td class="text-center">
+                                        {% if oc.NO_PRAZO == 1 %}<span class="badge bg-success fs-6"><i class="fas fa-check-circle me-1"></i>Dentro</span>
+                                        {% elif oc.NO_PRAZO == 0 %}<span class="badge bg-danger fs-6"><i class="fas fa-exclamation-triangle me-1"></i>Fora</span>
+                                        {% else %}<span class="badge bg-secondary">-</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info m-3"><i class="fas fa-info-circle me-2"></i>Nenhuma ocorrência foi analisada ainda.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-gradient-info { background: linear-gradient(135deg, #36b9cc 0%, #258391 100%) !important; }
+    .bg-gradient-success { background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%) !important; }
+    .dsc-justificativa { max-height: 80px; overflow-y: auto; font-size: 0.85rem; line-height: 1.4; padding: 4px; }
+    .dsc-justificativa::-webkit-scrollbar { width: 4px; }
+    .dsc-justificativa::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.2); border-radius: 2px; }
+    .nav-tabs .nav-link { font-weight: 600; color: #5a5c69; border: none; padding: 10px 20px; transition: all 0.3s; }
+    .nav-tabs .nav-link.active { color: #4e73df; border-bottom: 3px solid #4e73df; background: transparent; }
+    .nav-tabs .nav-link:hover:not(.active) { color: #224abe; border-bottom: 3px solid rgba(78,115,223,0.3); }
+    .form-check-input:checked { border-color: transparent; }
+    .form-check-input[value="1"]:checked { background-color: #1cc88a; border-color: #1cc88a; }
+    .form-check-input[value="0"]:checked { background-color: #e74a3b; border-color: #e74a3b; }
+    .table th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+    tr.row-selecionada { background-color: rgba(78,115,223,0.08) !important; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+var estadoSelecao = {};
+var debounceTimers = {};
+var URL_SALVAR = "{{ url_for('sumov.ans_glosas_salvar') }}";
+var URL_SALVAR_LOTE = "{{ url_for('sumov.ans_glosas_salvar_lote') }}";
+var DT_APURACAO = "{{ dt_apuracao }}";
+
+function handleRadioClick(grupo, nrOcorrencia, valor) {
+    var chave = grupo + '-' + nrOcorrencia;
+    if (debounceTimers[chave]) clearTimeout(debounceTimers[chave]);
+    debounceTimers[chave] = setTimeout(function() {
+        var radioSim = document.getElementById('just_sim_' + grupo + '_' + nrOcorrencia);
+        var radioNao = document.getElementById('just_nao_' + grupo + '_' + nrOcorrencia);
+        var row = document.getElementById('row-' + chave);
+        var ant = estadoSelecao[chave];
+        if (ant !== undefined && ant === valor) {
+            if (radioSim) radioSim.checked = false;
+            if (radioNao) radioNao.checked = false;
+            delete estadoSelecao[chave];
+            if (row) row.classList.remove('row-selecionada');
+            return;
+        }
+        estadoSelecao[chave] = valor;
+        if (row) row.classList.add('row-selecionada');
+    }, 100);
+}
+
+function salvarIndividual(grupo, nrOcorrencia) {
+    var chave = grupo + '-' + nrOcorrencia;
+    var valor = estadoSelecao[chave];
+    if (valor === undefined) {
+        alert('Selecione Sim ou Não para a ocorrência ' + nrOcorrencia + ' antes de salvar.');
+        return;
+    }
+    var justTexto = valor === 1 ? 'ACEITA' : 'REJEITADA';
+    if (!confirm('Confirma a análise da ocorrência ' + nrOcorrencia + '?\nJustificativa: ' + justTexto)) return;
+
+    var fd = new FormData();
+    fd.append('dt_apuracao', DT_APURACAO);
+    fd.append('nr_ocorrencia', nrOcorrencia);
+    fd.append('just_aceita', valor);
+
+    fetch(URL_SALVAR, { method: 'POST', headers: {'X-Silent-Request': 'true'}, body: fd })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) { alert(d.message); window.location.reload(); }
+        else { alert('Erro: ' + d.message); }
+    })
+    .catch(function(e) { alert('Erro: ' + e); });
+}
+
+function salvarLoteGrupo(grupo) {
+    var tabela = document.getElementById('tabela-grupo-' + grupo);
+    if (!tabela) { alert('Tabela não encontrada.'); return; }
+    var analises = [];
+    tabela.querySelectorAll('tbody tr').forEach(function(row) {
+        var nr = row.getAttribute('data-nr-ocorrencia');
+        var ch = grupo + '-' + nr;
+        if (estadoSelecao[ch] !== undefined) analises.push({ nr_ocorrencia: parseInt(nr), just_aceita: estadoSelecao[ch] });
+    });
+    if (analises.length === 0) { alert('Nenhuma ocorrência marcada.\nSelecione Sim ou Não primeiro.'); return; }
+    var ac = analises.filter(function(a){return a.just_aceita===1;}).length;
+    var rj = analises.filter(function(a){return a.just_aceita===0;}).length;
+    if (!confirm('Salvar ' + analises.length + ' ocorrência(s)?\n\nAceitas: ' + ac + '\nRejeitadas: ' + rj)) return;
+
+    fetch(URL_SALVAR_LOTE, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({ dt_apuracao: DT_APURACAO, analises: analises })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) { alert(d.message); window.location.reload(); }
+        else { alert('Erro: ' + d.message); }
+    })
+    .catch(function(e) { alert('Erro: ' + e); });
+}
+</script>
+{% endblock %}

@@ -12,9 +12,10 @@
         </h1>
     </div>
 
-    <!-- Card único com o módulo -->
+    <!-- Cards dos módulos -->
     <div class="row">
-        <div class="col-lg-6 col-md-12 mx-auto">
+        <!-- Card: Análise de Ocorrências (existente) -->
+        <div class="col-lg-5 col-md-6 mb-4">
             <div class="card module-card h-100 border-0 shadow">
                 <div class="card-body text-center p-5">
                     <div class="icon-wrapper icon-primary mb-4">
@@ -26,6 +27,25 @@
                     </p>
                     <a href="{{ url_for('sumov.analise_ocorrencias') }}"
                        class="btn btn-primary btn-lg w-100">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card: ANS Glosas (NOVO) -->
+        <div class="col-lg-5 col-md-6 mb-4">
+            <div class="card module-card h-100 border-0 shadow">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-info mb-4">
+                        <i class="fas fa-clipboard-check fa-2x"></i>
+                    </div>
+                    <h5 class="card-title fw-bold mb-3">ANS Glosas</h5>
+                    <p class="card-text text-muted mb-4">
+                        Apuração e análise de justificativas ANS por grupo
+                    </p>
+                    <a href="{{ url_for('sumov.ans_glosas') }}"
+                       class="btn btn-info btn-lg w-100 text-white">
                         <i class="fas fa-arrow-right me-2"></i>Acessar
                     </a>
                 </div>
@@ -57,6 +77,11 @@
 
     .icon-primary {
         background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        color: white;
+    }
+
+    .icon-info {
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%);
         color: white;
     }
 </style>
