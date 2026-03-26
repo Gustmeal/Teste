@@ -95,7 +95,6 @@
         const element = event.target.closest('button, a, [role="button"], [type="submit"]');
 
         if (element) {
-            // ========== INÍCIO DA ALTERAÇÃO: Adicionada nova condição de exceção ==========
             if (element.classList.contains('js-ignore-loading') ||
                 element.classList.contains('btn-close') ||
                 element.getAttribute('data-bs-dismiss') ||
@@ -106,10 +105,9 @@
                 element.getAttribute('data-bs-toggle') === 'tab' ||
                 element.getAttribute('data-bs-toggle') === 'tooltip' ||
                 element.classList.contains('page-link') && element.closest('.pagination') ||
-                element.hasAttribute('download')) {  // <-- NOVA LINHA: Ignora links com atributo download
-                return; // Ignora o clique se qualquer uma dessas condições for verdadeira
+                element.hasAttribute('download')) {
+                return;
             }
-            // ========== FIM DA ALTERAÇÃO ==========
 
             const href = element.getAttribute('href');
             if (href && href !== '#' && !href.startsWith('javascript:')) {
@@ -131,22 +129,32 @@
         operationStarted();
     });
 
-    // ========== INÍCIO DO BLOCO MODIFICADO ==========
     // Interceptar Fetch API
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
-        const request = new Request(...args);
+        // Verificar o header X-Silent-Request sem consumir o body
+        // Checamos diretamente no objeto de opções (segundo argumento)
+        var options = args[1] || {};
+        var headers = options.headers || {};
+        var isSilent = false;
 
-        // VERIFICA SE A REQUISIÇÃO TEM O HEADER PARA SER IGNORADA
-        if (request.headers.has('X-Silent-Request')) {
-            // Se tiver o header, apenas executa o fetch original sem acionar o loading
-            return originalFetch(request);
+        if (headers instanceof Headers) {
+            isSilent = headers.has('X-Silent-Request');
+        } else if (typeof headers === 'object') {
+            // Verificar no objeto plain
+            isSilent = ('X-Silent-Request' in headers);
+        }
+
+        if (isSilent) {
+            // Se for silenciosa, executa o fetch original diretamente
+            // SEM criar new Request() para não consumir o body (FormData)
+            return originalFetch.apply(this, args);
         }
 
         // Para todas as outras requisições, o comportamento normal continua
         operationStarted();
 
-        return originalFetch(request)
+        return originalFetch.apply(this, args)
             .then(response => {
                 operationEnded();
                 return response;
@@ -156,7 +164,6 @@
                 throw error;
             });
     };
-    // ========== FIM DO BLOCO MODIFICADO ==========
 
     // Interceptar XMLHttpRequest
     const originalOpen = XMLHttpRequest.prototype.open;
@@ -175,8 +182,6 @@
 
     // Lida com o ciclo de vida da página para corrigir o bug do botão "voltar"
     window.addEventListener('pageshow', (event) => {
-        // Se a página foi restaurada do cache (bfcache), o estado pode estar inconsistente.
-        // Forçamos o reset do loading para garantir que não fique preso.
         if (event.persisted) {
             operationCounter = 0;
             hideLoading();
