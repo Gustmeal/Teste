@@ -910,7 +910,7 @@ def comparar_indices():
 @siscalculo_bp.route('/exportar_pdf')
 @login_required
 def exportar_pdf():
-    """Exporta os resultados para PDF - VERSÃO COM 3 TABELAS DE PRESCRIÇÃO"""
+    """Exporta os resultados para PDF - VERSÃO COMPLETA COM TOTAIS POR TIPO"""
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
@@ -918,334 +918,180 @@ def exportar_pdf():
     periodo_prescricao = request.args.get('periodo_prescricao', '')
 
     if not all([dt_atualizacao, id_indice, imovel]):
-        flash('Informações insuficientes para gerar o PDF.', 'danger')
+        flash('Informações insuficientes para gerar o PDF (Data, Imóvel e Índice são necessários).', 'danger')
         return redirect(url_for('siscalculo.index'))
 
     try:
-        from io import BytesIO
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-
+        # Converter parâmetros
         dt_atualizacao_filtro = datetime.strptime(dt_atualizacao, '%Y-%m-%d').date()
-        perc_honorarios = Decimal(str(perc_honorarios_param)) if perc_honorarios_param else Decimal('10.00')
+        perc_honorarios = Decimal(perc_honorarios_param) if perc_honorarios_param else Decimal('10.00')
 
-        # Buscar parcelas válidas
-        query_validas = SiscalculoCalculos.query.filter_by(
-            IMOVEL=imovel,
+        print(f"\n[PDF] Gerando PDF para:")
+        print(f"  Imóvel: {imovel}")
+        print(f"  Data: {dt_atualizacao_filtro}")
+        print(f"  Índice: {id_indice}")
+        print(f"  Honorários: {perc_honorarios}%")
+
+        # Buscar parcelas
+        parcelas = SiscalculoCalculos.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao_filtro,
-            ID_INDICE_ECONOMICO=int(id_indice),
-            PRESCRITO=False
-        ).order_by(SiscalculoCalculos.DT_VENCIMENTO)
-        parcelas_validas = query_validas.all()
-
-        # Buscar parcelas prescritas
-        query_prescritas = SiscalculoCalculos.query.filter_by(
             IMOVEL=imovel,
+            ID_INDICE_ECONOMICO=int(id_indice)
+        ).order_by(
+            SiscalculoCalculos.ID_TIPO,          # ✅ ORDENAR POR TIPO PRIMEIRO
+            SiscalculoCalculos.DT_VENCIMENTO
+        ).all()
+
+        if not parcelas:
+            flash('Nenhuma parcela encontrada para gerar o PDF.', 'warning')
+            return redirect(url_for('siscalculo.resultados',
+                                    dt_atualizacao=dt_atualizacao,
+                                    imovel=imovel,
+                                    id_indice=id_indice,
+                                    perc_honorarios=float(perc_honorarios)))
+
+        # ✅ NOVO: BUSCAR TOTAIS POR TIPO
+        print(f"\n[PDF] Buscando totais por tipo...")
+        totais_por_tipo = db.session.query(
+            SiscalculoCalculos.ID_TIPO,
+            TipoParcela.DSC_TIPO,
+            db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
+            db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
+        ).join(
+            TipoParcela,
+            SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
+        ).filter(
+            SiscalculoCalculos.DT_ATUALIZACAO == dt_atualizacao_filtro,
+            SiscalculoCalculos.IMOVEL == imovel,
+            SiscalculoCalculos.ID_INDICE_ECONOMICO == int(id_indice)
+        ).group_by(
+            SiscalculoCalculos.ID_TIPO,
+            TipoParcela.DSC_TIPO
+        ).order_by(
+            SiscalculoCalculos.ID_TIPO
+        ).all()
+
+        # Converter para lista de dicionários
+        totais_por_tipo_lista = [
+            {
+                'id_tipo': t.ID_TIPO,
+                'descricao': t.DSC_TIPO,
+                'quantidade': t.quantidade,
+                'valor_total': float(t.valor_total) if t.valor_total else 0
+            }
+            for t in totais_por_tipo
+        ]
+
+        print(f"[PDF] Totais por tipo encontrados: {len(totais_por_tipo_lista)}")
+        for t in totais_por_tipo_lista:
+            print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas - R$ {t['valor_total']:,.2f}")
+
+        # Buscar nome do condomínio
+        nome_condominio = ''
+        dado_temp = SiscalculoDados.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao_filtro,
-            ID_INDICE_ECONOMICO=int(id_indice),
-            PRESCRITO=True
-        ).order_by(SiscalculoCalculos.DT_VENCIMENTO)
-        parcelas_prescritas = query_prescritas.all()
+            IMOVEL=imovel
+        ).first()
 
-        tem_prescricao = len(parcelas_prescritas) > 0
+        if dado_temp and dado_temp.NOME_CONDOMINIO:
+            nome_condominio = dado_temp.NOME_CONDOMINIO
 
-        # Montar lista completa
-        parcelas_todas = sorted(
-            parcelas_validas + parcelas_prescritas,
-            key=lambda p: p.DT_VENCIMENTO
-        ) if tem_prescricao else None
+        # Buscar endereço do imóvel
+        endereco_imovel = ''
+        try:
+            with db.engine.connect() as connection:
+                sql_endereco = text("""
+                    SELECT TOP 1 
+                        RTRIM(LTRIM(ISNULL(DS_ENDERECO, ''))) + ', ' +
+                        RTRIM(LTRIM(ISNULL(NU_ENDERECO, ''))) + ' - ' +
+                        RTRIM(LTRIM(ISNULL(DS_BAIRRO, ''))) + ' - ' +
+                        RTRIM(LTRIM(ISNULL(DS_CIDADE, ''))) + '/' +
+                        RTRIM(LTRIM(ISNULL(DS_ESTADO, ''))) AS ENDERECO_COMPLETO
+                    FROM [BDG].[MOV_TB001_IMOVEL]
+                    WHERE NU_IMOVEL = :imovel
+                """)
+                result = connection.execute(sql_endereco, {"imovel": imovel})
+                row = result.fetchone()
+                if row and row[0]:
+                    endereco_imovel = row[0]
+        except Exception as e:
+            print(f"[PDF] Erro ao buscar endereço: {str(e)}")
+
+        # Buscar índice
+        indice_nome = 'N/A'
+        indice = ParamIndicesEconomicos.query.get(int(id_indice))
+        if indice:
+            indice_nome = indice.DSC_INDICE_ECONOMICO
+
+        # Converter parcelas para lista de dicionários
+        parcelas_pdf = []
+        for p in parcelas:
+            parcelas_pdf.append({
+                'DT_VENCIMENTO': p.DT_VENCIMENTO,
+                'TEMPO_ATRASO': p.TEMPO_ATRASO,
+                'VR_COTA': p.VR_COTA,
+                'PERC_ATUALIZACAO': p.PERC_ATUALIZACAO,
+                'ATM': p.ATM,
+                'VR_JUROS': p.VR_JUROS,
+                'VR_MULTA': p.VR_MULTA,
+                'VR_DESCONTO': p.VR_DESCONTO,
+                'VR_TOTAL': p.VR_TOTAL,
+                'ID_TIPO': p.ID_TIPO  # ✅ ADICIONAR ID_TIPO
+            })
 
         # Calcular totais
-        totais_validas = calcular_totais_parcelas(parcelas_validas, perc_honorarios)
-        totais_prescritas = calcular_totais_parcelas(parcelas_prescritas, perc_honorarios) if tem_prescricao else None
-        totais_todas = calcular_totais_parcelas(parcelas_todas, perc_honorarios) if tem_prescricao else None
+        total_geral = sum(p.VR_TOTAL or 0 for p in parcelas)
+        honorarios = total_geral * (perc_honorarios / Decimal('100'))
 
-        # Buscar nome do índice e condomínio
-        indice = ParamIndicesEconomicos.query.get(int(id_indice))
-        indice_nome = indice.DSC_INDICE_ECONOMICO if indice else 'N/A'
-
-        nome_condominio = ''
-        try:
-            sql_cond = text("""
-                SELECT TOP 1 NOME_CONDOMINIO
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-                WHERE IMOVEL = :imovel AND DT_ATUALIZACAO = :dt
-            """)
-            result_cond = db.session.execute(sql_cond, {
-                'imovel': imovel, 'dt': dt_atualizacao_filtro
-            }).fetchone()
-            if result_cond:
-                nome_condominio = result_cond[0] or ''
-        except Exception:
-            pass
-
-        # ============================================================
-        # GERAR PDF
-        # ============================================================
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=landscape(A4),
-            leftMargin=1.5 * cm,
-            rightMargin=1.5 * cm,
-            topMargin=1.5 * cm,
-            bottomMargin=1.5 * cm
-        )
-
-        styles = getSampleStyleSheet()
-        elementos = []
-
-        # Estilos personalizados
-        titulo_style = ParagraphStyle(
-            'TituloCustom', parent=styles['Heading1'],
-            fontSize=14, alignment=TA_CENTER, spaceAfter=6
-        )
-        subtitulo_style = ParagraphStyle(
-            'SubtituloCustom', parent=styles['Normal'],
-            fontSize=9, alignment=TA_CENTER, spaceAfter=12, textColor=colors.grey
-        )
-        secao_style = ParagraphStyle(
-            'SecaoCustom', parent=styles['Heading2'],
-            fontSize=11, spaceAfter=6, spaceBefore=12
-        )
-        info_style = ParagraphStyle(
-            'InfoCustom', parent=styles['Normal'],
-            fontSize=8, spaceAfter=4
-        )
-        rodape_style = ParagraphStyle(
-            'RodapeCustom', parent=styles['Normal'],
-            fontSize=7, textColor=colors.grey, spaceAfter=2
-        )
-
-        # Cabeçalho
-        elementos.append(Paragraph("Proposta Negocial EMGEA", titulo_style))
-        elementos.append(Paragraph(
-            "Quitação de todos os débitos exigíveis, mediante aceitação dos encargos, "
-            "inclusive honorários, conforme critérios no rodapé - JUDICIAL", subtitulo_style
-        ))
-
-        # Informações do imóvel
-        info_text = f"<b>Imóvel:</b> {imovel}"
-        if nome_condominio:
-            info_text += f" | <b>Reclamante:</b> {nome_condominio}"
-        info_text += f" | <b>Índice:</b> {indice_nome}"
-        info_text += f" | <b>Data Atualização:</b> {dt_atualizacao_filtro.strftime('%d/%m/%Y')}"
-        if periodo_prescricao:
-            info_text += f" | <b>Prescrição:</b> {periodo_prescricao}"
-        elementos.append(Paragraph(info_text, info_style))
-        elementos.append(Spacer(1, 6))
-
-        def formatar_br(valor):
-            """Formata valor para padrão brasileiro"""
-            if valor is None:
-                return "0,00"
-            return f"{float(valor):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-        def formatar_perc(valor):
-            """Formata percentual"""
-            if valor is None:
-                return "0,0000"
-            return f"{float(valor):,.4f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-        def criar_tabela_pdf(parcelas_lista, totais_obj, titulo_tabela, cor_header):
-            """Cria uma tabela de parcelas para o PDF"""
-            elems = []
-            elems.append(Paragraph(titulo_tabela, secao_style))
-
-            # Cabeçalho da tabela
-            cabecalho = ['#', 'Vencimento', 'Valor Cota', 'Meses', 'Correção (%)',
-                         'ATM', 'Juros', 'Multa', 'Total']
-
-            dados_tabela = [cabecalho]
-
-            for i, p in enumerate(parcelas_lista, 1):
-                linha = [
-                    str(i),
-                    p.DT_VENCIMENTO.strftime('%d/%m/%Y'),
-                    formatar_br(p.VR_COTA),
-                    str(p.TEMPO_ATRASO or 0),
-                    formatar_perc(p.PERC_ATUALIZACAO),
-                    formatar_br(p.ATM),
-                    formatar_br(p.VR_JUROS),
-                    formatar_br(p.VR_MULTA),
-                    formatar_br(p.VR_TOTAL)
-                ]
-                dados_tabela.append(linha)
-
-            # Linha de subtotal
-            dados_tabela.append([
-                '', 'SUBTOTAL:', formatar_br(totais_obj.vr_cota),
-                '', '', formatar_br(totais_obj.atm),
-                formatar_br(totais_obj.juros),
-                formatar_br(totais_obj.multa),
-                formatar_br(totais_obj.total_geral)
-            ])
-
-            # Linha de honorários
-            dados_tabela.append([
-                '', '', '', '', '', '', '',
-                f'Honorários ({formatar_br(totais_obj.perc_honorarios)}%):',
-                formatar_br(totais_obj.honorarios)
-            ])
-
-            # Linha de total final
-            dados_tabela.append([
-                '', '', '', '', '', '', '',
-                'TOTAL:',
-                formatar_br(totais_obj.total_final)
-            ])
-
-            # Larguras das colunas
-            col_widths = [25, 65, 65, 35, 65, 65, 60, 60, 70]
-
-            tabela = Table(dados_tabela, colWidths=col_widths)
-
-            # Estilo da tabela
-            style_list = [
-                # Cabeçalho
-                ('BACKGROUND', (0, 0), (-1, 0), cor_header),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 7),
-                ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-
-                # Corpo
-                ('FONTSIZE', (0, 1), (-1, -4), 7),
-                ('ALIGN', (0, 1), (0, -4), 'CENTER'),   # #
-                ('ALIGN', (1, 1), (1, -4), 'CENTER'),   # Vencimento
-                ('ALIGN', (2, 1), (2, -4), 'RIGHT'),    # Valor Cota
-                ('ALIGN', (3, 1), (3, -4), 'CENTER'),   # Meses
-                ('ALIGN', (4, 1), (-1, -4), 'RIGHT'),   # Correção, ATM, Juros, Multa, Total
-
-                # Linhas alternadas
-                ('ROWBACKGROUNDS', (0, 1), (-1, -4), [colors.white, colors.Color(0.95, 0.95, 0.95)]),
-
-                # Subtotal
-                ('BACKGROUND', (0, -3), (-1, -3), colors.Color(0.9, 0.9, 0.9)),
-                ('FONTNAME', (0, -3), (-1, -3), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, -3), (-1, -3), 7),
-                ('ALIGN', (1, -3), (-1, -3), 'RIGHT'),
-
-                # Honorários
-                ('FONTNAME', (0, -2), (-1, -2), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, -2), (-1, -2), 7),
-                ('ALIGN', (7, -2), (-1, -2), 'RIGHT'),
-
-                # Total final
-                ('BACKGROUND', (0, -1), (-1, -1), cor_header),
-                ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, -1), (-1, -1), 8),
-                ('ALIGN', (7, -1), (-1, -1), 'RIGHT'),
-
-                # Grid
-                ('GRID', (0, 0), (-1, -4), 0.5, colors.Color(0.8, 0.8, 0.8)),
-                ('LINEBELOW', (0, -3), (-1, -3), 1, colors.black),
-                ('LINEBELOW', (0, -1), (-1, -1), 1, colors.black),
-
-                # Padding
-                ('TOPPADDING', (0, 0), (-1, -1), 2),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-            ]
-
-            # Destacar linhas prescritas na tabela completa (amarelo)
-            if titulo_tabela.startswith('1.'):
-                for i, p in enumerate(parcelas_lista, 1):
-                    if getattr(p, 'PRESCRITO', False):
-                        style_list.append(
-                            ('BACKGROUND', (0, i), (-1, i), colors.Color(1, 0.96, 0.80))
-                        )
-
-            tabela.setStyle(TableStyle(style_list))
-            elems.append(tabela)
-            elems.append(Spacer(1, 10))
-
-            return elems
-
-        # ============================================================
-        # MONTAR AS TABELAS DO PDF
-        # ============================================================
-
-        if tem_prescricao:
-            # TABELA 1: Completa (com prescritos)
-            elementos.extend(criar_tabela_pdf(
-                parcelas_todas, totais_todas,
-                '1. Demonstrativo Completo (Com Valores Prescritos)',
-                colors.HexColor('#0d6efd')  # Azul (bg-primary)
-            ))
-
-            # TABELA 2: Só válidas (oficial)
-            elementos.extend(criar_tabela_pdf(
-                parcelas_validas, totais_validas,
-                '2. Demonstrativo Sem Valores Prescritos (Cálculo Oficial)',
-                colors.HexColor('#198754')  # Verde (bg-success)
-            ))
-
-            # TABELA 3: Só prescritas
-            elementos.extend(criar_tabela_pdf(
-                parcelas_prescritas, totais_prescritas,
-                f'3. Valores Prescritos ({periodo_prescricao})',
-                colors.HexColor('#856404')  # Amarelo escuro (warning)
-            ))
-        else:
-            # SEM prescrição: apenas 1 tabela (comportamento original)
-            elementos.extend(criar_tabela_pdf(
-                parcelas_validas, totais_validas,
-                'Demonstrativo de Cálculo',
-                colors.HexColor('#0d6efd')
-            ))
-
-        # Rodapé com critérios
-        elementos.append(Spacer(1, 10))
-        elementos.append(Paragraph("Critérios Utilizados:", ParagraphStyle(
-            'CriteriosTitulo', parent=styles['Normal'],
-            fontSize=7, fontName='Helvetica-Bold', spaceAfter=2
-        )))
-        criterios = [
-            f"Correção Monetária: {indice_nome} (Juros Compostos)",
-            "Juros de Mora: 1% ao mês (Juros Simples)",
-            "Multa: 2% (após 10/01/2003) ou 10% (antes)",
-            f"Honorários: {formatar_br(perc_honorarios)}%",
-        ]
-        if periodo_prescricao:
-            criterios.append(f"Prescrição: {periodo_prescricao} excluído do cálculo oficial")
-
-        for criterio in criterios:
-            elementos.append(Paragraph(f"• {criterio}", rodape_style))
-
-        elementos.append(Spacer(1, 6))
-        elementos.append(Paragraph(
-            f"Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} por {current_user.nome}",
-            rodape_style
-        ))
+        totais = {
+            'quantidade': len(parcelas),
+            'vr_cota': sum(p.VR_COTA for p in parcelas),
+            'atm': sum(p.ATM or 0 for p in parcelas),
+            'juros': sum(p.VR_JUROS or 0 for p in parcelas),
+            'multa': sum(p.VR_MULTA or 0 for p in parcelas),
+            'desconto': sum(p.VR_DESCONTO or 0 for p in parcelas),
+            'total_geral': total_geral,
+            'honorarios': honorarios,
+            'total_final': total_geral + honorarios,
+            'perc_honorarios': perc_honorarios
+        }
 
         # Gerar PDF
-        doc.build(elementos)
-        buffer.seek(0)
+        from app.utils.siscalculo_pdf import gerar_pdf_siscalculo
+        logo_path = os.path.join(os.path.dirname(__file__), '..', 'static', 'img', 'logo_emgea.png')
 
-        nome_arquivo = f"SISCalculo_{imovel}_{dt_atualizacao}.pdf"
+        import tempfile
+        fd, caminho_pdf = tempfile.mkstemp(suffix='.pdf')
+        os.close(fd)
+
+        gerar_pdf_siscalculo(
+            output_path=caminho_pdf,
+            parcelas=parcelas_pdf,
+            totais=totais,
+            totais_por_tipo=totais_por_tipo_lista,  # ✅ PASSAR TOTAIS POR TIPO
+            nome_condominio=nome_condominio,
+            endereco_imovel=endereco_imovel,
+            imovel=imovel,
+            data_atualizacao=dt_atualizacao_filtro.strftime('%d/%m/%Y'),
+            indice_nome=indice_nome,
+            perc_honorarios=float(perc_honorarios),
+            periodo_prescricao=periodo_prescricao,
+            logo_path=logo_path if os.path.exists(logo_path) else None
+        )
 
         return send_file(
-            buffer,
+            caminho_pdf,
             mimetype='application/pdf',
             as_attachment=True,
-            download_name=nome_arquivo
+            download_name=f'SISCalculo_{imovel}_{dt_atualizacao_filtro.strftime("%Y%m%d")}.pdf'
         )
 
     except Exception as e:
-        print(f"[ERRO PDF] {str(e)}")
+        print(f"\n[ERRO PDF] Erro fatal ao gerar PDF: {str(e)}")
         import traceback
         traceback.print_exc()
-        flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
-        return redirect(url_for('siscalculo.resultados',
-                                dt_atualizacao=dt_atualizacao,
-                                imovel=imovel,
-                                id_indice=id_indice,
-                                perc_honorarios=str(perc_honorarios_param)))
+        flash(f'Erro interno ao gerar o PDF: {str(e)}', 'danger')
+        return redirect(url_for('siscalculo.index'))
 
 @siscalculo_bp.route('/clausula_prejuizo')
 @login_required
