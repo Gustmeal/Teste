@@ -21,6 +21,8 @@ from app.models.deliberacao_pagamento import DeliberacaoPagamento
 from app.utils.audit import registrar_log
 from datetime import datetime
 from decimal import Decimal
+from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
+
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
@@ -3702,6 +3704,10 @@ def inserir_tabela_final_faturamento():
     return redirect(url_for('sumov.analise_ocorrencias'))
 
 
+# =====================================================
+# ANS GLOSAS - APURAÇÃO ANS
+# =====================================================
+
 @sumov_bp.route('/faturamento/ans-glosas')
 @login_required
 def ans_glosas():
@@ -3710,28 +3716,31 @@ def ans_glosas():
 
     dt_apuracao = '2025-12-31'
 
-    ocorrencias_por_grupo = AnsApuracao.listar_por_grupo(dt_apuracao)
-    analisadas = AnsApuracao.listar_analisadas(dt_apuracao)
+    pendentes_por_grupo = AnsApuracao.listar_por_grupo(dt_apuracao)
+    analisadas_por_grupo = AnsApuracao.listar_analisadas_por_grupo(dt_apuracao)
+    todos_grupos = AnsApuracao.obter_todos_grupos(dt_apuracao)
     stats = AnsApuracao.obter_estatisticas(dt_apuracao)
     itens_faturamento = AnsItensFaturamento.listar_todos()
-    total_pendentes = sum(len(ocs) for ocs in ocorrencias_por_grupo.values())
+
+    # Calcular resumo de advertência para cada grupo
+    resumos_advertencia = {}
+    for grp in todos_grupos:
+        resumos_advertencia[grp.GRUPO] = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grp.GRUPO)
 
     return render_template('sumov/faturamento/ans_glosas.html',
-                           ocorrencias_por_grupo=ocorrencias_por_grupo,
-                           analisadas=analisadas,
+                           pendentes_por_grupo=pendentes_por_grupo,
+                           analisadas_por_grupo=analisadas_por_grupo,
+                           todos_grupos=todos_grupos,
                            stats=stats,
                            itens_faturamento=itens_faturamento,
-                           total_pendentes=total_pendentes,
+                           resumos_advertencia=resumos_advertencia,
                            dt_apuracao=dt_apuracao)
 
 
 @sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
 @login_required
 def ans_glosas_salvar():
-    """
-    Salva análise individual. Sempre retorna JSON.
-    O frontend faz fetch com X-Silent-Request e trata a resposta.
-    """
+    """Salva análise individual. Retorna JSON."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
 
@@ -3757,10 +3766,8 @@ def ans_glosas_salvar():
                     f'NO_PRAZO={"Sim" if resultado["no_prazo"] == 1 else "Não"}'
                 )
             )
-
             status_just = 'aceita' if just_aceita == 1 else 'rejeitada'
             status_prazo = 'Dentro do prazo' if resultado['no_prazo'] == 1 else 'Fora do prazo'
-
             return jsonify({
                 'success': True,
                 'message': (
@@ -3814,6 +3821,75 @@ def ans_glosas_salvar_lote():
             'erro_count': erro_count,
             'erros': erros
         })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/aplicar-advertencia', methods=['POST'])
+@login_required
+def ans_glosas_aplicar_advertencia():
+    """
+    Aplica a lógica de advertência para um grupo.
+
+    Lógica (conforme ANS - Acordo de Nível de Serviço):
+    - Pega TODAS as ocorrências analisadas do grupo na data de apuração
+    - Conta quantas estão fora do prazo (NO_PRAZO=0) E justificativa rejeitada (JUST_ACEITA=0)
+    - Se esse total representa MAIS de 10% do total de ocorrências:
+        → ADVERTENCIA=1 nas que estão fora do prazo E justificativa rejeitada
+        → ADVERTENCIA=0 nas demais
+    - Se representa 10% ou MENOS:
+        → ADVERTENCIA=0 em TODAS
+    """
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    try:
+        dados = request.get_json()
+        if not dados:
+            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
+
+        dt_apuracao = dados.get('dt_apuracao', '2025-12-31')
+        grupo = dados.get('grupo')
+
+        if grupo is None:
+            return jsonify({'success': False, 'message': 'Grupo não informado'}), 400
+
+        sucesso, resultado = AnsApuracao.aplicar_advertencia_grupo(dt_apuracao, grupo)
+
+        if sucesso:
+            if resultado['sera_advertido']:
+                msg = (
+                    f'Grupo {grupo}: Advertência APLICADA! '
+                    f'{resultado["fora_prazo_sem_just"]} de {resultado["total"]} ocorrências '
+                    f'({resultado["percentual"]}%) estão fora do prazo sem justificativa aceita. '
+                    f'Excedeu o limite de 10% — ocorrências advertidas com sucesso.'
+                )
+            else:
+                msg = (
+                    f'Grupo {grupo}: Sem advertência. '
+                    f'{resultado["fora_prazo_sem_just"]} de {resultado["total"]} ocorrências '
+                    f'({resultado["percentual"]}%) fora do prazo sem justificativa aceita. '
+                    f'Dentro do limite de 10% — nenhuma advertência aplicada.'
+                )
+
+            registrar_log(
+                acao='editar',
+                entidade='ans_advertencia',
+                entidade_id=grupo,
+                descricao=(
+                    f'ANS Glosas - Advertência Grupo {grupo}: '
+                    f'{"APLICADA" if resultado["sera_advertido"] else "NÃO APLICADA"} '
+                    f'({resultado["percentual"]}% - {resultado["fora_prazo_sem_just"]}/{resultado["total"]})'
+                )
+            )
+
+            return jsonify({'success': True, 'message': msg, 'resumo': resultado})
+        else:
+            return jsonify({'success': False, 'message': resultado}), 400
 
     except Exception as e:
         db.session.rollback()
