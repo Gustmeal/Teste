@@ -3764,6 +3764,10 @@ def ans_glosas():
     for grp in todos_grupos:
         resumos_advertencia[grp.GRUPO] = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grp.GRUPO)
 
+    # Verificar se pode concluir e se já foi concluída
+    verificacao = AnsApuracao.verificar_apuracao_completa(dt_apuracao, todos_grupos)
+    conclusao_existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
+
     return render_template('sumov/faturamento/ans_glosas.html',
                            pendentes_por_grupo=pendentes_por_grupo,
                            analisadas_por_grupo=analisadas_por_grupo,
@@ -3771,7 +3775,9 @@ def ans_glosas():
                            itens_faturamento=itens_faturamento,
                            resumos_advertencia=resumos_advertencia,
                            datas_disponiveis=datas_disponiveis,
-                           dt_apuracao=dt_apuracao)
+                           dt_apuracao=dt_apuracao,
+                           verificacao=verificacao,
+                           conclusao_existente=conclusao_existente)
 
 
 @sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
@@ -3897,7 +3903,6 @@ def ans_glosas_aplicar_reiteracao():
 @sumov_bp.route('/faturamento/ans-glosas/editar-campo', methods=['POST'])
 @login_required
 def ans_glosas_editar_campo():
-    """Edição individual de ADVERTENCIA, REINCIDENCIA ou REITERACAO de uma ocorrência."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
     try:
@@ -3911,7 +3916,7 @@ def ans_glosas_editar_campo():
         ok, msg = AnsApuracao.editar_campo_individual(dt, int(nr), campo, int(valor))
         if ok:
             registrar_log(acao='editar', entidade='ans_edicao_manual', entidade_id=nr,
-                          descricao=f'ANS Edição manual: Oc {nr}, {campo}={"Sim" if valor == 1 else "Não"}')
+                          descricao=f'ANS Edição: Oc {nr}, {campo}={"Sim" if valor == 1 else "Não"}')
             return jsonify({'success': True, 'message': msg})
         return jsonify({'success': False, 'message': msg}), 400
     except Exception as e:
@@ -3919,3 +3924,86 @@ def ans_glosas_editar_campo():
         import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/concluir', methods=['POST'])
+@login_required
+def ans_glosas_concluir():
+    """Conclui a apuração ANS — pode ser acionado a qualquer momento."""
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    # ── Garante que veio JSON ──
+    dados = request.get_json(silent=True)
+    if not dados:
+        return jsonify({'success': False, 'message': 'Requisição inválida (JSON ausente)'}), 400
+
+    try:
+        dt_apuracao = dados.get('dt_apuracao')
+        if not dt_apuracao:
+            return jsonify({'success': False, 'message': 'Data de apuração não informada'}), 400
+
+        # Verificar se já foi concluída
+        existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
+        if existente:
+            return jsonify({'success': False, 'message': 'Esta apuração já foi concluída anteriormente.'}), 400
+
+        # Buscar totais atuais
+        todos_grupos = AnsApuracao.obter_todos_grupos(dt_apuracao)
+        verificacao = AnsApuracao.verificar_apuracao_completa(dt_apuracao, todos_grupos)
+
+        usuario_id = current_user.id if current_user.is_authenticated else None
+        usuario_nome = current_user.nome if current_user.is_authenticated else 'Sistema'
+
+        params = {
+            'dt': dt_apuracao,
+            'uid': usuario_id,
+            'unome': usuario_nome,
+            'toc': verificacao.get('total_ocorrencias', 0),
+            'tgr': verificacao.get('total_grupos', 0),
+            'tadv': verificacao.get('total_advertencias', 0),
+            'treinc': verificacao.get('total_reincidencias', 0),
+            'treit': verificacao.get('total_reiteracoes', 0),
+        }
+
+        sql = text("""
+            INSERT INTO BDDASHBOARDBI.BDG.MOV_TB046_ANS_CONCLUSAO
+            (DT_APURACAO, DT_CONCLUSAO, USUARIO_ID, USUARIO_NOME,
+             TOTAL_OCORRENCIAS, TOTAL_GRUPOS, TOTAL_ADVERTENCIAS,
+             TOTAL_REINCIDENCIAS, TOTAL_REITERACOES)
+            VALUES (:dt, GETDATE(), :uid, :unome, :toc, :tgr, :tadv, :treinc, :treit)
+        """)
+        db.session.execute(sql, params)
+        db.session.commit()
+
+        try:
+            registrar_log(
+                acao='concluir',
+                entidade='ans_conclusao',
+                entidade_id=str(dt_apuracao),
+                descricao=(
+                    f'ANS Conclusão: {dt_apuracao} — '
+                    f'{params["toc"]} ocs, {params["tadv"]} adv, '
+                    f'{params["treinc"]} reinc, {params["treit"]} reit'
+                )
+            )
+        except Exception:
+            pass  # log falhar não pode derrubar a resposta
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Apuração {dt_apuracao} concluída com sucesso!\n\n'
+                f'Resumo:\n'
+                f'• {params["toc"]} ocorrências em {params["tgr"]} grupos\n'
+                f'• {params["tadv"]} advertência(s)\n'
+                f'• {params["treinc"]} reincidência(s)\n'
+                f'• {params["treit"]} reiteração(ões)'
+            )
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro ao concluir: {str(e)}'}), 500

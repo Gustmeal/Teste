@@ -35,6 +35,10 @@ class AnsApuracao(db.Model):
     def __repr__(self):
         return f'<AnsApuracao {self.DT_APURACAO}-{self.nrOcorrencia}>'
 
+    # ==================================================================
+    # DATAS DE APURAÇÃO
+    # ==================================================================
+
     @staticmethod
     def obter_datas_apuracao():
         sql = text("SELECT DISTINCT DT_APURACAO FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO ORDER BY DT_APURACAO DESC")
@@ -45,6 +49,10 @@ class AnsApuracao(db.Model):
         sql = text("SELECT TOP 1 DT_APURACAO FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO WHERE DT_APURACAO < :dt ORDER BY DT_APURACAO DESC")
         row = db.session.execute(sql, {'dt': dt_apuracao}).fetchone()
         return row.DT_APURACAO if row else None
+
+    # ==================================================================
+    # QUERIES BASE
+    # ==================================================================
 
     @staticmethod
     def _query_base(dt_apuracao, filtro_just_aceita):
@@ -90,6 +98,10 @@ class AnsApuracao(db.Model):
         """)
         return db.session.execute(sql, {'dt_apuracao': dt_apuracao, 'nr_ocorrencia': nr_ocorrencia}).fetchone()
 
+    # ==================================================================
+    # SALVAR ANÁLISE
+    # ==================================================================
+
     @staticmethod
     def salvar_analise(dt_apuracao, nr_ocorrencia, just_aceita):
         oc = AnsApuracao.buscar_ocorrencia(dt_apuracao, nr_ocorrencia)
@@ -128,6 +140,10 @@ class AnsApuracao(db.Model):
             else: ec += 1; errs.append(f'{nr}: {res}')
         return sc, ec, errs
 
+    # ==================================================================
+    # ESTATÍSTICAS E GRUPOS
+    # ==================================================================
+
     @staticmethod
     def obter_estatisticas(dt_apuracao):
         sql = text("""
@@ -151,6 +167,10 @@ class AnsApuracao(db.Model):
             WHERE A.DT_APURACAO = :dt ORDER BY A.GRUPO
         """)
         return db.session.execute(sql, {'dt': dt_apuracao}).fetchall()
+
+    # ==================================================================
+    # RESUMO DE ADVERTÊNCIA POR GRUPO
+    # ==================================================================
 
     @staticmethod
     def calcular_resumo_advertencia(dt_apuracao, grupo):
@@ -188,6 +208,10 @@ class AnsApuracao(db.Model):
             'reit_marcadas': r.reit_marc or 0,
         }
 
+    # ==================================================================
+    # ADVERTÊNCIA
+    # ==================================================================
+
     @staticmethod
     def aplicar_advertencia_grupo(dt_apuracao, grupo):
         resumo = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grupo)
@@ -206,6 +230,10 @@ class AnsApuracao(db.Model):
         db.session.execute(sql, {'dt': dt_apuracao, 'g': grupo, 'di': dt_int if resumo['sera_advertido'] else None})
         db.session.commit()
         return True, resumo
+
+    # ==================================================================
+    # REINCIDÊNCIA
+    # ==================================================================
 
     @staticmethod
     def aplicar_reincidencia_grupo(dt_apuracao, grupo):
@@ -235,6 +263,10 @@ class AnsApuracao(db.Model):
         resumo['reinc_marcadas_resultado'] = cnt.t or 0
         resumo['dt_anterior'] = str(dt_ant)
         return True, resumo
+
+    # ==================================================================
+    # REITERAÇÃO
+    # ==================================================================
 
     @staticmethod
     def aplicar_reiteracao_grupo(dt_apuracao, grupo):
@@ -266,41 +298,115 @@ class AnsApuracao(db.Model):
         return True, resumo
 
     # ==================================================================
-    # EDIÇÃO INDIVIDUAL DE CAMPO (Advertência/Reincidência/Reiteração)
+    # EDIÇÃO INDIVIDUAL
     # ==================================================================
 
     @staticmethod
     def editar_campo_individual(dt_apuracao, nr_ocorrencia, campo, valor):
-        """
-        Edita individualmente ADVERTENCIA, REINCIDENCIA ou REITERACAO.
-        campo: 'ADVERTENCIA', 'REINCIDENCIA' ou 'REITERACAO'
-        valor: 0 ou 1
-        Também atualiza o campo DT_ correspondente:
-          - Se valor=1: DT_campo = DT_APURACAO como int YYYYMMDD
-          - Se valor=0: DT_campo = NULL
-        """
-        campos_validos = {
-            'ADVERTENCIA': 'DT_ADVERTENCIA',
-            'REINCIDENCIA': 'DT_REINCIDENCIA',
-            'REITERACAO': 'DT_REITERACAO'
-        }
+        campos_validos = {'ADVERTENCIA': 'DT_ADVERTENCIA', 'REINCIDENCIA': 'DT_REINCIDENCIA', 'REITERACAO': 'DT_REITERACAO'}
         if campo not in campos_validos:
             return False, f'Campo inválido: {campo}'
-
         dt_campo = campos_validos[campo]
         dt_int = int(str(dt_apuracao).replace('-', '')) if valor == 1 else None
-
-        sql = text(f"""
-            UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
-            SET [{campo}] = :valor, [{dt_campo}] = :dt_int
-            WHERE DT_APURACAO = :dt_apuracao AND nrOcorrencia = :nr_ocorrencia
-        """)
-        db.session.execute(sql, {
-            'valor': valor, 'dt_int': dt_int,
-            'dt_apuracao': dt_apuracao, 'nr_ocorrencia': nr_ocorrencia
-        })
+        sql = text(f"UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET [{campo}]=:valor, [{dt_campo}]=:dt_int WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr")
+        db.session.execute(sql, {'valor': valor, 'dt_int': dt_int, 'dt': dt_apuracao, 'nr': nr_ocorrencia})
         db.session.commit()
         return True, f'{campo} da ocorrência {nr_ocorrencia} alterada para {"Sim" if valor == 1 else "Não"}.'
+
+    # ==================================================================
+    # CONCLUSÃO DA APURAÇÃO
+    # ==================================================================
+
+    @staticmethod
+    def verificar_apuracao_completa(dt_apuracao, todos_grupos):
+        """
+        Verifica se TODOS os grupos tiveram as 3 etapas processadas
+        (advertência, reincidência e reiteração) e todas as ocorrências analisadas.
+        Retorna dict com status de cada grupo e se pode concluir.
+        """
+        status_grupos = {}
+        pode_concluir = True
+        total_adv = 0
+        total_reinc = 0
+        total_reit = 0
+        total_ocs = 0
+
+        for grp in todos_grupos:
+            resumo = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grp.GRUPO)
+            grupo_ok = (
+                resumo['todas_analisadas']
+                and resumo['advertencia_processada']
+                and resumo['reincidencia_processada']
+                and resumo['reiteracao_processada']
+            )
+            status_grupos[grp.GRUPO] = {
+                'completo': grupo_ok,
+                'analise_ok': resumo['todas_analisadas'],
+                'advertencia_ok': resumo['advertencia_processada'],
+                'reincidencia_ok': resumo['reincidencia_processada'],
+                'reiteracao_ok': resumo['reiteracao_processada'],
+                'adv_marcadas': resumo['adv_marcadas'],
+                'reinc_marcadas': resumo['reinc_marcadas'],
+                'reit_marcadas': resumo['reit_marcadas'],
+                'total': resumo['total'],
+            }
+            if not grupo_ok:
+                pode_concluir = False
+            total_adv += resumo['adv_marcadas']
+            total_reinc += resumo['reinc_marcadas']
+            total_reit += resumo['reit_marcadas']
+            total_ocs += resumo['total']
+
+        return {
+            'pode_concluir': pode_concluir,
+            'status_grupos': status_grupos,
+            'total_ocorrencias': total_ocs,
+            'total_grupos': len(todos_grupos),
+            'total_advertencias': total_adv,
+            'total_reincidencias': total_reinc,
+            'total_reiteracoes': total_reit,
+        }
+
+    @staticmethod
+    def verificar_conclusao_existente(dt_apuracao):
+        """Verifica se já existe registro de conclusão para esta data de apuração"""
+        sql = text("SELECT * FROM BDDASHBOARDBI.BDG.MOV_TB046_ANS_CONCLUSAO WHERE DT_APURACAO = :dt")
+        row = db.session.execute(sql, {'dt': dt_apuracao}).fetchone()
+        return row
+
+    @staticmethod
+    def concluir_apuracao(dt_apuracao, usuario_id, usuario_nome, verificacao):
+        """
+        Registra a conclusão da apuração na tabela MOV_TB046_ANS_CONCLUSAO.
+        Salva: DT_APURACAO, data/hora atual, usuário, totais.
+        """
+        # Verificar se já foi concluída
+        existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
+        if existente:
+            return False, 'Esta apuração já foi concluída anteriormente.'
+
+        if not verificacao['pode_concluir']:
+            return False, 'Nem todos os grupos foram completamente processados.'
+
+        sql = text("""
+            INSERT INTO BDDASHBOARDBI.BDG.MOV_TB046_ANS_CONCLUSAO
+            (DT_APURACAO, DT_CONCLUSAO, USUARIO_ID, USUARIO_NOME,
+             TOTAL_OCORRENCIAS, TOTAL_GRUPOS, TOTAL_ADVERTENCIAS,
+             TOTAL_REINCIDENCIAS, TOTAL_REITERACOES)
+            VALUES (:dt, GETDATE(), :uid, :unome, :toc, :tgr, :tadv, :treinc, :treit)
+        """)
+        db.session.execute(sql, {
+            'dt': dt_apuracao,
+            'uid': usuario_id,
+            'unome': usuario_nome,
+            'toc': verificacao['total_ocorrencias'],
+            'tgr': verificacao['total_grupos'],
+            'tadv': verificacao['total_advertencias'],
+            'treinc': verificacao['total_reincidencias'],
+            'treit': verificacao['total_reiteracoes'],
+        })
+        db.session.commit()
+        return True, 'Apuração concluída com sucesso!'
 
 
 class AnsItensFaturamento(db.Model):
