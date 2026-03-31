@@ -3711,10 +3711,20 @@ def inserir_tabela_final_faturamento():
 @sumov_bp.route('/faturamento/ans-glosas')
 @login_required
 def ans_glosas():
-    """Página principal do módulo ANS Glosas."""
+    """Página principal — aceita ?dt_apuracao=YYYY-MM-DD na URL"""
     from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
 
-    dt_apuracao = '2025-12-31'
+    # Buscar todas as datas disponíveis
+    datas_disponiveis = AnsApuracao.obter_datas_apuracao()
+
+    # Data selecionada: vem da URL ou usa a mais recente
+    dt_apuracao_param = request.args.get('dt_apuracao', '')
+    if dt_apuracao_param:
+        dt_apuracao = dt_apuracao_param
+    elif datas_disponiveis:
+        dt_apuracao = str(datas_disponiveis[0])
+    else:
+        dt_apuracao = '2025-12-31'
 
     pendentes_por_grupo = AnsApuracao.listar_por_grupo(dt_apuracao)
     analisadas_por_grupo = AnsApuracao.listar_analisadas_por_grupo(dt_apuracao)
@@ -3722,7 +3732,6 @@ def ans_glosas():
     stats = AnsApuracao.obter_estatisticas(dt_apuracao)
     itens_faturamento = AnsItensFaturamento.listar_todos()
 
-    # Calcular resumo de advertência para cada grupo
     resumos_advertencia = {}
     for grp in todos_grupos:
         resumos_advertencia[grp.GRUPO] = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grp.GRUPO)
@@ -3734,6 +3743,7 @@ def ans_glosas():
                            stats=stats,
                            itens_faturamento=itens_faturamento,
                            resumos_advertencia=resumos_advertencia,
+                           datas_disponiveis=datas_disponiveis,
                            dt_apuracao=dt_apuracao)
 
 
@@ -3832,18 +3842,7 @@ def ans_glosas_salvar_lote():
 @sumov_bp.route('/faturamento/ans-glosas/aplicar-advertencia', methods=['POST'])
 @login_required
 def ans_glosas_aplicar_advertencia():
-    """
-    Aplica a lógica de advertência para um grupo.
-
-    Lógica (conforme ANS - Acordo de Nível de Serviço):
-    - Pega TODAS as ocorrências analisadas do grupo na data de apuração
-    - Conta quantas estão fora do prazo (NO_PRAZO=0) E justificativa rejeitada (JUST_ACEITA=0)
-    - Se esse total representa MAIS de 10% do total de ocorrências:
-        → ADVERTENCIA=1 nas que estão fora do prazo E justificativa rejeitada
-        → ADVERTENCIA=0 nas demais
-    - Se representa 10% ou MENOS:
-        → ADVERTENCIA=0 em TODAS
-    """
+    """Aplica advertência para um grupo."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
 
@@ -3862,32 +3861,102 @@ def ans_glosas_aplicar_advertencia():
 
         if sucesso:
             if resultado['sera_advertido']:
-                msg = (
-                    f'Grupo {grupo}: Advertência APLICADA! '
-                    f'{resultado["fora_prazo_sem_just"]} de {resultado["total"]} ocorrências '
-                    f'({resultado["percentual"]}%) estão fora do prazo sem justificativa aceita. '
-                    f'Excedeu o limite de 10% — ocorrências advertidas com sucesso.'
-                )
+                msg = (f'Grupo {grupo}: Advertência APLICADA! '
+                       f'{resultado["fora_prazo_sem_just"]}/{resultado["total"]} ({resultado["percentual"]}%) — excedeu 10%.')
             else:
-                msg = (
-                    f'Grupo {grupo}: Sem advertência. '
-                    f'{resultado["fora_prazo_sem_just"]} de {resultado["total"]} ocorrências '
-                    f'({resultado["percentual"]}%) fora do prazo sem justificativa aceita. '
-                    f'Dentro do limite de 10% — nenhuma advertência aplicada.'
-                )
+                msg = (f'Grupo {grupo}: Sem advertência. '
+                       f'{resultado["fora_prazo_sem_just"]}/{resultado["total"]} ({resultado["percentual"]}%) — dentro do limite.')
 
-            registrar_log(
-                acao='editar',
-                entidade='ans_advertencia',
-                entidade_id=grupo,
-                descricao=(
-                    f'ANS Glosas - Advertência Grupo {grupo}: '
-                    f'{"APLICADA" if resultado["sera_advertido"] else "NÃO APLICADA"} '
-                    f'({resultado["percentual"]}% - {resultado["fora_prazo_sem_just"]}/{resultado["total"]})'
-                )
-            )
+            registrar_log(acao='editar', entidade='ans_advertencia', entidade_id=grupo,
+                          descricao=f'ANS Advertência Grupo {grupo}: {"APLICADA" if resultado["sera_advertido"] else "NÃO"} ({resultado["percentual"]}%)')
 
             return jsonify({'success': True, 'message': msg, 'resumo': resultado})
+        else:
+            return jsonify({'success': False, 'message': resultado}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/aplicar-reincidencia', methods=['POST'])
+@login_required
+def ans_glosas_aplicar_reincidencia():
+    """
+    Aplica reincidência para um grupo.
+    Verifica se a mesma ocorrência tinha ADVERTENCIA=1 na DT_APURACAO anterior.
+    """
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    try:
+        dados = request.get_json()
+        if not dados:
+            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
+
+        dt_apuracao = dados.get('dt_apuracao')
+        grupo = dados.get('grupo')
+
+        if not dt_apuracao or grupo is None:
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        sucesso, resultado = AnsApuracao.aplicar_reincidencia_grupo(dt_apuracao, grupo)
+
+        if sucesso:
+            reinc = resultado.get('reinc_marcadas_resultado', 0)
+            msg = (f'Grupo {grupo}: Reincidência processada! '
+                   f'{reinc} ocorrência(s) marcada(s) como reincidente(s). '
+                   f'(Comparação com período anterior: {resultado.get("dt_anterior", "N/A")})')
+
+            registrar_log(acao='editar', entidade='ans_reincidencia', entidade_id=grupo,
+                          descricao=f'ANS Reincidência Grupo {grupo}: {reinc} marcadas (anterior: {resultado.get("dt_anterior")})')
+
+            return jsonify({'success': True, 'message': msg})
+        else:
+            return jsonify({'success': False, 'message': resultado}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/aplicar-reiteracao', methods=['POST'])
+@login_required
+def ans_glosas_aplicar_reiteracao():
+    """
+    Aplica reiteração para um grupo.
+    Verifica se a mesma ocorrência tinha REINCIDENCIA=1 na DT_APURACAO anterior.
+    """
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    try:
+        dados = request.get_json()
+        if not dados:
+            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
+
+        dt_apuracao = dados.get('dt_apuracao')
+        grupo = dados.get('grupo')
+
+        if not dt_apuracao or grupo is None:
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        sucesso, resultado = AnsApuracao.aplicar_reiteracao_grupo(dt_apuracao, grupo)
+
+        if sucesso:
+            reit = resultado.get('reit_marcadas_resultado', 0)
+            msg = (f'Grupo {grupo}: Reiteração processada! '
+                   f'{reit} ocorrência(s) marcada(s) como reiterada(s). '
+                   f'(Comparação com período anterior: {resultado.get("dt_anterior", "N/A")})')
+
+            registrar_log(acao='editar', entidade='ans_reiteracao', entidade_id=grupo,
+                          descricao=f'ANS Reiteração Grupo {grupo}: {reit} marcadas (anterior: {resultado.get("dt_anterior")})')
+
+            return jsonify({'success': True, 'message': msg})
         else:
             return jsonify({'success': False, 'message': resultado}), 400
 
