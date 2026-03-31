@@ -3711,16 +3711,11 @@ def inserir_tabela_final_faturamento():
 @sumov_bp.route('/faturamento/ans-glosas')
 @login_required
 def ans_glosas():
-    """Página principal — aceita ?dt_apuracao=YYYY-MM-DD na URL"""
     from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
-
-    # Buscar todas as datas disponíveis
     datas_disponiveis = AnsApuracao.obter_datas_apuracao()
-
-    # Data selecionada: vem da URL ou usa a mais recente
-    dt_apuracao_param = request.args.get('dt_apuracao', '')
-    if dt_apuracao_param:
-        dt_apuracao = dt_apuracao_param
+    dt_param = request.args.get('dt_apuracao', '')
+    if dt_param:
+        dt_apuracao = dt_param
     elif datas_disponiveis:
         dt_apuracao = str(datas_disponiveis[0])
     else:
@@ -3731,7 +3726,6 @@ def ans_glosas():
     todos_grupos = AnsApuracao.obter_todos_grupos(dt_apuracao)
     stats = AnsApuracao.obter_estatisticas(dt_apuracao)
     itens_faturamento = AnsItensFaturamento.listar_todos()
-
     resumos_advertencia = {}
     for grp in todos_grupos:
         resumos_advertencia[grp.GRUPO] = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grp.GRUPO)
@@ -3739,8 +3733,7 @@ def ans_glosas():
     return render_template('sumov/faturamento/ans_glosas.html',
                            pendentes_por_grupo=pendentes_por_grupo,
                            analisadas_por_grupo=analisadas_por_grupo,
-                           todos_grupos=todos_grupos,
-                           stats=stats,
+                           todos_grupos=todos_grupos, stats=stats,
                            itens_faturamento=itens_faturamento,
                            resumos_advertencia=resumos_advertencia,
                            datas_disponiveis=datas_disponiveis,
@@ -3750,49 +3743,24 @@ def ans_glosas():
 @sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
 @login_required
 def ans_glosas_salvar():
-    """Salva análise individual. Retorna JSON."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
-
     try:
-        dt_apuracao = request.form.get('dt_apuracao', '2025-12-31')
-        nr_ocorrencia = request.form.get('nr_ocorrencia', type=int)
-        just_aceita = request.form.get('just_aceita', type=int)
-
-        if nr_ocorrencia is None or just_aceita is None:
+        dt = request.form.get('dt_apuracao', '2025-12-31')
+        nr = request.form.get('nr_ocorrencia', type=int)
+        ja = request.form.get('just_aceita', type=int)
+        if nr is None or ja is None:
             return jsonify({'success': False, 'message': 'Dados incompletos.'}), 400
-
-        sucesso, resultado = AnsApuracao.salvar_analise(dt_apuracao, nr_ocorrencia, just_aceita)
-
-        if sucesso:
-            registrar_log(
-                acao='editar',
-                entidade='ans_apuracao',
-                entidade_id=nr_ocorrencia,
-                descricao=(
-                    f'ANS Glosas - Ocorrência {nr_ocorrencia}: '
-                    f'Justificativa {"Aceita" if just_aceita == 1 else "Rejeitada"}, '
-                    f'QTDE_DIAS={resultado["qtde_dias"]}, '
-                    f'NO_PRAZO={"Sim" if resultado["no_prazo"] == 1 else "Não"}'
-                )
-            )
-            status_just = 'aceita' if just_aceita == 1 else 'rejeitada'
-            status_prazo = 'Dentro do prazo' if resultado['no_prazo'] == 1 else 'Fora do prazo'
-            return jsonify({
-                'success': True,
-                'message': (
-                    f'Ocorrência {nr_ocorrencia} analisada! '
-                    f'Justificativa {status_just}. '
-                    f'Qtde dias: {resultado["qtde_dias"]}. '
-                    f'{status_prazo} (Prazo: {resultado["prazo"]} dias).'
-                )
-            })
-        else:
-            return jsonify({'success': False, 'message': str(resultado)}), 400
-
+        ok, res = AnsApuracao.salvar_analise(dt, nr, ja)
+        if ok:
+            registrar_log(acao='editar', entidade='ans_apuracao', entidade_id=nr,
+                          descricao=f'ANS - Oc {nr}: Just {"Aceita" if ja == 1 else "Rejeitada"}, Dias={res["qtde_dias"]}, Prazo={"Sim" if res["no_prazo"] == 1 else "Não"}')
+            return jsonify({'success': True,
+                            'message': f'Ocorrência {nr} analisada! Just {"aceita" if ja == 1 else "rejeitada"}. Dias: {res["qtde_dias"]}. {"Dentro" if res["no_prazo"] == 1 else "Fora"} do prazo ({res["prazo"]} dias).'})
+        return jsonify({'success': False, 'message': str(res)}), 400
     except Exception as e:
         db.session.rollback()
-        import traceback
+        import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
@@ -3800,41 +3768,25 @@ def ans_glosas_salvar():
 @sumov_bp.route('/faturamento/ans-glosas/salvar-lote', methods=['POST'])
 @login_required
 def ans_glosas_salvar_lote():
-    """Salva análises em lote via JSON."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
-
     try:
         dados = request.get_json()
         if not dados or 'analises' not in dados:
             return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
-
-        dt_apuracao = dados.get('dt_apuracao', '2025-12-31')
+        dt = dados.get('dt_apuracao', '2025-12-31')
         analises = dados.get('analises', [])
-
         if not analises:
-            return jsonify({'success': False, 'message': 'Nenhuma análise para processar'}), 400
-
-        sucesso_count, erro_count, erros = AnsApuracao.salvar_analise_lote(dt_apuracao, analises)
-
-        registrar_log(
-            acao='editar',
-            entidade='ans_apuracao_lote',
-            entidade_id='batch',
-            descricao=f'ANS Glosas - Lote: {sucesso_count} sucesso, {erro_count} erros'
-        )
-
-        return jsonify({
-            'success': True,
-            'message': f'{sucesso_count} ocorrência(s) analisada(s) com sucesso.',
-            'sucesso_count': sucesso_count,
-            'erro_count': erro_count,
-            'erros': erros
-        })
-
+            return jsonify({'success': False, 'message': 'Nenhuma análise'}), 400
+        sc, ec, errs = AnsApuracao.salvar_analise_lote(dt, analises)
+        registrar_log(acao='editar', entidade='ans_lote', entidade_id='batch',
+                      descricao=f'ANS Lote: {sc} ok, {ec} erros')
+        return jsonify(
+            {'success': True, 'message': f'{sc} ocorrência(s) analisada(s).', 'sucesso_count': sc, 'erro_count': ec,
+             'erros': errs})
     except Exception as e:
         db.session.rollback()
-        import traceback
+        import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
@@ -3842,41 +3794,22 @@ def ans_glosas_salvar_lote():
 @sumov_bp.route('/faturamento/ans-glosas/aplicar-advertencia', methods=['POST'])
 @login_required
 def ans_glosas_aplicar_advertencia():
-    """Aplica advertência para um grupo."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
-
     try:
         dados = request.get_json()
-        if not dados:
-            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
-
-        dt_apuracao = dados.get('dt_apuracao', '2025-12-31')
+        dt = dados.get('dt_apuracao', '2025-12-31')
         grupo = dados.get('grupo')
-
-        if grupo is None:
-            return jsonify({'success': False, 'message': 'Grupo não informado'}), 400
-
-        sucesso, resultado = AnsApuracao.aplicar_advertencia_grupo(dt_apuracao, grupo)
-
-        if sucesso:
-            if resultado['sera_advertido']:
-                msg = (f'Grupo {grupo}: Advertência APLICADA! '
-                       f'{resultado["fora_prazo_sem_just"]}/{resultado["total"]} ({resultado["percentual"]}%) — excedeu 10%.')
-            else:
-                msg = (f'Grupo {grupo}: Sem advertência. '
-                       f'{resultado["fora_prazo_sem_just"]}/{resultado["total"]} ({resultado["percentual"]}%) — dentro do limite.')
-
-            registrar_log(acao='editar', entidade='ans_advertencia', entidade_id=grupo,
-                          descricao=f'ANS Advertência Grupo {grupo}: {"APLICADA" if resultado["sera_advertido"] else "NÃO"} ({resultado["percentual"]}%)')
-
-            return jsonify({'success': True, 'message': msg, 'resumo': resultado})
-        else:
-            return jsonify({'success': False, 'message': resultado}), 400
-
+        if grupo is None: return jsonify({'success': False, 'message': 'Grupo não informado'}), 400
+        ok, res = AnsApuracao.aplicar_advertencia_grupo(dt, grupo)
+        if ok:
+            msg = f'Grupo {grupo}: Advertência {"APLICADA" if res["sera_advertido"] else "não aplicada"} ({res["percentual"]}%)'
+            registrar_log(acao='editar', entidade='ans_advertencia', entidade_id=grupo, descricao=msg)
+            return jsonify({'success': True, 'message': msg, 'resumo': res})
+        return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
-        import traceback
+        import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
@@ -3884,42 +3817,22 @@ def ans_glosas_aplicar_advertencia():
 @sumov_bp.route('/faturamento/ans-glosas/aplicar-reincidencia', methods=['POST'])
 @login_required
 def ans_glosas_aplicar_reincidencia():
-    """
-    Aplica reincidência para um grupo.
-    Verifica se a mesma ocorrência tinha ADVERTENCIA=1 na DT_APURACAO anterior.
-    """
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
-
     try:
         dados = request.get_json()
-        if not dados:
-            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
-
-        dt_apuracao = dados.get('dt_apuracao')
+        dt = dados.get('dt_apuracao')
         grupo = dados.get('grupo')
-
-        if not dt_apuracao or grupo is None:
-            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
-
-        sucesso, resultado = AnsApuracao.aplicar_reincidencia_grupo(dt_apuracao, grupo)
-
-        if sucesso:
-            reinc = resultado.get('reinc_marcadas_resultado', 0)
-            msg = (f'Grupo {grupo}: Reincidência processada! '
-                   f'{reinc} ocorrência(s) marcada(s) como reincidente(s). '
-                   f'(Comparação com período anterior: {resultado.get("dt_anterior", "N/A")})')
-
-            registrar_log(acao='editar', entidade='ans_reincidencia', entidade_id=grupo,
-                          descricao=f'ANS Reincidência Grupo {grupo}: {reinc} marcadas (anterior: {resultado.get("dt_anterior")})')
-
+        if not dt or grupo is None: return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        ok, res = AnsApuracao.aplicar_reincidencia_grupo(dt, grupo)
+        if ok:
+            msg = f'Grupo {grupo}: Reincidência processada! {res.get("reinc_marcadas_resultado", 0)} marcada(s). (Anterior: {res.get("dt_anterior", "N/A")})'
+            registrar_log(acao='editar', entidade='ans_reincidencia', entidade_id=grupo, descricao=msg)
             return jsonify({'success': True, 'message': msg})
-        else:
-            return jsonify({'success': False, 'message': resultado}), 400
-
+        return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
-        import traceback
+        import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
@@ -3927,41 +3840,48 @@ def ans_glosas_aplicar_reincidencia():
 @sumov_bp.route('/faturamento/ans-glosas/aplicar-reiteracao', methods=['POST'])
 @login_required
 def ans_glosas_aplicar_reiteracao():
-    """
-    Aplica reiteração para um grupo.
-    Verifica se a mesma ocorrência tinha REINCIDENCIA=1 na DT_APURACAO anterior.
-    """
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
-
     try:
         dados = request.get_json()
-        if not dados:
-            return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
-
-        dt_apuracao = dados.get('dt_apuracao')
+        dt = dados.get('dt_apuracao')
         grupo = dados.get('grupo')
-
-        if not dt_apuracao or grupo is None:
-            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
-
-        sucesso, resultado = AnsApuracao.aplicar_reiteracao_grupo(dt_apuracao, grupo)
-
-        if sucesso:
-            reit = resultado.get('reit_marcadas_resultado', 0)
-            msg = (f'Grupo {grupo}: Reiteração processada! '
-                   f'{reit} ocorrência(s) marcada(s) como reiterada(s). '
-                   f'(Comparação com período anterior: {resultado.get("dt_anterior", "N/A")})')
-
-            registrar_log(acao='editar', entidade='ans_reiteracao', entidade_id=grupo,
-                          descricao=f'ANS Reiteração Grupo {grupo}: {reit} marcadas (anterior: {resultado.get("dt_anterior")})')
-
+        if not dt or grupo is None: return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        ok, res = AnsApuracao.aplicar_reiteracao_grupo(dt, grupo)
+        if ok:
+            msg = f'Grupo {grupo}: Reiteração processada! {res.get("reit_marcadas_resultado", 0)} marcada(s). (Anterior: {res.get("dt_anterior", "N/A")})'
+            registrar_log(acao='editar', entidade='ans_reiteracao', entidade_id=grupo, descricao=msg)
             return jsonify({'success': True, 'message': msg})
-        else:
-            return jsonify({'success': False, 'message': resultado}), 400
-
+        return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
-        import traceback
+        import traceback;
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/editar-campo', methods=['POST'])
+@login_required
+def ans_glosas_editar_campo():
+    """Edição individual de ADVERTENCIA, REINCIDENCIA ou REITERACAO de uma ocorrência."""
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+    try:
+        dados = request.get_json()
+        dt = dados.get('dt_apuracao')
+        nr = dados.get('nr_ocorrencia')
+        campo = dados.get('campo')
+        valor = dados.get('valor')
+        if not all([dt, nr is not None, campo, valor is not None]):
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        ok, msg = AnsApuracao.editar_campo_individual(dt, int(nr), campo, int(valor))
+        if ok:
+            registrar_log(acao='editar', entidade='ans_edicao_manual', entidade_id=nr,
+                          descricao=f'ANS Edição manual: Oc {nr}, {campo}={"Sim" if valor == 1 else "Não"}')
+            return jsonify({'success': True, 'message': msg})
+        return jsonify({'success': False, 'message': msg}), 400
+    except Exception as e:
+        db.session.rollback()
+        import traceback;
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
