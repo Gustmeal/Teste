@@ -1708,7 +1708,16 @@ def deliberacao_pagamento_editar(contrato):
         # ===== POST - SALVAR EDIÇÕES =====
         if request.method == 'POST':
             try:
-                # Capturar campos editáveis
+                from decimal import Decimal, InvalidOperation
+
+                # ✅ NOVOS CAMPOS EDITÁVEIS (ANTES NÃO ERAM CAPTURADOS)
+                matricula = request.form.get('matricula', '').strip() or None
+                dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
+                dt_registro_str = request.form.get('dt_registro', '').strip()
+                vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
+                indice_usado_condominio = request.form.get('indice_usado_condominio', '').strip() or None
+
+                # Campos que já eram capturados
                 consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
                 consideracoes_gestor_geadi = request.form.get('consideracoes_gestor', '').strip() or None
                 consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
@@ -1721,19 +1730,52 @@ def deliberacao_pagamento_editar(contrato):
                 penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
                 prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
 
-                # ✅ NOVA LÓGICA: Verificar SE MUDOU ANTES de atualizar
+                # ✅ CONVERSÃO DE DATAS
+                dt_arrematacao = None
+                if dt_arrematacao_str:
+                    try:
+                        dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
+                    except ValueError:
+                        flash('Data de Arrematação inválida.', 'danger')
+                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
 
-                # Verificar se Gestor GEADI preencheu/mudou considerações
+                dt_registro = None
+                if dt_registro_str:
+                    try:
+                        dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
+                    except ValueError:
+                        flash('Data do Registro inválida.', 'danger')
+                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+
+                # ✅ CONVERSÃO DO VALOR MONETÁRIO
+                vr_divida_condominio_2 = None
+                if vr_divida_condominio_2_str:
+                    try:
+                        valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                        if valor_limpo:
+                            vr_divida_condominio_2 = Decimal(valor_limpo)
+                    except (ValueError, InvalidOperation):
+                        flash('Valor da Dívida (Manual) inválido.', 'danger')
+                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+
+                # ✅ VERIFICAR SE GESTOR GEADI PREENCHEU/MUDOU CONSIDERAÇÕES
                 if consideracoes_gestor_geadi and consideracoes_gestor_geadi != deliberacao.CONSIDERACOES_GESTOR_GEADI:
                     deliberacao.USUARIO_GESTOR_GEADI = current_user.nome
                     deliberacao.DT_DELIBERACAO_GEADI = datetime.utcnow()
 
-                # Verificar se Gestor SUMOV preencheu/mudou considerações
+                # ✅ VERIFICAR SE GESTOR SUMOV PREENCHEU/MUDOU CONSIDERAÇÕES
                 if consideracoes_gestor_sumov and consideracoes_gestor_sumov != deliberacao.CONSIDERACOES_GESTOR_SUMOV:
                     deliberacao.USUARIO_GESTOR_SUMOV = current_user.nome
                     deliberacao.DT_DELIBERACAO_SUMOV = datetime.utcnow()
 
-                # AGORA SIM atualizar os campos editáveis (DEPOIS de verificar)
+                # ✅ SALVAR OS NOVOS CAMPOS EDITÁVEIS (ANTES NÃO ERAM SALVOS)
+                deliberacao.MATRICULA_CAIXA_EMGEA = matricula
+                deliberacao.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
+                deliberacao.DT_REGISTRO = dt_registro
+                deliberacao.VR_DIVIDA_CONDOMINIO_2 = vr_divida_condominio_2
+                deliberacao.INDICE_USADO_CONDOMINIO = indice_usado_condominio
+
+                # SALVAR OS CAMPOS QUE JÁ ERAM ATUALIZADOS
                 deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
                 deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor_geadi
                 deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
@@ -1748,10 +1790,7 @@ def deliberacao_pagamento_editar(contrato):
 
                 # LÓGICA: Se alguma consideração de gestor foi preenchida
                 if consideracoes_gestor_geadi or consideracoes_gestor_sumov:
-                    # Atualizar status para DELIBERADO
                     deliberacao.STATUS_DOCUMENTO = 'DELIBERADO'
-
-                    # Registrar quem deliberou (apenas se ainda não tiver sido registrado)
                     if not deliberacao.USUARIO_DELIBEROU:
                         deliberacao.USUARIO_DELIBEROU = current_user.nome
 
@@ -1780,7 +1819,6 @@ def deliberacao_pagamento_editar(contrato):
                 return redirect(url_for('sumov.deliberacao_pagamento'))
 
         # ===== GET - MOSTRAR FORMULÁRIO DE EDIÇÃO =====
-        # Buscar totais por tipo de parcela se existir índice
         totais_por_tipo = []
 
         try:
@@ -1789,7 +1827,6 @@ def deliberacao_pagamento_editar(contrato):
             indice_usado = deliberacao.INDICE_DEBITO_EMGEA
 
             if indice_usado:
-                # Buscar pelo nome do índice
                 indice_obj = ParamIndicesEconomicos.query.filter(
                     ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(indice_usado.split(' - ')[0])
                 ).first()
@@ -1797,7 +1834,6 @@ def deliberacao_pagamento_editar(contrato):
                 if indice_obj:
                     id_indice = indice_obj.ID_INDICE_ECONOMICO
 
-                    # Query para buscar totais por tipo
                     totais_query = db.session.query(
                         SiscalculoCalculos.ID_TIPO,
                         TipoParcela.DSC_TIPO,
@@ -1821,7 +1857,6 @@ def deliberacao_pagamento_editar(contrato):
                         SiscalculoCalculos.ID_TIPO
                     ).all()
 
-                    # Converter para lista de dicionários
                     totais_por_tipo = [
                         {
                             'id_tipo': t.ID_TIPO,
@@ -1838,7 +1873,6 @@ def deliberacao_pagamento_editar(contrato):
                         print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
 
         except Exception as e:
-            # Se der erro ao buscar tipos de parcela, apenas não mostra (não quebra a página)
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
             traceback.print_exc()
