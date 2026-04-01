@@ -3690,53 +3690,76 @@ def editar_faturamento_duplicidade(nr_contrato, nr_ocorrencia):
 @sumov_bp.route('/faturamento/analise-ocorrencias/inserir-tabela-final', methods=['POST'])
 @login_required
 def inserir_tabela_final_faturamento():
-    """Insere registros analisados na tabela final com VR_TARIFA = 247.48"""
+    """Insere registros analisados na tabela final com VR_TARIFA = 247.78"""
     from sqlalchemy import text
 
     try:
-        # Query para inserir na tabela final - Gerando ID sequencial
-        sql = text("""
-            -- Pegar o maior ID da tabela final
-            DECLARE @MaxID INT
-            SELECT @MaxID = ISNULL(MAX(ID), 0) FROM BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL]
+        # ETAPA 1: Buscar o maior ID atual
+        sql_max = text("""
+            SELECT ISNULL(MAX(ID), 0) 
+            FROM BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL]
+        """)
+        max_id = db.session.execute(sql_max).scalar() or 0
+        max_id = int(max_id)  # Garantir que é int puro
 
-            -- Inserir com IDs sequenciais a partir do maior + 1
+        # ETAPA 2: Contar quantos registros serão inseridos
+        sql_count = text("""
+            SELECT COUNT(*)
+            FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
+            WHERE MES_ANO_FATURAMENTO IS NOT NULL
+              AND ID_FATURAMENTO = 1
+        """)
+        total_para_inserir = db.session.execute(sql_count).scalar() or 0
+
+        if total_para_inserir == 0:
+            flash('Não há registros para inserir na tabela final.', 'info')
+            return redirect(url_for('sumov.analise_ocorrencias'))
+
+        # ETAPA 3: Inserir usando subquery para gerar o ID
+        # Usa (SELECT ISNULL(MAX(ID),0) FROM ...) direto no SQL
+        # para evitar problemas com parâmetros bind
+        sql_insert = text("""
             INSERT INTO BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL]
             ([ID], [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO], 
              [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR], 
              [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF], 
              [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], [VR_TARIFA], [OBS])
             SELECT 
-                @MaxID + ROW_NUMBER() OVER (ORDER BY [ID]) AS [ID],
+                (SELECT ISNULL(MAX(ID), 0) FROM BDDASHBOARDBI.[BDG].[MOV_TB035_SMART_FATURAMENTO_FINAL])
+                + ROW_NUMBER() OVER (ORDER BY [ID]),
                 [DT_REFERENCIA], [fkContratoSISCTR], [nrOcorrencia], [NR_CONTRATO], 
                 [itemServico], [NO_DESTINO], [DT_ULTIMO_TRAMITE], [NO_DEVEDOR], 
                 [DT_JUSTIF], [JUST_APRESENT], [ANO_MES_ABERTURA], [ANO_MES_JUSTIF], 
-                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], 247.78 AS VR_TARIFA, [OBS]
+                [ID_FATURAMENTO], [MES_ANO_FATURAMENTO], 247.78, [OBS]
             FROM BDDASHBOARDBI.[BDG].[MOV_TB034_SMART_FATURAMENTO]
             WHERE MES_ANO_FATURAMENTO IS NOT NULL
+              AND ID_FATURAMENTO = 1
         """)
 
-        result = db.session.execute(sql)
+        result = db.session.execute(sql_insert)
+        linhas_inseridas = result.rowcount
         db.session.commit()
 
-        linhas_inseridas = result.rowcount
-
         # Registrar log
-        registrar_log(
-            acao='inserir',
-            entidade='faturamento_final',
-            entidade_id='batch',
-            descricao=f'Inserção em lote na tabela final de faturamento - {linhas_inseridas} registros inseridos com VR_TARIFA = 247.48'
-        )
+        try:
+            registrar_log(
+                acao='inserir',
+                entidade='faturamento_final',
+                entidade_id='batch',
+                descricao=f'Inserção em lote na tabela final - {linhas_inseridas} registros com VR_TARIFA = 247.78'
+            )
+        except Exception:
+            pass  # Log falhar não pode derrubar a operação
 
         flash(f'Inserção concluída com sucesso! {linhas_inseridas} registro(s) inserido(s) na tabela final.', 'success')
 
     except Exception as e:
         db.session.rollback()
+        import traceback
+        traceback.print_exc()
         flash(f'Erro ao inserir na tabela final: {str(e)}', 'danger')
 
     return redirect(url_for('sumov.analise_ocorrencias'))
-
 
 # =====================================================
 # ANS GLOSAS - APURAÇÃO ANS
