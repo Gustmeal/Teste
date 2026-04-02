@@ -58,15 +58,16 @@ class AnsApuracao(db.Model):
     def _query_base(dt_apuracao, filtro_just_aceita):
         where_just = "AND A.JUST_ACEITA IS NULL" if filtro_just_aceita == 'NULL' else "AND A.JUST_ACEITA IS NOT NULL"
         sql = text(f"""
-            SELECT A.DT_APURACAO, A.nrOcorrencia, A.GRUPO, A.DT_ABERTURA, A.DT_ANDAMENTO, A.DT_JUSTIFICATIVA,
-                A.DSC_JUSTIFICATIVA, A.JUST_ACEITA, A.QTDE_DIAS, A.NO_PRAZO,
-                A.ADVERTENCIA, A.DT_ADVERTENCIA, A.REINCIDENCIA, A.DT_REINCIDENCIA,
-                A.REITERACAO, A.DT_REITERACAO, B.itemServico, B.PRAZO
-            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A
-            OUTER APPLY (SELECT TOP 1 X.itemServico, X.PRAZO FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X WHERE X.GRUPO = A.GRUPO) B
-            WHERE A.DT_APURACAO = :dt_apuracao {where_just}
-            ORDER BY A.GRUPO, A.nrOcorrencia
-        """)
+                SELECT A.DT_APURACAO, A.nrOcorrencia, A.GRUPO, A.DT_ABERTURA, A.DT_ANDAMENTO, A.DT_JUSTIFICATIVA,
+                    A.DT_EFETIVACAO, A.DT_DEFERIDO,
+                    A.DSC_JUSTIFICATIVA, A.JUST_ACEITA, A.QTDE_DIAS, A.NO_PRAZO,
+                    A.ADVERTENCIA, A.DT_ADVERTENCIA, A.REINCIDENCIA, A.DT_REINCIDENCIA,
+                    A.REITERACAO, A.DT_REITERACAO, B.itemServico, B.PRAZO
+                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A
+                OUTER APPLY (SELECT TOP 1 X.itemServico, X.PRAZO FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X WHERE X.GRUPO = A.GRUPO) B
+                WHERE A.DT_APURACAO = :dt_apuracao {where_just}
+                ORDER BY A.GRUPO, A.nrOcorrencia
+            """)
         return db.session.execute(sql, {'dt_apuracao': dt_apuracao}).fetchall()
 
     @staticmethod

@@ -126,6 +126,7 @@
                         <div class="table-responsive"><table class="table table-hover table-sm mb-0" id="tabela-grupo-{{ grupo }}">
                             <thead class="table-light"><tr>
                                 <th class="text-center" style="width:90px;">Oc.</th><th class="text-center" style="width:100px;">Abertura</th>
+                                <th class="text-center" style="width:95px;">Efetivação</th><th class="text-center" style="width:95px;">Deferido</th>
                                 <th class="text-center" style="width:100px;">Andamento</th><th class="text-center" style="width:110px;">Justif.</th>
                                 <th style="min-width:250px;">Descrição</th><th class="text-center" style="width:150px;">Just. Aceita?</th><th class="text-center" style="width:70px;">Salvar</th>
                             </tr></thead>
@@ -133,6 +134,8 @@
                             <tr id="row-{{ grupo }}-{{ oc.nrOcorrencia }}" data-nr-ocorrencia="{{ oc.nrOcorrencia }}" data-grupo="{{ grupo }}">
                                 <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
                                 <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
+                                <td class="text-center">{{ oc.DT_EFETIVACAO.strftime('%d/%m/%Y') if oc.DT_EFETIVACAO else '-' }}</td>
+                                <td class="text-center">{{ oc.DT_DEFERIDO.strftime('%d/%m/%Y') if oc.DT_DEFERIDO else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_ANDAMENTO.strftime('%d/%m/%Y') if oc.DT_ANDAMENTO else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if oc.DT_JUSTIFICATIVA else '-' }}</td>
                                 <td><div class="dsc-justificativa" title="{{ oc.DSC_JUSTIFICATIVA or '' }}">{{ oc.DSC_JUSTIFICATIVA or '-' }}</div></td>
@@ -157,16 +160,20 @@
                         {% if analisadas %}
                         <div class="table-responsive"><table class="table table-hover table-sm mb-0">
                             <thead class="table-light"><tr>
-                                <th class="text-center">Oc.</th><th class="text-center">Abertura</th><th class="text-center">Justif.</th>
-                                <th>Descrição</th><th class="text-center">Just.</th><th class="text-center">Dias</th>
+                                <th class="text-center">Oc.</th><th class="text-center">Abertura</th><th class="text-center">Efetiv.</th><th class="text-center">Deferido</th><th class="text-center">Justif.</th>
+                                <th class="text-center">Just.</th><th class="text-center">Dias</th>
                                 <th class="text-center">Prazo</th><th class="text-center">No Prazo?</th>
                                 <th class="text-center">Adv.</th><th class="text-center">Reinc.</th><th class="text-center">Reit.</th>
                             </tr></thead>
                             <tbody>{% for oc in analisadas %}<tr>
                                 <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
                                 <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
-                                <td class="text-center">{{ oc.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if oc.DT_JUSTIFICATIVA else '-' }}</td>
-                                <td><div class="dsc-justificativa">{{ oc.DSC_JUSTIFICATIVA or '-' }}</div></td>
+                                <td class="text-center">{{ oc.DT_EFETIVACAO.strftime('%d/%m/%Y') if oc.DT_EFETIVACAO else '-' }}</td>
+                                <td class="text-center">{{ oc.DT_DEFERIDO.strftime('%d/%m/%Y') if oc.DT_DEFERIDO else '-' }}</td>
+                                <td class="text-center" title="{{ oc.DSC_JUSTIFICATIVA or '' }}" style="cursor:help;">
+                                    {{ oc.DT_JUSTIFICATIVA.strftime('%d/%m/%Y') if oc.DT_JUSTIFICATIVA else '-' }}
+                                    {% if oc.DSC_JUSTIFICATIVA %}<i class="fas fa-comment-dots text-info ms-1" style="font-size:0.7rem;"></i>{% endif %}
+                                </td>
                                 <td class="text-center">{% if oc.JUST_ACEITA==1 %}<span class="badge bg-success">Sim</span>{% elif oc.JUST_ACEITA==0 %}<span class="badge bg-danger">Não</span>{% else %}-{% endif %}</td>
                                 <td class="text-center fw-bold">{{ oc.QTDE_DIAS if oc.QTDE_DIAS is not none else '-' }}</td>
                                 <td class="text-center"><span class="badge bg-warning text-dark">{{ oc.PRAZO if oc.PRAZO is not none else '-' }}</span></td>
