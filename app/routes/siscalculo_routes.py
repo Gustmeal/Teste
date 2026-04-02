@@ -261,9 +261,9 @@ def processar():
                         print(f"  [ERRO] Serial inválido: {data_raw}")
                     continue
 
-            # Se for timestamp do pandas
-            elif isinstance(data_raw, pd.Timestamp):
-                dt_venc = data_raw
+            # Se for timestamp do pandas OU datetime nativo do Python
+            elif isinstance(data_raw, (pd.Timestamp, datetime)):
+                dt_venc = pd.to_datetime(data_raw)
 
             # Se for string, tentar formatos
             elif isinstance(data_raw, str):
