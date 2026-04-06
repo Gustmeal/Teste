@@ -932,11 +932,12 @@ def exportar_pdf():
         print(f"  Índice: {id_indice}")
         print(f"  Honorários: {perc_honorarios}%")
 
-        # Buscar parcelas
+        # ✅ CORREÇÃO: Buscar apenas parcelas VÁLIDAS (PRESCRITO=False)
         parcelas = SiscalculoCalculos.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao_filtro,
             IMOVEL=imovel,
-            ID_INDICE_ECONOMICO=int(id_indice)
+            ID_INDICE_ECONOMICO=int(id_indice),
+            PRESCRITO=False  # ✅ CORREÇÃO: Excluir parcelas prescritas do PDF
         ).order_by(
             SiscalculoCalculos.ID_TIPO,          # ✅ ORDENAR POR TIPO PRIMEIRO
             SiscalculoCalculos.DT_VENCIMENTO
@@ -950,7 +951,7 @@ def exportar_pdf():
                                     id_indice=id_indice,
                                     perc_honorarios=float(perc_honorarios)))
 
-        # ✅ NOVO: BUSCAR TOTAIS POR TIPO
+        # ✅ CORREÇÃO: Buscar totais por tipo apenas de parcelas VÁLIDAS (PRESCRITO=False)
         print(f"\n[PDF] Buscando totais por tipo...")
         totais_por_tipo = db.session.query(
             SiscalculoCalculos.ID_TIPO,
@@ -963,7 +964,8 @@ def exportar_pdf():
         ).filter(
             SiscalculoCalculos.DT_ATUALIZACAO == dt_atualizacao_filtro,
             SiscalculoCalculos.IMOVEL == imovel,
-            SiscalculoCalculos.ID_INDICE_ECONOMICO == int(id_indice)
+            SiscalculoCalculos.ID_INDICE_ECONOMICO == int(id_indice),
+            SiscalculoCalculos.PRESCRITO == False  # ✅ CORREÇÃO: Só válidas nos totais por tipo
         ).group_by(
             SiscalculoCalculos.ID_TIPO,
             TipoParcela.DSC_TIPO
