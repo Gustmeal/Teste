@@ -218,17 +218,17 @@ class AnsApuracao(db.Model):
         resumo = AnsApuracao.calcular_resumo_advertencia(dt_apuracao, grupo)
         if not resumo['todas_analisadas']:
             return False, 'Ainda existem ocorrências pendentes.'
-        dt_int = int(str(dt_apuracao).replace('-', ''))
         if resumo['sera_advertido']:
             sql = text("""
-                UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
-                SET ADVERTENCIA = CASE WHEN NO_PRAZO=0 AND JUST_ACEITA=0 THEN 1 ELSE 0 END,
-                    DT_ADVERTENCIA = CASE WHEN NO_PRAZO=0 AND JUST_ACEITA=0 THEN :di ELSE NULL END
-                WHERE DT_APURACAO=:dt AND GRUPO=:g
-            """)
+                    UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
+                    SET ADVERTENCIA = CASE WHEN NO_PRAZO=0 AND JUST_ACEITA=0 THEN 1 ELSE 0 END,
+                        DT_ADVERTENCIA = CASE WHEN NO_PRAZO=0 AND JUST_ACEITA=0 THEN :dt ELSE NULL END
+                    WHERE DT_APURACAO=:dt AND GRUPO=:g
+                """)
         else:
-            sql = text("UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET ADVERTENCIA=0, DT_ADVERTENCIA=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
-        db.session.execute(sql, {'dt': dt_apuracao, 'g': grupo, 'di': dt_int if resumo['sera_advertido'] else None})
+            sql = text(
+                "UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET ADVERTENCIA=0, DT_ADVERTENCIA=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
+        db.session.execute(sql, {'dt': dt_apuracao, 'g': grupo})
         db.session.commit()
         return True, resumo
 
@@ -244,23 +244,25 @@ class AnsApuracao(db.Model):
         dt_ant = AnsApuracao.obter_data_anterior(dt_apuracao)
         if not dt_ant:
             return False, 'Não há data de apuração anterior.'
-        dt_int = int(str(dt_apuracao).replace('-', ''))
         if resumo['sera_advertido']:
             sql = text("""
-                UPDATE A SET
-                    A.REINCIDENCIA = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.ADVERTENCIA=1)
-                        THEN 1 ELSE 0 END,
-                    A.DT_REINCIDENCIA = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.ADVERTENCIA=1)
-                        THEN :di ELSE NULL END
-                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
-            """)
+                    UPDATE A SET
+                        A.REINCIDENCIA = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.ADVERTENCIA=1)
+                            THEN 1 ELSE 0 END,
+                        A.DT_REINCIDENCIA = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.ADVERTENCIA=1)
+                            THEN :dt ELSE NULL END
+                    FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
+                """)
         else:
-            sql = text("UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET REINCIDENCIA=0, DT_REINCIDENCIA=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
-        db.session.execute(sql, {'dt': dt_apuracao, 'da': dt_ant, 'g': grupo, 'di': dt_int})
+            sql = text(
+                "UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET REINCIDENCIA=0, DT_REINCIDENCIA=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
+        db.session.execute(sql, {'dt': dt_apuracao, 'da': dt_ant, 'g': grupo})
         db.session.commit()
-        cnt = db.session.execute(text("SELECT SUM(CASE WHEN REINCIDENCIA=1 THEN 1 ELSE 0 END) AS t FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO WHERE DT_APURACAO=:dt AND GRUPO=:g"), {'dt': dt_apuracao, 'g': grupo}).fetchone()
+        cnt = db.session.execute(text(
+            "SELECT SUM(CASE WHEN REINCIDENCIA=1 THEN 1 ELSE 0 END) AS t FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO WHERE DT_APURACAO=:dt AND GRUPO=:g"),
+                                 {'dt': dt_apuracao, 'g': grupo}).fetchone()
         resumo['reinc_marcadas_resultado'] = cnt.t or 0
         resumo['dt_anterior'] = str(dt_ant)
         return True, resumo
@@ -277,23 +279,25 @@ class AnsApuracao(db.Model):
         dt_ant = AnsApuracao.obter_data_anterior(dt_apuracao)
         if not dt_ant:
             return False, 'Não há data de apuração anterior.'
-        dt_int = int(str(dt_apuracao).replace('-', ''))
         if resumo['sera_advertido']:
             sql = text("""
-                UPDATE A SET
-                    A.REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
-                        THEN 1 ELSE 0 END,
-                    A.DT_REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
-                        THEN :di ELSE NULL END
-                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
-            """)
+                    UPDATE A SET
+                        A.REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
+                            THEN 1 ELSE 0 END,
+                        A.DT_REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
+                            THEN :dt ELSE NULL END
+                    FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
+                """)
         else:
-            sql = text("UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET REITERACAO=0, DT_REITERACAO=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
-        db.session.execute(sql, {'dt': dt_apuracao, 'da': dt_ant, 'g': grupo, 'di': dt_int})
+            sql = text(
+                "UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET REITERACAO=0, DT_REITERACAO=NULL WHERE DT_APURACAO=:dt AND GRUPO=:g")
+        db.session.execute(sql, {'dt': dt_apuracao, 'da': dt_ant, 'g': grupo})
         db.session.commit()
-        cnt = db.session.execute(text("SELECT SUM(CASE WHEN REITERACAO=1 THEN 1 ELSE 0 END) AS t FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO WHERE DT_APURACAO=:dt AND GRUPO=:g"), {'dt': dt_apuracao, 'g': grupo}).fetchone()
+        cnt = db.session.execute(text(
+            "SELECT SUM(CASE WHEN REITERACAO=1 THEN 1 ELSE 0 END) AS t FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO WHERE DT_APURACAO=:dt AND GRUPO=:g"),
+                                 {'dt': dt_apuracao, 'g': grupo}).fetchone()
         resumo['reit_marcadas_resultado'] = cnt.t or 0
         resumo['dt_anterior'] = str(dt_ant)
         return True, resumo
@@ -304,13 +308,15 @@ class AnsApuracao(db.Model):
 
     @staticmethod
     def editar_campo_individual(dt_apuracao, nr_ocorrencia, campo, valor):
-        campos_validos = {'ADVERTENCIA': 'DT_ADVERTENCIA', 'REINCIDENCIA': 'DT_REINCIDENCIA', 'REITERACAO': 'DT_REITERACAO'}
+        campos_validos = {'ADVERTENCIA': 'DT_ADVERTENCIA', 'REINCIDENCIA': 'DT_REINCIDENCIA',
+                          'REITERACAO': 'DT_REITERACAO'}
         if campo not in campos_validos:
             return False, f'Campo inválido: {campo}'
         dt_campo = campos_validos[campo]
-        dt_int = int(str(dt_apuracao).replace('-', '')) if valor == 1 else None
-        sql = text(f"UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET [{campo}]=:valor, [{dt_campo}]=:dt_int WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr")
-        db.session.execute(sql, {'valor': valor, 'dt_int': dt_int, 'dt': dt_apuracao, 'nr': nr_ocorrencia})
+        dt_valor = dt_apuracao if valor == 1 else None
+        sql = text(
+            f"UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET [{campo}]=:valor, [{dt_campo}]=:dt_valor WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr")
+        db.session.execute(sql, {'valor': valor, 'dt_valor': dt_valor, 'dt': dt_apuracao, 'nr': nr_ocorrencia})
         db.session.commit()
         return True, f'{campo} da ocorrência {nr_ocorrencia} alterada para {"Sim" if valor == 1 else "Não"}.'
 
