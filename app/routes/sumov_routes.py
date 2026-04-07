@@ -3096,6 +3096,9 @@ def exportar_excel_ocorrencias():
         # Capturar abas selecionadas
         abas_selecionadas = request.form.getlist('abas_selecionadas')
 
+        # NOVO: Capturar filtro de responsável (opcional)
+        responsavel_filtro = (request.form.get('responsavel_filtro') or '').strip()
+
         if not abas_selecionadas:
             flash('Nenhuma aba foi selecionada para exportação.', 'warning')
             return redirect(url_for('sumov.analise_ocorrencias'))
@@ -3103,6 +3106,16 @@ def exportar_excel_ocorrencias():
         # Buscar dados
         ocorrencias_por_status = OcorrenciasFaturamento.listar_por_status()
         analisadas = OcorrenciasFaturamento.listar_analisadas()
+
+        # NOVO: Função auxiliar para filtrar lista de ocorrências por responsável
+        def filtrar_por_responsavel(lista):
+            if not responsavel_filtro:
+                return lista
+            # Strip dos dois lados para neutralizar padding de coluna CHAR no SQL Server
+            return [
+                o for o in lista
+                if (o.RESPONSAVEL or '').strip() == responsavel_filtro
+            ]
 
         # Criar workbook
         wb = Workbook()
@@ -3143,7 +3156,8 @@ def exportar_excel_ocorrencias():
 
             # Escrever dados
             for row_num, ocorrencia in enumerate(dados, 2):
-                ws.cell(row=row_num, column=1, value=int(ocorrencia.NR_CONTRATO))
+                cell_contrato = ws.cell(row=row_num, column=1, value=int(ocorrencia.NR_CONTRATO))
+                cell_contrato.number_format = '0'
                 ws.cell(row=row_num, column=2, value=ocorrencia.nrOcorrencia)
                 ws.cell(row=row_num, column=3, value=ocorrencia.dsJustificativa or '-')
 
@@ -3181,7 +3195,7 @@ def exportar_excel_ocorrencias():
                 for col_num in range(1, len(headers) + 1):
                     cell = ws.cell(row=row_num, column=col_num)
                     cell.border = border
-                    if col_num in [1, 2, 4, col_offset, col_offset + 3, col_offset + 4]:  # Colunas centralizadas
+                    if col_num in [1, 2, 4, col_offset, col_offset + 3, col_offset + 4]:
                         cell.alignment = center_alignment
 
             # Ajustar largura das colunas
@@ -3199,12 +3213,15 @@ def exportar_excel_ocorrencias():
         # Criar sheets para cada aba selecionada
         for aba_nome in abas_selecionadas:
             if aba_nome == 'Analisadas':
-                criar_sheet(wb, 'Analisadas', analisadas, incluir_houve_faturamento=True)
+                # NOVO: aplica filtro de responsável antes de gerar a aba
+                dados_aba = filtrar_por_responsavel(analisadas)
+                criar_sheet(wb, 'Analisadas', dados_aba, incluir_houve_faturamento=True)
             else:
                 # Buscar dados do status específico
                 if aba_nome in ocorrencias_por_status:
-                    dados = ocorrencias_por_status[aba_nome]
-                    criar_sheet(wb, aba_nome, dados, incluir_houve_faturamento=False)
+                    # NOVO: aplica filtro de responsável antes de gerar a aba
+                    dados_aba = filtrar_por_responsavel(ocorrencias_por_status[aba_nome])
+                    criar_sheet(wb, aba_nome, dados_aba, incluir_houve_faturamento=False)
 
         # Salvar em BytesIO
         output = BytesIO()
@@ -3213,14 +3230,23 @@ def exportar_excel_ocorrencias():
 
         # Nome do arquivo com timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'Ocorrencias_Faturamento_{timestamp}.xlsx'
+        if responsavel_filtro:
+            # Sanitiza o nome do responsável para usar no arquivo
+            resp_sanitizado = ''.join(c for c in responsavel_filtro if c.isalnum() or c in ('_', '-')).strip()
+            filename = f'Ocorrencias_Faturamento_{resp_sanitizado}_{timestamp}.xlsx'
+        else:
+            filename = f'Ocorrencias_Faturamento_{timestamp}.xlsx'
 
-        # Registrar log
+        # Registrar log (inclui o filtro de responsável quando houver)
+        descricao_log = f'Exportação de ocorrências para Excel - Abas: {", ".join(abas_selecionadas)}'
+        if responsavel_filtro:
+            descricao_log += f' - Responsável: {responsavel_filtro}'
+
         registrar_log(
             acao='exportar',
             entidade='ocorrencias_faturamento_excel',
             entidade_id='batch',
-            descricao=f'Exportação de ocorrências para Excel - Abas: {", ".join(abas_selecionadas)}'
+            descricao=descricao_log
         )
 
         return send_file(
@@ -3235,6 +3261,8 @@ def exportar_excel_ocorrencias():
         traceback.print_exc()
         flash(f'Erro ao exportar para Excel: {str(e)}', 'danger')
         return redirect(url_for('sumov.analise_ocorrencias'))
+
+
 
 
 @sumov_bp.route('/faturamento/analise-ocorrencias/analisar/<nr_contrato>/<int:nr_ocorrencia>/<identificador>',

@@ -273,6 +273,26 @@
             </div>
             <form method="POST" action="{{ url_for('sumov.exportar_excel_ocorrencias') }}" id="formExportarExcel">
                 <div class="modal-body">
+
+                    <!-- Filtro por Responsável -->
+                    <div class="mb-3">
+                        <label for="responsavel_filtro" class="form-label fw-bold">
+                            <i class="fas fa-user me-2 text-primary"></i>Filtrar por Responsável
+                        </label>
+                        <select class="form-select" name="responsavel_filtro" id="responsavel_filtro">
+                            <option value="">Todos os Responsáveis</option>
+                            {% for responsavel in responsaveis %}
+                                <option value="{{ responsavel }}">{{ responsavel }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Se selecionado, o Excel trará apenas as ocorrências deste responsável nas abas escolhidas abaixo.
+                        </small>
+                    </div>
+
+                    <hr>
+
                     <p class="text-muted mb-3">
                         <i class="fas fa-info-circle me-2"></i>Selecione quais abas deseja exportar para o Excel:
                     </p>
@@ -292,7 +312,9 @@
                                            value="{{ status }}" id="aba_{{ loop.index }}">
                                     <label class="form-check-label" for="aba_{{ loop.index }}">
                                         <i class="fas fa-folder text-info me-2"></i>{{ status }}
-                                        <span class="badge bg-secondary ms-2">{{ ocorrencias|length }}</span>
+                                        <span class="badge bg-secondary ms-2 contador-modal"
+                                              data-aba-ref="{{ loop.index }}"
+                                              data-total="{{ ocorrencias|length }}">{{ ocorrencias|length }}</span>
                                     </label>
                                 </div>
                             {% endfor %}
@@ -303,7 +325,9 @@
                                    value="Analisadas" id="aba_analisadas">
                             <label class="form-check-label" for="aba_analisadas">
                                 <i class="fas fa-check-circle text-success me-2"></i>Analisadas
-                                <span class="badge bg-secondary ms-2">{{ analisadas|length }}</span>
+                                <span class="badge bg-secondary ms-2 contador-modal"
+                                      data-aba-ref="analisadas"
+                                      data-total="{{ analisadas|length }}">{{ analisadas|length }}</span>
                             </label>
                         </div>
                     </div>
@@ -495,6 +519,45 @@ function validarExportacao() {
     return true;
 }
 
+// Atualiza os contadores das abas dentro do modal de exportação
+// conforme o responsável selecionado no filtro do modal
+function atualizarContadoresModal() {
+    const selectFiltro = document.getElementById('responsavel_filtro');
+    if (!selectFiltro) return;
+
+    const filtro = selectFiltro.value.trim();
+
+    document.querySelectorAll('.contador-modal').forEach(function(badge) {
+        const abaRef = badge.getAttribute('data-aba-ref');
+        const total = parseInt(badge.getAttribute('data-total'), 10) || 0;
+
+        // Sem filtro: restaura o total original
+        if (filtro === '') {
+            badge.textContent = total;
+            return;
+        }
+
+        // Com filtro: busca a tabela correspondente e conta as linhas do responsável
+        const tabela = document.querySelector(`.tabela-ocorrencias[data-aba="${abaRef}"]`);
+        if (!tabela) {
+            badge.textContent = 0;
+            return;
+        }
+
+        const linhas = tabela.querySelectorAll('tbody tr');
+        let count = 0;
+        linhas.forEach(function(linha) {
+            const respAttr = linha.getAttribute('data-responsavel');
+            const resp = respAttr ? respAttr.trim() : '';
+            if (resp === filtro) {
+                count++;
+            }
+        });
+
+        badge.textContent = count;
+    });
+}
+
 // Executar quando a página carregar
 document.addEventListener('DOMContentLoaded', function() {
     destacarContratosDuplicados();
@@ -503,6 +566,18 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('filtroContrato').addEventListener('input', aplicarFiltros);
     document.getElementById('filtroOcorrencia').addEventListener('input', aplicarFiltros);
     document.getElementById('filtroResponsavel').addEventListener('change', aplicarFiltros);
+
+    // Atualizar contadores do modal quando o filtro de responsável mudar
+    const selectFiltroModal = document.getElementById('responsavel_filtro');
+    if (selectFiltroModal) {
+        selectFiltroModal.addEventListener('change', atualizarContadoresModal);
+    }
+
+    // Atualizar contadores sempre que o modal for aberto
+    const modalExportar = document.getElementById('modalExportarExcel');
+    if (modalExportar) {
+        modalExportar.addEventListener('show.bs.modal', atualizarContadoresModal);
+    }
 
     // Permitir limpar com ESC
     document.addEventListener('keydown', function(event) {
