@@ -51,11 +51,22 @@
                 {% else %}
                 <div class="table-responsive mb-3">
                     <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-light"><tr>
+                            <th>Grupo</th><th class="text-center">Análise</th><th class="text-center">Advertência</th>
+                            <th class="text-center">Reincidência</th><th class="text-center">Reiteração</th><th class="text-center">Status</th>
+                        </tr></thead>
                         <tbody>
                         {% for grp in todos_grupos %}
                         {% set g = grp.GRUPO %}
                         {% set st = verificacao.status_grupos.get(g, {}) %}
-
+                        <tr>
+                            <td><strong>{{ g }}</strong> — {{ grp.NO_GRUPO or grp.itemServico or '' }}</td>
+                            <td class="text-center">{% if st.analise_ok %}<i class="fas fa-check-circle text-success"></i>{% else %}<i class="fas fa-times-circle text-danger"></i>{% endif %}</td>
+                            <td class="text-center">{% if st.advertencia_ok %}<i class="fas fa-check-circle text-success"></i> <small>({{ st.adv_marcadas }})</small>{% else %}<i class="fas fa-times-circle text-danger"></i>{% endif %}</td>
+                            <td class="text-center">{% if st.reincidencia_ok %}<i class="fas fa-check-circle text-success"></i> <small>({{ st.reinc_marcadas }})</small>{% else %}<i class="fas fa-times-circle text-danger"></i>{% endif %}</td>
+                            <td class="text-center">{% if st.reiteracao_ok %}<i class="fas fa-check-circle text-success"></i> <small>({{ st.reit_marcadas }})</small>{% else %}<i class="fas fa-times-circle text-danger"></i>{% endif %}</td>
+                            <td class="text-center">{% if st.completo %}<span class="badge bg-success">Completo</span>{% else %}<span class="badge bg-warning text-dark">Pendente</span>{% endif %}</td>
+                        </tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -64,6 +75,9 @@
                     <span class="btn btn-success btn-lg px-5" onclick="concluirApuracao()" style="cursor:pointer;">
                         <i class="fas fa-flag-checkered me-2"></i>Concluir Apuração — {{ dt_apuracao }}
                     </span>
+                    {% if not verificacao.pode_concluir %}
+                    <br><small class="text-warning mt-2 d-inline-block"><i class="fas fa-exclamation-triangle me-1"></i>Atenção: ainda existem grupos com etapas pendentes.</small>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
@@ -112,6 +126,7 @@
 
         <div id="grupo-body-{{ grupo }}" class="secao-corpo" style="display:none;">
             <div class="card-body p-0">
+
                 <!-- Pendentes -->
                 <div class="sub-section">
                     <div class="sub-header sub-header-pendentes d-flex justify-content-between align-items-center" onclick="toggleSecao('pendentes-{{ grupo }}', this)" style="cursor:pointer;">
@@ -158,9 +173,11 @@
                     </div>
                     <div id="analisadas-{{ grupo }}" class="secao-corpo" style="display:none;">
                         {% if analisadas %}
-                        <div class="table-responsive"><table class="table table-hover table-sm mb-0">
+                        <div class="table-responsive"><table class="table table-hover table-sm mb-0" style="min-width:1500px;">
                             <thead class="table-light"><tr>
-                                <th class="text-center">Oc.</th><th class="text-center">Abertura</th><th class="text-center">Efetiv.</th><th class="text-center">Deferido</th><th class="text-center">Justif.</th>
+                                <th class="text-center">Oc.</th><th class="text-center">Abertura</th>
+                                <th class="text-center">Efetiv.</th><th class="text-center">Deferido</th>
+                                <th class="text-center">Justif.</th>
                                 <th class="text-center">Just.</th><th class="text-center">Dias</th>
                                 <th class="text-center">Prazo</th><th class="text-center">No Prazo?</th>
                                 <th class="text-center">Adv.</th><th class="text-center">Reinc.</th><th class="text-center">Reit.</th>
@@ -183,6 +200,7 @@
                                 <td class="text-center">{% if oc.REITERACAO is not none %}<span class="badge {% if oc.REITERACAO==1 %}bg-danger{% else %}bg-secondary{% endif %} badge-edit" onclick="editarCampo({{ oc.nrOcorrencia }},'REITERACAO',{{ 0 if oc.REITERACAO==1 else 1 }})" style="cursor:pointer;" title="Clique para alternar">{{ 'Sim' if oc.REITERACAO==1 else 'Não' }} <i class="fas fa-pen ms-1" style="font-size:0.6rem;"></i></span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                             </tr>{% endfor %}</tbody>
                         </table></div>
+
                         <!-- Resumo + Botões -->
                         <div class="resumo-advertencia mx-3 my-3 p-3 rounded-3">
                             <h6 class="fw-bold mb-3"><i class="fas fa-chart-pie me-2"></i>Resumo — Grupo {{ grupo }}</h6>
@@ -214,6 +232,36 @@
         </div>
     </div>
     {% endfor %}
+
+    <!-- Modal: Retorno da Prestadora -->
+    <div class="modal fade" id="modalRetornoPrestadora" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-comment-alt me-2"></i>Retorno da Prestadora</h5>
+                    <button type="button" class="btn-close btn-close-white" onclick="fecharModalRetorno()" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Você está alterando manualmente a ocorrência <strong id="modalNrOcorrencia">-</strong>
+                        (campo <strong id="modalCampoNome">-</strong>) para <strong>NÃO</strong>.
+                        Por favor, descreva o retorno da prestadora.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Retorno da Prestadora <span class="text-danger">*</span></label>
+                        <textarea id="txtRetornoPrestadora" class="form-control" rows="6"
+                                  maxlength="500" placeholder="Digite aqui o retorno informado pela prestadora..."></textarea>
+                        <small class="text-muted"><span id="contadorRetorno">0</span>/500 caracteres</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="btn btn-secondary" onclick="fecharModalRetorno()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Cancelar</span>
+                    <span class="btn btn-success" onclick="confirmarRetornoPrestadora()" style="cursor:pointer;"><i class="fas fa-save me-1"></i>Salvar e Alterar</span>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -251,17 +299,129 @@ var URL_REINCIDENCIA="{{ url_for('sumov.ans_glosas_aplicar_reincidencia') }}";
 var URL_REITERACAO="{{ url_for('sumov.ans_glosas_aplicar_reiteracao') }}";
 var URL_EDITAR_CAMPO="{{ url_for('sumov.ans_glosas_editar_campo') }}";
 var URL_CONCLUIR="{{ url_for('sumov.ans_glosas_concluir') }}";
+var URL_JUST_PRESTADORA="{{ url_for('sumov.ans_glosas_salvar_justificativa_prestadora') }}";
 var DT_APURACAO="{{ dt_apuracao }}";
 
 function trocarDataApuracao(dt){window.location.href="{{ url_for('sumov.ans_glosas') }}?dt_apuracao="+dt;}
+
 function toggleSecao(id,h){var c=document.getElementById(id);if(!c)return;var ch=h.querySelector('.secao-chevron');if(c.style.display==='none'){c.style.display='';if(ch)ch.classList.remove('rotated');}else{c.style.display='none';if(ch)ch.classList.add('rotated');}}
+
 function handleRadioClick(g,nr,v){var k=g+'-'+nr;if(debounceTimers[k])clearTimeout(debounceTimers[k]);debounceTimers[k]=setTimeout(function(){var s=document.getElementById('just_sim_'+g+'_'+nr),n=document.getElementById('just_nao_'+g+'_'+nr),r=document.getElementById('row-'+k),a=estadoSelecao[k];if(a!==undefined&&a===v){if(s)s.checked=false;if(n)n.checked=false;delete estadoSelecao[k];if(r)r.classList.remove('row-selecionada');return;}estadoSelecao[k]=v;if(r)r.classList.add('row-selecionada');},100);}
+
 function salvarIndividual(g,nr){var k=g+'-'+nr,v=estadoSelecao[k];if(v===undefined){alert('Selecione Sim ou Não para a ocorrência '+nr+'.');return;}if(!confirm('Confirma ocorrência '+nr+'? Just: '+(v===1?'ACEITA':'REJEITADA')))return;var fd=new FormData();fd.append('dt_apuracao',DT_APURACAO);fd.append('nr_ocorrencia',nr);fd.append('just_aceita',v);fetch(URL_SALVAR,{method:'POST',headers:{'X-Silent-Request':'true'},body:fd}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
+
 function salvarLoteGrupo(g){var t=document.getElementById('tabela-grupo-'+g);if(!t)return;var a=[];t.querySelectorAll('tbody tr').forEach(function(r){var nr=r.getAttribute('data-nr-ocorrencia'),k=g+'-'+nr;if(estadoSelecao[k]!==undefined)a.push({nr_ocorrencia:parseInt(nr),just_aceita:estadoSelecao[k]});});if(!a.length){alert('Nenhuma marcada.');return;}if(!confirm('Salvar '+a.length+' do Grupo '+g+'?'))return;fetch(URL_SALVAR_LOTE,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,analises:a})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
+
 function aplicarAdvertencia(g){if(!confirm('Aplicar ADVERTÊNCIA no Grupo '+g+'?'))return;fetch(URL_ADVERTENCIA,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,grupo:g})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
+
 function aplicarReincidencia(g){if(!confirm('Aplicar REINCIDÊNCIA no Grupo '+g+'?'))return;fetch(URL_REINCIDENCIA,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,grupo:g})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
+
 function aplicarReiteracao(g){if(!confirm('Aplicar REITERAÇÃO no Grupo '+g+'?'))return;fetch(URL_REITERACAO,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,grupo:g})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
-function editarCampo(nr,campo,novoValor){if(!confirm('Alterar '+campo+' da ocorrência '+nr+' para '+(novoValor===1?'Sim':'Não')+'?'))return;fetch(URL_EDITAR_CAMPO,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,nr_ocorrencia:nr,campo:campo,valor:novoValor})}).then(function(r){return r.json();}).then(function(d){if(d.success){window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
-function concluirApuracao(){if(!confirm('Tem certeza que deseja CONCLUIR a apuração '+DT_APURACAO+'?\n\nEsta ação registra que todos os grupos foram processados e não pode ser desfeita.'))return;fetch(URL_CONCLUIR,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
+
+// =========================================================================
+// EDIÇÃO MANUAL DE CAMPO (Adv/Reinc/Reit)
+// Quando alterar para SIM, abre modal de retorno da prestadora
+// =========================================================================
+var editandoCampo = null;
+
+function editarCampo(nr, campo, novoValor) {
+    if (novoValor === 0) {
+        editandoCampo = { nr: nr, campo: campo, novoValor: novoValor };
+        document.getElementById('modalNrOcorrencia').textContent = nr;
+        document.getElementById('modalCampoNome').textContent = campo;
+        document.getElementById('txtRetornoPrestadora').value = '';
+        document.getElementById('contadorRetorno').textContent = '0';
+        var m = document.getElementById('modalRetornoPrestadora');
+        m.style.display = 'block';
+        m.classList.add('show');
+        document.body.classList.add('modal-open');
+        var bd = document.createElement('div');
+        bd.className = 'modal-backdrop fade show';
+        bd.id = 'modalBackdropRetorno';
+        document.body.appendChild(bd);
+        return;
+    }
+    if (!confirm('Alterar ' + campo + ' da ocorrência ' + nr + ' para Sim?')) return;
+    fetch(URL_EDITAR_CAMPO, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({dt_apuracao: DT_APURACAO, nr_ocorrencia: nr, campo: campo, valor: novoValor})
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){if(d.success){window.location.reload();}else alert('Erro: ' + d.message);})
+    .catch(function(e){alert('Erro: ' + e);});
+}
+
+function fecharModalRetorno() {
+    var m = document.getElementById('modalRetornoPrestadora');
+    m.style.display = 'none';
+    m.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('modalBackdropRetorno');
+    if (bd) bd.remove();
+    editandoCampo = null;
+}
+
+function confirmarRetornoPrestadora() {
+    if (!editandoCampo) return;
+    var retorno = document.getElementById('txtRetornoPrestadora').value.trim();
+    if (!retorno) { alert('Por favor, digite o retorno da prestadora antes de salvar.'); return; }
+
+    fetch(URL_JUST_PRESTADORA, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({
+            dt_apuracao: DT_APURACAO,
+            nr_ocorrencia: editandoCampo.nr,
+            retorno_prest: retorno
+        })
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+        if (!d.success) { alert('Erro: ' + d.message); return; }
+        fetch(URL_EDITAR_CAMPO, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({
+                dt_apuracao: DT_APURACAO,
+                nr_ocorrencia: editandoCampo.nr,
+                campo: editandoCampo.campo,
+                valor: editandoCampo.novoValor
+            })
+        })
+        .then(function(r){return r.json();})
+        .then(function(d2){
+            if (d2.success) {
+                fecharModalRetorno();
+                window.location.reload();
+            } else {
+                alert('Erro ao atualizar campo: ' + d2.message);
+            }
+        });
+    })
+    .catch(function(e){alert('Erro: ' + e);});
+}
+
+// Contador de caracteres do textarea
+document.addEventListener('DOMContentLoaded', function() {
+    var txt = document.getElementById('txtRetornoPrestadora');
+    if (txt) {
+        txt.addEventListener('input', function() {
+            document.getElementById('contadorRetorno').textContent = txt.value.length;
+        });
+    }
+});
+
+function concluirApuracao() {
+    if (!confirm('Tem certeza que deseja CONCLUIR a apuração ' + DT_APURACAO + '?\n\nEsta ação registra que a apuração foi finalizada.')) return;
+    fetch(URL_CONCLUIR, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({dt_apuracao: DT_APURACAO})
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: ' + d.message);})
+    .catch(function(e){alert('Erro: ' + e);});
+}
 </script>
 {% endblock %}

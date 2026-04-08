@@ -4058,3 +4058,39 @@ def ans_glosas_concluir():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro ao concluir: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/salvar-justificativa-prestadora', methods=['POST'])
+@login_required
+def ans_glosas_salvar_justificativa_prestadora():
+    """Salva o retorno da prestadora na TB048 (PK: DT_APURACAO + nrOcorrencia)."""
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+    try:
+        dados = request.get_json()
+        dt = dados.get('dt_apuracao')
+        nr = dados.get('nr_ocorrencia')
+        retorno = dados.get('retorno_prest', '').strip()
+
+        if not dt or nr is None:
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        if not retorno:
+            return jsonify({'success': False, 'message': 'O retorno da prestadora não pode ficar vazio.'}), 400
+        if len(retorno) > 500:
+            return jsonify({'success': False, 'message': 'O retorno excede 500 caracteres.'}), 400
+
+        ok, msg = AnsApuracao.salvar_justificativa_prestadora(dt, int(nr), retorno)
+        if ok:
+            registrar_log(
+                acao='criar',
+                entidade='ans_just_prestadora',
+                entidade_id=nr,
+                descricao=f'ANS Justif. Prestadora: Oc {nr} - {retorno[:100]}'
+            )
+            return jsonify({'success': True, 'message': msg})
+        return jsonify({'success': False, 'message': msg}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500

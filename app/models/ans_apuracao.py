@@ -415,6 +415,37 @@ class AnsApuracao(db.Model):
         db.session.commit()
         return True, 'Apuração concluída com sucesso!'
 
+    @staticmethod
+    def salvar_justificativa_prestadora(dt_apuracao, nr_ocorrencia, retorno_prest):
+        """
+        Salva o retorno da prestadora na TB048.
+        Se já existir registro com a mesma PK (DT_APURACAO + nrOcorrencia),
+        retorna erro informando que já foi incluído anteriormente.
+        """
+        # Verificar se já existe (evita violar PK)
+        sql_check = text("""
+                SELECT COUNT(*) AS qtd 
+                FROM BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
+                WHERE DT_APURACAO = :dt AND nrOcorrencia = :nr
+            """)
+        row = db.session.execute(sql_check, {'dt': dt_apuracao, 'nr': nr_ocorrencia}).fetchone()
+        if row and row.qtd > 0:
+            return False, f'Já existe uma justificativa cadastrada para a ocorrência {nr_ocorrencia} nesta apuração.'
+
+        # Inserir
+        sql_insert = text("""
+                INSERT INTO BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
+                (DT_APURACAO, nrOcorrencia, RETORNO_PREST)
+                VALUES (:dt, :nr, :ret)
+            """)
+        db.session.execute(sql_insert, {
+            'dt': dt_apuracao,
+            'nr': nr_ocorrencia,
+            'ret': retorno_prest
+        })
+        db.session.commit()
+        return True, f'Retorno da prestadora salvo com sucesso para a ocorrência {nr_ocorrencia}.'
+
 
 class AnsItensFaturamento(db.Model):
     __tablename__ = 'MOV_TB043_ANS_ITENS_FATURAMENTO'
