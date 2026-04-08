@@ -14,7 +14,7 @@ from app.utils.siscalculo_calc import CalculadorSiscalculo
 from app.utils.audit import registrar_log
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import text
+from sqlalchemy import text, bindparam
 import pandas as pd
 import io
 import os
@@ -910,7 +910,9 @@ def comparar_indices():
 @siscalculo_bp.route('/exportar_pdf')
 @login_required
 def exportar_pdf():
-    """Exporta os resultados para PDF - VERSÃO COMPLETA COM TOTAIS POR TIPO"""
+    """Exporta os resultados para PDF - VERSÃO COMPLETA COM TOTAIS POR TIPO E COTAS PRESCRITAS"""
+    from app.models.siscalculo import TipoParcela  # ✅ Import do model de tipos
+
     dt_atualizacao = request.args.get('dt_atualizacao')
     id_indice = request.args.get('id_indice')
     imovel = request.args.get('imovel')
@@ -932,26 +934,36 @@ def exportar_pdf():
         print(f"  Índice: {id_indice}")
         print(f"  Honorários: {perc_honorarios}%")
 
-        # ✅ CORREÇÃO: Buscar apenas parcelas VÁLIDAS (PRESCRITO=False)
+        # ✅ Buscar apenas parcelas VÁLIDAS (PRESCRITO=False)
         parcelas = SiscalculoCalculos.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao_filtro,
             IMOVEL=imovel,
             ID_INDICE_ECONOMICO=int(id_indice),
-            PRESCRITO=False  # ✅ CORREÇÃO: Excluir parcelas prescritas do PDF
+            PRESCRITO=False
         ).order_by(
-            SiscalculoCalculos.ID_TIPO,          # ✅ ORDENAR POR TIPO PRIMEIRO
+            SiscalculoCalculos.ID_TIPO,
             SiscalculoCalculos.DT_VENCIMENTO
         ).all()
 
         if not parcelas:
             flash('Nenhuma parcela encontrada para gerar o PDF.', 'warning')
-            return redirect(url_for('siscalculo.resultados',
-                                    dt_atualizacao=dt_atualizacao,
-                                    imovel=imovel,
-                                    id_indice=id_indice,
-                                    perc_honorarios=float(perc_honorarios)))
+            return redirect(url_for('siscalculo.index'))
 
-        # ✅ CORREÇÃO: Buscar totais por tipo apenas de parcelas VÁLIDAS (PRESCRITO=False)
+        # ✅ NOVO: Buscar parcelas PRESCRITAS (PRESCRITO=True) — mesmo contrato/data/índice
+        parcelas_prescritas_db = SiscalculoCalculos.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao_filtro,
+            IMOVEL=imovel,
+            ID_INDICE_ECONOMICO=int(id_indice),
+            PRESCRITO=True
+        ).order_by(
+            SiscalculoCalculos.ID_TIPO,
+            SiscalculoCalculos.DT_VENCIMENTO
+        ).all()
+
+        print(f"[PDF] Parcelas válidas: {len(parcelas)}")
+        print(f"[PDF] Parcelas prescritas: {len(parcelas_prescritas_db)}")
+
+        # ✅ CORREÇÃO: Buscar totais por tipo com JOIN no model TipoParcela (PADRÃO ORIGINAL)
         print(f"\n[PDF] Buscando totais por tipo...")
         totais_por_tipo = db.session.query(
             SiscalculoCalculos.ID_TIPO,
@@ -965,7 +977,7 @@ def exportar_pdf():
             SiscalculoCalculos.DT_ATUALIZACAO == dt_atualizacao_filtro,
             SiscalculoCalculos.IMOVEL == imovel,
             SiscalculoCalculos.ID_INDICE_ECONOMICO == int(id_indice),
-            SiscalculoCalculos.PRESCRITO == False  # ✅ CORREÇÃO: Só válidas nos totais por tipo
+            SiscalculoCalculos.PRESCRITO == False  # Só válidas nos totais por tipo
         ).group_by(
             SiscalculoCalculos.ID_TIPO,
             TipoParcela.DSC_TIPO
@@ -977,7 +989,7 @@ def exportar_pdf():
         totais_por_tipo_lista = [
             {
                 'id_tipo': t.ID_TIPO,
-                'descricao': t.DSC_TIPO,
+                'descricao': t.DSC_TIPO or '',
                 'quantidade': t.quantidade,
                 'valor_total': float(t.valor_total) if t.valor_total else 0
             }
@@ -988,8 +1000,10 @@ def exportar_pdf():
         for t in totais_por_tipo_lista:
             print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas - R$ {t['valor_total']:,.2f}")
 
-        # Buscar nome do condomínio
+        # Buscar dados do imóvel (condomínio + endereço)
         nome_condominio = ''
+        endereco_imovel = ''
+
         dado_temp = SiscalculoDados.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao_filtro,
             IMOVEL=imovel
@@ -998,17 +1012,10 @@ def exportar_pdf():
         if dado_temp and dado_temp.NOME_CONDOMINIO:
             nome_condominio = dado_temp.NOME_CONDOMINIO
 
-        # Buscar endereço do imóvel
-        endereco_imovel = ''
         try:
             with db.engine.connect() as connection:
                 sql_endereco = text("""
-                    SELECT TOP 1 
-                        RTRIM(LTRIM(ISNULL(DS_ENDERECO, ''))) + ', ' +
-                        RTRIM(LTRIM(ISNULL(NU_ENDERECO, ''))) + ' - ' +
-                        RTRIM(LTRIM(ISNULL(DS_BAIRRO, ''))) + ' - ' +
-                        RTRIM(LTRIM(ISNULL(DS_CIDADE, ''))) + '/' +
-                        RTRIM(LTRIM(ISNULL(DS_ESTADO, ''))) AS ENDERECO_COMPLETO
+                    SELECT TOP 1 DS_ENDERECO
                     FROM [BDG].[MOV_TB001_IMOVEL]
                     WHERE NU_IMOVEL = :imovel
                 """)
@@ -1025,7 +1032,7 @@ def exportar_pdf():
         if indice:
             indice_nome = indice.DSC_INDICE_ECONOMICO
 
-        # Converter parcelas para lista de dicionários
+        # Converter parcelas VÁLIDAS para lista de dicionários
         parcelas_pdf = []
         for p in parcelas:
             parcelas_pdf.append({
@@ -1038,7 +1045,23 @@ def exportar_pdf():
                 'VR_MULTA': p.VR_MULTA,
                 'VR_DESCONTO': p.VR_DESCONTO,
                 'VR_TOTAL': p.VR_TOTAL,
-                'ID_TIPO': p.ID_TIPO  # ✅ ADICIONAR ID_TIPO
+                'ID_TIPO': p.ID_TIPO
+            })
+
+        # ✅ NOVO: Converter parcelas PRESCRITAS para lista de dicionários
+        parcelas_prescritas_pdf = []
+        for p in parcelas_prescritas_db:
+            parcelas_prescritas_pdf.append({
+                'DT_VENCIMENTO': p.DT_VENCIMENTO,
+                'TEMPO_ATRASO': p.TEMPO_ATRASO,
+                'VR_COTA': p.VR_COTA,
+                'PERC_ATUALIZACAO': p.PERC_ATUALIZACAO,
+                'ATM': p.ATM,
+                'VR_JUROS': p.VR_JUROS,
+                'VR_MULTA': p.VR_MULTA,
+                'VR_DESCONTO': p.VR_DESCONTO,
+                'VR_TOTAL': p.VR_TOTAL,
+                'ID_TIPO': p.ID_TIPO
             })
 
         # Calcular totais
@@ -1070,7 +1093,8 @@ def exportar_pdf():
             output_path=caminho_pdf,
             parcelas=parcelas_pdf,
             totais=totais,
-            totais_por_tipo=totais_por_tipo_lista,  # ✅ PASSAR TOTAIS POR TIPO
+            totais_por_tipo=totais_por_tipo_lista,
+            parcelas_prescritas=parcelas_prescritas_pdf,  # ✅ NOVO: Passa as prescritas
             nome_condominio=nome_condominio,
             endereco_imovel=endereco_imovel,
             imovel=imovel,

@@ -373,20 +373,26 @@ class SiscalculoPDF:
             dados.get('periodo_prescricao', '')
         ))
 
-        # ✅ NOVO: Tabela de totais por tipo (ANTES da tabela de parcelas)
+        # Tabela de totais por tipo (ANTES da tabela de parcelas)
         totais_por_tipo = dados.get('totais_por_tipo', [])
         if totais_por_tipo:
             elementos.extend(self._criar_tabela_totais_por_tipo(totais_por_tipo))
 
-        # Tabela de parcelas
+        # Tabela de parcelas válidas
         table, total_soma = self._criar_tabela_parcelas(dados.get('parcelas', []))
         elementos.append(table)
 
-        # Totais
+        # Totais (honorários + TOTAL das não prescritas)
         elementos.extend(self._criar_totais(
             total_soma,
             dados.get('perc_honorarios', 10)
         ))
+
+        # ✅ NOVO: Tabela de cotas PRESCRITAS — logo ABAIXO do total das não prescritas
+        # Só aparece se houver parcelas prescritas (senão retorna [] e nada é adicionado)
+        parcelas_prescritas = dados.get('parcelas_prescritas', [])
+        if parcelas_prescritas:
+            elementos.extend(self._criar_tabela_parcelas_prescritas(parcelas_prescritas))
 
         # Informações do Cálculo
         elementos.extend(self._criar_informacoes_calculo(
@@ -485,12 +491,165 @@ class SiscalculoPDF:
 
         return elementos
 
+    def _criar_tabela_parcelas_prescritas(self, parcelas_prescritas):
+        """
+        Cria uma tabela separada com as cotas PRESCRITAS.
+        Só é renderizada quando há parcelas prescritas (caso contrário, retorna lista vazia).
+        """
+        if not parcelas_prescritas:
+            return []
+
+        from decimal import Decimal
+
+        elementos = []
+
+        # Título da seção
+        styles = getSampleStyleSheet()
+        style_section_title = ParagraphStyle(
+            'SectionTitlePrescritas',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#c53030'),  # Vermelho para destacar prescritas
+            alignment=TA_LEFT,
+            fontName='Helvetica-Bold',
+            spaceAfter=3 * mm,
+            spaceBefore=8 * mm
+        )
+
+        elementos.append(Spacer(1, 5 * mm))
+        elementos.append(Paragraph(
+            f"Cotas Prescritas ({len(parcelas_prescritas)})",
+            style_section_title
+        ))
+
+        # Subtítulo informativo
+        style_info = ParagraphStyle(
+            'InfoPrescritas',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#6c757d'),
+            alignment=TA_LEFT,
+            fontName='Helvetica-Oblique',
+            spaceAfter=3 * mm
+        )
+        elementos.append(Paragraph(
+            "As cotas abaixo foram identificadas como prescritas e NÃO foram incluídas no cálculo oficial.",
+            style_info
+        ))
+
+        # Cabeçalho da tabela (mesmas colunas da tabela principal para manter consistência visual)
+        data = [[
+            'Data de\nVencimento',
+            'Tempo de\nAtraso em\nMeses',
+            'Valor da\nCota',
+            'Percentual\nde\nAtualização',
+            'Atualização\nMonetária',
+            'Juros',
+            'Multa',
+            'Desconto',
+            'Soma'
+        ]]
+
+        # Totais
+        total_cota = Decimal('0')
+        total_atm = Decimal('0')
+        total_juros = Decimal('0')
+        total_multa = Decimal('0')
+        total_desconto = Decimal('0')
+        total_soma = Decimal('0')
+
+        for p in parcelas_prescritas:
+            vr_cota = Decimal(str(p['VR_COTA'])) if not isinstance(p['VR_COTA'], Decimal) else p['VR_COTA']
+            atm = Decimal(str(p['ATM'] or 0)) if not isinstance(p.get('ATM'), Decimal) else p['ATM']
+            juros = Decimal(str(p['VR_JUROS'] or 0)) if not isinstance(p.get('VR_JUROS'), Decimal) else p['VR_JUROS']
+            multa = Decimal(str(p['VR_MULTA'] or 0)) if not isinstance(p.get('VR_MULTA'), Decimal) else p['VR_MULTA']
+            desconto = Decimal(str(p['VR_DESCONTO'] or 0)) if not isinstance(p.get('VR_DESCONTO'), Decimal) else p[
+                'VR_DESCONTO']
+            vr_total = Decimal(str(p['VR_TOTAL'] or 0)) if not isinstance(p.get('VR_TOTAL'), Decimal) else p['VR_TOTAL']
+
+            total_cota += vr_cota
+            total_atm += atm
+            total_juros += juros
+            total_multa += multa
+            total_desconto += desconto
+            total_soma += vr_total
+
+            data.append([
+                p['DT_VENCIMENTO'].strftime('%d/%m/%Y'),
+                str(p.get('TEMPO_ATRASO') or 0),
+                self._formatar_moeda(vr_cota),
+                self._formatar_percentual(p.get('PERC_ATUALIZACAO')),
+                self._formatar_moeda(atm),
+                self._formatar_moeda(juros),
+                self._formatar_moeda(multa),
+                self._formatar_moeda(desconto),
+                self._formatar_moeda(vr_total)
+            ])
+
+        # Linha de soma
+        data.append([
+            'Soma',
+            '',
+            self._formatar_moeda(total_cota),
+            '',
+            self._formatar_moeda(total_atm),
+            self._formatar_moeda(total_juros),
+            self._formatar_moeda(total_multa),
+            self._formatar_moeda(total_desconto),
+            self._formatar_moeda(total_soma)
+        ])
+
+        # Criar tabela (mesmas larguras da tabela principal para manter consistência)
+        col_widths = [20 * mm, 15 * mm, 20 * mm, 18 * mm, 20 * mm, 18 * mm, 18 * mm, 18 * mm, 20 * mm]
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+
+        # Estilo — cabeçalho vermelho para diferenciar das válidas
+        style = TableStyle([
+            # Cabeçalho
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#c53030')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 7),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+
+            # Corpo
+            ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -2), 8),
+            ('ALIGN', (0, 1), (1, -2), 'CENTER'),
+            ('ALIGN', (2, 1), (-1, -2), 'RIGHT'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#fff5f5')]),
+
+            # Linha de soma
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#fed7d7')),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 9),
+            ('ALIGN', (0, -1), (0, -1), 'CENTER'),
+            ('ALIGN', (1, -1), (-1, -1), 'RIGHT'),
+
+            # Bordas
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('LINEABOVE', (0, -1), (-1, -1), 1.5, colors.black),
+
+            # Padding
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ])
+
+        table.setStyle(style)
+        elementos.append(table)
+        elementos.append(Spacer(1, 3 * mm))
+
+        return elementos
+
 
 def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
                          endereco_imovel='', imovel='', data_atualizacao='',
                          indice_nome='', perc_honorarios=10, periodo_prescricao='',
-                         totais_por_tipo=None, logo_path=None):  # ✅ ADICIONAR totais_por_tipo
-    """Função auxiliar para gerar PDF completo com totais por tipo"""
+                         totais_por_tipo=None, parcelas_prescritas=None, logo_path=None):
+    """Função auxiliar para gerar PDF completo com totais por tipo e cotas prescritas"""
     pdf_generator = SiscalculoPDF(logo_path=logo_path)
 
     dados = {
@@ -503,7 +662,8 @@ def gerar_pdf_siscalculo(output_path, parcelas, totais, nome_condominio='',
         'perc_honorarios': perc_honorarios,
         'periodo_prescricao': periodo_prescricao,
         'totais': totais,
-        'totais_por_tipo': totais_por_tipo or []  # ✅ ADICIONAR totais por tipo
+        'totais_por_tipo': totais_por_tipo or [],
+        'parcelas_prescritas': parcelas_prescritas or []  # ✅ NOVO
     }
 
     return pdf_generator.gerar_pdf(output_path, dados)
