@@ -118,8 +118,14 @@
                     {% if resumo.adv_marcadas > 0 %}<span class="badge bg-danger px-2 py-1"><i class="fas fa-gavel me-1"></i>Adv. ({{ resumo.adv_marcadas }})</span>
                     {% else %}<span class="badge bg-success px-2 py-1"><i class="fas fa-shield-alt me-1"></i>Sem Adv.</span>{% endif %}
                 {% endif %}
-                {% if resumo.reincidencia_processada and resumo.reinc_marcadas > 0 %}<span class="badge bg-warning text-dark px-2 py-1"><i class="fas fa-redo me-1"></i>Reinc. ({{ resumo.reinc_marcadas }})</span>{% endif %}
-                {% if resumo.reiteracao_processada and resumo.reit_marcadas > 0 %}<span class="badge bg-dark px-2 py-1"><i class="fas fa-exclamation-circle me-1"></i>Reit. ({{ resumo.reit_marcadas }})</span>{% endif %}
+                {% if resumo.reincidencia_processada %}
+                    {% if resumo.reinc_marcadas > 0 %}<span class="badge bg-warning text-dark px-2 py-1"><i class="fas fa-redo me-1"></i>Reinc. ({{ resumo.reinc_marcadas }})</span>
+                    {% else %}<span class="badge bg-success px-2 py-1"><i class="fas fa-shield-alt me-1"></i>Sem Reinc.</span>{% endif %}
+                {% endif %}
+                {% if resumo.reiteracao_processada %}
+                    {% if resumo.reit_marcadas > 0 %}<span class="badge bg-dark px-2 py-1"><i class="fas fa-exclamation-circle me-1"></i>Reit. ({{ resumo.reit_marcadas }})</span>
+                    {% else %}<span class="badge bg-success px-2 py-1"><i class="fas fa-shield-alt me-1"></i>Sem Reit.</span>{% endif %}
+                {% endif %}
                 <i class="fas fa-chevron-down text-white ms-2 secao-chevron rotated"></i>
             </div>
         </div>

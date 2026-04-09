@@ -430,10 +430,10 @@ class AnsApuracao(db.Model):
         dt_ant = AnsApuracao.obter_data_anterior(dt_apuracao)
         if not dt_ant:
             sql = text("""
-                    UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
-                    SET REITERACAO=0, DT_REITERACAO=NULL 
-                    WHERE DT_APURACAO=:dt AND GRUPO=:g
-                """)
+                UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
+                SET REITERACAO=0, DT_REITERACAO=NULL 
+                WHERE DT_APURACAO=:dt AND GRUPO=:g
+            """)
             db.session.execute(sql, {'dt': dt_apuracao, 'g': grupo})
             AnsApuracao._registrar_penalidade_tb049(dt_apuracao, grupo, 3, 0)
             db.session.commit()
@@ -444,52 +444,56 @@ class AnsApuracao(db.Model):
 
         # Capturar ANTES do UPDATE
         sql_antes = text("""
-                SELECT nrOcorrencia 
-                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
-                WHERE DT_APURACAO=:dt AND GRUPO=:g AND REITERACAO=1
-            """)
+            SELECT nrOcorrencia 
+            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
+            WHERE DT_APURACAO=:dt AND GRUPO=:g AND REITERACAO=1
+        """)
         ja_reiteradas_antes = {row.nrOcorrencia for row in
                                db.session.execute(sql_antes, {'dt': dt_apuracao, 'g': grupo}).fetchall()}
 
-        # UPDATE — lógica IGUAL ao original
+        # UPDATE — mantém DT_REITERACAO sempre com a data mais nova
         if resumo['sera_advertido']:
             sql = text("""
-                    UPDATE A SET
-                        A.REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
-                            THEN 1 ELSE 0 END,
-                        A.DT_REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
-                            AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
-                            THEN :dt ELSE NULL END
-                    FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A 
-                    WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
-                """)
+                UPDATE A SET
+                    A.REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
+                        THEN 1 ELSE 0 END,
+                    A.DT_REITERACAO = CASE WHEN A.NO_PRAZO=0 AND A.JUST_ACEITA=0
+                        AND EXISTS (SELECT 1 FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO P WHERE P.DT_APURACAO=:da AND P.GRUPO=:g AND P.nrOcorrencia=A.nrOcorrencia AND P.REINCIDENCIA=1)
+                        THEN :dt ELSE NULL END
+                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A 
+                WHERE A.DT_APURACAO=:dt AND A.GRUPO=:g
+            """)
         else:
             sql = text("""
-                    UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
-                    SET REITERACAO=0, DT_REITERACAO=NULL 
-                    WHERE DT_APURACAO=:dt AND GRUPO=:g
-                """)
+                UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
+                SET REITERACAO=0, DT_REITERACAO=NULL 
+                WHERE DT_APURACAO=:dt AND GRUPO=:g
+            """)
         db.session.execute(sql, {'dt': dt_apuracao, 'da': dt_ant, 'g': grupo})
 
-        # Capturar DEPOIS do UPDATE
+        # Capturar DEPOIS do UPDATE — TODAS com REITERACAO=1
         sql_depois = text("""
-                SELECT nrOcorrencia 
-                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
-                WHERE DT_APURACAO=:dt AND GRUPO=:g AND REITERACAO=1
-            """)
+            SELECT nrOcorrencia 
+            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO 
+            WHERE DT_APURACAO=:dt AND GRUPO=:g AND REITERACAO=1
+        """)
         reiteradas_depois = {row.nrOcorrencia for row in
                              db.session.execute(sql_depois, {'dt': dt_apuracao, 'g': grupo}).fetchall()}
 
-        # SÓ AS NOVAS
+        # DIFERENÇA: na reiteração, salva TODAS na TB049 (não só as novas)
+        qtde_total_reiteradas = len(reiteradas_depois)
+
+        # Só as novas (para exibir na mensagem)
         novas = reiteradas_depois - ja_reiteradas_antes
         qtde_novas = len(novas)
 
-        AnsApuracao._registrar_penalidade_tb049(dt_apuracao, grupo, 3, qtde_novas)
+        # Registrar na TB049 o TOTAL de reiteradas (todas com REITERACAO=1)
+        AnsApuracao._registrar_penalidade_tb049(dt_apuracao, grupo, 3, qtde_total_reiteradas)
         db.session.commit()
 
         resumo['reit_marcadas_resultado'] = qtde_novas
-        resumo['reit_marcadas'] = qtde_novas
+        resumo['reit_marcadas'] = qtde_total_reiteradas
         resumo['dt_anterior'] = str(dt_ant)
         return True, resumo
 
