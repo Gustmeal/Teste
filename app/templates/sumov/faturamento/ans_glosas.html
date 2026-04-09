@@ -173,14 +173,20 @@
                     </div>
                     <div id="analisadas-{{ grupo }}" class="secao-corpo" style="display:none;">
                         {% if analisadas %}
-                        <div class="table-responsive"><table class="table table-hover table-sm mb-0" style="min-width:1500px;">
+                        <div class="table-responsive"><table class="table table-hover table-sm mb-0" style="min-width:1250px;">
                             <thead class="table-light"><tr>
-                                <th class="text-center">Oc.</th><th class="text-center">Abertura</th>
-                                <th class="text-center">Efetiv.</th><th class="text-center">Deferido</th>
-                                <th class="text-center">Justif.</th>
-                                <th class="text-center">Just.</th><th class="text-center">Dias</th>
-                                <th class="text-center">Prazo</th><th class="text-center">No Prazo?</th>
-                                <th class="text-center">Adv.</th><th class="text-center">Reinc.</th><th class="text-center">Reit.</th>
+                                <th class="text-center" style="width:70px;">Oc.</th>
+                                <th class="text-center" style="width:85px;">Abertura</th>
+                                <th class="text-center" style="width:85px;">Efetiv.</th>
+                                <th class="text-center" style="width:85px;">Deferido</th>
+                                <th class="text-center" style="width:95px;">Justif.</th>
+                                <th class="text-center" style="width:70px;">Just.</th>
+                                <th class="text-center" style="width:65px;">Dias</th>
+                                <th class="text-center" style="width:70px;">Prazo</th>
+                                <th class="text-center" style="width:90px;">No Prazo?</th>
+                                <th class="text-center" style="width:85px;">Adv.</th>
+                                <th class="text-center" style="width:90px;">Reinc.</th>
+                                <th class="text-center" style="width:85px;">Reit.</th>
                             </tr></thead>
                             <tbody>{% for oc in analisadas %}<tr>
                                 <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
@@ -213,12 +219,18 @@
                             {% if resumo.sera_advertido %}<div class="alert alert-danger py-2 mb-3"><i class="fas fa-exclamation-triangle me-2"></i>{{ resumo.fora_prazo_sem_just }}/{{ resumo.total }} ({{ resumo.percentual }}%) — excedeu 10%.</div>
                             {% else %}<div class="alert alert-success py-2 mb-3"><i class="fas fa-check-circle me-2"></i>{{ resumo.fora_prazo_sem_just }}/{{ resumo.total }} ({{ resumo.percentual }}%) — dentro do limite.</div>{% endif %}
                             <div class="d-flex flex-wrap justify-content-center gap-3">
-                                {% if resumo.todas_analisadas and not resumo.advertencia_processada %}<span class="btn {% if resumo.sera_advertido %}btn-danger{% else %}btn-success{% endif %} px-4" onclick="aplicarAdvertencia({{ grupo }})" style="cursor:pointer;"><i class="fas fa-gavel me-2"></i>1. Advertência</span>
-                                {% elif resumo.advertencia_processada %}<span class="btn btn-outline-secondary px-4 disabled" style="pointer-events:none;opacity:0.6;"><i class="fas fa-check-circle me-2"></i>1. Adv. ({{ resumo.adv_marcadas }})</span>
-                                {% else %}<span class="btn btn-secondary px-4 disabled" style="pointer-events:none;opacity:0.4;"><i class="fas fa-lock me-2"></i>1. Advertência</span>{% endif %}
+                                {# Advertência: SEMPRE habilitada #}
+                                <span class="btn {% if resumo.sera_advertido %}btn-danger{% else %}btn-success{% endif %} px-4" onclick="aplicarAdvertencia({{ grupo }})" style="cursor:pointer;">
+                                    <i class="fas fa-gavel me-2"></i>1. Advertência
+                                    {% if resumo.advertencia_processada %} <small>({{ resumo.adv_marcadas }})</small>{% endif %}
+                                </span>
+
+                                {# Reincidência: só libera após advertência processada #}
                                 {% if resumo.advertencia_processada and not resumo.reincidencia_processada %}<span class="btn btn-warning text-dark px-4" onclick="aplicarReincidencia({{ grupo }})" style="cursor:pointer;"><i class="fas fa-redo me-2"></i>2. Reincidência</span>
                                 {% elif resumo.reincidencia_processada %}<span class="btn btn-outline-secondary px-4 disabled" style="pointer-events:none;opacity:0.6;"><i class="fas fa-check-circle me-2"></i>2. Reinc. ({{ resumo.reinc_marcadas }})</span>
                                 {% else %}<span class="btn btn-secondary px-4 disabled" style="pointer-events:none;opacity:0.4;"><i class="fas fa-lock me-2"></i>2. Reincidência</span>{% endif %}
+
+                                {# Reiteração: só libera após reincidência processada #}
                                 {% if resumo.reincidencia_processada and not resumo.reiteracao_processada %}<span class="btn btn-dark px-4" onclick="aplicarReiteracao({{ grupo }})" style="cursor:pointer;"><i class="fas fa-exclamation-circle me-2"></i>3. Reiteração</span>
                                 {% elif resumo.reiteracao_processada %}<span class="btn btn-outline-secondary px-4 disabled" style="pointer-events:none;opacity:0.6;"><i class="fas fa-check-circle me-2"></i>3. Reit. ({{ resumo.reit_marcadas }})</span>
                                 {% else %}<span class="btn btn-secondary px-4 disabled" style="pointer-events:none;opacity:0.4;"><i class="fas fa-lock me-2"></i>3. Reiteração</span>{% endif %}
