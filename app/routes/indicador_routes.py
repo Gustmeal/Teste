@@ -113,19 +113,26 @@ def novo():
                 flash('Indicador não encontrado.', 'danger')
                 return redirect(url_for('indicador.novo'))
 
-            # Buscar todas as variáveis deste indicador
+            # Buscar todas as variáveis deste indicador (ORIGEM)
             variaveis = VariavelIndicador.query.filter_by(
                 CO_INDICADOR=codigo_indicador.CO_INDICADOR
             ).order_by(VariavelIndicador.VARIAVEL).all()
 
-            # Verificar se já existe registro para esta data/indicador
-            registro_existente = IndicadorFormula.query.filter_by(
+            # Buscar registros já existentes no DESTINO para esta chave (data + indicador)
+            registros_existentes = IndicadorFormula.query.filter_by(
                 DT_REFERENCIA=dt_referencia,
                 INDICADOR=indicador_sg
-            ).first()
+            ).all()
 
-            if registro_existente:
-                flash('Já existe registro para este indicador nesta data.', 'warning')
+            # Conjunto com as variáveis que JÁ ESTÃO salvas no destino
+            variaveis_salvas = {reg.VARIAVEL for reg in registros_existentes}
+
+            # Identificar variáveis pendentes (existem na origem, mas não no destino)
+            variaveis_pendentes = [v for v in variaveis if v.VARIAVEL not in variaveis_salvas]
+
+            # Se já há registros e nenhuma pendente, está tudo salvo => bloqueia
+            if registros_existentes and not variaveis_pendentes:
+                flash('Já existe registro completo para este indicador nesta data.', 'warning')
                 return redirect(url_for('indicador.formulas'))
 
             # Definir tamanhos máximos baseados no banco
@@ -134,8 +141,13 @@ def novo():
             MAX_FONTE = 100
             MAX_RESPONSAVEL = 100
 
-            # Inserir um registro para cada variáveis
-            for var in variaveis:
+            # Decide o conjunto a inserir:
+            # - Se já existem registros parciais => insere SOMENTE as pendentes
+            # - Caso contrário (chave nova) => insere TODAS
+            variaveis_para_inserir = variaveis_pendentes if registros_existentes else variaveis
+
+            qtd_inseridas = 0
+            for var in variaveis_para_inserir:
                 valor_str = request.form.get(f'valor_{var.VARIAVEL}', '0')
                 valor = Decimal(valor_str.replace('.', '').replace(',', '.')) if valor_str else Decimal('0')
 
@@ -154,18 +166,29 @@ def novo():
                     RESPONSAVEL_INCLUSAO=responsavel
                 )
                 db.session.add(novo_registro)
+                qtd_inseridas += 1
 
             db.session.commit()
 
-            # Registrar log
+            # Mensagem e log diferenciados conforme o cenário
+            if registros_existentes and variaveis_pendentes:
+                descricao_log = (
+                    f'Inclusão de {qtd_inseridas} variável(is) pendente(s) '
+                    f'do indicador {indicador_sg} para {mes}/{ano}'
+                )
+                msg_sucesso = f'{qtd_inseridas} variável(is) pendente(s) adicionada(s) com sucesso!'
+            else:
+                descricao_log = f'Inclusão de indicador {indicador_sg} para {mes}/{ano}'
+                msg_sucesso = 'Indicador incluído com sucesso!'
+
             registrar_log(
                 acao='criar',
                 entidade='indicador',
                 entidade_id=None,
-                descricao=f'Inclusão de indicador {indicador_sg} para {mes}/{ano}'
+                descricao=descricao_log
             )
 
-            flash('Indicador incluído com sucesso!', 'success')
+            flash(msg_sucesso, 'success')
             return redirect(url_for('indicador.formulas'))
 
         except Exception as e:
@@ -193,7 +216,6 @@ def novo():
                            mes_atual=datetime.now().month,
                            ano_atual=ano_atual)
 
-
 @indicador_bp.route('/indicadores/api/variaveis/<string:sg_indicador>')
 @login_required
 def get_variaveis(sg_indicador):
@@ -210,12 +232,12 @@ def get_variaveis(sg_indicador):
     mes = request.args.get('mes', type=int)
     ano = request.args.get('ano', type=int)
 
-    # Buscar variáveis
+    # Buscar variáveis (ORIGEM)
     variaveis = VariavelIndicador.query.filter_by(
         CO_INDICADOR=codigo_indicador.CO_INDICADOR
     ).order_by(VariavelIndicador.VARIAVEL).all()
 
-    # Verificar se já existem dados para este período
+    # Verificar se já existem dados para este período (DESTINO)
     dados_existentes = {}
     ja_existe = False
     if mes and ano:
@@ -235,16 +257,30 @@ def get_variaveis(sg_indicador):
             # Ignora caso o mês/ano seja inválido
             pass
 
-    # Formatar resposta
+    # Quantidades para identificar o cenário
+    qtd_origem = len(variaveis)
+    qtd_destino = len(dados_existentes)
+
+    # Formatar resposta marcando quais variáveis ainda estão pendentes no destino
     variaveis_lista = []
+    qtd_pendentes = 0
     for var in variaveis:
         valor_existente = dados_existentes.get(var.VARIAVEL)
+        pendente = var.VARIAVEL not in dados_existentes
+        if pendente and ja_existe:
+            qtd_pendentes += 1
         variaveis_lista.append({
             'variavel': var.VARIAVEL,
             'nome': var.NO_VARIAVEL,
             'fonte': var.FONTE,
-            'valor': f'{valor_existente:.2f}'.replace('.', ',') if valor_existente is not None else ''
+            'valor': f'{valor_existente:.2f}'.replace('.', ',') if valor_existente is not None else '',
+            'pendente': pendente
         })
+
+    # completo      => todos os registros do indicador já estão salvos no destino
+    # tem_pendentes => existe ao menos um registro salvo, mas faltam variáveis novas
+    completo = ja_existe and qtd_pendentes == 0
+    tem_pendentes = ja_existe and qtd_pendentes > 0
 
     return jsonify({
         'indicador': {
@@ -254,9 +290,13 @@ def get_variaveis(sg_indicador):
             'qtde_variaveis': codigo_indicador.QTDE_VARIAVEIS
         },
         'variaveis': variaveis_lista,
-        'ja_existe': ja_existe
+        'ja_existe': ja_existe,
+        'completo': completo,
+        'tem_pendentes': tem_pendentes,
+        'qtd_origem': qtd_origem,
+        'qtd_destino': qtd_destino,
+        'qtd_pendentes': qtd_pendentes
     })
-
 
 @indicador_bp.route('/indicadores/editar/<string:dt_ref>/<string:indicador>')
 @login_required

@@ -125,8 +125,9 @@ document.addEventListener('DOMContentLoaded', function() {
             mensagemAvisoContainer.innerHTML = '';
 
             if (response.ok) {
-                // Se o indicador já existe para a data, mostra aviso e desabilita campos
-                if (data.ja_existe) {
+
+                // Cenário 1 - registro completo (todas as variáveis já salvas) => bloqueia
+                if (data.completo) {
                     const aviso = `
                         <div class="alert alert-warning">
                             <i class="fas fa-info-circle me-2"></i>
@@ -136,17 +137,52 @@ document.addEventListener('DOMContentLoaded', function() {
                     `;
                     mensagemAvisoContainer.innerHTML = aviso;
                     btnSalvar.disabled = true;
+
+                // Cenário 2 - há registros parciais e variáveis novas (origem > destino) => permite incluir SOMENTE as pendentes
+                } else if (data.tem_pendentes) {
+                    const aviso = `
+                        <div class="alert alert-info">
+                            <i class="fas fa-plus-circle me-2"></i>
+                            Este indicador já está parcialmente cadastrado para este período
+                            (<strong>${data.qtd_destino}</strong> de <strong>${data.qtd_origem}</strong> variáveis salvas).
+                            Foram identificadas <strong>${data.qtd_pendentes}</strong> variável(is) nova(s) na origem que ainda não foram registradas.
+                            As variáveis já salvas aparecem somente para consulta — preencha apenas as habilitadas e clique em <strong>Salvar</strong>.
+                        </div>
+                    `;
+                    mensagemAvisoContainer.innerHTML = aviso;
+                    btnSalvar.disabled = false;
+
+                // Cenário 3 - nenhuma variável salva => fluxo padrão de inclusão
                 } else {
                     btnSalvar.disabled = false;
                 }
 
                 // Cria campos para cada variável
                 data.variaveis.forEach(variavel => {
-                    const isReadonly = data.ja_existe;
-                    const valor = variavel.valor || '0,00';
+                    // Regras de readonly:
+                    // - completo      => tudo readonly
+                    // - tem_pendentes => somente pendentes ficam editáveis
+                    // - novo          => tudo editável
+                    let isReadonly = false;
+                    let badgeAdicional = '';
+                    let bordaCard = '';
+
+                    if (data.completo) {
+                        isReadonly = true;
+                    } else if (data.tem_pendentes) {
+                        isReadonly = !variavel.pendente;
+                        if (variavel.pendente) {
+                            badgeAdicional = '<span class="badge bg-success ms-2">Nova</span>';
+                            bordaCard = 'border-success';
+                        } else {
+                            badgeAdicional = '<span class="badge bg-secondary ms-2">Já cadastrada</span>';
+                        }
+                    }
+
+                    const valor = variavel.valor || (isReadonly ? '0,00' : '');
 
                     const varDiv = document.createElement('div');
-                    varDiv.className = 'card mb-3';
+                    varDiv.className = 'card mb-3 ' + bordaCard;
                     varDiv.innerHTML = `
                         <div class="card-body">
                             <div class="row align-items-center">
@@ -154,14 +190,14 @@ document.addEventListener('DOMContentLoaded', function() {
                                     <span class="badge bg-primary fs-6">${variavel.variavel}</span>
                                 </div>
                                 <div class="col-md-5">
-                                    <label class="form-label mb-1">Nome da Variável</label>
+                                    <label class="form-label mb-1">Nome da Variável ${badgeAdicional}</label>
                                     <input type="text" class="form-control-plaintext"
-                                           value="${variavel.nome}" readonly>
+                                           value="${variavel.nome || ''}" readonly>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label mb-1">Fonte</label>
                                     <input type="text" class="form-control-plaintext"
-                                           value="${variavel.fonte}" readonly>
+                                           value="${variavel.fonte || ''}" readonly>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label mb-1">Valor</label>
@@ -180,8 +216,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Mostrar container
                 variaveisContainer.style.display = 'block';
 
-                // Aplicar máscara monetária apenas se os campos não forem readonly
-                if (!data.ja_existe) {
+                // Aplicar máscara monetária somente nos campos editáveis
+                if (!data.completo) {
                     aplicarMascaraMonetaria();
                 }
 
@@ -198,9 +234,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Função para aplicar máscara monetária
+    // Aplica máscara monetária somente nos inputs editáveis
     function aplicarMascaraMonetaria() {
-        const inputs = variaveisContent.querySelectorAll('input[name^="valor_"]');
+        const inputs = variaveisContent.querySelectorAll('input[name^="valor_"]:not([readonly])');
         inputs.forEach(input => {
             input.addEventListener('input', function(e) {
                 let value = e.target.value.replace(/\D/g, '');
