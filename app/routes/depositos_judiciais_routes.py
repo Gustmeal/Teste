@@ -829,6 +829,11 @@ def executar_scripts_relatorio():
     2. Insere novos dados processados com JOINs e cálculos
     3. Aplica regras de negócio e exclusões específicas
     4. Retorna tempo de execução e status
+
+    REGRA DE PRIORIDADE DOS ALERTAS (DPJ_TB009):
+    - Como a PK da tabela é NU_LINHA, cada depósito só pode ter um alerta.
+    - A ordem de inserção define a prioridade (ALERTA 1 > ALERTA 2 > ALERTA 3 > ALERTA 4).
+    - Os ALERTAS 2, 3 e 4 usam NOT EXISTS para não duplicar NU_LINHA já inseridos.
     """
     import time
     import traceback
@@ -989,7 +994,7 @@ def executar_scripts_relatorio():
             print(f"[{datetime.now()}] ERRO no DELETE DPJ_TB009: {str(e)}")
             raise Exception(f"Erro ao deletar DPJ_TB009: {str(e)}")
 
-        # 3.2 - ALERTA 1: Indícios de Duplicidade
+        # 3.2 - ALERTA 1: Indícios de Duplicidade (primeiro alerta, não precisa de NOT EXISTS)
         try:
             sql_alerta_1 = text("""
                 INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
@@ -1032,6 +1037,7 @@ def executar_scripts_relatorio():
             raise Exception(f"Erro ao inserir ALERTA 1: {str(e)}")
 
         # 3.3 - ALERTA 2: Áreas diferentes/mesmo contrato
+        # NOT EXISTS impede inserir NU_LINHA que já está na tabela (vindo do ALERTA 1)
         try:
             sql_alerta_2 = text("""
                 INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
@@ -1070,6 +1076,11 @@ def executar_scripts_relatorio():
                     HAVING SUM(DJ.VR_RATEIO) > 0
                 ) CTR
                     ON DJ.NU_CONTRATO = CTR.NU_CONTRATO
+                WHERE NOT EXISTS (
+                    SELECT 1 
+                    FROM [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN] T9
+                    WHERE T9.NU_LINHA = DJ.NU_LINHA
+                )
             """)
             db.session.execute(sql_alerta_2)
             db.session.commit()
@@ -1079,6 +1090,7 @@ def executar_scripts_relatorio():
             raise Exception(f"Erro ao inserir ALERTA 2: {str(e)}")
 
         # 3.4 - ALERTA 3: Contrato não é EMGEA
+        # NOT EXISTS impede inserir NU_LINHA que já está na tabela (vindo dos ALERTAS 1 ou 2)
         try:
             sql_alerta_3 = text("""
                 INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
@@ -1096,6 +1108,11 @@ def executar_scripts_relatorio():
                     ON DJ.ID_CENTRO = CT.ID_CENTRO
                 WHERE OBS LIKE '%CONTR%EMGEA%'
                     AND DJ.NU_CONTRATO NOT IN (455552166963)
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN] T9
+                        WHERE T9.NU_LINHA = DJ.NU_LINHA
+                    )
             """)
             db.session.execute(sql_alerta_3)
             db.session.commit()
@@ -1105,6 +1122,7 @@ def executar_scripts_relatorio():
             raise Exception(f"Erro ao inserir ALERTA 3: {str(e)}")
 
         # 3.5 - ALERTA 4: Não Apropriado no Siscor
+        # NOT EXISTS impede inserir NU_LINHA que já está na tabela (vindo dos ALERTAS 1, 2 ou 3)
         try:
             sql_alerta_4 = text("""
                 INSERT INTO [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN]
@@ -1122,6 +1140,11 @@ def executar_scripts_relatorio():
                     ON DJ.ID_CENTRO = CT.ID_CENTRO
                 WHERE DJ.ID_CENTRO NOT IN (6)
                     AND DJ.[DT_SISCOR] IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 
+                        FROM [BDDASHBOARDBI].BDG.[DPJ_TB009_ALERTAS_SUFIN] T9
+                        WHERE T9.NU_LINHA = DJ.NU_LINHA
+                    )
             """)
             db.session.execute(sql_alerta_4)
             db.session.commit()
