@@ -43,7 +43,7 @@
                 </div>
                 <div class="col-md-3">
                     <h6>Seus Dias Marcados</h6>
-                    <p class="mb-0 fw-bold">{{ meus_dias|length }}/5</p>
+                    <p class="mb-0 fw-bold">{{ meus_dias|length }}/6</p>
                 </div>
             </div>
         </div>
@@ -108,7 +108,7 @@
                             <label class="form-label fw-bold">Tipo de Período: <span class="text-danger">*</span></label>
                             <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
                                 <option value="">Selecione...</option>
-                                <option value="ALTERNADO">Dias Alternados (com intervalo)</option>
+                                <option value="TRES_CONSECUTIVOS">3 Dias Consecutivos (até 2 blocos = 6 dias)</option>
                                 <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos</option>
                             </select>
                         </div>
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', function() {
         contadorDias.classList.remove('bg-light', 'bg-warning', 'bg-success', 'text-dark');
         if (selecionados === 0) {
             contadorDias.classList.add('bg-light', 'text-dark');
-        } else if (selecionados < 5) {
+        } else if (selecionados < 6) {
             contadorDias.classList.add('bg-warning');
         } else {
             contadorDias.classList.add('bg-success');
@@ -316,9 +316,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 return false;
             }
 
+            // ✅ VALIDAÇÃO 5 DIAS CORRIDOS
             if (tipoPeriodo.value === 'CINCO_DIAS_CORRIDOS' && selecionados !== 5) {
                 e.preventDefault();
-                alert('⚠️ Selecione exatamente 5 dias consecutivos!');
+                alert('⚠️ Para "5 Dias Corridos" selecione exatamente 5 dias úteis consecutivos (SEG a SEX).');
+                return false;
+            }
+
+            // ✅ VALIDAÇÃO 3 DIAS CONSECUTIVOS (1 bloco = 3 dias OU 2 blocos = 6 dias)
+            if (tipoPeriodo.value === 'TRES_CONSECUTIVOS' && selecionados > 6) {
+                e.preventDefault();
+                alert('⚠️ Para "3 Dias Consecutivos" selecione 3 dias (1 bloco) ou 6 dias (2 blocos em semanas diferentes).');
                 return false;
             }
 

@@ -45,6 +45,9 @@ def create_app():
         from app.models.deliberacao_pagamento import DeliberacaoPagamento
         from app.models.notificacao import Notificacao, NotificacaoVisualizacao
         from app.models.ocorrencias_faturamento import OcorrenciasFaturamento
+        from app.models.custo_oportunidade import CustoOportunidade
+        from app.models.mes_instrumento import MesInstrumento
+        from app.models.custo_oportunidade_media import CustoOportunidadeMedia
 
         db.create_all()
 
@@ -154,6 +157,9 @@ def create_app():
 
     from app.routes.notificacoes_routes import notificacoes_bp
     app.register_blueprint(notificacoes_bp)
+
+    from app.routes.custo_oportunidade_routes import custo_oportunidade_bp
+    app.register_blueprint(custo_oportunidade_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

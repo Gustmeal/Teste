@@ -10,23 +10,35 @@
         <div>
             <!-- Botões para Gestores (Admin, Moderador, Gerente) -->
             {% if eh_gestor %}
-            <a href="{{ url_for('teletrabalho.config_area') }}" class="btn btn-primary">
+            <a href="{{ url_for('teletrabalho.config_area') }}" class="btn btn-primary"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Defina quantas pessoas da sua área estão elegíveis para o teletrabalho. Configuração essencial para calcular o limite diário de vagas.">
                 <i class="fas fa-cog me-2"></i>Configurar Área
             </a>
-            <a href="{{ url_for('teletrabalho.admin_cadastrar') }}" class="btn btn-success">
-                <i class="fas fa-user-plus me-2"></i>Cadastrar para Usuário
+            <a href="{{ url_for('teletrabalho.listar_bloqueios') }}" class="btn btn-danger"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Bloqueie dias específicos do mês em que o teletrabalho não será permitido, por qualquer necessidade da área.">
+                <i class="fas fa-ban me-2"></i>Bloqueios
             </a>
-            <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info">
-                <i class="fas fa-eye me-2"></i>Visualização Geral
+            <a href="{{ url_for('teletrabalho.admin_cadastrar') }}" class="btn btn-success"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Cadastre manualmente os dias de teletrabalho para cada funcionário, garantindo controle total sem interferência do sistema.">
+                <i class="fas fa-user-plus me-2"></i>Cadastrar para Funcionário
             </a>
-            <a href="{{ url_for('teletrabalho.admin_sortear_form') }}" class="btn btn-warning">
+            <a href="{{ url_for('teletrabalho.admin_sortear_form') }}" class="btn btn-warning"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Distribua os dias de teletrabalho automaticamente de forma igualitária. Gerentes não participam do sorteio e devem ser cadastrados manualmente.">
                 <i class="fas fa-random me-2"></i>Sorteio Automático
             </a>
-            <a href="{{ url_for('teletrabalho.calendario_visual') }}" class="btn btn-dark">
-                <i class="fas fa-calendar-day me-2"></i>Calendário Visual
+            <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Visualize todos os dias de teletrabalho cadastrados na área, com opção de exportar para PDF.">
+                <i class="fas fa-eye me-2"></i>Visualização Geral
             </a>
-            <a href="{{ url_for('teletrabalho.listar_bloqueios') }}" class="btn btn-danger">
-                <i class="fas fa-ban me-2"></i>Bloqueios
+            <a href="{{ url_for('teletrabalho.calendario_visual') }}" class="btn btn-dark"
+               data-bs-toggle="tooltip" data-bs-placement="bottom"
+               title="Gerencie o calendário de teletrabalho: edite, mova ou remova pessoas dos dias já cadastrados.">
+                <i class="fas fa-calendar-day me-2"></i>Calendário Visual
             </a>
             {% endif %}
 
@@ -80,10 +92,10 @@
                     <div class="card border-warning h-100">
                         <div class="card-body text-center">
                             <i class="fas fa-umbrella-beach fa-3x text-warning mb-3"></i>
-                            <h6>Marcar Minhas Férias</h6>
+                            <h6>Informar Minhas Férias</h6>
                             <p class="small text-muted">Informar meus dias de férias</p>
                             <a href="{{ url_for('teletrabalho.marcar_ferias') }}" class="btn btn-warning btn-sm">
-                                <i class="fas fa-calendar-plus me-1"></i>Marcar
+                                <i class="fas fa-calendar-plus me-1"></i>Informar
                             </a>
                         </div>
                     </div>
@@ -97,19 +109,6 @@
                             <p class="small text-muted">Visualizar calendário completo</p>
                             <a href="{{ url_for('teletrabalho.visualizacao_geral') }}" class="btn btn-info btn-sm">
                                 <i class="fas fa-calendar me-1"></i>Visualizar
-                            </a>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-3">
-                    <div class="card border-secondary h-100">
-                        <div class="card-body text-center">
-                            <i class="fas fa-history fa-3x text-secondary mb-3"></i>
-                            <h6>Meus Registros</h6>
-                            <p class="small text-muted">Ver meus dias marcados</p>
-                            <a href="{{ url_for('teletrabalho.calendario', mes_referencia=mes_atual) }}" class="btn btn-secondary btn-sm">
-                                <i class="fas fa-list me-1"></i>Ver
                             </a>
                         </div>
                     </div>
@@ -267,8 +266,8 @@
                     <div class="card border-warning h-100">
                         <div class="card-body text-center">
                             <i class="fas fa-umbrella-beach fa-3x text-warning mb-3"></i>
-                            <h6>Marcar Férias</h6>
-                            <p class="small text-muted">Marcar férias de usuários</p>
+                            <h6>Informar Férias</h6>
+                            <p class="small text-muted">Informar férias do funcionário</p>
                             <a href="{{ url_for('teletrabalho.admin_marcar_ferias') }}" class="btn btn-warning btn-sm">
                                 Acessar
                             </a>
@@ -364,6 +363,14 @@ document.querySelectorAll('.periodo-card').forEach(card => {
         setTimeout(() => {
             icon.className = originalClass;
         }, 500);
+    });
+});
+
+// Inicializa todos os tooltips do Bootstrap
+document.addEventListener('DOMContentLoaded', function () {
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (el) {
+        return new bootstrap.Tooltip(el);
     });
 });
 </script>

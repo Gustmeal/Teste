@@ -143,7 +143,14 @@ class PermissaoSistema(db.Model):
             'icone': 'fa-file-invoice',
             'descricao': 'Crie relatórios personalizados',
             'categoria': 'Ferramentas'
-        }
+        },
+        'custo_oportunidade': {
+            'nome': 'Custo de Oportunidade',
+            'icone': 'fa-chart-area',
+            'descricao': 'Importação de dados DI Futuro (DF1) da B3',
+            'categoria': 'Gestão Financeira'
+        },
+
     }
 
     def __repr__(self):

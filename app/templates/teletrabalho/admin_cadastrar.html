@@ -81,13 +81,13 @@
                             <label class="form-label fw-bold">Tipo de Período: <span class="text-danger">*</span></label>
                             <select name="tipo_periodo" id="tipoPeriodo" class="form-select" required>
                                 <option value="">Selecione...</option>
-                                <option value="ALTERNADO">Dias Alternados (com intervalo)</option>
+                                <option value="TRES_CONSECUTIVOS">3 Dias Consecutivos (até 2 blocos = 6 dias)</option>
                                 <option value="CINCO_DIAS_CORRIDOS">5 Dias Corridos (Segunda a Sexta)</option>
                             </select>
                             <small class="text-muted">
                                 <i class="fas fa-info-circle"></i>
-                                <strong>Alternado:</strong> Dias não podem ser consecutivos.
-                                <strong>5 Dias Corridos:</strong> Deve marcar 5 dias seguidos.
+                                <strong>3 Consecutivos:</strong> blocos de 3 dias seguidos na mesma semana. Até 2 blocos (6 dias) em semanas diferentes.
+                                <strong>5 Corridos:</strong> única marcação do mês.
                             </small>
                         </div>
                         <div class="col-md-6">
@@ -195,7 +195,7 @@ function carregarCalendario() {
             const selectUsuario = document.getElementById('selectUsuario');
             const cargo = selectUsuario.options[selectUsuario.selectedIndex].getAttribute('data-cargo');
             document.getElementById('infoCargo').textContent = cargo;
-            document.getElementById('infoDiasMarcados').textContent = `${data.dias_marcados}/5`;
+            document.getElementById('infoDiasMarcados').textContent = `${data.dias_marcados}/6`;
             document.getElementById('infoLimite').textContent = `${data.limite} pessoas`;
             document.getElementById('infoUsuario').style.display = 'block';
         })
@@ -279,23 +279,15 @@ function cadastrarTeletrabalho() {
         return false;
     }
 
-    // VALIDAÇÃO MODO ALTERNADO
-    if (tipoPeriodo === 'ALTERNADO') {
-        for (let i = 0; i < diasSelecionados.length - 1; i++) {
-            const data1 = new Date(diasSelecionados[i]);
-            const data2 = new Date(diasSelecionados[i + 1]);
-
-            const diffTime = Math.abs(data2 - data1);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) {
-                alert(`⚠️ ERRO: Dias consecutivos não permitidos!\n\n❌ ${diasSelecionados[i]} e ${diasSelecionados[i + 1]} são consecutivos.\n\n✅ Use "5 Dias Corridos" para marcar dias seguidos.`);
-                return false;
-            }
+    // ✅ VALIDAÇÃO MODO 3 CONSECUTIVOS
+    if (tipoPeriodo === 'TRES_CONSECUTIVOS') {
+        if (diasSelecionados.length > 6) {
+            alert(`⚠️ ERRO: Modo "3 Dias Consecutivos" exige 3 ou 6 dias.\n\n❌ Você selecionou: ${diasSelecionados.length} dia(s).\n\n✅ Use 3 dias (1 bloco) ou 6 dias (2 blocos em semanas diferentes).`);
+            return false;
         }
     }
 
-    // VALIDAÇÃO 5 DIAS CORRIDOS
+    // ✅ VALIDAÇÃO 5 DIAS CORRIDOS
     if (tipoPeriodo === 'CINCO_DIAS_CORRIDOS' && diasSelecionados.length !== 5) {
         alert(`⚠️ Selecione exatamente 5 dias!\n\nVocê selecionou: ${diasSelecionados.length} dia(s)`);
         return false;

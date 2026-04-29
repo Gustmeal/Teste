@@ -4,16 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GEINC-EMGEA</title>
+
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon/favicon.ico') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+    <!-- CSS locais (removi duplicação do style.css) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/overlay-loading.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+
     <style>
         /* Estilo para links na barra de navegação superior */
         .navbar-dark .navbar-nav .nav-link {
@@ -33,6 +37,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- Sidebar Toggle Button -->
     <button class="sidebar-toggle" id="sidebarToggle" aria-label="Abrir Menu">
@@ -53,6 +58,7 @@
                 <i class="fas fa-times"></i>
             </button>
         </div>
+
         <div class="sidebar-content">
             <ul class="sidebar-menu">
                 <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
@@ -90,11 +96,13 @@
 
                 <li><a href="{{ url_for('auth.perfil') }}"><i class="fas fa-user"></i> Meu Perfil</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
+
                 {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
                 <li><a href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users"></i> Gerenciar Usuários</a></li>
                 <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 {% endif %}
+
                 {% if current_user.perfil in ['admin', 'moderador'] %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
@@ -102,6 +110,7 @@
                     </a>
                 </li>
                 {% endif %}
+
                 <li><a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
             </ul>
         </div>
@@ -113,9 +122,11 @@
                 <img src="{{ url_for('static', filename='img/logo_em.png') }}" alt="Logo EMGEA" height="30" class="me-2">
                 <span class="brand-text">emgea</span>
             </a>
+
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
+
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
@@ -130,30 +141,14 @@
                             <i class="fas fa-file-contract me-1"></i> Assessoria de Cobranças
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="credenciamentoDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('credenciamento.index') }}">
-                                <i class="fas fa-home me-2"></i> Dashboard
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('edital.lista_editais') }}">
-                                <i class="fas fa-file-alt me-2"></i> Editais
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('periodo.lista_periodos') }}">
-                                <i class="fas fa-calendar-alt me-2"></i> Períodos
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('limite.lista_limites') }}">
-                                <i class="fas fa-balance-scale me-2"></i> Limites de Distribuição
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('criterio.lista_criterios') }}">
-                                <i class="fas fa-list-ol me-2"></i> Critérios de Distribuição
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('meta.lista_metas') }}">
-                                <i class="fas fa-chart-line me-2"></i> Metas
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('converter.index') }}">
-                                <i class="fas fa-sync-alt me-2"></i> Conversor de Documentos
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank">
-                                <i class="fas fa-book me-2"></i> Manual do Usuário
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('credenciamento.index') }}"><i class="fas fa-home me-2"></i> Dashboard</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt me-2"></i> Editais</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt me-2"></i> Períodos</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale me-2"></i> Limites de Distribuição</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('criterio.lista_criterios') }}"><i class="fas fa-list-ol me-2"></i> Critérios de Distribuição</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line me-2"></i> Metas</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt me-2"></i> Conversor de Documentos</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('static', filename='docs/manual_usuario.pdf') }}" target="_blank"><i class="fas fa-book me-2"></i> Manual do Usuário</a></li>
                         </ul>
                     </li>
 
@@ -163,15 +158,9 @@
                             <i class="fas fa-calculator me-1"></i> Códigos Contábeis
                         </a>
                         <ul class="dropdown-menu" aria-labelledby="codigosDropdown">
-                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.lista_codigos') }}">
-                                <i class="fas fa-list me-2"></i> Gerenciar Códigos
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.novo_codigo') }}">
-                                <i class="fas fa-plus me-2"></i> Novo Código
-                            </a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('vinculacao.index') }}">
-                                <i class="fas fa-link me-2"></i> Vinculação
-                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.lista_codigos') }}"><i class="fas fa-list me-2"></i> Gerenciar Códigos</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('codigo_contabil.novo_codigo') }}"><i class="fas fa-plus me-2"></i> Novo Código</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('vinculacao.index') }}"><i class="fas fa-link me-2"></i> Vinculação</a></li>
                         </ul>
                     </li>
 
@@ -186,11 +175,13 @@
                             <li><a class="dropdown-item" href="{{ url_for('chat.index') }}"><i class="fas fa-comments me-2"></i> Chat</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt me-2"></i> Conversor de Documentos</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
+
                             {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users me-2"></i> Gerenciar Usuários</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% endif %}
+
                             {% if current_user.perfil in ['admin', 'moderador'] %}
                             <li class="nav-item">
                                 <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
@@ -198,6 +189,7 @@
                                 </a>
                             </li>
                             {% endif %}
+
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Sair</a></li>
                         </ul>
@@ -235,7 +227,7 @@
         </div>
     </footer>
 
-   <!-- Botão de alternância de tema (já existe) -->
+    <!-- Botão de alternância de tema (já existe) -->
     <div class="theme-toggle" id="themeToggle">
         <i id="themeIcon" class="fas fa-moon"></i>
     </div>
@@ -297,21 +289,18 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-</body>
-</html>
-
-    <!-- Container para toasts -->
+    <!-- Container para toasts (MOVIDO para dentro do body) -->
     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
         <div id="toastContainer"></div>
     </div>
 
+    <!-- SCRIPTS (removi duplicações do bootstrap e script.js) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+
     {% block scripts %}{% endblock %}
-    <!-- SISTEMA DE NOTIFICAÇÕES - Modal Pop-up -->
+
     <!-- SISTEMA DE NOTIFICAÇÕES - Modal Pop-up -->
     {% if current_user.is_authenticated %}
 
@@ -549,7 +538,8 @@
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
                     if (submenu) {
-                        if (submenu.style.display === 'none') {submenu.style.display = 'block';
+                        if (submenu.style.display === 'none') {
+                            submenu.style.display = 'block';
                             link.classList.add('active');
                         } else {
                             submenu.style.display = 'none';

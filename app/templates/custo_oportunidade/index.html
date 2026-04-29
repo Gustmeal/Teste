@@ -1,0 +1,657 @@
+{% extends "base.html" %}
+
+{% block title %}Custo de Oportunidade - Portal GEINC{% endblock %}
+
+{% block extra_css %}
+<style>
+    .co-stat-card {
+        border: none;
+        border-radius: 12px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        height: 100%;
+    }
+    .co-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    }
+    .co-stat-card .icon-wrap {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        color: #fff;
+    }
+    .co-bg-blue   { background: linear-gradient(135deg, #4e73df, #224abe); }
+    .co-bg-green  { background: linear-gradient(135deg, #1cc88a, #13855c); }
+    .co-bg-cyan   { background: linear-gradient(135deg, #36b9cc, #258391); }
+    .co-bg-orange { background: linear-gradient(135deg, #f6c23e, #dda20a); }
+
+    .co-section-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+    .co-section-header {
+        background: linear-gradient(135deg, #4e73df, #224abe);
+        color: #fff;
+        border-radius: 12px 12px 0 0;
+        padding: 0.85rem 1.25rem;
+    }
+    .co-section-header h5 {
+        margin: 0;
+        font-weight: 600;
+        font-size: 1rem;
+    }
+
+    .co-table thead th {
+        background: #f8f9fc;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #5a5c69;
+        border-bottom: 2px solid #e3e6f0;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .co-table tbody td {
+        font-size: 0.9rem;
+        vertical-align: middle;
+    }
+    .co-table tbody tr:hover {
+        background: #f8fbff;
+    }
+    .co-badge-inst {
+        font-family: 'Courier New', monospace;
+        font-weight: 700;
+        background: #eef2ff;
+        color: #224abe;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+    .co-num {
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+    }
+
+    /* Cards de destaque (Média Mensal + Custo de Oportunidade) */
+    .co-highlight-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+        color: #fff;
+        height: 100%;
+    }
+    .co-highlight-mensal {
+        background: linear-gradient(135deg, #7e57c2, #4527a0);
+    }
+    .co-highlight-anual {
+        background: linear-gradient(135deg, #ef5350, #b71c1c);
+    }
+    .co-highlight-card .label {
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-size: 0.75rem;
+        opacity: 0.9;
+    }
+    .co-highlight-card .value {
+        font-size: 2.4rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        line-height: 1.1;
+    }
+    .co-highlight-card .unit {
+        font-size: 0.95rem;
+        opacity: 0.85;
+        margin-left: 0.25rem;
+    }
+    .co-highlight-card .formula {
+        font-size: 0.7rem;
+        opacity: 0.7;
+        font-family: 'Courier New', monospace;
+        margin-top: 0.5rem;
+    }
+
+    /* Botão COPOM (toggle) */
+    .co-copom-btn {
+        border-radius: 10px;
+        font-weight: 600;
+        padding: 0.65rem 1.5rem;
+        transition: all 0.2s ease;
+        border: 2px solid transparent;
+    }
+    .co-copom-btn.copom-on {
+        background: #1cc88a;
+        color: #fff;
+        border-color: #13855c;
+    }
+    .co-copom-btn.copom-on:hover {
+        background: #17a673;
+    }
+    .co-copom-btn.copom-off {
+        background: #fff;
+        color: #5a5c69;
+        border-color: #d1d3e2;
+    }
+    .co-copom-btn.copom-off:hover {
+        border-color: #4e73df;
+        color: #224abe;
+    }
+    .co-copom-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .co-copom-status.on {
+        background: #d4edda;
+        color: #13855c;
+    }
+    .co-copom-status.off {
+        background: #f8f9fa;
+        color: #858796;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<div class="editais-container fade-in">
+
+    <!-- ================== HEADER ================== -->
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-chart-area me-2"></i>Custo de Oportunidade
+        </h1>
+        <p class="text-muted mb-0">
+            DI Futuro (DI1) do Boletim Diário da B3 com cálculo de média móvel,
+            taxa equivalente mensal e custo de oportunidade anualizado
+        </p>
+    </div>
+
+    <!-- ================== PAINEL DE ESTATÍSTICAS ================== -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card co-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap co-bg-blue me-3">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Pregão exibido</div>
+                            <h5 class="mb-0">
+                                {% if dt_exibida %}
+                                    {{ dt_exibida.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card co-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap co-bg-green me-3">
+                            <i class="fas fa-list-ol"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Contratos exibidos</div>
+                            <h5 class="mb-0">{{ registros|length }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card co-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap co-bg-cyan me-3">
+                            <i class="fas fa-archive"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Total na base</div>
+                            <h5 class="mb-0">{{ "{:,}".format(total_geral).replace(',', '.') }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card co-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap co-bg-orange me-3">
+                            <i class="fas fa-history"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Pregões na base</div>
+                            <h5 class="mb-0">{{ pregoes_distintos }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== BOT + FILTRO ================== -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card co-section-card h-100">
+                <div class="co-section-header">
+                    <h5><i class="fas fa-robot me-2"></i>Importação Automática B3</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Baixa, interpola, calcula TAXA_MEDIA, TAXA_MEDIA_MENSAL,
+                        MEDIA_MENSAL e CUSTO_DE_OPURTUNIDADE automaticamente.
+                    </p>
+                    <div class="text-center">
+                        <span id="btnExecutarBot"
+                              class="btn btn-primary btn-lg"
+                              role="button"
+                              style="cursor: pointer;">
+                            <i class="fas fa-play-circle me-2"></i>Capturar Dados B3
+                        </span>
+                    </div>
+                    <div id="resultadoBot" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card co-section-card h-100">
+                <div class="co-section-header">
+                    <h5><i class="fas fa-filter me-2"></i>Filtrar por Pregão</h5>
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('custo_oportunidade.index') }}">
+                        <div class="mb-3">
+                            <label for="dt_atualizacao" class="form-label small fw-semibold">
+                                Data do pregão (DT_ATUALIZACAO)
+                            </label>
+                            <select name="dt_atualizacao"
+                                    id="dt_atualizacao"
+                                    class="form-select">
+                                {% if not datas_com_status %}
+                                    <option value="">— Sem dados —</option>
+                                {% else %}
+                                    {% for dt, reuniao in datas_com_status %}
+                                        <option value="{{ dt.strftime('%Y-%m-%d') }}"
+                                            {% if dt_exibida and dt == dt_exibida %}selected{% endif %}>
+                                            {{ dt.strftime('%d/%m/%Y') }}
+                                            {% if dt_mais_recente and dt == dt_mais_recente %}
+                                                (mais recente)
+                                            {% endif %}
+                                            {% if reuniao %}
+                                                (Marcado)
+                                            {% endif %}
+                                        </option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit"
+                                    class="btn btn-primary flex-grow-1"
+                                    {% if not datas_disponiveis %}disabled{% endif %}>
+                                <i class="fas fa-search me-2"></i>Aplicar filtro
+                            </button>
+                            <a href="{{ url_for('custo_oportunidade.index') }}"
+                               class="btn btn-outline-secondary">
+                                <i class="fas fa-undo"></i>
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== DESTAQUE: MÉDIA MENSAL + CUSTO ANUAL + COPOM ================== -->
+    {% if media_pregao and media_pregao.MEDIA_MENSAL is not none %}
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="card co-highlight-card co-highlight-mensal">
+                <div class="card-body py-4">
+                    <div class="label mb-2">
+                        <i class="fas fa-percent me-2"></i>Média Mensal do Pregão
+                    </div>
+                    <div class="value">
+                        {{ "{:,.4f}".format(media_pregao.MEDIA_MENSAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}<span class="unit">% a.m.</span>
+                    </div>
+                    <div class="formula">
+                        AVG(TAXA_MEDIA_MENSAL) dos {{ registros|length }} contratos
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card co-highlight-card co-highlight-anual">
+                <div class="card-body py-4">
+                    <div class="label mb-2">
+                        <i class="fas fa-chart-line me-2"></i>Custo de Oportunidade
+                    </div>
+                    <div class="value">
+                        {% if media_pregao.CUSTO_DE_OPURTUNIDADE is not none %}
+                            {{ "{:,.4f}".format(media_pregao.CUSTO_DE_OPURTUNIDADE|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}<span class="unit">% a.a.</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </div>
+                    <div class="formula">
+                        ((1 + MEDIA_MENSAL/100)^12 − 1) × 100
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Painel Reunião COPOM -->
+    <div class="card co-section-card mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <h6 class="mb-1">
+                        <i class="fas fa-gavel me-2 text-primary"></i>
+                        Reunião COPOM
+                    </h6>
+                    <p class="text-muted small mb-0">
+                        Marque se este pregão coincidiu com reunião do COPOM
+                        (Comitê de Política Monetária do Banco Central).
+                    </p>
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <span id="copomStatus"
+                          class="co-copom-status {% if media_pregao.REUNIAO %}on{% else %}off{% endif %} me-2">
+                        {% if media_pregao.REUNIAO %}
+                            <i class="fas fa-check-circle"></i> Marcada
+                        {% else %}
+                            <i class="far fa-circle"></i> Não marcada
+                        {% endif %}
+                    </span>
+                    <button id="btnToggleCopom"
+                            type="button"
+                            class="co-copom-btn {% if media_pregao.REUNIAO %}copom-on{% else %}copom-off{% endif %}"
+                            data-dt="{{ dt_exibida.strftime('%Y-%m-%d') }}">
+                        {% if media_pregao.REUNIAO %}
+                            <i class="fas fa-check me-2"></i>Reunião marcada
+                        {% else %}
+                            <i class="fas fa-plus me-2"></i>Marcar reunião
+                        {% endif %}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ================== TABELA DE REGISTROS ================== -->
+    {% if registros %}
+    <div class="card co-section-card">
+        <div class="co-section-header d-flex justify-content-between align-items-center">
+            <h5>
+                <i class="fas fa-table me-2"></i>
+                Contratos do pregão de {{ dt_exibida.strftime('%d/%m/%Y') }}
+            </h5>
+            <span class="badge bg-light text-primary">
+                {{ registros|length }} registro(s)
+            </span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover co-table mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 60px;">#</th>
+                        <th>Instrumento</th>
+                        <th>Cód. Mês/Ano</th>
+                        <th>Vencimento (AAAAMM)</th>
+                        <th class="text-end">Preço Médio</th>
+                        <th class="text-end">Taxa Média</th>
+                        <th class="text-end">Taxa Média Mensal</th>
+                        <th>Data Atualização</th>
+                        <th>Data da Carga</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td class="text-center co-num text-muted">{{ loop.index }}</td>
+                        <td><span class="co-badge-inst">{{ r.INST_FINANC }}</span></td>
+                        <td>{{ r.COD_MES_ANO or '-' }}</td>
+                        <td class="co-num">{{ r.ANO_MES or '-' }}</td>
+                        <td class="text-end co-num">
+                            {% if r.VR_PRECO_MEDIA is not none %}
+                                {{ "{:,.4f}".format(r.VR_PRECO_MEDIA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end co-num">
+                            {% if r.TAXA_MEDIA is not none %}
+                                {{ "{:,.4f}".format(r.TAXA_MEDIA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td class="text-end co-num">
+                            {% if r.TAXA_MEDIA_MENSAL is not none %}
+                                <strong>{{ "{:,.4f}".format(r.TAXA_MEDIA_MENSAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if r.DT_ATUALIZACAO %}{{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if r.DT_CARGA %}{{ r.DT_CARGA.strftime('%d/%m/%Y') }}
+                                {% else %}-{% endif %}
+                            </small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card co-section-card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">Nenhum registro a exibir</h5>
+            <p class="text-muted mb-0">
+                Clique em <strong>Executar Bot Agora</strong> para iniciar a primeira carga.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ================== HISTÓRICO DE MÉDIAS ================== -->
+    {% if historico_medias %}
+    <div class="card co-section-card mt-4">
+        <div class="co-section-header">
+            <h5>
+                <i class="fas fa-chart-line me-2"></i>
+                Histórico de Médias e Custo de Oportunidade (últimos {{ historico_medias|length }} pregões)
+            </h5>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover co-table mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-center" style="width: 60px;">#</th>
+                        <th>Data do Pregão</th>
+                        <th class="text-end">Média Mensal (% a.m.)</th>
+                        <th class="text-end">Custo de Oportunidade (% a.a.)</th>
+                        <th class="text-center">COPOM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in historico_medias %}
+                    <tr>
+                        <td class="text-center co-num text-muted">{{ loop.index }}</td>
+                        <td>
+                            {% if h.DT_ATUALIZACAO %}
+                                {{ h.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}
+                                {% if dt_exibida and h.DT_ATUALIZACAO == dt_exibida %}
+                                    <span class="badge bg-primary ms-2">Em exibição</span>
+                                {% endif %}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="text-end co-num">
+                            {% if h.MEDIA_MENSAL is not none %}
+                                {{ "{:,.4f}".format(h.MEDIA_MENSAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td class="text-end co-num">
+                            {% if h.CUSTO_DE_OPURTUNIDADE is not none %}
+                                <strong>{{ "{:,.4f}".format(h.CUSTO_DE_OPURTUNIDADE|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if h.REUNIAO %}
+                                <span class="co-copom-status on">
+                                    <i class="fas fa-check-circle"></i> Sim
+                                </span>
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+// =========================================================================
+// BOT
+// =========================================================================
+document.getElementById('btnExecutarBot').addEventListener('click', function () {
+    const btn = this;
+    const resultado = document.getElementById('resultadoBot');
+
+    btn.style.pointerEvents = 'none';
+    btn.style.opacity = '0.6';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Baixando e processando CSV...';
+
+    resultado.style.display = 'block';
+    resultado.innerHTML = `
+        <div class="alert alert-info mb-0">
+            <i class="fas fa-cloud-download-alt me-2"></i>
+            Conectando à API da B3 e importando os dados DI Futuro...
+        </div>
+    `;
+
+    fetch("{{ url_for('custo_oportunidade.executar_bot') }}", {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.style.pointerEvents = '';
+        btn.style.opacity = '';
+        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Executar Bot Agora';
+
+        if (data.success) {
+            resultado.innerHTML = `
+                <div class="alert alert-success mb-0">
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Sucesso!</strong> ${data.message}
+                </div>
+            `;
+            setTimeout(() => location.reload(), 2500);
+        } else {
+            resultado.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro!</strong> ${data.message}
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        btn.style.pointerEvents = '';
+        btn.style.opacity = '';
+        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Executar Bot Agora';
+        resultado.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="fas fa-times-circle me-2"></i>
+                <strong>Erro de conexão:</strong> ${err}
+            </div>
+        `;
+    });
+});
+
+// =========================================================================
+// TOGGLE REUNIÃO COPOM
+// =========================================================================
+const btnCopom = document.getElementById('btnToggleCopom');
+if (btnCopom) {
+    btnCopom.addEventListener('click', function () {
+        const btn = this;
+        const dt = btn.dataset.dt;
+        const status = document.getElementById('copomStatus');
+
+        btn.disabled = true;
+        const htmlOriginal = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Atualizando...';
+
+        fetch("{{ url_for('custo_oportunidade.marcar_reuniao') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({dt_atualizacao: dt})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            if (data.success) {
+                if (data.novo_estado) {
+                    btn.classList.remove('copom-off');
+                    btn.classList.add('copom-on');
+                    btn.innerHTML = '<i class="fas fa-check me-2"></i>Reunião marcada';
+                    status.classList.remove('off');
+                    status.classList.add('on');
+                    status.innerHTML = '<i class="fas fa-check-circle"></i> Marcada';
+                } else {
+                    btn.classList.remove('copom-on');
+                    btn.classList.add('copom-off');
+                    btn.innerHTML = '<i class="fas fa-plus me-2"></i>Marcar reunião';
+                    status.classList.remove('on');
+                    status.classList.add('off');
+                    status.innerHTML = '<i class="far fa-circle"></i> Não marcada';
+                }
+                // Recarrega após 800ms para atualizar o histórico
+                setTimeout(() => location.reload(), 800);
+            } else {
+                btn.innerHTML = htmlOriginal;
+                alert('Erro: ' + (data.message || 'erro desconhecido'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+            alert('Erro de conexão: ' + err);
+        });
+    });
+}
+</script>
+{% endblock %}
