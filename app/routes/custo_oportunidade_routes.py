@@ -915,3 +915,134 @@ def _calcular_e_salvar_media_mensal_pregao(dt_atualizacao):
     })
     db.session.commit()
     return media
+# =========================================================================
+# GERAR NOTA TÉCNICA (PDF)
+# =========================================================================
+@custo_oportunidade_bp.route('/nota-tecnica', methods=['GET'])
+@login_required
+def gerar_nota_tecnica():
+    """
+    Gera o PDF da Nota Técnica de Custo de Oportunidade.
+
+    Query string:
+      dt_atualizacao : YYYY-MM-DD - data do pregão de referência (atual)
+
+    Lógica:
+      1. Busca os 105 registros do pregão atual (FIN_TB001).
+      2. Identifica o ÚLTIMO pregão marcado como COPOM (REUNIAO=1 em FIN_TB003).
+      3. Busca os registros desse pregão COPOM em FIN_TB001.
+      4. Pareia por ANO_MES e gera o PDF.
+
+    Bloqueia (HTTP 400) se:
+      - Não há nenhum pregão marcado como COPOM (Opção B confirmada).
+      - dt_atualizacao não tem registros em FIN_TB001.
+    """
+    from flask import send_file, flash, redirect, url_for
+    from app.models.custo_oportunidade_media import CustoOportunidadeMedia
+    from app.utils.nota_tecnica_co_pdf import NotaTecnicaCustoOportunidadePDF
+
+    # 1. Parse e validação do parâmetro
+    dt_str = (request.args.get('dt_atualizacao') or '').strip()
+    if not dt_str:
+        flash('Selecione um pregão antes de gerar a Nota Técnica.', 'warning')
+        return redirect(url_for('custo_oportunidade.index'))
+
+    try:
+        dt_pregao_atual = datetime.strptime(dt_str, '%Y-%m-%d').date()
+    except ValueError:
+        flash('Data inválida.', 'danger')
+        return redirect(url_for('custo_oportunidade.index'))
+
+    # 2. Buscar registros do pregão atual
+    registros_atuais = CustoOportunidade.listar_por_data_atualizacao(dt_pregao_atual)
+    if not registros_atuais:
+        flash(
+            f'Nenhum registro encontrado para o pregão de '
+            f'{dt_pregao_atual.strftime("%d/%m/%Y")}.',
+            'warning'
+        )
+        return redirect(url_for(
+            'custo_oportunidade.index',
+            dt_atualizacao=dt_str
+        ))
+
+    # Ordenar por ANO_MES (mesma ordem da tela)
+    registros_atuais = sorted(
+        registros_atuais,
+        key=lambda r: (r.ANO_MES or '999999')
+    )
+
+    # 3. Identificar o ÚLTIMO pregão COPOM (REUNIAO=1) em FIN_TB003
+    ultimo_copom = CustoOportunidadeMedia.query.filter_by(
+        REUNIAO=True
+    ).order_by(
+        CustoOportunidadeMedia.DT_ATUALIZACAO.desc()
+    ).first()
+
+    # Opção B: bloqueia se não houver COPOM marcado
+    if not ultimo_copom:
+        flash(
+            'Não é possível gerar a Nota Técnica: nenhum pregão foi marcado '
+            'como Reunião COPOM ainda. Marque pelo menos um pregão antes.',
+            'warning'
+        )
+        return redirect(url_for(
+            'custo_oportunidade.index',
+            dt_atualizacao=dt_str
+        ))
+
+    dt_pregao_copom = ultimo_copom.DT_ATUALIZACAO
+
+    # 4. Buscar registros do pregão COPOM em FIN_TB001
+    registros_copom = CustoOportunidade.listar_por_data_atualizacao(dt_pregao_copom)
+    if not registros_copom:
+        flash(
+            f'O pregão COPOM marcado ({dt_pregao_copom.strftime("%d/%m/%Y")}) '
+            f'não possui registros em FIN_TB001. Verifique a base.',
+            'warning'
+        )
+        return redirect(url_for(
+            'custo_oportunidade.index',
+            dt_atualizacao=dt_str
+        ))
+
+    # 5. Gerar o PDF
+    try:
+        gerador = NotaTecnicaCustoOportunidadePDF()
+        buffer = gerador.gerar(
+            dt_pregao_atual=dt_pregao_atual,
+            registros_atuais=registros_atuais,
+            dt_pregao_copom=dt_pregao_copom,
+            registros_copom=registros_copom,
+        )
+    except Exception as e:
+        flash(f'Erro ao gerar PDF: {str(e)}', 'danger')
+        return redirect(url_for(
+            'custo_oportunidade.index',
+            dt_atualizacao=dt_str
+        ))
+
+    # 6. Auditoria
+    registrar_log(
+        acao='gerar',
+        entidade='custo_oportunidade_nota_tecnica',
+        entidade_id=str(dt_pregao_atual),
+        descricao=(
+            f'Geração de Nota Técnica - pregão atual: '
+            f'{dt_pregao_atual.strftime("%d/%m/%Y")}, '
+            f'COPOM referência: {dt_pregao_copom.strftime("%d/%m/%Y")}'
+        )
+    )
+
+    # 7. Enviar arquivo
+    nome_arquivo = (
+        f'Nota_Tecnica_Custo_Oportunidade_'
+        f'{dt_pregao_atual.strftime("%d%m%Y")}.pdf'
+    )
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=nome_arquivo,
+        mimetype='application/pdf'
+    )
