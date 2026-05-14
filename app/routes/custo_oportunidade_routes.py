@@ -1046,3 +1046,298 @@ def gerar_nota_tecnica():
         download_name=nome_arquivo,
         mimetype='application/pdf'
     )
+
+# =========================================================================
+# SALVAR TX_SELIC do pregão
+# =========================================================================
+@custo_oportunidade_bp.route('/salvar-tx-selic', methods=['POST'])
+@login_required
+def salvar_tx_selic():
+    """
+    Salva a Taxa Selic (TX_SELIC) de um pregão específico em FIN_TB003.
+
+    Recebe (JSON):
+      dt_atualizacao : 'YYYY-MM-DD' (obrigatório)
+      tx_selic       : número (ex: '14.75' ou '14,75') ou string vazia
+                       para limpar/zerar a Selic (NULL)
+    """
+    from app.models.custo_oportunidade_media import CustoOportunidadeMedia
+
+    try:
+        dados = request.get_json(silent=True) or request.form
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        tx_str = (str(dados.get('tx_selic') or '')).strip()
+
+        if not dt_str:
+            return jsonify({
+                'success': False,
+                'message': 'Parâmetro dt_atualizacao é obrigatório.'
+            }), 400
+
+        try:
+            dt = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': f'Data inválida: {dt_str}. Use formato YYYY-MM-DD.'
+            }), 400
+
+        registro = CustoOportunidadeMedia.obter_por_data(dt)
+        if not registro:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Pregão {dt.strftime("%d/%m/%Y")} não encontrado em '
+                    f'FIN_TB003. Rode o bot primeiro.'
+                )
+            }), 404
+
+        # Converter valor: aceita string vazia (= limpar/NULL),
+        # vírgula ou ponto como separador decimal, com até 4 casas
+        valor_anterior = (
+            float(registro.TX_SELIC) if registro.TX_SELIC is not None else None
+        )
+
+        if tx_str == '':
+            # Usuário quer limpar o valor
+            registro.TX_SELIC = None
+            novo_valor_float = None
+        else:
+            try:
+                # Aceita "14,75" ou "14.75" ou "14.7500"
+                normalizado = tx_str.replace('.', '').replace(',', '.') \
+                    if ',' in tx_str else tx_str
+                vr = Decimal(normalizado).quantize(
+                    Decimal('0.0001'), rounding=ROUND_HALF_UP
+                )
+            except (InvalidOperation, ValueError):
+                return jsonify({
+                    'success': False,
+                    'message': (
+                        f'Taxa Selic inválida: "{tx_str}". '
+                        f'Use formato numérico (ex: 14,75 ou 14.75).'
+                    )
+                }), 400
+
+            registro.TX_SELIC = vr
+            novo_valor_float = float(vr)
+
+        db.session.commit()
+
+        # Auditoria
+        registrar_log(
+            acao='editar',
+            entidade='custo_oportunidade_media',
+            entidade_id=str(dt),
+            descricao=(
+                f'Atualização TX_SELIC em FIN_TB003 - '
+                f'pregão {dt.strftime("%d/%m/%Y")}'
+            ),
+            dados_antigos={'TX_SELIC': valor_anterior},
+            dados_novos={'TX_SELIC': novo_valor_float}
+        )
+
+        return jsonify({
+            'success': True,
+            'novo_valor': novo_valor_float,
+            'message': (
+                f'Taxa Selic '
+                f'{"limpa" if novo_valor_float is None else "atualizada"} '
+                f'para o pregão de {dt.strftime("%d/%m/%Y")}.'
+            )
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao salvar TX_SELIC: {str(e)}'
+        }), 500
+
+# =========================================================================
+# UPLOAD DA PLANILHA SELIC (substitui FIN_TB005 inteira)
+# =========================================================================
+@custo_oportunidade_bp.route('/upload-selic', methods=['POST'])
+@login_required
+def upload_selic():
+    """
+    Recebe um arquivo Excel com a série Selic e SUBSTITUI INTEIRAMENTE
+    o conteúdo de FIN_TB005_SELIC (TRUNCATE + INSERT em batch).
+
+    Estrutura esperada do Excel:
+      Aba 'Emgea' (ou primeira aba):
+        Coluna A: COGEP       (data - 1º dia do mês)
+        Coluna B: COPOM       (decimal - taxa Selic % a.a.)
+        Coluna C: SELIC a.m.  (decimal - Selic mensal % a.m.)
+        Coluna D: SELIC a.a   (decimal - Selic anual % a.a.)
+    """
+    import pandas as pd
+    from app.models.selic import Selic
+
+    # 1. Validar arquivo
+    if 'arquivo' not in request.files:
+        return jsonify({
+            'success': False,
+            'message': 'Nenhum arquivo enviado.'
+        }), 400
+
+    arquivo = request.files['arquivo']
+    nome_arquivo = (arquivo.filename or '').strip()
+
+    if not nome_arquivo:
+        return jsonify({
+            'success': False,
+            'message': 'Nome do arquivo está vazio.'
+        }), 400
+
+    if not nome_arquivo.lower().endswith(('.xlsx', '.xlsm')):
+        return jsonify({
+            'success': False,
+            'message': 'Arquivo deve ser .xlsx ou .xlsm.'
+        }), 400
+
+    # 2. Salvar temporariamente
+    caminho_tmp = os.path.join(
+        tempfile.gettempdir(),
+        f'selic_upload_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{nome_arquivo}'
+    )
+    try:
+        arquivo.save(caminho_tmp)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Falha ao salvar arquivo temporário: {e}'
+        }), 500
+
+    try:
+        # 3. Ler com pandas (tenta aba 'Emgea' primeiro; se não existir, 1ª aba)
+        try:
+            df = pd.read_excel(caminho_tmp, sheet_name='Emgea')
+        except Exception:
+            df = pd.read_excel(caminho_tmp, sheet_name=0)
+
+        if df.empty:
+            return jsonify({
+                'success': False,
+                'message': 'Planilha está vazia.'
+            }), 400
+
+        # 4. Normalizar nomes de coluna e validar
+        # Aceita 'SELIC a.m.', 'Selic a.m.', etc.
+        col_map = {}
+        for c in df.columns:
+            c_low = str(c).strip().lower()
+            if c_low == 'cogep':
+                col_map[c] = 'COGEP'
+            elif c_low == 'copom':
+                col_map[c] = 'COPOM'
+            elif c_low in ('selic a.m.', 'selic a.m', 'selic am'):
+                col_map[c] = 'SELIC_AM'
+            elif c_low in ('selic a.a', 'selic a.a.', 'selic aa'):
+                col_map[c] = 'SELIC_AA'
+
+        df = df.rename(columns=col_map)
+
+        colunas_obrigatorias = {'COGEP', 'COPOM', 'SELIC_AM', 'SELIC_AA'}
+        faltando = colunas_obrigatorias - set(df.columns)
+        if faltando:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Colunas obrigatórias ausentes: {", ".join(sorted(faltando))}. '
+                    f'Colunas encontradas: {", ".join([str(c) for c in df.columns])}'
+                )
+            }), 400
+
+        # 5. Filtrar linhas com COGEP vazio
+        df = df.dropna(subset=['COGEP'])
+
+        # 6. Converter datas e validar
+        df['COGEP'] = pd.to_datetime(df['COGEP'], errors='coerce').dt.date
+        df = df.dropna(subset=['COGEP'])
+
+        if df.empty:
+            return jsonify({
+                'success': False,
+                'message': 'Após validação, nenhuma linha tem COGEP válido.'
+            }), 400
+
+        # 7. TRUNCATE da tabela (transação)
+        db.session.execute(text(
+            'TRUNCATE TABLE [BDG].[FIN_TB005_SELIC];'
+        ))
+
+        # 8. INSERT em batch (bulk_save_objects é muito mais rápido que
+        # iterar com session.add() para 900+ linhas)
+        registros = []
+        for _, row in df.iterrows():
+            registros.append(Selic(
+                COGEP=row['COGEP'],
+                COPOM=_to_decimal_4(row.get('COPOM')),
+                SELIC_AM=_to_decimal_4(row.get('SELIC_AM')),
+                SELIC_AA=_to_decimal_4(row.get('SELIC_AA')),
+            ))
+
+        db.session.bulk_save_objects(registros)
+        db.session.commit()
+
+        inseridos = len(registros)
+
+        # 9. Auditoria
+        registrar_log(
+            acao='carga',
+            entidade='selic',
+            entidade_id=None,
+            descricao=f'Upload da planilha Selic ({nome_arquivo})',
+            dados_novos={
+                'arquivo': nome_arquivo,
+                'linhas_inseridas': inseridos,
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'inseridos': inseridos,
+            'message': (
+                f'Planilha Selic carregada com sucesso. '
+                f'{inseridos} linha(s) inseridas em FIN_TB005_SELIC.'
+            )
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao processar planilha: {str(e)}'
+        }), 500
+
+    finally:
+        # 10. Limpar arquivo temporário
+        try:
+            if os.path.exists(caminho_tmp):
+                os.remove(caminho_tmp)
+        except Exception:
+            pass
+
+
+def _to_decimal_4(valor):
+    """
+    Converte valor numérico (float/int/str) para Decimal com 4 casas.
+    Retorna None se NaN ou inválido.
+    """
+    if valor is None:
+        return None
+    try:
+        # NaN do pandas
+        import math
+        if isinstance(valor, float) and math.isnan(valor):
+            return None
+    except Exception:
+        pass
+
+    try:
+        return Decimal(str(valor)).quantize(
+            Decimal('0.0001'), rounding=ROUND_HALF_UP
+        )
+    except (InvalidOperation, ValueError):
+        return None

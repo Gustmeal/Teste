@@ -4,6 +4,15 @@
 
 {% block extra_css %}
 <style>
+    .co-top-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
     .co-stat-card {
         border: none;
         border-radius: 12px;
@@ -15,12 +24,9 @@
         box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
     }
     .co-stat-card .icon-wrap {
-        width: 48px;
-        height: 48px;
+        width: 48px; height: 48px;
         border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         font-size: 1.25rem;
         color: #fff;
     }
@@ -41,9 +47,7 @@
         padding: 0.85rem 1.25rem;
     }
     .co-section-header h5 {
-        margin: 0;
-        font-weight: 600;
-        font-size: 1rem;
+        margin: 0; font-weight: 600; font-size: 1rem;
     }
 
     .co-table thead th {
@@ -59,9 +63,7 @@
         font-size: 0.9rem;
         vertical-align: middle;
     }
-    .co-table tbody tr:hover {
-        background: #f8fbff;
-    }
+    .co-table tbody tr:hover { background: #f8fbff; }
     .co-badge-inst {
         font-family: 'Courier New', monospace;
         font-weight: 700;
@@ -76,7 +78,6 @@
         font-weight: 500;
     }
 
-    /* Cards de destaque (Média Mensal + Custo de Oportunidade) */
     .co-highlight-card {
         border: none;
         border-radius: 12px;
@@ -84,12 +85,8 @@
         color: #fff;
         height: 100%;
     }
-    .co-highlight-mensal {
-        background: linear-gradient(135deg, #7e57c2, #4527a0);
-    }
-    .co-highlight-anual {
-        background: linear-gradient(135deg, #ef5350, #b71c1c);
-    }
+    .co-highlight-mensal { background: linear-gradient(135deg, #7e57c2, #4527a0); }
+    .co-highlight-anual  { background: linear-gradient(135deg, #ef5350, #b71c1c); }
     .co-highlight-card .label {
         text-transform: uppercase;
         letter-spacing: 1.5px;
@@ -114,7 +111,6 @@
         margin-top: 0.5rem;
     }
 
-    /* Botão COPOM (toggle) */
     .co-copom-btn {
         border-radius: 10px;
         font-weight: 600;
@@ -123,21 +119,14 @@
         border: 2px solid transparent;
     }
     .co-copom-btn.copom-on {
-        background: #1cc88a;
-        color: #fff;
-        border-color: #13855c;
+        background: #1cc88a; color: #fff; border-color: #13855c;
     }
-    .co-copom-btn.copom-on:hover {
-        background: #17a673;
-    }
+    .co-copom-btn.copom-on:hover { background: #17a673; }
     .co-copom-btn.copom-off {
-        background: #fff;
-        color: #5a5c69;
-        border-color: #d1d3e2;
+        background: #fff; color: #5a5c69; border-color: #d1d3e2;
     }
     .co-copom-btn.copom-off:hover {
-        border-color: #4e73df;
-        color: #224abe;
+        border-color: #4e73df; color: #224abe;
     }
     .co-copom-status {
         display: inline-flex;
@@ -148,36 +137,174 @@
         font-size: 0.75rem;
         font-weight: 600;
     }
-    .co-copom-status.on {
-        background: #d4edda;
-        color: #13855c;
+    .co-copom-status.on  { background: #d4edda; color: #13855c; }
+    .co-copom-status.off { background: #f8f9fa; color: #858796; }
+
+    .co-btn-upload-selic {
+    background: linear-gradient(135deg, #ffb703 0%, #fb8500 100%);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 0.75rem 1.35rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.2px;
+    box-shadow: 0 10px 24px rgba(251, 133, 0, 0.25);
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
     }
-    .co-copom-status.off {
-        background: #f8f9fa;
+
+    .co-btn-upload-selic::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0));
+        pointer-events: none;
+    }
+
+    .co-btn-upload-selic i {
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.95rem;
+        flex-shrink: 0;
+    }
+
+    .co-btn-upload-selic:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(251, 133, 0, 0.32);
+        color: #fff;
+    }
+
+    .co-btn-upload-selic:active {
+        transform: translateY(0);
+        box-shadow: 0 8px 18px rgba(251, 133, 0, 0.22);
+    }
+
+    .co-btn-upload-selic:focus {
+        outline: none;
+        color: #fff;
+        box-shadow:
+            0 0 0 0.2rem rgba(255, 183, 3, 0.25),
+            0 14px 28px rgba(251, 133, 0, 0.25);
+    }
+    .co-dropzone {
+        border: 2.5px dashed #d1d3e2;
+        border-radius: 12px;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        background: #f8f9fc;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .co-dropzone:hover {
+        border-color: #f6c23e;
+        background: #fffbeb;
+    }
+    .co-dropzone.dragover {
+        border-color: #f6c23e;
+        background: #fef3c7;
+        transform: scale(1.01);
+    }
+    .co-dropzone i {
+        font-size: 3rem;
+        color: #d1d3e2;
+        margin-bottom: 1rem;
+        display: block;
+        transition: color 0.2s ease;
+    }
+    .co-dropzone:hover i,
+    .co-dropzone.dragover i {
+        color: #f6c23e;
+    }
+    .co-dropzone-text {
+        font-size: 1rem;
+        color: #5a5c69;
+        font-weight: 500;
+    }
+    .co-dropzone-hint {
+        font-size: 0.85rem;
+        color: #858796;
+        margin-top: 0.5rem;
+    }
+    .co-file-preview {
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+    .co-file-preview .file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-grow: 1;
+        min-width: 0;
+    }
+    .co-file-preview .file-icon {
+        background: #d1fae5;
+        color: #047857;
+        width: 42px; height: 42px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .co-file-preview .file-name {
+        font-weight: 600;
+        color: #5a5c69;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .co-file-preview .file-size {
+        font-size: 0.75rem;
         color: #858796;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<a href="{{ url_for('main.geinc_index') }}" class="btn-back">
-    <i class="fas fa-arrow-left"></i> Voltar
-</a>
+<div class="co-top-actions">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <button type="button"
+            class="co-btn-upload-selic"
+            data-bs-toggle="modal"
+            data-bs-target="#modalUploadSelic">
+        <i class="fas fa-cloud-upload-alt"></i>
+        <span>Carregar Dados SELIC</span>
+    </button>
+</div>
 
 <div class="editais-container fade-in">
 
-    <!-- ================== HEADER ================== -->
     <div class="page-title-bar mb-4">
-        <h1 class="fw-bold header-with-back">
-            <i class="fas fa-chart-area me-2"></i>Custo de Oportunidade
-        </h1>
-        <p class="text-muted mb-0">
-            DI Futuro (DI1) do Boletim Diário da B3 com cálculo de média móvel,
-            taxa equivalente mensal e custo de oportunidade anualizado
-        </p>
+        <div>
+            <h1 class="fw-bold header-with-back mb-0">
+                <i class="fas fa-chart-area me-2"></i>Custo de Oportunidade
+            </h1>
+            <p class="text-muted mb-0 mt-1">
+                DI Futuro (DI1) do Boletim Diário da B3 com cálculo de média móvel,
+                taxa equivalente mensal e custo de oportunidade anualizado
+            </p>
+        </div>
     </div>
 
-    <!-- ================== PAINEL DE ESTATÍSTICAS ================== -->
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card co-stat-card shadow-sm">
@@ -191,9 +318,7 @@
                             <h5 class="mb-0">
                                 {% if dt_exibida %}
                                     {{ dt_exibida.strftime('%d/%m/%Y') }}
-                                {% else %}
-                                    —
-                                {% endif %}
+                                {% else %}—{% endif %}
                             </h5>
                         </div>
                     </div>
@@ -250,7 +375,6 @@
         </div>
     </div>
 
-    <!-- ================== BOT + FILTRO ================== -->
     <div class="row g-3 mb-4">
         <div class="col-lg-6">
             <div class="card co-section-card h-100">
@@ -296,12 +420,8 @@
                                         <option value="{{ dt.strftime('%Y-%m-%d') }}"
                                             {% if dt_exibida and dt == dt_exibida %}selected{% endif %}>
                                             {{ dt.strftime('%d/%m/%Y') }}
-                                            {% if dt_mais_recente and dt == dt_mais_recente %}
-                                                (mais recente)
-                                            {% endif %}
-                                            {% if reuniao %}
-                                                (Marcado)
-                                            {% endif %}
+                                            {% if dt_mais_recente and dt == dt_mais_recente %} (mais recente){% endif %}
+                                            {% if reuniao %} (Marcado){% endif %}
                                         </option>
                                     {% endfor %}
                                 {% endif %}
@@ -310,7 +430,7 @@
                         <div class="d-flex gap-2">
                             <button type="submit"
                                     class="btn btn-primary flex-grow-1"
-                                    {% if not datas_disponiveis %}disabled{% endif %}>
+                                    {% if not datas_com_status %}disabled{% endif %}>
                                 <i class="fas fa-search me-2"></i>Aplicar filtro
                             </button>
                             <a href="{{ url_for('custo_oportunidade.index') }}"
@@ -324,9 +444,8 @@
         </div>
     </div>
 
-    <!-- ================== DESTAQUE: MÉDIA MENSAL + CUSTO ANUAL + COPOM ================== -->
     {% if media_pregao and media_pregao.MEDIA_MENSAL is not none %}
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-3">
         <div class="col-md-6">
             <div class="card co-highlight-card co-highlight-mensal">
                 <div class="card-body py-4">
@@ -352,9 +471,7 @@
                     <div class="value">
                         {% if media_pregao.CUSTO_DE_OPURTUNIDADE is not none %}
                             {{ "{:,.4f}".format(media_pregao.CUSTO_DE_OPURTUNIDADE|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}<span class="unit">% a.a.</span>
-                        {% else %}
-                            —
-                        {% endif %}
+                        {% else %}—{% endif %}
                     </div>
                     <div class="formula">
                         ((1 + MEDIA_MENSAL/100)^12 − 1) × 100
@@ -364,7 +481,6 @@
         </div>
     </div>
 
-    <!-- Painel Reunião COPOM -->
     <div class="card co-section-card mb-4">
         <div class="card-body">
             <div class="row align-items-center">
@@ -402,8 +518,40 @@
         </div>
     </div>
 
-    <!-- ================== BOTÃO GERAR NOTA TÉCNICA ================== -->
-    {% if media_pregao %}
+    <div class="card co-section-card mb-4">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <h6 class="mb-1">
+                        <i class="fas fa-coins me-2 text-warning"></i>
+                        Taxa Selic do Pregão
+                    </h6>
+                    <p class="text-muted small mb-0">
+                        Informe a taxa Selic vigente neste pregão (% a.a.).
+                        Use vírgula como separador decimal. Deixe em branco para limpar.
+                    </p>
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <div class="input-group" style="max-width: 320px; margin-left: auto;">
+                        <input type="text"
+                               id="inputTxSelic"
+                               class="form-control"
+                               placeholder="Ex: 14,75"
+                               data-dt="{{ dt_exibida.strftime('%Y-%m-%d') }}"
+                               value="{% if media_pregao.TX_SELIC is not none %}{{ '{:,.4f}'.format(media_pregao.TX_SELIC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}{% endif %}">
+                        <span class="input-group-text">% a.a.</span>
+                        <button id="btnSalvarSelic"
+                                type="button"
+                                class="btn btn-warning">
+                            <i class="fas fa-save me-1"></i>Salvar
+                        </button>
+                    </div>
+                    <div id="selicFeedback" class="small mt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card co-section-card mb-4">
         <div class="card-body">
             <div class="row align-items-center">
@@ -413,8 +561,8 @@
                         Nota Técnica
                     </h6>
                     <p class="text-muted small mb-0">
-                        Gera o relatório PDF "Pontos da curva do custo de oportunidade
-                        Emgea" comparando este pregão com a última reunião COPOM marcada.
+                        Gera o relatório PDF "Pontos da curva do custo de oportunidade Emgea"
+                        comparando este pregão com a última reunião COPOM marcada.
                     </p>
                 </div>
                 <div class="col-md-5 text-md-end mt-3 mt-md-0">
@@ -431,9 +579,6 @@
     </div>
     {% endif %}
 
-    {% endif %}
-
-    <!-- ================== TABELA DE REGISTROS ================== -->
     {% if registros %}
     <div class="card co-section-card">
         <div class="co-section-header d-flex justify-content-between align-items-center">
@@ -483,13 +628,11 @@
                             {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td>
-                            {% if r.DT_ATUALIZACAO %}{{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}
-                            {% else %}-{% endif %}
+                            {% if r.DT_ATUALIZACAO %}{{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}{% else %}-{% endif %}
                         </td>
                         <td>
                             <small class="text-muted">
-                                {% if r.DT_CARGA %}{{ r.DT_CARGA.strftime('%d/%m/%Y') }}
-                                {% else %}-{% endif %}
+                                {% if r.DT_CARGA %}{{ r.DT_CARGA.strftime('%d/%m/%Y') }}{% else %}-{% endif %}
                             </small>
                         </td>
                     </tr>
@@ -504,13 +647,12 @@
             <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
             <h5 class="text-muted mb-2">Nenhum registro a exibir</h5>
             <p class="text-muted mb-0">
-                Clique em <strong>Executar Bot Agora</strong> para iniciar a primeira carga.
+                Clique em <strong>Capturar Dados B3</strong> para iniciar a primeira carga.
             </p>
         </div>
     </div>
     {% endif %}
 
-    <!-- ================== HISTÓRICO DE MÉDIAS ================== -->
     {% if historico_medias %}
     <div class="card co-section-card mt-4">
         <div class="co-section-header">
@@ -527,6 +669,7 @@
                         <th>Data do Pregão</th>
                         <th class="text-end">Média Mensal (% a.m.)</th>
                         <th class="text-end">Custo de Oportunidade (% a.a.)</th>
+                        <th class="text-end">Tx. Selic (% a.a.)</th>
                         <th class="text-center">COPOM</th>
                     </tr>
                 </thead>
@@ -552,6 +695,11 @@
                                 <strong>{{ "{:,.4f}".format(h.CUSTO_DE_OPURTUNIDADE|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
                             {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
+                        <td class="text-end co-num">
+                            {% if h.TX_SELIC is not none %}
+                                {{ "{:,.4f}".format(h.TX_SELIC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
+                        </td>
                         <td class="text-center">
                             {% if h.REUNIAO %}
                                 <span class="co-copom-status on">
@@ -571,9 +719,77 @@
 
 </div>
 
+<div class="modal fade" id="modalUploadSelic" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-cloud-upload-alt me-2"></i>Carregar Dados SELIC
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning" style="font-size: 0.85rem;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Atenção:</strong> ao carregar, a tabela
+                    <code>FIN_TB005_SELIC</code> será <strong>totalmente substituída</strong>
+                    pelos dados do arquivo enviado. A operação não pode ser desfeita.
+                </div>
+
+                <p class="text-muted small mb-3">
+                    Estrutura esperada (aba <strong>Emgea</strong>):
+                    <code>COGEP</code>, <code>COPOM</code>, <code>SELIC a.m.</code>, <code>SELIC a.a</code>.
+                </p>
+
+                <div id="dropzoneSelic" class="co-dropzone">
+                    <i class="fas fa-file-excel"></i>
+                    <div class="co-dropzone-text">
+                        Arraste o arquivo Excel aqui ou <strong>clique para selecionar</strong>
+                    </div>
+                    <div class="co-dropzone-hint">
+                        Formatos aceitos: .xlsx, .xlsm
+                    </div>
+                    <input type="file"
+                           id="inputArquivoSelic"
+                           accept=".xlsx,.xlsm"
+                           style="display: none;">
+                </div>
+
+                <div id="filePreview" class="co-file-preview" style="display: none;">
+                    <div class="file-info">
+                        <div class="file-icon">
+                            <i class="fas fa-file-excel fa-lg"></i>
+                        </div>
+                        <div style="min-width: 0; flex-grow: 1;">
+                            <div class="file-name" id="filePreviewNome">—</div>
+                            <div class="file-size" id="filePreviewTamanho">—</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="btnRemoverArquivo">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div id="uploadFeedback" class="mt-3" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Cancelar
+                </button>
+                <button type="button"
+                        class="btn btn-warning"
+                        id="btnConfirmarUploadSelic"
+                        disabled>
+                    <i class="fas fa-upload me-2"></i>Enviar arquivo
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // =========================================================================
-// BOT
+// BOT B3
 // =========================================================================
 document.getElementById('btnExecutarBot').addEventListener('click', function () {
     const btn = this;
@@ -599,7 +815,7 @@ document.getElementById('btnExecutarBot').addEventListener('click', function () 
     .then(data => {
         btn.style.pointerEvents = '';
         btn.style.opacity = '';
-        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Executar Bot Agora';
+        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Capturar Dados B3';
 
         if (data.success) {
             resultado.innerHTML = `
@@ -621,7 +837,7 @@ document.getElementById('btnExecutarBot').addEventListener('click', function () 
     .catch(err => {
         btn.style.pointerEvents = '';
         btn.style.opacity = '';
-        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Executar Bot Agora';
+        btn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Capturar Dados B3';
         resultado.innerHTML = `
             <div class="alert alert-danger mb-0">
                 <i class="fas fa-times-circle me-2"></i>
@@ -669,7 +885,6 @@ if (btnCopom) {
                     status.classList.add('off');
                     status.innerHTML = '<i class="far fa-circle"></i> Não marcada';
                 }
-                // Recarrega após 800ms para atualizar o histórico
                 setTimeout(() => location.reload(), 800);
             } else {
                 btn.innerHTML = htmlOriginal;
@@ -683,5 +898,213 @@ if (btnCopom) {
         });
     });
 }
+
+// =========================================================================
+// SALVAR TX_SELIC
+// =========================================================================
+const btnSelic = document.getElementById('btnSalvarSelic');
+if (btnSelic) {
+    btnSelic.addEventListener('click', function () {
+        const input = document.getElementById('inputTxSelic');
+        const feedback = document.getElementById('selicFeedback');
+        const dt = input.dataset.dt;
+        const valor = input.value.trim();
+
+        btnSelic.disabled = true;
+        const htmlOriginal = btnSelic.innerHTML;
+        btnSelic.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
+        feedback.innerHTML = '';
+
+        fetch("{{ url_for('custo_oportunidade.salvar_tx_selic') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({dt_atualizacao: dt, tx_selic: valor})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnSelic.disabled = false;
+            btnSelic.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML =
+                    '<span class="text-success">' +
+                    '<i class="fas fa-check-circle me-1"></i>' +
+                    data.message + '</span>';
+                setTimeout(() => location.reload(), 800);
+            } else {
+                feedback.innerHTML =
+                    '<span class="text-danger">' +
+                    '<i class="fas fa-times-circle me-1"></i>' +
+                    (data.message || 'erro desconhecido') + '</span>';
+            }
+        })
+        .catch(err => {
+            btnSelic.disabled = false;
+            btnSelic.innerHTML = htmlOriginal;
+            feedback.innerHTML =
+                '<span class="text-danger">' +
+                '<i class="fas fa-times-circle me-1"></i>' +
+                'Erro de conexão: ' + err + '</span>';
+        });
+    });
+
+    const inputSelic = document.getElementById('inputTxSelic');
+    if (inputSelic) {
+        inputSelic.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnSelic.click();
+            }
+        });
+    }
+}
+
+// =========================================================================
+// UPLOAD DA PLANILHA SELIC (drag-and-drop)
+// =========================================================================
+(function () {
+    const dropzone = document.getElementById('dropzoneSelic');
+    const input = document.getElementById('inputArquivoSelic');
+    const preview = document.getElementById('filePreview');
+    const previewNome = document.getElementById('filePreviewNome');
+    const previewTamanho = document.getElementById('filePreviewTamanho');
+    const btnRemover = document.getElementById('btnRemoverArquivo');
+    const btnConfirmar = document.getElementById('btnConfirmarUploadSelic');
+    const feedback = document.getElementById('uploadFeedback');
+
+    let arquivoSelecionado = null;
+
+    function formatarTamanho(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function selecionarArquivo(file) {
+        if (!file) return;
+        const nome = (file.name || '').toLowerCase();
+        if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) {
+            alert('Arquivo deve ser .xlsx ou .xlsm');
+            return;
+        }
+        arquivoSelecionado = file;
+        previewNome.textContent = file.name;
+        previewTamanho.textContent = formatarTamanho(file.size);
+        preview.style.display = 'flex';
+        dropzone.style.display = 'none';
+        btnConfirmar.disabled = false;
+        feedback.style.display = 'none';
+        feedback.innerHTML = '';
+    }
+
+    function limparArquivo() {
+        arquivoSelecionado = null;
+        input.value = '';
+        preview.style.display = 'none';
+        dropzone.style.display = 'block';
+        btnConfirmar.disabled = true;
+        feedback.style.display = 'none';
+        feedback.innerHTML = '';
+    }
+
+    // Click no dropzone abre seletor
+    dropzone.addEventListener('click', () => input.click());
+
+    // Mudança no input
+    input.addEventListener('change', e => {
+        if (e.target.files && e.target.files.length > 0) {
+            selecionarArquivo(e.target.files[0]);
+        }
+    });
+
+    // Drag and drop
+    ['dragenter', 'dragover'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        });
+    });
+    dropzone.addEventListener('drop', e => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) {
+            selecionarArquivo(files[0]);
+        }
+    });
+
+    // Remover arquivo
+    btnRemover.addEventListener('click', limparArquivo);
+
+    // Enviar
+    btnConfirmar.addEventListener('click', () => {
+        if (!arquivoSelecionado) return;
+
+        const formData = new FormData();
+        formData.append('arquivo', arquivoSelecionado);
+
+        const htmlOriginal = btnConfirmar.innerHTML;
+        btnConfirmar.disabled = true;
+        btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Processando planilha... isso pode levar alguns segundos.
+            </div>
+        `;
+
+        fetch("{{ url_for('custo_oportunidade.upload_selic') }}", {
+            method: 'POST',
+            headers: {'X-Silent-Request': 'true'},
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnConfirmar.innerHTML = htmlOriginal;
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                btnConfirmar.disabled = true;
+                setTimeout(() => location.reload(), 2200);
+            } else {
+                btnConfirmar.disabled = false;
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btnConfirmar.disabled = false;
+            btnConfirmar.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+
+    // Limpa estado ao abrir/fechar modal
+    const modalEl = document.getElementById('modalUploadSelic');
+    if (modalEl) {
+        modalEl.addEventListener('hidden.bs.modal', limparArquivo);
+    }
+})();
 </script>
 {% endblock %}
