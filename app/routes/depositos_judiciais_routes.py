@@ -236,6 +236,10 @@ def edicao():
             'status': request.args.get('status', '')
         }
 
+        # NOVO: Dicionário só com os filtros realmente preenchidos,
+        # usado para propagar via URL sem poluir com parâmetros vazios
+        filtros_ativos = {k: v for k, v in filtros.items() if v}
+
         # Query base usando os modelos corretos
         query = db.session.query(
             DepositosSufin,
@@ -257,7 +261,6 @@ def edicao():
         if filtros['nu_contrato']:
             query = query.filter(DepositosSufin.NU_CONTRATO.like(f"%{filtros['nu_contrato']}%"))
 
-        # NOVO: Filtro por Nº Processo (busca parcial via JOIN com ProcessosJudiciais)
         if filtros['nr_processo']:
             query = query.filter(ProcessosJudiciais.NR_PROCESSO.like(f"%{filtros['nr_processo']}%"))
 
@@ -267,7 +270,6 @@ def edicao():
         if filtros['vr_rateio']:
             try:
                 valor = float(filtros['vr_rateio'].replace(',', '.'))
-                # Buscar tanto o valor positivo quanto o negativo
                 query = query.filter(
                     or_(
                         DepositosSufin.VR_RATEIO == valor,
@@ -277,7 +279,6 @@ def edicao():
             except ValueError:
                 pass
 
-        # Filtro de STATUS
         if filtros['status']:
             if filtros['status'] == 'em_andamento':
                 query = query.filter(DepositosSufin.STATUS == 'Em andamento')
@@ -313,8 +314,7 @@ def edicao():
             except ValueError:
                 pass
 
-        # NOVO: Filtros de data de LANÇAMENTO DJ
-        # Data específica (igualdade exata)
+        # Filtros de data de LANÇAMENTO DJ
         if filtros['dt_lancamento']:
             try:
                 data = datetime.strptime(filtros['dt_lancamento'], '%Y-%m-%d')
@@ -322,7 +322,6 @@ def edicao():
             except ValueError:
                 pass
 
-        # Mês isolado (qualquer ano)
         if filtros['mes_lancamento']:
             try:
                 mes = int(filtros['mes_lancamento'])
@@ -330,7 +329,6 @@ def edicao():
             except ValueError:
                 pass
 
-        # Ano isolado (qualquer mês)
         if filtros['ano_lancamento']:
             try:
                 ano = int(filtros['ano_lancamento'])
@@ -338,7 +336,6 @@ def edicao():
             except ValueError:
                 pass
 
-        # Período - data inicial (>=)
         if filtros['dt_lancamento_inicio']:
             try:
                 data_inicio = datetime.strptime(filtros['dt_lancamento_inicio'], '%Y-%m-%d')
@@ -346,7 +343,6 @@ def edicao():
             except ValueError:
                 pass
 
-        # Período - data final (<=)
         if filtros['dt_lancamento_fim']:
             try:
                 data_fim = datetime.strptime(filtros['dt_lancamento_fim'], '%Y-%m-%d')
@@ -379,25 +375,19 @@ def edicao():
             no_area = resultado[2]
             no_carteira = resultado[3]
 
-            # LÓGICA DE MARCAÇÃO COLORIDA
-            cor_marcacao = None  # Padrão: sem cor
+            cor_marcacao = None
 
-            # REGRA 1: Vermelho se está Em andamento (PRIORIDADE MÁXIMA)
             if deposito_obj.STATUS == 'Em andamento':
                 cor_marcacao = 'vermelho'
-
-            # REGRA 2: Laranja se mês/ano de DT_IDENTIFICACAO diferente de DT_LANCAMENTO_DJ
             elif (deposito_obj.DT_IDENTIFICACAO and deposito_obj.DT_LANCAMENTO_DJ):
                 mes_ident = deposito_obj.DT_IDENTIFICACAO.month
                 ano_ident = deposito_obj.DT_IDENTIFICACAO.year
                 mes_lanc = deposito_obj.DT_LANCAMENTO_DJ.month
                 ano_lanc = deposito_obj.DT_LANCAMENTO_DJ.year
-
                 if mes_ident != mes_lanc or ano_ident != ano_lanc:
                     cor_marcacao = 'laranja'
 
-            # REGRA 3: Amarelo se MEMO_SUFIN não nulo E DT_AJUSTE_RM e DT_IDENTIFICACAO nulos
-            if cor_marcacao is None:  # Só verifica se ainda não tem cor
+            if cor_marcacao is None:
                 if (deposito_obj.MEMO_SUFIN and
                         deposito_obj.DT_AJUSTE_RM is None and
                         deposito_obj.DT_IDENTIFICACAO is None):
@@ -411,14 +401,14 @@ def edicao():
                 'cor_marcacao': cor_marcacao
             })
 
-        # Buscar centros para o select
         centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
 
         return render_template(
             'depositos_judiciais/edicao.html',
             depositos_lista=depositos_lista,
             centros=centros,
-            filtros=filtros
+            filtros=filtros,
+            filtros_ativos=filtros_ativos  # NOVO: usado para propagar filtros
         )
 
     except Exception as e:
@@ -545,9 +535,11 @@ def verificar_status(nu_linha):
 def editar(nu_linha):
     """Editar um depósito específico"""
 
-    # Mapeamento dos eventos contábeis por ID_CENTRO (passado ao template
-    # para o JS atualizar dinamicamente o campo "Evento Contábil Atual"
-    # quando o usuário muda a carteira)
+    # NOVO: Capturar filtros da URL para propagar no redirect
+    # (assim os filtros aplicados na /edicao são preservados após salvar)
+    filtros_ativos = {k: v for k, v in request.args.items() if v}
+
+    # Mapeamento dos eventos contábeis por ID_CENTRO
     EVENTOS_POR_CENTRO = {
         1: {'codigo': 22611, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PJ'},
         2: {'codigo': 22612, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUD. COMERCIAL'},
@@ -571,7 +563,8 @@ def editar(nu_linha):
 
     if not deposito:
         flash('Depósito não encontrado.', 'danger')
-        return redirect(url_for('depositos_judiciais.edicao'))
+        # NOVO: redireciona preservando filtros
+        return redirect(url_for('depositos_judiciais.edicao', **filtros_ativos))
 
     deposito_obj = deposito[0]
     nr_processo = deposito[1]
@@ -592,24 +585,20 @@ def editar(nu_linha):
                 ID_CENTRO=centro_antigo).first() if centro_antigo else None
             nova_carteira = CentroResultado.query.filter_by(ID_CENTRO=novo_centro).first()
 
-            # Determinar se a carteira antiga ou nova é Institucional
             eh_institucional_antigo = (
                 carteira_antiga and carteira_antiga.NO_CARTEIRA == 'Institucional') or centro_antigo == 6
             eh_institucional_novo = (nova_carteira and nova_carteira.NO_CARTEIRA == 'Institucional') or novo_centro == 6
 
-            # Se mudou o centro E a nova carteira NÃO é Institucional E a antiga também NÃO era Institucional
             if novo_centro != centro_antigo and not eh_institucional_novo and not eh_institucional_antigo:
                 # PROCESSO ESPECIAL: NÃO ALTERA O ORIGINAL, CRIA ESTORNO E NOVA
-
                 proximo_nu_linha_estorno = obter_proximo_nu_linha()
 
-                # 2. Criar linha de ESTORNO (valor negativo) na carteira ANTIGA
+                # Criar linha de ESTORNO (valor negativo) na carteira ANTIGA
                 estorno = DepositosSufin()
                 estorno.NU_LINHA = proximo_nu_linha_estorno
                 estorno.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 estorno.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
-                # Valor NEGATIVO para estorno
                 vr_rateio = request.form.get('vr_rateio')
                 vr_rateio_numeros = ''.join(filter(str.isdigit, vr_rateio))
                 if vr_rateio_numeros:
@@ -649,15 +638,9 @@ def editar(nu_linha):
                     estorno.NU_CONTRATO = None
 
                 estorno.NU_CONTRATO_2 = None
-
-                # Eventos contábeis (preenchimento automático)
-                # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 estorno.EVENTO_CONTABIL_ANTERIOR = 22607
-
-                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Antiga)
                 evento_antigo = EVENTOS_POR_CENTRO.get(centro_antigo)
                 estorno.EVENTO_CONTABIL_ATUAL = evento_antigo['codigo'] if evento_antigo else None
-
                 estorno.OBS = request.form.get('obs')
                 estorno.IC_APROPRIADO = None
 
@@ -673,7 +656,6 @@ def editar(nu_linha):
 
                 db.session.add(estorno)
 
-                # Criar processo judicial para estorno se informado
                 nr_processo_form = request.form.get('nr_processo')
                 if nr_processo_form and nr_processo_form.strip():
                     processo_estorno = ProcessosJudiciais()
@@ -681,16 +663,14 @@ def editar(nu_linha):
                     processo_estorno.NR_PROCESSO = nr_processo_form.strip()
                     db.session.add(processo_estorno)
 
-                # 3. Buscar próximo NU_LINHA para nova linha
                 proximo_nu_linha_nova = proximo_nu_linha_estorno + 1
 
-                # 4. Criar NOVA linha (valor positivo) na carteira NOVA
+                # Criar NOVA linha (valor positivo) na carteira NOVA
                 nova_linha = DepositosSufin()
                 nova_linha.NU_LINHA = proximo_nu_linha_nova
                 nova_linha.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 nova_linha.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
-                # Valor POSITIVO
                 if vr_rateio_numeros:
                     nova_linha.VR_RATEIO = abs(Decimal(vr_rateio_numeros) / 100)
 
@@ -709,7 +689,7 @@ def editar(nu_linha):
                     nova_linha.DT_IDENTIFICACAO = None
 
                 nova_linha.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
-                nova_linha.ID_CENTRO = novo_centro  # Carteira NOVA
+                nova_linha.ID_CENTRO = novo_centro
 
                 if dt_ajuste_rm:
                     nova_linha.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
@@ -724,15 +704,9 @@ def editar(nu_linha):
                     nova_linha.NU_CONTRATO = None
 
                 nova_linha.NU_CONTRATO_2 = None
-
-                # Eventos contábeis (preenchimento automático)
-                # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 nova_linha.EVENTO_CONTABIL_ANTERIOR = 22607
-
-                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Nova)
                 evento_novo = EVENTOS_POR_CENTRO.get(novo_centro)
                 nova_linha.EVENTO_CONTABIL_ATUAL = evento_novo['codigo'] if evento_novo else None
-
                 nova_linha.OBS = request.form.get('obs')
                 nova_linha.IC_APROPRIADO = None
 
@@ -747,18 +721,14 @@ def editar(nu_linha):
 
                 db.session.add(nova_linha)
 
-                # Criar processo judicial para nova linha se informado
                 if nr_processo_form and nr_processo_form.strip():
                     processo_novo = ProcessosJudiciais()
                     processo_novo.NU_LINHA = proximo_nu_linha_nova
                     processo_novo.NR_PROCESSO = nr_processo_form.strip()
                     db.session.add(processo_novo)
 
-                # NÃO ALTERAR O REGISTRO ORIGINAL!
-
                 db.session.commit()
 
-                # Registrar log
                 registrar_log(
                     'depositos_judiciais',
                     'update',
@@ -767,14 +737,14 @@ def editar(nu_linha):
                 )
 
                 flash('Depósito judicial processado com sucesso! Criadas linha de estorno e nova linha.', 'success')
-                return redirect(url_for('depositos_judiciais.edicao'))
+                # NOVO: redirect com filtros preservados
+                return redirect(url_for('depositos_judiciais.edicao', **filtros_ativos))
 
             else:
                 # Não mudou centro OU é Institucional - EDIÇÃO NORMAL
                 deposito_obj.LANCAMENTO_RM = request.form.get('lancamento_rm')
                 deposito_obj.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
 
-                # Corrigir conversão do valor rateio (permite valores negativos)
                 vr_rateio = request.form.get('vr_rateio')
                 vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
                 if vr_rateio_limpo and vr_rateio_limpo != '-':
@@ -790,7 +760,6 @@ def editar(nu_linha):
                     deposito_obj.DT_MEMO = None
                     deposito_obj.ID_IDENTIFICADO = False
 
-                # Data de identificação muda status para Concluído
                 dt_identificacao = request.form.get('dt_identificacao')
                 if dt_identificacao:
                     deposito_obj.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
@@ -816,15 +785,9 @@ def editar(nu_linha):
                     deposito_obj.NU_CONTRATO = None
 
                 deposito_obj.NU_CONTRATO_2 = None
-
-                # Eventos contábeis (preenchimento automático)
-                # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 deposito_obj.EVENTO_CONTABIL_ANTERIOR = 22607
-
-                # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Atual)
                 evento_atual = EVENTOS_POR_CENTRO.get(novo_centro)
                 deposito_obj.EVENTO_CONTABIL_ATUAL = evento_atual['codigo'] if evento_atual else None
-
                 deposito_obj.OBS = request.form.get('obs')
                 deposito_obj.IC_APROPRIADO = None
 
@@ -854,7 +817,6 @@ def editar(nu_linha):
 
                 db.session.commit()
 
-                # Registrar log
                 registrar_log(
                     'depositos_judiciais',
                     'update',
@@ -863,12 +825,14 @@ def editar(nu_linha):
                 )
 
                 flash('Depósito judicial atualizado com sucesso!', 'success')
-                return redirect(url_for('depositos_judiciais.edicao'))
+                # NOVO: redirect com filtros preservados
+                return redirect(url_for('depositos_judiciais.edicao', **filtros_ativos))
 
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao editar depósito: {str(e)}', 'danger')
-            return redirect(url_for('depositos_judiciais.editar', nu_linha=nu_linha))
+            # NOVO: redirect com filtros preservados também em caso de erro
+            return redirect(url_for('depositos_judiciais.editar', nu_linha=nu_linha, **filtros_ativos))
 
     # GET - Buscar dados para os dropdowns
     areas = Area.query.order_by(Area.NO_AREA).all()
@@ -881,7 +845,8 @@ def editar(nu_linha):
                            centros=centros,
                            eventos_por_centro=EVENTOS_POR_CENTRO,
                            evento_anterior_codigo=22607,
-                           evento_anterior_descricao='PENDÊNCIA DE DEPÓSITO JUDICIAL')
+                           evento_anterior_descricao='PENDÊNCIA DE DEPÓSITO JUDICIAL',
+                           filtros_ativos=filtros_ativos)  # NOVO
 
 
 @depositos_judiciais_bp.route('/executar-scripts-relatorio', methods=['POST'])

@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="editais-container fade-in">
-    <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn-back">
+    <a href="{{ url_for('depositos_judiciais.edicao', **filtros_ativos) }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
@@ -21,7 +21,6 @@
                     </div>
                 </div>
                 <div>
-                    <!-- Mostrar status atual -->
                     {% if deposito.STATUS == 'Em andamento' %}
                     <span class="badge bg-info text-dark fs-6">
                         <i class="fas fa-edit me-1"></i>Em Andamento
@@ -39,7 +38,6 @@
                 </div>
             </div>
 
-            <!-- Botão para marcar Em Andamento -->
             {% if not deposito.STATUS or deposito.STATUS != 'Em andamento' %}
             <div class="mb-3">
                 <button type="button" class="btn btn-warning" id="btnMarcarAndamento"
@@ -53,9 +51,10 @@
             </div>
             {% endif %}
 
-            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
+            <!-- IMPORTANTE: action inclui filtros_ativos para preservar no POST -->
+            <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA, **filtros_ativos) }}">
                 <div class="row g-3">
-                    <!-- Linha 1 (ordem do Excel: Lançamento RM | Data Lançamento DJ | Valor Rateio | Memo SUFIN) -->
+                    <!-- Linha 1 -->
                     <div class="col-md-3">
                         <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
@@ -87,7 +86,7 @@
                                maxlength="50" value="{{ deposito.MEMO_SUFIN or '' }}" placeholder="Ex: SEI 919/2025">
                     </div>
 
-                    <!-- Linha 2 (ordem do Excel: Data Memo | Data Identificação | Área | Centro de Resultado) -->
+                    <!-- Linha 2 -->
                     <div class="col-md-3">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo"
@@ -131,7 +130,7 @@
                         </small>
                     </div>
 
-                    <!-- Linha 3 (ordem do Excel: Data Ajuste RM | Data SISCOR | Número Contrato | Número do Processo) -->
+                    <!-- Linha 3 -->
                     <div class="col-md-3">
                         <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
                         <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm"
@@ -156,22 +155,21 @@
                                maxlength="100" value="{{ nr_processo or '' }}" placeholder="Ex: 1234567-89.2023.8.26.0100">
                     </div>
 
-                    <!-- Linha 4 (ordem do Excel: Evento Contábil Anterior | Evento Contábil Atual) -->
-                    <!-- Campos somente para visualização - valores gravados no backend automaticamente -->
+                    <!-- Linha 4 - Eventos contábeis (readonly) -->
 
                     <div class="col-md-6">
                         <label for="evento_contabil_atual_display" class="form-label">
                             Evento Contábil Atual
-                            <i class="fas fa-lock text-muted ms-1" title="Atualizado automaticamente quando o Centro de Resultado muda"></i>
+                            <i class="fas fa-lock text-muted ms-1" title="Atualizado quando o Centro de Resultado muda"></i>
                         </label>
                         <input type="text" class="form-control bg-light" id="evento_contabil_atual_display"
                                value="" readonly>
                         <small class="text-muted">
-                            <i class="fas fa-info-circle"></i> Atualizado conforme o Centro de Resultado selecionado
+                            <i class="fas fa-info-circle"></i> Atualizado conforme o Centro de Resultado
                         </small>
                     </div>
 
-                    <!-- Linha 5 (ordem do Excel: Observação) -->
+                    <!-- Linha 5 - Observação -->
                     <div class="col-md-12">
                         <label for="obs" class="form-label">Observação</label>
                         <input type="text" class="form-control" id="obs" name="obs"
@@ -183,14 +181,14 @@
 
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <!-- BOTÕES DE RATEIO -->
                         <a href="{{ url_for('depositos_judiciais.ratear_multiplo', nu_linha=deposito.NU_LINHA) }}"
                            class="btn btn-info ms-2">
                             <i class="fas fa-layer-group me-2"></i>Ratear Valor
                         </a>
                     </div>
                     <div>
-                        <a href="{{ url_for('depositos_judiciais.edicao') }}" class="btn btn-secondary me-2">
+                        <!-- IMPORTANTE: Cancelar leva os filtros consigo -->
+                        <a href="{{ url_for('depositos_judiciais.edicao', **filtros_ativos) }}" class="btn btn-secondary me-2">
                             <i class="fas fa-times me-2"></i>Cancelar
                         </a>
                         <button type="submit" class="btn btn-primary">
@@ -203,7 +201,7 @@
     </div>
 </div>
 
-<!-- Modal para avisar que está em andamento -->
+<!-- Modal Em Andamento -->
 <div class="modal fade" id="modalEmAndamento" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -226,33 +224,17 @@
                 </p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    Fechar
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-    .form-label {
-        font-weight: 600;
-        color: var(--text-color);
-    }
-
-    .text-danger {
-        color: #dc3545 !important;
-    }
-
-    .card {
-        margin-top: 2rem;
-    }
-
-    .money {
-        text-align: right;
-    }
-
-    /* Estilo para campos travados (eventos contábeis) */
+    .form-label { font-weight: 600; color: var(--text-color); }
+    .text-danger { color: #dc3545 !important; }
+    .card { margin-top: 2rem; }
+    .money { text-align: right; }
     #evento_contabil_anterior_display,
     #evento_contabil_atual_display {
         cursor: not-allowed;
@@ -261,14 +243,11 @@
 </style>
 
 <script>
-// Mapeamento dos eventos contábeis por ID_CENTRO (vindo do backend)
 const EVENTOS_POR_CENTRO = {{ eventos_por_centro|tojson }};
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // =========================================================
-    // BOTÃO "MARCAR COMO EM ANDAMENTO" - handler que faltava
-    // =========================================================
+    // BOTÃO "MARCAR COMO EM ANDAMENTO"
     const btnAndamento = document.getElementById('btnMarcarAndamento');
     if (btnAndamento) {
         btnAndamento.addEventListener('click', function() {
@@ -276,7 +255,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const btn = this;
             const htmlOriginal = btn.innerHTML;
 
-            // Desabilitar enquanto processa
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Marcando...';
 
@@ -290,14 +268,11 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json().then(data => ({status: response.status, data: data})))
             .then(({status, data}) => {
                 if (data.success) {
-                    // Sucesso - recarregar página para mostrar status atualizado
                     location.reload();
                 } else {
                     btn.disabled = false;
                     btn.innerHTML = htmlOriginal;
-
                     if (status === 409) {
-                        // Já está sendo editado por outra área
                         document.getElementById('modalArea').textContent = data.area || 'Outra área';
                         const modal = new bootstrap.Modal(document.getElementById('modalEmAndamento'));
                         modal.show();
@@ -314,11 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // =========================================================
     // ATUALIZAÇÃO DINÂMICA DO EVENTO CONTÁBIL ATUAL
-    // =========================================================
-    // Sempre que o usuário mudar o Centro de Resultado, o campo
-    // "Evento Contábil Atual" é atualizado automaticamente.
     function atualizarEventoContabilAtual() {
         const idCentro = document.getElementById('id_centro').value;
         const displayEvento = document.getElementById('evento_contabil_atual_display');
@@ -334,20 +305,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectCentro = document.getElementById('id_centro');
     if (selectCentro) {
         selectCentro.addEventListener('change', atualizarEventoContabilAtual);
-        // Disparar no carregamento da página para preencher o display inicial
         atualizarEventoContabilAtual();
     }
 
-    // =========================================================
-    // FUNÇÃO: Calcular último dia do mês de uma data
-    // =========================================================
+    // FUNÇÕES AUXILIARES
     function ultimoDiaDoMes(data) {
         return new Date(data.getFullYear(), data.getMonth() + 1, 0).getDate();
     }
 
-    // =========================================================
-    // FUNÇÃO: Calcular o 5º dia útil de um mês/ano
-    // =========================================================
     function quintosDiaUtil(ano, mes) {
         let diasUteis = 0;
         let dia = 1;
@@ -362,9 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return new Date(ano, mes, dia);
     }
 
-    // =========================================================
-    // VALIDAÇÃO DT_SISCOR: Somente último dia do mês permitido
-    // =========================================================
+    // VALIDAÇÃO DT_SISCOR
     const dtSiscor = document.getElementById('dt_siscor');
     if (dtSiscor) {
         dtSiscor.addEventListener('change', function() {
@@ -391,9 +354,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // =========================================================
-    // MÁSCARA MONETÁRIA - VR_RATEIO
-    // =========================================================
+    // MÁSCARA MONETÁRIA
     const moneyInput = document.getElementById('vr_rateio');
     if (moneyInput) {
         function formatarValorMonetario(valor) {
@@ -421,15 +382,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // =========================================================
-    // SUBMIT DO FORMULÁRIO - Validações ao salvar
-    // =========================================================
+    // SUBMIT DO FORMULÁRIO
     const form = document.getElementById('formEdicao');
     if (form) {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            // 1. Validar campos obrigatórios
             const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
             let valido = true;
 
@@ -449,7 +407,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // 2. Validação DT_AJUSTE_RM: aviso se antes do 5º dia útil
             const dtAjuste = document.getElementById('dt_ajuste_rm');
             if (dtAjuste && dtAjuste.value) {
                 const partesAjuste = dtAjuste.value.split('-');
@@ -469,13 +426,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Deseja salvar mesmo assim?\n\n' +
                         'Clique em "OK" para salvar ou "Cancelar" para corrigir a data.'
                     );
-                    if (!continuar) {
-                        return;
-                    }
+                    if (!continuar) return;
                 }
             }
 
-            // 3. Tudo ok, submete o formulário
             this.submit();
         });
     }

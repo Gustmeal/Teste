@@ -90,7 +90,6 @@
                                value="{{ filtros.ano_identificacao }}" placeholder="Ex: 2025">
                     </div>
 
-                    <!-- NOVO CAMPO: Data SISCOR -->
                     <div class="col-md-3">
                         <label for="dt_siscor" class="form-label">
                             <i class="fas fa-calendar-check me-1"></i>Data SISCOR
@@ -115,7 +114,7 @@
                         <small class="text-muted">Verifica se está preenchido ou vazio</small>
                     </div>
 
-                    <!-- NOVA LINHA 4 - Nº Processo e Data Lançamento DJ -->
+                    <!-- Linha 4 - Nº Processo e Data Lançamento DJ -->
                     <div class="col-md-3">
                         <label for="nr_processo" class="form-label">
                             <i class="fas fa-gavel me-1"></i>Nº Processo
@@ -151,7 +150,7 @@
                                value="{{ filtros.ano_lancamento }}" placeholder="Ex: 2025">
                     </div>
 
-                    <!-- NOVA LINHA 5 - Período de Lançamento (Início e Fim) -->
+                    <!-- Linha 5 - Período de Lançamento -->
                     <div class="col-md-3">
                         <label for="dt_lancamento_inicio" class="form-label">
                             <i class="fas fa-calendar-alt me-1"></i>Período Lançamento - De
@@ -220,7 +219,6 @@
                         <span class="fs-5 text-danger" id="totalNegativos">R$ 0,00</span>
                     </div>
                 </div>
-                <!-- NOVA COLUNA: Total de Registros (valor vem direto do backend) -->
                 <div class="col-md-3">
                     <div>
                         <small class="text-muted d-block">Total de Registros</small>
@@ -246,81 +244,19 @@
                 <table class="table table-bordered table-hover table-sm mb-0" id="tabelaDepositos">
                     <thead class="sticky-header">
                         <tr>
-                            <!-- Coluna de Marcação -->
                             <th style="width: 30px;"></th>
-                            <th class="sortable" data-column="0">
-                                Nº Linha
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="1">
-                                Status
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="2">
-                                Nº Processo
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="3">
-                                Lançamento RM
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="4">
-                                Dt. Lançamento
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable text-end" data-column="5">
-                                Valor Rateio
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="6">
-                                Memo SUFIN
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="7">
-                                Carteira
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="8">
-                                Nº Contrato
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="9">
-                                Dt. Identificação
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <!-- NOVA COLUNA: Data Ajuste RM -->
-                            <th class="sortable" data-column="10">
-                                Dt. Ajuste RM
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
-                            <th class="sortable" data-column="11">
-                                Dt. SISCOR
-                                <span class="sort-icon">
-                                    <i class="fas fa-sort"></i>
-                                </span>
-                            </th>
+                            <th class="sortable" data-column="0">Nº Linha <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="1">Status <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="2">Nº Processo <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="3">Lançamento RM <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="4">Dt. Lançamento <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable text-end" data-column="5">Valor Rateio <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="6">Memo SUFIN <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="7">Carteira <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="8">Nº Contrato <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="9">Dt. Identificação <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="10">Dt. Ajuste RM <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
+                            <th class="sortable" data-column="11">Dt. SISCOR <span class="sort-icon"><i class="fas fa-sort"></i></span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -330,9 +266,8 @@
                         {% set no_area = item.no_area %}
                         {% set no_carteira = item.no_carteira %}
                         {% set cor_marcacao = item.cor_marcacao %}
-                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}"
+                        <tr class="linha-clicavel" data-href="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA, **filtros_ativos) }}"
                             data-valor="{{ deposito.VR_RATEIO or 0 }}">
-                            <!-- Coluna de Marcação colorida -->
                             <td class="text-center p-0">
                                 {% if cor_marcacao == 'vermelho' %}
                                 <div class="marcacao-linha bg-vermelho" title="Em andamento"></div>
@@ -345,7 +280,6 @@
                                 {% endif %}
                             </td>
                             <td>{{ deposito.NU_LINHA }}</td>
-                            <!-- Badge de status -->
                             <td>
                                 {% if deposito.STATUS == 'Em andamento' %}
                                 <span class="badge bg-info text-dark" title="Área: {{ deposito.AREA_STATUS }}">
@@ -381,7 +315,6 @@
                             <td data-sort="{{ deposito.DT_IDENTIFICACAO.strftime('%Y%m%d') if deposito.DT_IDENTIFICACAO else '0' }}">
                                 {{ deposito.DT_IDENTIFICACAO.strftime('%d/%m/%Y') if deposito.DT_IDENTIFICACAO else '-' }}
                             </td>
-                            <!-- NOVA COLUNA: Data Ajuste RM -->
                             <td data-sort="{{ deposito.DT_AJUSTE_RM.strftime('%Y%m%d') if deposito.DT_AJUSTE_RM else '0' }}">
                                 {{ deposito.DT_AJUSTE_RM.strftime('%d/%m/%Y') if deposito.DT_AJUSTE_RM else '-' }}
                             </td>
@@ -411,138 +344,55 @@
 </div>
 
 <style>
-    /* Estilos para a tabela */
-    .table-container {
-        max-height: 600px;
-        overflow-y: auto;
-    }
-
-    .sticky-header {
-        position: sticky;
-        top: 0;
-        background-color: #f8f9fa;
-        z-index: 10;
-    }
-
-    .linha-clicavel {
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-
-    .linha-clicavel:hover {
-        background-color: #e9ecef;
-    }
-
-    .sortable {
-        cursor: pointer;
-        position: relative;
-        user-select: none;
-    }
-
-    .sortable:hover {
-        background-color: #e3e6e8;
-    }
-
-    .sort-icon {
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: #6c757d;
-    }
-
-    /* Estilo para o card totalizador */
-    #cardTotalizador {
-        border-left: 4px solid #007bff;
-    }
-
-    #valorTotal {
-        color: #007bff;
-        font-weight: bold;
-    }
-
-    #totalRegistros {
-        color: #007bff;
-        font-weight: bold;
-    }
-
-    /* Marcações coloridas */
-    .marcacao-linha {
-        width: 20px;
-        height: 100%;
-        min-height: 30px;
-        display: inline-block;
-        border-radius: 3px;
-    }
-
-    .marcacao-cor {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border-radius: 3px;
-        margin-right: 5px;
-        vertical-align: middle;
-        border: 1px solid #ddd;
-    }
-
-    .bg-vermelho {
-        background-color: #dc3545 !important;
-    }
-
-    .bg-laranja {
-        background-color: #fd7e14 !important;
-    }
-
-    .bg-amarelo {
-        background-color: #ffc107 !important;
-    }
-
-    .bg-sem-cor {
-        background-color: transparent !important;
-        border: 1px solid #e9ecef;
-    }
+    .table-container { max-height: 600px; overflow-y: auto; }
+    .sticky-header { position: sticky; top: 0; background-color: #f8f9fa; z-index: 10; }
+    .linha-clicavel { cursor: pointer; transition: background-color 0.2s; }
+    .linha-clicavel:hover { background-color: #e9ecef; }
+    .sortable { cursor: pointer; position: relative; user-select: none; }
+    .sortable:hover { background-color: #e3e6e8; }
+    .sort-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #6c757d; }
+    #cardTotalizador { border-left: 4px solid #007bff; }
+    #valorTotal, #totalRegistros { color: #007bff; font-weight: bold; }
+    .marcacao-linha { width: 20px; height: 100%; min-height: 30px; display: inline-block; border-radius: 3px; }
+    .marcacao-cor { display: inline-block; width: 20px; height: 20px; border-radius: 3px; margin-right: 5px; vertical-align: middle; border: 1px solid #ddd; }
+    .bg-vermelho { background-color: #dc3545 !important; }
+    .bg-laranja { background-color: #fd7e14 !important; }
+    .bg-amarelo { background-color: #ffc107 !important; }
+    .bg-sem-cor { background-color: transparent !important; border: 1px solid #e9ecef; }
 </style>
 
 <script>
 function limparFiltros() {
     document.getElementById('formFiltros').reset();
+    // Redireciona para /edicao sem filtros (reset completo conforme pedido)
     window.location.href = '{{ url_for("depositos_judiciais.edicao") }}';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Função para calcular e exibir os totais
     function calcularTotais() {
         let totalGeral = 0;
         let totalPositivos = 0;
         let totalNegativos = 0;
 
-        // Percorrer todas as linhas da tabela
         document.querySelectorAll('.linha-clicavel').forEach(row => {
             const valorAttr = row.getAttribute('data-valor');
             if (valorAttr) {
                 const valor = parseFloat(valorAttr.replace(',', '.'));
                 totalGeral += valor;
-
-                if (valor > 0) {
-                    totalPositivos += valor;
-                } else if (valor < 0) {
-                    totalNegativos += valor;
-                }
+                if (valor > 0) totalPositivos += valor;
+                else if (valor < 0) totalNegativos += valor;
             }
         });
 
-        // Formatar valores
         document.getElementById('valorTotal').textContent = formatarMoeda(totalGeral);
         document.getElementById('totalPositivos').textContent = formatarMoeda(totalPositivos);
         document.getElementById('totalNegativos').textContent = formatarMoeda(totalNegativos);
     }
 
-    // Função para formatar valores monetários
     function formatarMoeda(valor) {
         return 'R$ ' + valor.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
 
-    // Aplicar máscara de moeda nos campos
     const vrRateioInput = document.getElementById('vr_rateio');
     if (vrRateioInput) {
         vrRateioInput.addEventListener('input', function(e) {
@@ -553,14 +403,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Tornar linhas clicáveis
     document.querySelectorAll('.linha-clicavel').forEach(row => {
         row.addEventListener('click', function() {
             window.location.href = this.dataset.href;
         });
     });
 
-    // Ordenação de colunas
     let currentSort = { column: null, ascending: true };
 
     document.querySelectorAll('.sortable').forEach(header => {
@@ -569,7 +417,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const tbody = document.querySelector('#tabelaDepositos tbody');
             const rows = Array.from(tbody.querySelectorAll('tr')).filter(row => !row.querySelector('td[colspan]'));
 
-            // Determinar direção da ordenação
             if (currentSort.column === column) {
                 currentSort.ascending = !currentSort.ascending;
             } else {
@@ -577,12 +424,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 currentSort.ascending = true;
             }
 
-            // Ordenar as linhas (ajustado para +1 por causa da coluna de marcação)
             rows.sort((a, b) => {
                 let aValue = a.cells[column + 1].dataset.sort || a.cells[column + 1].textContent.trim();
                 let bValue = b.cells[column + 1].dataset.sort || b.cells[column + 1].textContent.trim();
 
-                // Tentar converter para número
                 if (!isNaN(aValue) && !isNaN(bValue)) {
                     aValue = parseFloat(aValue);
                     bValue = parseFloat(bValue);
@@ -593,7 +438,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return 0;
             });
 
-            // Atualizar ícones
             document.querySelectorAll('.sort-icon i').forEach(icon => {
                 icon.className = 'fas fa-sort';
             });
@@ -601,12 +445,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const icon = this.querySelector('.sort-icon i');
             icon.className = currentSort.ascending ? 'fas fa-sort-up' : 'fas fa-sort-down';
 
-            // Reordenar linhas na tabela
             rows.forEach(row => tbody.appendChild(row));
         });
     });
 
-    // Calcular totais ao carregar a página
     calcularTotais();
 });
 </script>
