@@ -499,6 +499,58 @@
         </div>
     </div>
 
+    <!-- ================== PAINEL DATA LIMITE ================== -->
+    <div class="card co-section-card mb-4"
+         style="border-left: 4px solid #4e73df;">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <h6 class="mb-1">
+                        <i class="fas fa-flag-checkered me-2 text-primary"></i>
+                        Data Limite (até quando capturar)
+                    </h6>
+                    <p class="text-muted small mb-2">
+                        Define até qual mês/ano o bot deve construir a série de
+                        contratos DI1. <strong>Obrigatório</strong> antes de
+                        capturar dados B3. Você só precisa alterar esse valor
+                        de vez em quando.
+                    </p>
+                    {% if ano_mes_limite %}
+                        <div>
+                            <span class="badge bg-primary" style="font-size: 0.85rem;">
+                                <i class="fas fa-check-circle me-1"></i>
+                                Limite atual:
+                                {{ ano_mes_limite|string }}
+                                ({{ ano_mes_limite // 100 }}/{{ '%02d'|format(ano_mes_limite % 100) }})
+                            </span>
+                        </div>
+                    {% else %}
+                        <div>
+                            <span class="badge bg-warning text-dark" style="font-size: 0.85rem;">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Não configurado — o bot ficará bloqueado
+                            </span>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <div class="input-group" style="max-width: 320px; margin-left: auto;">
+                        <input type="month"
+                               id="inputAnoMesLimite"
+                               class="form-control"
+                               value="{% if ano_mes_limite %}{{ ano_mes_limite // 100 }}-{{ '%02d'|format(ano_mes_limite % 100) }}{% endif %}">
+                        <button id="btnSalvarLimite"
+                                type="button"
+                                class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Salvar
+                        </button>
+                    </div>
+                    <div id="limiteFeedback" class="small mt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% if media_pregao and media_pregao.MEDIA_MENSAL is not none %}
     <div class="row g-3 mb-3">
         <div class="col-md-6">
@@ -1097,6 +1149,73 @@ if (btnSelic) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 btnSelic.click();
+            }
+        });
+    }
+}
+
+// =========================================================================
+// SALVAR ANO_MES_LIMITE (Data Limite)
+// =========================================================================
+const btnLimite = document.getElementById('btnSalvarLimite');
+if (btnLimite) {
+    btnLimite.addEventListener('click', function () {
+        const input = document.getElementById('inputAnoMesLimite');
+        const feedback = document.getElementById('limiteFeedback');
+        const valor = input.value.trim();
+
+        if (!valor) {
+            feedback.innerHTML =
+                '<span class="text-danger"><i class="fas fa-times-circle me-1"></i>' +
+                'Informe a data limite.</span>';
+            return;
+        }
+
+        btnLimite.disabled = true;
+        const htmlOriginal = btnLimite.innerHTML;
+        btnLimite.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
+        feedback.innerHTML = '';
+
+        fetch("{{ url_for('custo_oportunidade.salvar_ano_mes_limite') }}", {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({ano_mes_limite: valor})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnLimite.disabled = false;
+            btnLimite.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML =
+                    '<span class="text-success">' +
+                    '<i class="fas fa-check-circle me-1"></i>' +
+                    data.message + '</span>';
+                setTimeout(() => location.reload(), 800);
+            } else {
+                feedback.innerHTML =
+                    '<span class="text-danger">' +
+                    '<i class="fas fa-times-circle me-1"></i>' +
+                    (data.message || 'erro desconhecido') + '</span>';
+            }
+        })
+        .catch(err => {
+            btnLimite.disabled = false;
+            btnLimite.innerHTML = htmlOriginal;
+            feedback.innerHTML =
+                '<span class="text-danger">' +
+                '<i class="fas fa-times-circle me-1"></i>' +
+                'Erro de conexão: ' + err + '</span>';
+        });
+    });
+
+    // Permite salvar com Enter
+    const inputLimite = document.getElementById('inputAnoMesLimite');
+    if (inputLimite) {
+        inputLimite.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnLimite.click();
             }
         });
     }

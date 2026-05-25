@@ -49,6 +49,7 @@ def create_app():
         from app.models.mes_instrumento import MesInstrumento
         from app.models.custo_oportunidade_media import CustoOportunidadeMedia
         from app.models.selic import Selic
+        from app.models.config_custo_oportunidade import ConfigCustoOportunidade
 
         db.create_all()
 

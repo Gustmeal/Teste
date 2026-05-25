@@ -72,7 +72,8 @@ def index():
         renderizar "(Marcado)" ao lado quando REUNIAO=True.
     """
     from app.models.custo_oportunidade_media import CustoOportunidadeMedia
-
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+    ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
     db.session.expire_all()
 
     # 1. Parse do filtro
@@ -141,6 +142,7 @@ def index():
         pregoes_distintos=pregoes_distintos,
         media_pregao=media_pregao,
         historico_medias=historico_medias,
+        ano_mes_limite=ano_mes_limite_int,  # int ou None
     ))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
@@ -430,13 +432,22 @@ def _baixar_csv_b3():
 # =========================================================================
 def _processar_csv(caminho_csv, dt_atualizacao):
     """
-    Lê CSV → mapeia DI1 → constrói série mensal completa de 105 meses
-    a partir de (DT_ATUALIZACAO + 1 mês) → interpola vazios → insere.
+    Lê CSV → filtra DI1 → constrói série mensal contínua até ANO_MES_LIMITE
+    configurado pelo usuário → interpola vazios → insere no banco.
+
+    Início da série: DT_ATUALIZACAO + 1 mês
+    Fim da série:    ANO_MES_LIMITE (lido de FIN_TB006_CONFIG)
+
+    Diferente da versão antiga (que fixava 105 meses), agora a quantidade
+    de meses na série DIMINUI naturalmente conforme o tempo avança em
+    direção à data limite.
 
     Retorna (inseridos, ignorados, interpolados, virtuais).
+    Lança Exception se ANO_MES_LIMITE não estiver configurado.
     """
     import pandas as pd
     from app.models.mes_instrumento import MesInstrumento
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
 
     # 1. Ler CSV
     df = None
@@ -449,12 +460,8 @@ def _processar_csv(caminho_csv, dt_atualizacao):
     for cfg in tentativas:
         try:
             df_tmp = pd.read_csv(
-                caminho_csv,
-                dtype=str,
-                skiprows=[0, 1],
-                engine='python',
-                on_bad_lines='skip',
-                **cfg
+                caminho_csv, dtype=str, skiprows=[0, 1],
+                engine='python', on_bad_lines='skip', **cfg
             )
             if 'Instrumento financeiro' in df_tmp.columns:
                 df = df_tmp
@@ -466,24 +473,54 @@ def _processar_csv(caminho_csv, dt_atualizacao):
 
     if df is None:
         raise Exception(f'Não foi possível ler o CSV. Último erro: {ultimo_erro}')
-
     if 'Preço médio' not in df.columns:
         raise Exception(
             "Coluna 'Preço médio' não encontrada. "
             f"Colunas: {list(df.columns)}"
         )
 
-    # 2. Mapas de meses (letra→número e número→letra)
-    mapa_letra_para_nr = MesInstrumento.carregar_mapa()
-    mapa_nr_para_letra = MesInstrumento.carregar_mapa_invertido()
-
-    if not mapa_letra_para_nr or not mapa_nr_para_letra:
+    # 2. Carregar ANO_MES_LIMITE da configuração
+    ano_mes_limite = ConfigCustoOportunidade.obter_ano_mes_limite()
+    if ano_mes_limite is None:
         raise Exception(
-            'Tabela BDG.FIN_TB002_MESES_INSTRUMENTO está vazia ou incompleta.'
+            'A Data Limite não está configurada. Configure no campo '
+            '"Data Limite (até quando capturar)" antes de capturar dados.'
         )
 
-    # 3. Indexar contratos DI1 do CSV por ANO_MES (int YYYYMM)
-    # ano_mes_int → {'inst': 'DI1K26', 'preco': Decimal('14.62') ou None}
+    # 3. Calcular janela da série
+    # Início = DT_ATUALIZACAO + 1 mês
+    ano_mes_inicio = _somar_meses_em_ano_mes(
+        dt_atualizacao.year * 100 + dt_atualizacao.month,
+        1
+    )
+
+    if ano_mes_inicio > ano_mes_limite:
+        raise Exception(
+            f'A Data Limite ({ano_mes_limite}) já passou em relação ao '
+            f'pregão atual (que precisaria começar em {ano_mes_inicio}). '
+            f'Atualize a Data Limite para uma data futura.'
+        )
+
+    # Quantidade de meses = (limite - inicio) + 1 (inclusivo)
+    # Usa a mesma aritmética de _somar_meses_em_ano_mes (mês zero-based)
+    ano_i, mes_i = ano_mes_inicio // 100, ano_mes_inicio % 100
+    ano_f, mes_f = ano_mes_limite // 100, ano_mes_limite % 100
+    qtd_meses = (ano_f * 12 + (mes_f - 1)) - (ano_i * 12 + (mes_i - 1)) + 1
+
+    print(f'[CustoOportunidade] Série dinâmica: {ano_mes_inicio} até '
+          f'{ano_mes_limite} = {qtd_meses} mês(es)')
+
+    # 4. Carregar mapas de meses
+    registros_meses = MesInstrumento.query.all()
+    mapa_nr_para_letra = {
+        int(r.NR_MES): (r.COD_MES or '').strip().upper()
+        for r in registros_meses
+        if r.COD_MES and r.NR_MES
+    }
+    if not mapa_nr_para_letra:
+        raise Exception('Tabela BDG.FIN_TB002_MESES_INSTRUMENTO incompleta.')
+
+    # 5. Indexar contratos DI1 do CSV por ANO_MES (int)
     df = df[df['Instrumento financeiro'].notna()]
     df['Instrumento financeiro'] = df['Instrumento financeiro'].astype(str).str.strip()
     di1 = df[df['Instrumento financeiro'].str.startswith('DI1', na=False)]
@@ -501,56 +538,37 @@ def _processar_csv(caminho_csv, dt_atualizacao):
 
     print(f'[CustoOportunidade] Contratos DI1 no CSV: {len(contratos_csv)}')
 
-    # 4. Definir mês inicial e final da série de 105 meses
-    # Início = DT_ATUALIZACAO + 1 mês
-    ano_mes_inicio = _somar_meses_em_ano_mes(
-        dt_atualizacao.year * 100 + dt_atualizacao.month,
-        1
-    )
-    # Final = início + (HORIZONTE_MESES - 1) → total de 105 meses inclusive
-    ano_mes_fim = _somar_meses_em_ano_mes(ano_mes_inicio, HORIZONTE_MESES - 1)
-
-    print(f'[CustoOportunidade] Série de {HORIZONTE_MESES} meses: '
-          f'{ano_mes_inicio} até {ano_mes_fim}')
-
-    # 5. Construir série completa: 105 entradas consecutivas
-    # Cada entrada: {'ano_mes_int': N, 'inst': str, 'preco': Decimal|None,
-    #                'virtual': bool}
+    # 6. Construir série completa (qtd_meses linhas, dinâmico)
     serie = []
     cursor = ano_mes_inicio
-    for _ in range(HORIZONTE_MESES):
+    for _ in range(qtd_meses):
         if cursor in contratos_csv:
-            # Mês existe no CSV — usa dados reais
             real = contratos_csv[cursor]
             serie.append({
                 'ano_mes_int': cursor,
                 'inst': real['inst'],
-                'preco': real['preco'],   # pode ser None se '-' no CSV
+                'preco': real['preco'],
                 'virtual': False,
             })
         else:
-            # Mês ausente no CSV — cria contrato virtual
             inst_virtual = _construir_inst_virtual(cursor, mapa_nr_para_letra)
             serie.append({
                 'ano_mes_int': cursor,
                 'inst': inst_virtual,
-                'preco': None,            # será interpolado
+                'preco': None,
                 'virtual': True,
             })
-        # Próximo mês
         cursor = _somar_meses_em_ano_mes(cursor, 1)
 
-    qtd_virtuais_iniciais = sum(1 for s in serie if s['virtual'])
-    qtd_vazios_iniciais = sum(1 for s in serie if s['preco'] is None)
+    qtd_virtuais = sum(1 for s in serie if s['virtual'])
+    qtd_vazios = sum(1 for s in serie if s['preco'] is None)
     print(f'[CustoOportunidade] Série montada: {len(serie)} linhas, '
-          f'{qtd_virtuais_iniciais} virtual(is), '
-          f'{qtd_vazios_iniciais} sem preço (a interpolar)')
+          f'{qtd_virtuais} virtual(is), {qtd_vazios} sem preço')
 
-    # 6. Adaptar série pra estrutura esperada por _interpolar_precos
-    # (que espera lista de dicts com 'inst' e 'preco')
+    # 7. Interpolar
     interpolados = _interpolar_precos(serie)
 
-    # 7. Inserir no banco
+    # 8. Inserir
     dt_carga = datetime.now().date()
     inseridos = 0
     ignorados = 0
@@ -558,23 +576,17 @@ def _processar_csv(caminho_csv, dt_atualizacao):
 
     for entry in serie:
         if entry['preco'] is None:
-            # Caso extremo: nem real nem interpolável (CSV vazio ou
-            # com 1 só preço). Não conseguimos calcular — ignora.
-            print(f'[CustoOportunidade] Sem preço final pra '
-                  f'{entry["inst"]} - ignorado')
             ignorados += 1
             continue
 
         ano_mes_int = entry['ano_mes_int']
         ano_mes_str = f'{ano_mes_int:06d}'
-        # COD_MES_ANO = sufixo após "DI1" (ex: 'K26')
         cod_mes_ano = entry['inst'][3:] if len(entry['inst']) > 3 else None
 
         ja_existe = CustoOportunidade.query.filter_by(
             DT_ATUALIZACAO=dt_atualizacao,
             INST_FINANC=entry['inst']
         ).first()
-
         if ja_existe:
             ignorados += 1
             continue
@@ -594,8 +606,9 @@ def _processar_csv(caminho_csv, dt_atualizacao):
             virtuais_inseridos += 1
 
     db.session.commit()
-    print(f'[CustoOportunidade] Inseridos: {inseridos} (sendo {virtuais_inseridos} '
-          f'virtuais), Ignorados: {ignorados}, Interpolados: {interpolados}')
+    print(f'[CustoOportunidade] Inseridos: {inseridos} '
+          f'({virtuais_inseridos} virtuais), Ignorados: {ignorados}, '
+          f'Interpolados: {interpolados}')
 
     return inseridos, ignorados, interpolados, virtuais_inseridos
 
@@ -661,43 +674,29 @@ def _recalcular_taxa_media(dt_atualizacao):
 # =========================================================================
 def _aplicar_horizonte_meses_global():
     """
-    Limpa contratos da tabela inteira que estejam além do horizonte de
-    105 meses calculado individualmente para cada pregão (= primeiro
-    ANO_MES daquele pregão + 104 meses).
+    Limpa contratos da tabela inteira cujo ANO_MES esteja além do
+    ANO_MES_LIMITE configurado em FIN_TB006_CONFIG_CUSTO_OPORTUNIDADE.
 
-    Idempotente: rodar várias vezes não muda o resultado depois de limpo.
+    Diferente da versão antiga (que calculava limite por pregão usando
+    ANO_MES_MIN + 104), agora todos os pregões compartilham o mesmo
+    limite global definido pelo usuário.
+
+    Retorna a quantidade total de linhas excluídas.
+    Retorna 0 se ANO_MES_LIMITE não estiver configurado (não bloqueia).
     """
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+
+    limite = ConfigCustoOportunidade.obter_ano_mes_limite()
+    if limite is None:
+        return 0
+
     sql = text("""
-        ;WITH MinPorPregao AS (
-            SELECT
-                DT_ATUALIZACAO,
-                MIN(CAST(ANO_MES AS INT)) AS ANO_MES_MIN
-            FROM [BDG].[FIN_TB001_CUSTO_OPORTUNIDADE]
-            WHERE ANO_MES IS NOT NULL
-              AND LEN(ANO_MES) = 6
-            GROUP BY DT_ATUALIZACAO
-        ),
-        LimitePorPregao AS (
-            SELECT
-                DT_ATUALIZACAO,
-                ANO_MES_MIN,
-                /* total_meses_zero_based + (HORIZONTE - 1) */
-                ((ANO_MES_MIN / 100) * 12 + (ANO_MES_MIN % 100 - 1) + 104) AS TOTAL_NOVO
-            FROM MinPorPregao
-        ),
-        LimiteFinal AS (
-            SELECT
-                DT_ATUALIZACAO,
-                ((TOTAL_NOVO / 12) * 100 + (TOTAL_NOVO % 12 + 1)) AS LIMITE_ANO_MES
-            FROM LimitePorPregao
-        )
-        DELETE CO
-        FROM [BDG].[FIN_TB001_CUSTO_OPORTUNIDADE] CO
-        INNER JOIN LimiteFinal LF
-            ON CO.DT_ATUALIZACAO = LF.DT_ATUALIZACAO
-        WHERE CAST(CO.ANO_MES AS INT) > LF.LIMITE_ANO_MES;
+        DELETE FROM [BDG].[FIN_TB001_CUSTO_OPORTUNIDADE]
+        WHERE ANO_MES IS NOT NULL
+          AND LEN(ANO_MES) = 6
+          AND CAST(ANO_MES AS INT) > :limite;
     """)
-    result = db.session.execute(sql)
+    result = db.session.execute(sql, {'limite': limite})
     db.session.commit()
     return result.rowcount or 0
 
@@ -1540,3 +1539,81 @@ def _processar_excel_manual(caminho_arquivo, dt_atualizacao):
     db.session.commit()
 
     return inseridos, ignorados, interpolados, virtuais_inseridos
+# =========================================================================
+# SALVAR ANO_MES_LIMITE (Data Limite até quando capturar)
+# =========================================================================
+@custo_oportunidade_bp.route('/salvar-ano-mes-limite', methods=['POST'])
+@login_required
+def salvar_ano_mes_limite():
+    """
+    Salva o ANO_MES_LIMITE em FIN_TB006_CONFIG_CUSTO_OPORTUNIDADE.
+
+    Recebe (JSON):
+      ano_mes_limite : 'YYYY-MM' (vindo do <input type="month">)
+                       Ex: '2035-01'
+    """
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+
+    try:
+        dados = request.get_json(silent=True) or request.form
+        valor_str = (dados.get('ano_mes_limite') or '').strip()
+
+        if not valor_str:
+            return jsonify({
+                'success': False,
+                'message': 'Informe a data limite.'
+            }), 400
+
+        # Formato esperado do <input type="month">: 'YYYY-MM' (ex: '2035-01')
+        try:
+            partes = valor_str.split('-')
+            if len(partes) != 2:
+                raise ValueError('formato inválido')
+            ano = int(partes[0])
+            mes = int(partes[1])
+            if ano < 2000 or ano > 2099:
+                raise ValueError('ano fora do intervalo')
+            if mes < 1 or mes > 12:
+                raise ValueError('mês fora do intervalo')
+        except (ValueError, AttributeError, IndexError):
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Data limite inválida: "{valor_str}". '
+                    f'Use formato AAAA-MM (ex: 2035-01).'
+                )
+            }), 400
+
+        ano_mes_int = ano * 100 + mes
+        valor_anterior = ConfigCustoOportunidade.obter_ano_mes_limite()
+
+        ConfigCustoOportunidade.salvar_ano_mes_limite(ano_mes_int)
+
+        # Auditoria
+        registrar_log(
+            acao='editar',
+            entidade='config_custo_oportunidade',
+            entidade_id='ANO_MES_LIMITE',
+            descricao=(
+                f'Atualização do ANO_MES_LIMITE em FIN_TB006: '
+                f'{valor_anterior} → {ano_mes_int}'
+            ),
+            dados_antigos={'ANO_MES_LIMITE': valor_anterior},
+            dados_novos={'ANO_MES_LIMITE': ano_mes_int}
+        )
+
+        return jsonify({
+            'success': True,
+            'ano_mes_limite': ano_mes_int,
+            'message': (
+                f'Data Limite atualizada para {mes:02d}/{ano} '
+                f'({ano_mes_int}).'
+            )
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao salvar Data Limite: {str(e)}'
+        }), 500
