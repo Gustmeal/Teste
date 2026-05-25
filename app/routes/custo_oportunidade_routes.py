@@ -1341,3 +1341,202 @@ def _to_decimal_4(valor):
         )
     except (InvalidOperation, ValueError):
         return None
+
+@custo_oportunidade_bp.route('/upload-excel-manual', methods=['POST'])
+@login_required
+def upload_excel_manual():
+    try:
+        if 'arquivo' not in request.files:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum arquivo foi enviado.'
+            }), 400
+
+        arquivo = request.files['arquivo']
+        dt_str = (request.form.get('dt_atualizacao') or '').strip()
+
+        if not arquivo or not arquivo.filename:
+            return jsonify({
+                'success': False,
+                'message': 'Selecione um arquivo CSV.'
+            }), 400
+
+        if not dt_str:
+            return jsonify({
+                'success': False,
+                'message': 'Informe a data de atualização.'
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': 'Data inválida. Use o formato YYYY-MM-DD.'
+            }), 400
+
+        if not arquivo.filename.lower().endswith('.csv'):
+            return jsonify({
+                'success': False,
+                'message': 'Arquivo inválido. Envie um arquivo CSV .csv.'
+            }), 400
+
+        caminho_tmp = os.path.join(
+            tempfile.gettempdir(),
+            f'custo_oportunidade_manual_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{arquivo.filename}'
+        )
+        arquivo.save(caminho_tmp)
+
+        # REUTILIZA EXATAMENTE A MESMA LÓGICA DO BOT
+        inseridos, ignorados, interpolados, virtuais = _processar_csv(
+            caminho_tmp,
+            dt_atualizacao
+        )
+
+        linhas_taxa_atualizadas = _recalcular_taxa_media(dt_atualizacao)
+        linhas_mensal = _calcular_taxa_media_mensal(dt_atualizacao)
+        media_mensal_pregao = _calcular_e_salvar_media_mensal_pregao(dt_atualizacao)
+        linhas_excluidas = _aplicar_horizonte_meses_global()
+
+        registrar_log(
+            acao='carga',
+            entidade='custo_oportunidade_manual',
+            entidade_id=None,
+            descricao=f'Upload manual de Custo de Oportunidade - DT_ATUALIZACAO: {dt_atualizacao.strftime("%d/%m/%Y")}',
+            dados_novos={
+                'arquivo': arquivo.filename,
+                'registros_inseridos': inseridos,
+                'registros_virtuais': virtuais,
+                'registros_ignorados': ignorados,
+                'registros_interpolados': interpolados,
+                'taxa_media_atualizadas': linhas_taxa_atualizadas,
+                'taxa_media_mensal_calculadas': linhas_mensal,
+                'media_mensal_pregao': str(media_mensal_pregao) if media_mensal_pregao is not None else None,
+                'linhas_excluidas_horizonte': linhas_excluidas,
+                'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d')
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Upload manual realizado com sucesso! '
+                f'{inseridos} linha(s) inseridas, {interpolados} interpoladas.'
+            )
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro no upload manual: {str(e)}'
+        }), 500
+
+    finally:
+        try:
+            if 'caminho_tmp' in locals() and os.path.exists(caminho_tmp):
+                os.remove(caminho_tmp)
+        except Exception:
+            pass
+
+
+def _processar_excel_manual(caminho_arquivo, dt_atualizacao):
+    import pandas as pd
+    from app.models.mes_instrumento import MesInstrumento
+
+    df = pd.read_csv(caminho_arquivo)
+
+    # Ajuste aqui conforme o layout do seu Excel
+    colunas_esperadas = ['Instrumento financeiro', 'Preço médio']
+    for col in colunas_esperadas:
+        if col not in df.columns:
+            raise Exception(f'Coluna obrigatória não encontrada: {col}')
+
+    mapa_nr_para_letra = MesInstrumento.carregar_mapa_invertido()
+    if not mapa_nr_para_letra:
+        raise Exception('Mapa de meses não encontrado.')
+
+    df = df[df['Instrumento financeiro'].notna()]
+    df['Instrumento financeiro'] = df['Instrumento financeiro'].astype(str).str.strip()
+    di1 = df[df['Instrumento financeiro'].str.startswith('DI1', na=False)]
+
+    contratos_csv = {}
+    for _, row in di1.iterrows():
+        inst = str(row['Instrumento financeiro']).strip()
+        ordinal = _vencto_para_ordinal(inst)
+        if ordinal is None:
+            continue
+        contratos_csv[ordinal] = {
+            'inst': inst,
+            'preco': _converter_preco_br(row['Preço médio']),
+        }
+
+    ano_mes_inicio = _somar_meses_em_ano_mes(
+        dt_atualizacao.year * 100 + dt_atualizacao.month,
+        1
+    )
+    ano_mes_fim = _somar_meses_em_ano_mes(ano_mes_inicio, HORIZONTE_MESES - 1)
+
+    serie = []
+    cursor = ano_mes_inicio
+    for _ in range(HORIZONTE_MESES):
+        if cursor in contratos_csv:
+            real = contratos_csv[cursor]
+            serie.append({
+                'ano_mes_int': cursor,
+                'inst': real['inst'],
+                'preco': real['preco'],
+                'virtual': False,
+            })
+        else:
+            inst_virtual = _construir_inst_virtual(cursor, mapa_nr_para_letra)
+            serie.append({
+                'ano_mes_int': cursor,
+                'inst': inst_virtual,
+                'preco': None,
+                'virtual': True,
+            })
+        cursor = _somar_meses_em_ano_mes(cursor, 1)
+
+    interpolados = _interpolar_precos(serie)
+
+    dt_carga = datetime.now().date()
+    inseridos = 0
+    ignorados = 0
+    virtuais_inseridos = 0
+
+    for entry in serie:
+        if entry['preco'] is None:
+            ignorados += 1
+            continue
+
+        ano_mes_int = entry['ano_mes_int']
+        ano_mes_str = f'{ano_mes_int:06d}'
+        cod_mes_ano = entry['inst'][3:] if len(entry['inst']) > 3 else None
+
+        ja_existe = CustoOportunidade.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao,
+            INST_FINANC=entry['inst']
+        ).first()
+
+        if ja_existe:
+            ignorados += 1
+            continue
+
+        novo = CustoOportunidade(
+            DT_CARGA=dt_carga,
+            DT_ATUALIZACAO=dt_atualizacao,
+            INST_FINANC=entry['inst'],
+            VR_PRECO_MEDIA=entry['preco'],
+            ANO_MES=ano_mes_str,
+            COD_MES_ANO=cod_mes_ano,
+            TAXA_MEDIA=None,
+        )
+        db.session.add(novo)
+        inseridos += 1
+        if entry['virtual']:
+            virtuais_inseridos += 1
+
+    db.session.commit()
+
+    return inseridos, ignorados, interpolados, virtuais_inseridos

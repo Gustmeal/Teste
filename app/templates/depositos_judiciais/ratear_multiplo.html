@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="container fade-in">
-    <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito_original.NU_LINHA) }}" class="btn-back">
+    <a href="{{ url_for('depositos_judiciais.edicao', nu_linha=deposito_original.NU_LINHA) }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
@@ -21,7 +21,7 @@
             <li>O sistema soma automaticamente os valores e mostra quanto <strong>falta distribuir</strong></li>
             <li>Você só pode finalizar quando <strong>distribuir TODO o valor</strong> disponível</li>
             <li>O depósito original será <strong>zerado</strong> após a operação</li>
-            <li><span class="badge bg-success">NOVO!</span> Os dados preenchidos na <strong>Linha 1</strong> são copiados automaticamente para as outras linhas (exceto Nº Contrato)</li>
+            <li><span class="badge bg-success">NOVO!</span> Os dados preenchidos na <strong>Linha 1</strong> são copiados automaticamente para as outras linhas (exceto Nº Contrato e Lançamento RM)</li>
         </ul>
     </div>
 
@@ -94,6 +94,8 @@
 
 <script>
 const VALOR_ORIGINAL = {{ deposito_original.VR_RATEIO or 0 }};
+// Lançamento RM do depósito original - usado como valor inicial em cada nova linha
+const LANCAMENTO_RM_ORIGINAL = {{ deposito_original.LANCAMENTO_RM|tojson }};
 let contadorLinhas = 0;
 let linhas = [];
 
@@ -104,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Evento do botão adicionar linha
     document.getElementById('btnAdicionarLinha').addEventListener('click', adicionarLinha);
 
-    // Evento do formulário
+    // Submit do formulário
     document.getElementById('formRateioMultiplo').addEventListener('submit', function(e) {
         e.preventDefault();
 
@@ -115,6 +117,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Preparar dados para envio
         const dadosRateios = linhas.map(linha => {
             return {
+                lancamento_rm: document.getElementById(`lancamento_rm_${linha.id}`).value,
                 vr_rateio: document.getElementById(`vr_rateio_${linha.id}`).value,
                 nu_contrato: document.getElementById(`nu_contrato_${linha.id}`).value,
                 id_area: document.getElementById(`id_area_${linha.id}`).value,
@@ -149,6 +152,9 @@ function adicionarLinha() {
 
     linhas.push({ id: linhaId });
 
+    // Escapar o Lançamento RM para uso seguro no atributo value do HTML
+    const lancamentoRmInicial = LANCAMENTO_RM_ORIGINAL ? String(LANCAMENTO_RM_ORIGINAL).trim() : '';
+
     const html = `
         <div class="card shadow mb-3 linha-rateio" id="linha_${linhaId}">
             <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
@@ -159,6 +165,13 @@ function adicionarLinha() {
             </div>
             <div class="card-body">
                 <div class="row g-3">
+                    <!-- Lançamento RM (manual em cada linha) -->
+                    <div class="col-md-3">
+                        <label class="form-label">Lançamento RM <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="lancamento_rm_${linhaId}"
+                               maxlength="15" value="${lancamentoRmInicial}" placeholder="Ex: R1008202" required>
+                    </div>
+
                     <!-- Valor do Rateio -->
                     <div class="col-md-3">
                         <label class="form-label">Valor Rateio <span class="text-danger">*</span></label>
@@ -258,10 +271,9 @@ function adicionarLinha() {
 
 /**
  * Configura os event listeners na Linha 1 para copiar dados automaticamente
- * para as outras linhas (exceto Nº Contrato)
+ * para as outras linhas (exceto Nº Contrato, Valor Rateio e Lançamento RM)
  */
 function configurarCopiaDadosLinha1() {
-    // Lista de campos que serão copiados da Linha 1
     const camposParaCopiar = [
         'nr_processo',
         'id_area',
@@ -274,11 +286,9 @@ function configurarCopiaDadosLinha1() {
         'obs'
     ];
 
-    // Adicionar event listener em cada campo
     camposParaCopiar.forEach(campo => {
         const elemento = document.getElementById(`${campo}_1`);
         if (elemento) {
-            // Detectar mudanças (change para selects e datas, input para texto e números)
             elemento.addEventListener('change', () => copiarDadosLinha1ParaOutras());
             elemento.addEventListener('input', () => copiarDadosLinha1ParaOutras());
         }
@@ -287,15 +297,13 @@ function configurarCopiaDadosLinha1() {
 
 /**
  * Copia os dados da Linha 1 para todas as outras linhas
- * (exceto Valor Rateio e Nº Contrato)
+ * (exceto Valor Rateio, Nº Contrato e Lançamento RM)
  */
 function copiarDadosLinha1ParaOutras() {
-    // Se houver apenas uma linha, não precisa copiar
     if (linhas.length <= 1) {
         return;
     }
 
-    // Lista de campos que serão copiados
     const camposParaCopiar = [
         'nr_processo',
         'id_area',
@@ -308,14 +316,11 @@ function copiarDadosLinha1ParaOutras() {
         'obs'
     ];
 
-    // Copiar valores da Linha 1 para todas as outras linhas
     linhas.forEach(linha => {
-        // Pular a própria Linha 1
         if (linha.id === 1) {
             return;
         }
 
-        // Copiar cada campo
         camposParaCopiar.forEach(campo => {
             const elementoOrigem = document.getElementById(`${campo}_1`);
             const elementoDestino = document.getElementById(`${campo}_${linha.id}`);
@@ -372,11 +377,9 @@ function calcularRestante() {
     const totalRateado = calcularTotalRateado();
     const restante = VALOR_ORIGINAL - totalRateado;
 
-    // Atualizar display
     const elementoRestante = document.getElementById('valorRestante');
     elementoRestante.textContent = 'R$ ' + restante.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
-    // Mudar cor conforme o valor
     if (Math.abs(restante) < 0.01) {
         elementoRestante.className = 'fw-bold fs-5 text-success';
     } else if (restante < 0) {
@@ -385,7 +388,6 @@ function calcularRestante() {
         elementoRestante.className = 'fw-bold fs-5 text-warning';
     }
 
-    // Habilitar/desabilitar botão finalizar
     const btnFinalizar = document.getElementById('btnFinalizar');
     const msgStatus = document.getElementById('msgStatus');
 
@@ -407,8 +409,14 @@ function calcularRestante() {
 function validarRateio() {
     // Validar se todos os campos obrigatórios estão preenchidos
     for (const linha of linhas) {
+        const lancamento = document.getElementById(`lancamento_rm_${linha.id}`).value.trim();
         const valor = document.getElementById(`vr_rateio_${linha.id}`).value;
         const centro = document.getElementById(`id_centro_${linha.id}`).value;
+
+        if (!lancamento) {
+            alert(`Linha ${linha.id}: Informe o Lançamento RM!`);
+            return false;
+        }
 
         if (!valor || valor === '0,00') {
             alert(`Linha ${linha.id}: Informe um valor válido!`);

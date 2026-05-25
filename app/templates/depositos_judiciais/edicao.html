@@ -114,6 +114,61 @@
                         </select>
                         <small class="text-muted">Verifica se está preenchido ou vazio</small>
                     </div>
+
+                    <!-- NOVA LINHA 4 - Nº Processo e Data Lançamento DJ -->
+                    <div class="col-md-3">
+                        <label for="nr_processo" class="form-label">
+                            <i class="fas fa-gavel me-1"></i>Nº Processo
+                        </label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               value="{{ filtros.nr_processo }}" placeholder="Digite o número do processo">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_lancamento" class="form-label">
+                            <i class="fas fa-calendar-day me-1"></i>Data Lançamento DJ
+                        </label>
+                        <input type="date" class="form-control" id="dt_lancamento" name="dt_lancamento"
+                               value="{{ filtros.dt_lancamento }}">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="mes_lancamento" class="form-label">Mês Lançamento</label>
+                        <select class="form-select" id="mes_lancamento" name="mes_lancamento">
+                            <option value="">Todos os meses</option>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}" {% if filtros.mes_lancamento == i|string %}selected{% endif %}>
+                                {{ ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][i-1] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="ano_lancamento" class="form-label">Ano Lançamento</label>
+                        <input type="number" class="form-control" id="ano_lancamento" name="ano_lancamento"
+                               value="{{ filtros.ano_lancamento }}" placeholder="Ex: 2025">
+                    </div>
+
+                    <!-- NOVA LINHA 5 - Período de Lançamento (Início e Fim) -->
+                    <div class="col-md-3">
+                        <label for="dt_lancamento_inicio" class="form-label">
+                            <i class="fas fa-calendar-alt me-1"></i>Período Lançamento - De
+                        </label>
+                        <input type="date" class="form-control" id="dt_lancamento_inicio" name="dt_lancamento_inicio"
+                               value="{{ filtros.dt_lancamento_inicio }}">
+                        <small class="text-muted">Data inicial do período</small>
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_lancamento_fim" class="form-label">
+                            <i class="fas fa-calendar-alt me-1"></i>Período Lançamento - Até
+                        </label>
+                        <input type="date" class="form-control" id="dt_lancamento_fim" name="dt_lancamento_fim"
+                               value="{{ filtros.dt_lancamento_fim }}">
+                        <small class="text-muted">Data final do período</small>
+                    </div>
                 </div>
 
                 <hr class="my-3">
@@ -147,22 +202,29 @@
     <div class="card shadow mb-4" id="cardTotalizador">
         <div class="card-body">
             <div class="row text-center">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div>
                         <small class="text-muted d-block">Total Geral</small>
                         <span class="fs-5" id="valorTotal">R$ 0,00</span>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div>
                         <small class="text-muted d-block">Valores Positivos</small>
                         <span class="fs-5 text-success" id="totalPositivos">R$ 0,00</span>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div>
                         <small class="text-muted d-block">Valores Negativos</small>
                         <span class="fs-5 text-danger" id="totalNegativos">R$ 0,00</span>
+                    </div>
+                </div>
+                <!-- NOVA COLUNA: Total de Registros (valor vem direto do backend) -->
+                <div class="col-md-3">
+                    <div>
+                        <small class="text-muted d-block">Total de Registros</small>
+                        <span class="fs-5" id="totalRegistros">{{ depositos_lista|length }}</span>
                     </div>
                 </div>
             </div>
@@ -399,6 +461,11 @@
         font-weight: bold;
     }
 
+    #totalRegistros {
+        color: #007bff;
+        font-weight: bold;
+    }
+
     /* Marcações coloridas */
     .marcacao-linha {
         width: 20px;
@@ -448,7 +515,6 @@ document.addEventListener('DOMContentLoaded', function() {
         let totalGeral = 0;
         let totalPositivos = 0;
         let totalNegativos = 0;
-        let totalRegistros = 0;
 
         // Percorrer todas as linhas da tabela
         document.querySelectorAll('.linha-clicavel').forEach(row => {
@@ -456,7 +522,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (valorAttr) {
                 const valor = parseFloat(valorAttr.replace(',', '.'));
                 totalGeral += valor;
-                totalRegistros++;
 
                 if (valor > 0) {
                     totalPositivos += valor;

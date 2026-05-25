@@ -42,7 +42,8 @@
             <!-- Botão para marcar Em Andamento -->
             {% if not deposito.STATUS or deposito.STATUS != 'Em andamento' %}
             <div class="mb-3">
-                <button type="button" class="btn btn-warning" id="btnMarcarAndamento">
+                <button type="button" class="btn btn-warning" id="btnMarcarAndamento"
+                        data-nu-linha="{{ deposito.NU_LINHA }}">
                     <i class="fas fa-play me-2"></i>Marcar como Em Andamento
                 </button>
                 <small class="text-muted ms-2">
@@ -54,13 +55,7 @@
 
             <form method="POST" id="formEdicao" action="{{ url_for('depositos_judiciais.editar', nu_linha=deposito.NU_LINHA) }}">
                 <div class="row g-3">
-                    <!-- Primeira Linha -->
-                    <div class="col-md-3">
-                        <label for="nr_processo" class="form-label">Número do Processo</label>
-                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
-                               maxlength="100" value="{{ nr_processo or '' }}" placeholder="Ex: 1234567-89.2023.8.26.0100">
-                    </div>
-
+                    <!-- Linha 1 (ordem do Excel: Lançamento RM | Data Lançamento DJ | Valor Rateio | Memo SUFIN) -->
                     <div class="col-md-3">
                         <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
@@ -86,13 +81,13 @@
                         <small class="text-muted">Clique no botão <i class="fas fa-plus-minus"></i> para negativar</small>
                     </div>
 
-                    <!-- Segunda Linha -->
                     <div class="col-md-3">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
                                maxlength="50" value="{{ deposito.MEMO_SUFIN or '' }}" placeholder="Ex: SEI 919/2025">
                     </div>
 
+                    <!-- Linha 2 (ordem do Excel: Data Memo | Data Identificação | Área | Centro de Resultado) -->
                     <div class="col-md-3">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo"
@@ -121,7 +116,6 @@
                         </select>
                     </div>
 
-                    <!-- Terceira Linha -->
                     <div class="col-md-3">
                         <label for="id_centro" class="form-label">Centro de Resultado <span class="text-danger">*</span></label>
                         <select class="form-select" id="id_centro" name="id_centro" required>
@@ -132,12 +126,22 @@
                             </option>
                             {% endfor %}
                         </select>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> A mudança de carteira atualiza o Evento Contábil Atual abaixo
+                        </small>
                     </div>
 
+                    <!-- Linha 3 (ordem do Excel: Data Ajuste RM | Data SISCOR | Número Contrato | Número do Processo) -->
                     <div class="col-md-3">
                         <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
                         <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm"
                                value="{{ deposito.DT_AJUSTE_RM.strftime('%Y-%m-%d') if deposito.DT_AJUSTE_RM else '' }}">
+                    </div>
+
+                    <div class="col-md-3">
+                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
+                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
+                               value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
                     </div>
 
                     <div class="col-md-3">
@@ -147,17 +151,32 @@
                     </div>
 
                     <div class="col-md-3">
-                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
-                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor"
-                               value="{{ deposito.DT_SISCOR.strftime('%Y-%m-%d') if deposito.DT_SISCOR else '' }}">
+                        <label for="nr_processo" class="form-label">Número do Processo</label>
+                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
+                               maxlength="100" value="{{ nr_processo or '' }}" placeholder="Ex: 1234567-89.2023.8.26.0100">
                     </div>
 
-<!-- Quarta Linha -->
-	                    <div class="col-md-12">
-	                        <label for="obs" class="form-label">Observação</label>
-	                        <input type="text" class="form-control" id="obs" name="obs"
-	                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Observações adicionais">
-	                    </div>
+                    <!-- Linha 4 (ordem do Excel: Evento Contábil Anterior | Evento Contábil Atual) -->
+                    <!-- Campos somente para visualização - valores gravados no backend automaticamente -->
+
+                    <div class="col-md-6">
+                        <label for="evento_contabil_atual_display" class="form-label">
+                            Evento Contábil Atual
+                            <i class="fas fa-lock text-muted ms-1" title="Atualizado automaticamente quando o Centro de Resultado muda"></i>
+                        </label>
+                        <input type="text" class="form-control bg-light" id="evento_contabil_atual_display"
+                               value="" readonly>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> Atualizado conforme o Centro de Resultado selecionado
+                        </small>
+                    </div>
+
+                    <!-- Linha 5 (ordem do Excel: Observação) -->
+                    <div class="col-md-12">
+                        <label for="obs" class="form-label">Observação</label>
+                        <input type="text" class="form-control" id="obs" name="obs"
+                               maxlength="70" value="{{ deposito.OBS or '' }}" placeholder="Observações adicionais">
+                    </div>
                 </div>
 
                 <hr class="my-4">
@@ -165,13 +184,9 @@
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <!-- BOTÕES DE RATEIO -->
-                        <a href="{{ url_for('depositos_judiciais.ratear', nu_linha=deposito.NU_LINHA) }}"
-                           class="btn btn-warning">
-                            <i class="fas fa-share-alt me-2"></i>Ratear Valor
-                        </a>
                         <a href="{{ url_for('depositos_judiciais.ratear_multiplo', nu_linha=deposito.NU_LINHA) }}"
                            class="btn btn-info ms-2">
-                            <i class="fas fa-layer-group me-2"></i>Ratear Múltiplos
+                            <i class="fas fa-layer-group me-2"></i>Ratear Valor
                         </a>
                     </div>
                     <div>
@@ -236,10 +251,92 @@
     .money {
         text-align: right;
     }
+
+    /* Estilo para campos travados (eventos contábeis) */
+    #evento_contabil_anterior_display,
+    #evento_contabil_atual_display {
+        cursor: not-allowed;
+        font-weight: 600;
+    }
 </style>
 
 <script>
+// Mapeamento dos eventos contábeis por ID_CENTRO (vindo do backend)
+const EVENTOS_POR_CENTRO = {{ eventos_por_centro|tojson }};
+
 document.addEventListener('DOMContentLoaded', function() {
+
+    // =========================================================
+    // BOTÃO "MARCAR COMO EM ANDAMENTO" - handler que faltava
+    // =========================================================
+    const btnAndamento = document.getElementById('btnMarcarAndamento');
+    if (btnAndamento) {
+        btnAndamento.addEventListener('click', function() {
+            const nuLinha = this.dataset.nuLinha;
+            const btn = this;
+            const htmlOriginal = btn.innerHTML;
+
+            // Desabilitar enquanto processa
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Marcando...';
+
+            fetch(`/depositos-judiciais/api/marcar-em-andamento/${nuLinha}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Silent-Request': 'true'
+                }
+            })
+            .then(response => response.json().then(data => ({status: response.status, data: data})))
+            .then(({status, data}) => {
+                if (data.success) {
+                    // Sucesso - recarregar página para mostrar status atualizado
+                    location.reload();
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlOriginal;
+
+                    if (status === 409) {
+                        // Já está sendo editado por outra área
+                        document.getElementById('modalArea').textContent = data.area || 'Outra área';
+                        const modal = new bootstrap.Modal(document.getElementById('modalEmAndamento'));
+                        modal.show();
+                    } else {
+                        alert('Erro ao marcar como em andamento: ' + (data.message || 'Erro desconhecido'));
+                    }
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = htmlOriginal;
+                alert('Erro de conexão: ' + err.message);
+            });
+        });
+    }
+
+    // =========================================================
+    // ATUALIZAÇÃO DINÂMICA DO EVENTO CONTÁBIL ATUAL
+    // =========================================================
+    // Sempre que o usuário mudar o Centro de Resultado, o campo
+    // "Evento Contábil Atual" é atualizado automaticamente.
+    function atualizarEventoContabilAtual() {
+        const idCentro = document.getElementById('id_centro').value;
+        const displayEvento = document.getElementById('evento_contabil_atual_display');
+
+        if (idCentro && EVENTOS_POR_CENTRO[idCentro]) {
+            const evento = EVENTOS_POR_CENTRO[idCentro];
+            displayEvento.value = evento.codigo + ' - ' + evento.descricao;
+        } else {
+            displayEvento.value = '';
+        }
+    }
+
+    const selectCentro = document.getElementById('id_centro');
+    if (selectCentro) {
+        selectCentro.addEventListener('change', atualizarEventoContabilAtual);
+        // Disparar no carregamento da página para preencher o display inicial
+        atualizarEventoContabilAtual();
+    }
 
     // =========================================================
     // FUNÇÃO: Calcular último dia do mês de uma data
@@ -250,10 +347,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // =========================================================
     // FUNÇÃO: Calcular o 5º dia útil de um mês/ano
-    // Considera apenas sábado(6) e domingo(0) como não úteis
     // =========================================================
     function quintosDiaUtil(ano, mes) {
-        // mes aqui é 0-indexed
         let diasUteis = 0;
         let dia = 1;
         while (diasUteis < 5) {
@@ -276,9 +371,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const val = this.value;
             if (!val) return;
 
-            const partes = val.split('-'); // yyyy-mm-dd
+            const partes = val.split('-');
             const ano = parseInt(partes[0]);
-            const mes = parseInt(partes[1]) - 1; // 0-indexed
+            const mes = parseInt(partes[1]) - 1;
             const dia = parseInt(partes[2]);
 
             const ultimo = ultimoDiaDoMes(new Date(ano, mes, 1));
@@ -291,7 +386,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     String(ultimo).padStart(2, '0') + '/' +
                     String(mes + 1).padStart(2, '0') + '/' + ano
                 );
-                this.value = ''; // Limpa o campo
+                this.value = '';
             }
         });
     }
@@ -359,7 +454,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (dtAjuste && dtAjuste.value) {
                 const partesAjuste = dtAjuste.value.split('-');
                 const anoAjuste = parseInt(partesAjuste[0]);
-                const mesAjuste = parseInt(partesAjuste[1]) - 1; // 0-indexed
+                const mesAjuste = parseInt(partesAjuste[1]) - 1;
                 const diaAjuste = parseInt(partesAjuste[2]);
 
                 const dataAjuste = new Date(anoAjuste, mesAjuste, diaAjuste);
@@ -375,7 +470,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         'Clique em "OK" para salvar ou "Cancelar" para corrigir a data.'
                     );
                     if (!continuar) {
-                        return; // Usuário optou por corrigir
+                        return;
                     }
                 }
             }

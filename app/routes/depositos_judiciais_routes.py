@@ -35,31 +35,86 @@ def index():
 @depositos_judiciais_bp.route('/inclusao', methods=['GET', 'POST'])
 @login_required
 def inclusao():
-    """Página de inclusão de novos depósitos"""
+    """
+    Página de inclusão de novos depósitos judiciais.
+
+    LÓGICA:
+    - A inclusão é SEMPRE feita na carteira "Institucional" (não pode ser alterada).
+    - Campos não exibidos no formulário (Data Identificação, Data Ajuste RM,
+      Data SISCOR, Número Contrato, Número do Processo) ficam NULL no banco.
+    - Antes de salvar, valida se já existe outro depósito com o mesmo Lançamento RM.
+    - EVENTO_CONTABIL_ANTERIOR e EVENTO_CONTABIL_ATUAL ficam fixos em 22607
+      (código contábil da carteira Institucional / Pendência de Depósito Judicial).
+      Esses valores são mostrados na tela (readonly) e gravados no banco.
+    """
+
+    # Constantes dos eventos contábeis da carteira Institucional
+    # (passadas ao template para exibição readonly e usadas no INSERT)
+    EVENTO_INSTITUCIONAL_CODIGO = 22607
+    EVENTO_INSTITUCIONAL_DESCRICAO = 'PENDÊNCIA DE DEPÓSITO JUDICIAL'
+
+    # Buscar a carteira "Institucional" do banco (não usar ID fixo no front)
+    centro_institucional = CentroResultado.query.filter(
+        CentroResultado.NO_CARTEIRA == 'Institucional'
+    ).first()
+
+    if not centro_institucional:
+        flash('Carteira "Institucional" não encontrada no cadastro. '
+              'Contate o administrador do sistema.', 'danger')
+        return redirect(url_for('depositos_judiciais.index'))
+
     if request.method == 'POST':
         try:
-            # Buscar o próximo NU_LINHA (verifica ambas as tabelas)
+            # ============================================
+            # VALIDAÇÃO 1: Lançamento RM obrigatório
+            # ============================================
+            lancamento_rm = (request.form.get('lancamento_rm') or '').strip()
+            if not lancamento_rm:
+                flash('O campo Lançamento RM é obrigatório.', 'danger')
+                return redirect(url_for('depositos_judiciais.inclusao'))
+
+            # ============================================
+            # VALIDAÇÃO 2: Lançamento RM duplicado
+            # ============================================
+            # Verifica se já existe depósito com o mesmo Lançamento RM
+            # (sem constraint no banco, apenas validação aplicativo)
+            existente = DepositosSufin.query.filter(
+                func.rtrim(DepositosSufin.LANCAMENTO_RM) == lancamento_rm
+            ).first()
+
+            if existente:
+                flash(
+                    f'Depósito não incluído: já existe um registro com o Lançamento RM '
+                    f'"{lancamento_rm}" (Nº Linha: {existente.NU_LINHA}).',
+                    'warning'
+                )
+                return redirect(url_for('depositos_judiciais.inclusao'))
+
+            # ============================================
+            # CRIAÇÃO DO NOVO DEPÓSITO
+            # ============================================
             proximo_nu_linha = obter_proximo_nu_linha()
 
-            # Criar novo registro
             novo_deposito = DepositosSufin()
             novo_deposito.NU_LINHA = proximo_nu_linha
-            novo_deposito.LANCAMENTO_RM = request.form.get('lancamento_rm')
-            novo_deposito.DT_LANCAMENTO_DJ = datetime.strptime(request.form.get('dt_lancamento_dj'), '%Y-%m-%d')
+            novo_deposito.LANCAMENTO_RM = lancamento_rm
 
-            # Corrigir conversão do valor rateio
-            # Corrigir conversão do valor rateio (permite valores negativos)
-            vr_rateio = request.form.get('vr_rateio')
-            # Detectar se é negativo
-            is_negativo = vr_rateio.startswith('-')
-            # Remove pontos de milhar, mantém vírgula e sinal negativo
+            # Data Lançamento DJ - OBRIGATÓRIO
+            dt_lancamento_dj = request.form.get('dt_lancamento_dj')
+            if not dt_lancamento_dj:
+                raise ValueError("Data Lançamento DJ é obrigatória")
+            novo_deposito.DT_LANCAMENTO_DJ = datetime.strptime(dt_lancamento_dj, '%Y-%m-%d')
+
+            # Valor Rateio - permite valores negativos
+            vr_rateio = request.form.get('vr_rateio') or ''
             vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
-            if vr_rateio_limpo and vr_rateio_limpo != '-':
+            if vr_rateio_limpo and vr_rateio_limpo not in ('-', ''):
                 novo_deposito.VR_RATEIO = Decimal(vr_rateio_limpo)
 
+            # Memo SUFIN (opcional)
             novo_deposito.MEMO_SUFIN = request.form.get('memo_sufin')
 
-            # Lógica para DT_MEMO e ID_IDENTIFICADO
+            # Data Memo (opcional) - se preenchida, marca como identificado
             dt_memo = request.form.get('dt_memo')
             if dt_memo:
                 novo_deposito.DT_MEMO = datetime.strptime(dt_memo, '%Y-%m-%d')
@@ -68,81 +123,35 @@ def inclusao():
                 novo_deposito.DT_MEMO = None
                 novo_deposito.ID_IDENTIFICADO = False
 
-            # DT_IDENTIFICACAO (opcional)
-            dt_identificacao = request.form.get('dt_identificacao')
-            if dt_identificacao:
-                novo_deposito.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
-
-            # ID_AREA do dropdown
-            novo_deposito.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
-
-            # ID_AREA_2 sempre NULL
-            novo_deposito.ID_AREA_2 = None
-
-            # ID_CENTRO do dropdown - OBRIGATÓRIO
-            id_centro = request.form.get('id_centro')
-            if not id_centro:
-                raise ValueError("Centro de Resultado é obrigatório")
-            novo_deposito.ID_CENTRO = int(id_centro)
-
-            # ID_AJUSTE_RM sempre 0
+            # Campos não presentes no formulário - SEMPRE NULL na inclusão
+            novo_deposito.DT_IDENTIFICACAO = None
+            novo_deposito.DT_AJUSTE_RM = None
+            novo_deposito.DT_SISCOR = None
+            novo_deposito.NU_CONTRATO = None
+            novo_deposito.NU_CONTRATO_2 = None
             novo_deposito.ID_AJUSTE_RM = False
 
-            # DT_AJUSTE_RM (opcional)
-            dt_ajuste_rm = request.form.get('dt_ajuste_rm')
-            if dt_ajuste_rm:
-                novo_deposito.DT_AJUSTE_RM = datetime.strptime(dt_ajuste_rm, '%Y-%m-%d')
+            # ID_AREA do dropdown (opcional)
+            novo_deposito.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
+            novo_deposito.ID_AREA_2 = None
 
-            # NU_CONTRATO
-            nu_contrato = request.form.get('nu_contrato')
-            if nu_contrato:
-                novo_deposito.NU_CONTRATO = int(nu_contrato)
+            # ID_CENTRO - SEMPRE Institucional (força mesmo se vier outro valor do form)
+            novo_deposito.ID_CENTRO = centro_institucional.ID_CENTRO
 
-            # NU_CONTRATO_2 sempre NULL
-            novo_deposito.NU_CONTRATO_2 = None
+            # Eventos contábeis - SEMPRE da carteira Institucional nesta tela
+            # (mesmo valor exibido na tela em readonly)
+            novo_deposito.EVENTO_CONTABIL_ANTERIOR = EVENTO_INSTITUCIONAL_CODIGO
+            novo_deposito.EVENTO_CONTABIL_ATUAL = EVENTO_INSTITUCIONAL_CODIGO
 
-            # Eventos contábeis (Preenchimento automático)
-            # EVENTO_CONTABIL_ANTERIOR sempre 22607
-            novo_deposito.EVENTO_CONTABIL_ANTERIOR = 22607
-
-            # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO
-            id_centro_int = int(id_centro) # id_centro já foi validado e convertido para int
-            mapeamento_eventos = {
-                1: 22611,
-                2: 22612,
-                3: 22610,
-                4: 22611,
-                5: 22613,
-                6: 22607,
-                7: 22710
-            }
-            novo_deposito.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_int)
-
-            # Observação
+            # Observação (opcional)
             novo_deposito.OBS = request.form.get('obs')
 
-            # IC_APROPRIADO sempre NULL
+            # Campos de controle - sempre NULL
             novo_deposito.IC_APROPRIADO = None
-
-            # DT_SISCOR (opcional)
-            dt_siscor = request.form.get('dt_siscor')
-            if dt_siscor:
-                novo_deposito.DT_SISCOR = datetime.strptime(dt_siscor, '%Y-%m-%d')
-
-            # IC_INCLUIDO_ACERTO sempre NULL
             novo_deposito.IC_INCLUIDO_ACERTO = None
 
             # Salvar no banco
             db.session.add(novo_deposito)
-
-            # Criar registro de processo judicial se informado
-            nr_processo = request.form.get('nr_processo')
-            if nr_processo and nr_processo.strip():
-                novo_processo = ProcessosJudiciais()
-                novo_processo.NU_LINHA = proximo_nu_linha
-                novo_processo.NR_PROCESSO = nr_processo.strip()
-                db.session.add(novo_processo)
-
             db.session.commit()
 
             # Registrar log
@@ -161,6 +170,11 @@ def inclusao():
                 flash('Depósito judicial incluído com sucesso! Pronto para incluir outro.', 'success')
                 return redirect(url_for('depositos_judiciais.inclusao'))
 
+        except ValueError as ve:
+            db.session.rollback()
+            flash(f'Erro de validação: {str(ve)}', 'danger')
+            return redirect(url_for('depositos_judiciais.inclusao'))
+
         except Exception as e:
             db.session.rollback()
             flash(f'Erro ao incluir depósito: {str(e)}', 'danger')
@@ -168,11 +182,12 @@ def inclusao():
 
     # GET - Buscar dados para os dropdowns
     areas = Area.query.order_by(Area.NO_AREA).all()
-    centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
 
     return render_template('depositos_judiciais/inclusao.html',
                            areas=areas,
-                           centros=centros)
+                           centro_institucional=centro_institucional,
+                           evento_contabil_codigo=EVENTO_INSTITUCIONAL_CODIGO,
+                           evento_contabil_descricao=EVENTO_INSTITUCIONAL_DESCRICAO)
 
 
 @depositos_judiciais_bp.route('/api/areas')
@@ -205,11 +220,17 @@ def edicao():
         # Capturar filtros da query string
         filtros = {
             'nu_contrato': request.args.get('nu_contrato', '').strip(),
+            'nr_processo': request.args.get('nr_processo', '').strip(),
             'id_centro': request.args.get('id_centro', ''),
             'vr_rateio': request.args.get('vr_rateio', ''),
             'dt_identificacao': request.args.get('dt_identificacao', ''),
             'mes_identificacao': request.args.get('mes_identificacao', ''),
             'ano_identificacao': request.args.get('ano_identificacao', ''),
+            'dt_lancamento': request.args.get('dt_lancamento', ''),
+            'mes_lancamento': request.args.get('mes_lancamento', ''),
+            'ano_lancamento': request.args.get('ano_lancamento', ''),
+            'dt_lancamento_inicio': request.args.get('dt_lancamento_inicio', ''),
+            'dt_lancamento_fim': request.args.get('dt_lancamento_fim', ''),
             'dt_siscor': request.args.get('dt_siscor', ''),
             'dt_siscor_status': request.args.get('dt_siscor_status', ''),
             'status': request.args.get('status', '')
@@ -235,6 +256,10 @@ def edicao():
         # Aplicar filtros
         if filtros['nu_contrato']:
             query = query.filter(DepositosSufin.NU_CONTRATO.like(f"%{filtros['nu_contrato']}%"))
+
+        # NOVO: Filtro por Nº Processo (busca parcial via JOIN com ProcessosJudiciais)
+        if filtros['nr_processo']:
+            query = query.filter(ProcessosJudiciais.NR_PROCESSO.like(f"%{filtros['nr_processo']}%"))
 
         if filtros['id_centro']:
             query = query.filter(DepositosSufin.ID_CENTRO == filtros['id_centro'])
@@ -285,6 +310,47 @@ def edicao():
             try:
                 ano = int(filtros['ano_identificacao'])
                 query = query.filter(extract('year', DepositosSufin.DT_IDENTIFICACAO) == ano)
+            except ValueError:
+                pass
+
+        # NOVO: Filtros de data de LANÇAMENTO DJ
+        # Data específica (igualdade exata)
+        if filtros['dt_lancamento']:
+            try:
+                data = datetime.strptime(filtros['dt_lancamento'], '%Y-%m-%d')
+                query = query.filter(DepositosSufin.DT_LANCAMENTO_DJ == data)
+            except ValueError:
+                pass
+
+        # Mês isolado (qualquer ano)
+        if filtros['mes_lancamento']:
+            try:
+                mes = int(filtros['mes_lancamento'])
+                query = query.filter(extract('month', DepositosSufin.DT_LANCAMENTO_DJ) == mes)
+            except ValueError:
+                pass
+
+        # Ano isolado (qualquer mês)
+        if filtros['ano_lancamento']:
+            try:
+                ano = int(filtros['ano_lancamento'])
+                query = query.filter(extract('year', DepositosSufin.DT_LANCAMENTO_DJ) == ano)
+            except ValueError:
+                pass
+
+        # Período - data inicial (>=)
+        if filtros['dt_lancamento_inicio']:
+            try:
+                data_inicio = datetime.strptime(filtros['dt_lancamento_inicio'], '%Y-%m-%d')
+                query = query.filter(DepositosSufin.DT_LANCAMENTO_DJ >= data_inicio)
+            except ValueError:
+                pass
+
+        # Período - data final (<=)
+        if filtros['dt_lancamento_fim']:
+            try:
+                data_fim = datetime.strptime(filtros['dt_lancamento_fim'], '%Y-%m-%d')
+                query = query.filter(DepositosSufin.DT_LANCAMENTO_DJ <= data_fim)
             except ValueError:
                 pass
 
@@ -478,6 +544,20 @@ def verificar_status(nu_linha):
 @login_required
 def editar(nu_linha):
     """Editar um depósito específico"""
+
+    # Mapeamento dos eventos contábeis por ID_CENTRO (passado ao template
+    # para o JS atualizar dinamicamente o campo "Evento Contábil Atual"
+    # quando o usuário muda a carteira)
+    EVENTOS_POR_CENTRO = {
+        1: {'codigo': 22611, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PJ'},
+        2: {'codigo': 22612, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUD. COMERCIAL'},
+        3: {'codigo': 22610, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PF'},
+        4: {'codigo': 22611, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PJ'},
+        5: {'codigo': 22613, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUD. IMÓVEIS'},
+        6: {'codigo': 22607, 'descricao': 'PENDÊNCIA DE DEPÓSITO JUDICIAL'},
+        7: {'codigo': 22710, 'descricao': 'EVENTO CONTÁBIL 22710'}
+    }
+
     # Buscar o depósito com os relacionamentos
     deposito = db.session.query(
         DepositosSufin,
@@ -521,8 +601,6 @@ def editar(nu_linha):
             if novo_centro != centro_antigo and not eh_institucional_novo and not eh_institucional_antigo:
                 # PROCESSO ESPECIAL: NÃO ALTERA O ORIGINAL, CRIA ESTORNO E NOVA
 
-                # 1. Buscar próximo NU_LINHA para estorno
-                # 1. Buscar próximo NU_LINHA para estorno (verifica ambas as tabelas)
                 proximo_nu_linha_estorno = obter_proximo_nu_linha()
 
                 # 2. Criar linha de ESTORNO (valor negativo) na carteira ANTIGA
@@ -572,16 +650,13 @@ def editar(nu_linha):
 
                 estorno.NU_CONTRATO_2 = None
 
-                                # Eventos contábeis (Preenchimento automático)
+                # Eventos contábeis (preenchimento automático)
                 # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 estorno.EVENTO_CONTABIL_ANTERIOR = 22607
 
                 # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Antiga)
-                id_centro_antigo_int = centro_antigo
-                mapeamento_eventos = {
-                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
-                }
-                estorno.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_antigo_int)
+                evento_antigo = EVENTOS_POR_CENTRO.get(centro_antigo)
+                estorno.EVENTO_CONTABIL_ATUAL = evento_antigo['codigo'] if evento_antigo else None
 
                 estorno.OBS = request.form.get('obs')
                 estorno.IC_APROPRIADO = None
@@ -650,16 +725,13 @@ def editar(nu_linha):
 
                 nova_linha.NU_CONTRATO_2 = None
 
-                                # Eventos contábeis (Preenchimento automático)
+                # Eventos contábeis (preenchimento automático)
                 # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 nova_linha.EVENTO_CONTABIL_ANTERIOR = 22607
 
                 # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Nova)
-                id_centro_novo_int = novo_centro
-                mapeamento_eventos = {
-                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
-                }
-                nova_linha.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_novo_int)
+                evento_novo = EVENTOS_POR_CENTRO.get(novo_centro)
+                nova_linha.EVENTO_CONTABIL_ATUAL = evento_novo['codigo'] if evento_novo else None
 
                 nova_linha.OBS = request.form.get('obs')
                 nova_linha.IC_APROPRIADO = None
@@ -704,7 +776,6 @@ def editar(nu_linha):
 
                 # Corrigir conversão do valor rateio (permite valores negativos)
                 vr_rateio = request.form.get('vr_rateio')
-                # Remove pontos de milhar, mantém vírgula e sinal negativo
                 vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
                 if vr_rateio_limpo and vr_rateio_limpo != '-':
                     deposito_obj.VR_RATEIO = Decimal(vr_rateio_limpo)
@@ -719,11 +790,10 @@ def editar(nu_linha):
                     deposito_obj.DT_MEMO = None
                     deposito_obj.ID_IDENTIFICADO = False
 
-                # MODIFICAÇÃO AQUI: Data de identificação muda status para Concluído
+                # Data de identificação muda status para Concluído
                 dt_identificacao = request.form.get('dt_identificacao')
                 if dt_identificacao:
                     deposito_obj.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
-                    # NOVA LÓGICA: Quando coloca data de identificação, muda status para Concluído
                     deposito_obj.STATUS = 'Concluído'
                 else:
                     deposito_obj.DT_IDENTIFICACAO = None
@@ -747,16 +817,13 @@ def editar(nu_linha):
 
                 deposito_obj.NU_CONTRATO_2 = None
 
-                                # Eventos contábeis (Preenchimento automático)
+                # Eventos contábeis (preenchimento automático)
                 # EVENTO_CONTABIL_ANTERIOR sempre 22607
                 deposito_obj.EVENTO_CONTABIL_ANTERIOR = 22607
 
                 # EVENTO_CONTABIL_ATUAL baseado no ID_CENTRO (Carteira Atual)
-                id_centro_atual_int = novo_centro
-                mapeamento_eventos = {
-                    1: 22611, 2: 22612, 3: 22610, 4: 22611, 5: 22613, 6: 22607, 7: 22710
-                }
-                deposito_obj.EVENTO_CONTABIL_ATUAL = mapeamento_eventos.get(id_centro_atual_int)
+                evento_atual = EVENTOS_POR_CENTRO.get(novo_centro)
+                deposito_obj.EVENTO_CONTABIL_ATUAL = evento_atual['codigo'] if evento_atual else None
 
                 deposito_obj.OBS = request.form.get('obs')
                 deposito_obj.IC_APROPRIADO = None
@@ -811,7 +878,10 @@ def editar(nu_linha):
                            deposito=deposito_obj,
                            nr_processo=nr_processo,
                            areas=areas,
-                           centros=centros)
+                           centros=centros,
+                           eventos_por_centro=EVENTOS_POR_CENTRO,
+                           evento_anterior_codigo=22607,
+                           evento_anterior_descricao='PENDÊNCIA DE DEPÓSITO JUDICIAL')
 
 
 @depositos_judiciais_bp.route('/executar-scripts-relatorio', methods=['POST'])
@@ -1535,7 +1605,10 @@ def ratear(nu_linha):
 def ratear_multiplo(nu_linha):
     """
     Ratear o valor de um depósito para MÚLTIPLOS contratos
-    O usuário só consegue finalizar quando distribuir TODO o valor
+    O usuário só consegue finalizar quando distribuir TODO o valor.
+
+    NOVO: Cada linha agora tem seu próprio Lançamento RM (manual no formulário).
+    Se vier vazio, usa o Lançamento RM do depósito original como fallback.
     """
     # Buscar o depósito original
     deposito_obj = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
@@ -1574,14 +1647,21 @@ def ratear_multiplo(nu_linha):
             # Buscar próximo NU_LINHA disponível (verifica ambas as tabelas)
             proximo_nu_linha = obter_proximo_nu_linha()
 
+            # Lançamento RM original como fallback caso alguma linha venha vazia
+            lancamento_rm_original = (deposito_obj.LANCAMENTO_RM or '').strip()
+
             # Criar cada linha de rateio
             linhas_criadas = []
             for idx, rateio in enumerate(rateios):
                 novo_deposito = DepositosSufin()
                 novo_deposito.NU_LINHA = proximo_nu_linha + idx
 
-                # Copiar campos do original
-                novo_deposito.LANCAMENTO_RM = deposito_obj.LANCAMENTO_RM
+                # NOVO: Lançamento RM vem do formulário (manual por linha)
+                # Fallback: se vier vazio, usa o do depósito original
+                lancamento_rm_linha = (rateio.get('lancamento_rm') or '').strip()
+                novo_deposito.LANCAMENTO_RM = lancamento_rm_linha if lancamento_rm_linha else lancamento_rm_original
+
+                # Copiar demais campos básicos do original
                 novo_deposito.DT_LANCAMENTO_DJ = deposito_obj.DT_LANCAMENTO_DJ
                 novo_deposito.MEMO_SUFIN = deposito_obj.MEMO_SUFIN
                 novo_deposito.DT_MEMO = deposito_obj.DT_MEMO

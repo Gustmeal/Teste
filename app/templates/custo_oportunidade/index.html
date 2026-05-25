@@ -376,7 +376,7 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-6">
+        <div class="col-lg-4">
             <div class="card co-section-card h-100">
                 <div class="co-section-header">
                     <h5><i class="fas fa-robot me-2"></i>Importação Automática B3</h5>
@@ -399,7 +399,62 @@
             </div>
         </div>
 
-        <div class="col-lg-6">
+        {# ===================================================================== #}
+        {# UPLOAD MANUAL DE CSV                                                  #}
+        {# Desenvolvido para permitir inclusão manual de pregões anteriores,     #}
+        {# como alternativa ao botão automático do bot, sem alterar o fluxo já   #}
+        {# existente de importação automática.                                   #}
+        {# ===================================================================== #}
+        <div class="col-lg-4">
+            <div class="card co-section-card h-100">
+                <div class="co-section-header">
+                    <h5><i class="fas fa-file-upload me-2"></i>Importação Manual por CSV</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Permite incluir manualmente pregões anteriores por meio de arquivo CSV,
+                        como alternativa ao processamento automático do botão da B3.
+                    </p>
+
+                    <form id="formUploadExcelManual" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="dtAtualizacaoManual" class="form-label small fw-semibold">
+                                Data do pregão (DT_ATUALIZACAO)
+                            </label>
+                            <input type="date"
+                                   class="form-control"
+                                   id="dtAtualizacaoManual"
+                                   name="dt_atualizacao"
+                                   required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="arquivoCsvManual" class="form-label small fw-semibold">
+                                Arquivo CSV
+                            </label>
+                            <input type="file"
+                                   class="form-control"
+                                   id="arquivoCsvManual"
+                                   name="arquivo"
+                                   accept=".csv"
+                                   required>
+                        </div>
+
+                        <div class="text-center">
+                            <button type="button"
+                                    id="btnUploadExcelManual"
+                                    class="btn btn-success btn-lg">
+                                <i class="fas fa-upload me-2"></i>Subir CSV Manual
+                            </button>
+                        </div>
+                    </form>
+
+                    <div id="resultadoUploadManual" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
             <div class="card co-section-card h-100">
                 <div class="co-section-header">
                     <h5><i class="fas fa-filter me-2"></i>Filtrar por Pregão</h5>
@@ -846,6 +901,94 @@ document.getElementById('btnExecutarBot').addEventListener('click', function () 
         `;
     });
 });
+
+// =========================================================================
+// UPLOAD MANUAL DE CSV
+// =========================================================================
+const btnUploadManual = document.getElementById('btnUploadExcelManual');
+if (btnUploadManual) {
+    btnUploadManual.addEventListener('click', function () {
+        const btn = this;
+        const resultado = document.getElementById('resultadoUploadManual');
+        const inputData = document.getElementById('dtAtualizacaoManual');
+        const inputArquivo = document.getElementById('arquivoCsvManual');
+
+        if (!inputData.value) {
+            resultado.style.display = 'block';
+            resultado.innerHTML = `
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Informe a data do pregão.
+                </div>
+            `;
+            return;
+        }
+
+        if (!inputArquivo.files || inputArquivo.files.length === 0) {
+            resultado.style.display = 'block';
+            resultado.innerHTML = `
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Selecione um arquivo CSV.
+                </div>
+            `;
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('dt_atualizacao', inputData.value);
+        formData.append('arquivo', inputArquivo.files[0]);
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando CSV...';
+
+        resultado.style.display = 'block';
+        resultado.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-file-upload me-2"></i>
+                Enviando arquivo CSV manual para inclusão de pregão...
+            </div>
+        `;
+
+        fetch("{{ url_for('custo_oportunidade.upload_excel_manual') }}", {
+            method: 'POST',
+            headers: {'X-Silent-Request': 'true'},
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-upload me-2"></i>Subir CSV Manual';
+
+            if (data.success) {
+                resultado.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                setTimeout(() => location.reload(), 2500);
+            } else {
+                resultado.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-upload me-2"></i>Subir CSV Manual';
+            resultado.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+}
 
 // =========================================================================
 // TOGGLE REUNIÃO COPOM

@@ -15,13 +15,7 @@
         <div class="card-body">
             <form method="POST" id="formInclusao" action="{{ url_for('depositos_judiciais.inclusao') }}">
                 <div class="row g-3">
-                    <!-- Primeira Linha -->
-                    <div class="col-md-3">
-                        <label for="nr_processo" class="form-label">Número do Processo</label>
-                        <input type="text" class="form-control" id="nr_processo" name="nr_processo"
-                               maxlength="100" placeholder="Ex: 1234567-89.2023.8.26.0100">
-                    </div>
-
+                    <!-- Linha 1 (ordem do Excel: Lançamento RM | Data | Valor Rateio | Memo SUFIN) -->
                     <div class="col-md-3">
                         <label for="lancamento_rm" class="form-label">Lançamento RM <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="lancamento_rm" name="lancamento_rm"
@@ -46,13 +40,13 @@
                         <small class="text-muted">Clique no botão <i class="fas fa-plus-minus"></i> para negativar</small>
                     </div>
 
-                    <!-- Segunda Linha -->
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
                                maxlength="15" placeholder="Ex: 3247/2022">
                     </div>
 
+                    <!-- Linha 2 (ordem do Excel: Data Memo | Área | Centro de Resultado) -->
                     <div class="col-md-4">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo">
@@ -60,12 +54,6 @@
                     </div>
 
                     <div class="col-md-4">
-                        <label for="dt_identificacao" class="form-label">Data Identificação</label>
-                        <input type="date" class="form-control" id="dt_identificacao" name="dt_identificacao">
-                    </div>
-
-                    <!-- Terceira Linha -->
-                    <div class="col-md-6">
                         <label for="id_area" class="form-label">Área</label>
                         <select class="form-select" id="id_area" name="id_area">
                             <option value="">Selecione uma área...</option>
@@ -80,39 +68,40 @@
                         </small>
                     </div>
 
+                    <div class="col-md-4">
+                        <label for="id_centro_display" class="form-label">
+                            Centro de Resultado (Carteira) <span class="text-danger">*</span>
+                            <i class="fas fa-lock text-muted ms-1" title="Campo fixo - não pode ser alterado"></i>
+                        </label>
+                        <input type="text" class="form-control bg-light" id="id_centro_display"
+                               value="{{ centro_institucional.NO_CARTEIRA }}" readonly>
+                        <!-- Valor real enviado no submit (ID vindo do banco) -->
+                        <input type="hidden" id="id_centro" name="id_centro" value="{{ centro_institucional.ID_CENTRO }}">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> Toda inclusão é registrada como Institucional
+                        </small>
+                    </div>
+
+                    <!-- Linha 3 (ordem do Excel: Evento Contábil Anterior | Evento Contábil Atual)
+                         Campos somente para visualização - valores gravados no backend -->
                     <div class="col-md-6">
-                        <label for="id_centro" class="form-label">Centro de Resultado (Carteira) <span class="text-danger">*</span></label>
-                        <select class="form-select" id="id_centro" name="id_centro" required>
-                            <option value="">Selecione uma carteira...</option>
-                            {% for centro in centros %}
-                            <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
-                            {% endfor %}
-                        </select>
+                        <label for="evento_contabil_atual_display" class="form-label">
+                            Evento Contábil Atual
+                            <i class="fas fa-lock text-muted ms-1" title="Preenchido automaticamente pelo sistema"></i>
+                        </label>
+                        <input type="text" class="form-control bg-light" id="evento_contabil_atual_display"
+                               value="{{ evento_contabil_codigo }} - {{ evento_contabil_descricao }}" readonly>
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle"></i> Preenchido automaticamente (carteira Institucional)
+                        </small>
                     </div>
 
-                    <!-- Quarta Linha -->
-                    <div class="col-md-4">
-                        <label for="dt_ajuste_rm" class="form-label">Data Ajuste RM</label>
-                        <input type="date" class="form-control" id="dt_ajuste_rm" name="dt_ajuste_rm">
+                    <!-- Linha 4 (ordem do Excel: Observação) -->
+                    <div class="col-md-12">
+                        <label for="obs" class="form-label">Observações</label>
+                        <input type="text" class="form-control" id="obs" name="obs"
+                               maxlength="70" placeholder="Digite observações">
                     </div>
-
-                    <div class="col-md-4">
-                        <label for="nu_contrato" class="form-label">Número Contrato</label>
-                        <input type="text" class="form-control" id="nu_contrato" name="nu_contrato"
-                               maxlength="19" placeholder="Digite o número do contrato">
-                    </div>
-
-                    <div class="col-md-4">
-                        <label for="dt_siscor" class="form-label">Data SISCOR</label>
-                        <input type="date" class="form-control" id="dt_siscor" name="dt_siscor">
-                    </div>
-
-<!-- Quinta Linha -->
-	                    <div class="col-md-12">
-	                        <label for="obs" class="form-label">Observações</label>
-	                        <input type="text" class="form-control" id="obs" name="obs"
-	                               maxlength="70" placeholder="Digite observações">
-	                    </div>
 
                     <!-- Botões -->
                     <div class="col-12 mt-4">
@@ -154,66 +143,18 @@
     .money {
         text-align: right;
     }
+
+    /* Estilo visual para campos travados (Centro de Resultado e Eventos Contábeis) */
+    #id_centro_display,
+    #evento_contabil_anterior_display,
+    #evento_contabil_atual_display {
+        cursor: not-allowed;
+        font-weight: 600;
+    }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-
-    // =========================================================
-    // FUNÇÃO: Calcular último dia do mês de uma data
-    // =========================================================
-    function ultimoDiaDoMes(data) {
-        // Cria data com dia 0 do mês seguinte = último dia do mês atual
-        return new Date(data.getFullYear(), data.getMonth() + 1, 0).getDate();
-    }
-
-    // =========================================================
-    // FUNÇÃO: Calcular o 5º dia útil de um mês/ano
-    // Considera apenas sábado(6) e domingo(0) como não úteis
-    // =========================================================
-    function quintosDiaUtil(ano, mes) {
-        // mes aqui é 0-indexed (0 = janeiro)
-        let diasUteis = 0;
-        let dia = 1;
-        while (diasUteis < 5) {
-            let d = new Date(ano, mes, dia);
-            let diaSemana = d.getDay(); // 0=dom, 6=sab
-            if (diaSemana !== 0 && diaSemana !== 6) {
-                diasUteis++;
-            }
-            if (diasUteis < 5) dia++;
-        }
-        return new Date(ano, mes, dia);
-    }
-
-    // =========================================================
-    // VALIDAÇÃO DT_SISCOR: Somente último dia do mês permitido
-    // =========================================================
-    const dtSiscor = document.getElementById('dt_siscor');
-    if (dtSiscor) {
-        dtSiscor.addEventListener('change', function() {
-            const val = this.value;
-            if (!val) return;
-
-            const partes = val.split('-'); // yyyy-mm-dd
-            const ano = parseInt(partes[0]);
-            const mes = parseInt(partes[1]) - 1; // 0-indexed
-            const dia = parseInt(partes[2]);
-
-            const ultimo = ultimoDiaDoMes(new Date(ano, mes, 1));
-
-            if (dia !== ultimo) {
-                alert(
-                    'Atenção!\n\n' +
-                    'A Data SISCOR só pode ser o último dia do mês.\n' +
-                    'Para o mês selecionado, a data válida é: ' +
-                    String(ultimo).padStart(2, '0') + '/' +
-                    String(mes + 1).padStart(2, '0') + '/' + ano
-                );
-                this.value = ''; // Limpa o campo
-            }
-        });
-    }
 
     // =========================================================
     // MÁSCARA MONETÁRIA - VR_RATEIO
@@ -253,8 +194,10 @@ document.addEventListener('DOMContentLoaded', function() {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            // 1. Validar campos obrigatórios
-            const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_area', 'id_centro'];
+            // Validar campos obrigatórios
+            // (id_centro é hidden e sempre tem valor vindo do backend, mas mantemos
+            //  na lista por segurança)
+            const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
             let valido = true;
 
             camposObrigatorios.forEach(function(campo) {
@@ -273,33 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // 2. Validação DT_AJUSTE_RM: aviso se antes do 5º dia útil
-            const dtAjuste = document.getElementById('dt_ajuste_rm');
-            if (dtAjuste && dtAjuste.value) {
-                const partesAjuste = dtAjuste.value.split('-');
-                const anoAjuste = parseInt(partesAjuste[0]);
-                const mesAjuste = parseInt(partesAjuste[1]) - 1; // 0-indexed
-                const diaAjuste = parseInt(partesAjuste[2]);
-
-                const dataAjuste = new Date(anoAjuste, mesAjuste, diaAjuste);
-                const quintoDiaUtil = quintosDiaUtil(anoAjuste, mesAjuste);
-
-                if (dataAjuste < quintoDiaUtil) {
-                    const continuar = confirm(
-                        'Atenção!\n\n' +
-                        'A data de ajuste informada é anterior ao quinto dia útil do mês.\n\n' +
-                        'Caso tente salvar uma data de ajuste antes do quinto dia útil do mês, ' +
-                        'ele será incluído no mês anterior ao atual.\n\n' +
-                        'Deseja salvar mesmo assim?\n\n' +
-                        'Clique em "OK" para salvar ou "Cancelar" para corrigir a data.'
-                    );
-                    if (!continuar) {
-                        return; // Usuário optou por corrigir
-                    }
-                }
-            }
-
-            // 3. Tudo ok, submete o formulário
+            // Tudo ok, submete o formulário
             this.submit();
         });
     }
@@ -310,6 +227,8 @@ document.addEventListener('DOMContentLoaded', function() {
     window.limparFormulario = function() {
         if (confirm('Deseja limpar todos os campos do formulário?')) {
             form.reset();
+            // Após o reset, os campos travados (Centro de Resultado e Eventos Contábeis)
+            // mantêm o valor original do template (porque vêm do Jinja, não do usuário)
         }
     };
 
