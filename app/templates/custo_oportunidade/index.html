@@ -645,7 +645,7 @@
                                class="form-control"
                                placeholder="Ex: 14,75"
                                data-dt="{{ dt_exibida.strftime('%Y-%m-%d') }}"
-                               value="{% if media_pregao.TX_SELIC is not none %}{{ '{:,.4f}'.format(media_pregao.TX_SELIC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}{% endif %}">
+                               value="{% if media_pregao.TX_SELIC is not none %}{{ '{:,.2f}'.format(media_pregao.TX_SELIC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}{% endif %}">
                         <span class="input-group-text">% a.a.</span>
                         <button id="btnSalvarSelic"
                                 type="button"

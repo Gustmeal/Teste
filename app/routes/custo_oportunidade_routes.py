@@ -64,16 +64,10 @@ def index():
     """
     Página principal. Aceita ?dt_atualizacao=YYYY-MM-DD pra filtrar.
     Anti-cache: força re-leitura do banco e desativa cache do navegador.
-
-    Lógica do dropdown de datas:
-      - Lista todas as DT_ATUALIZACAO distintas de FIN_TB001.
-      - Para cada uma, busca em FIN_TB003 a flag REUNIAO (toggle COPOM).
-      - Monta uma lista de tuplas (data, reuniao_bool) para o template
-        renderizar "(Marcado)" ao lado quando REUNIAO=True.
     """
     from app.models.custo_oportunidade_media import CustoOportunidadeMedia
     from app.models.config_custo_oportunidade import ConfigCustoOportunidade
-    ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
+
     db.session.expire_all()
 
     # 1. Parse do filtro
@@ -85,32 +79,28 @@ def index():
         except ValueError:
             dt_filtro = None
 
-    # 2. Lista de DT_ATUALIZACAO distintas (de FIN_TB001) — ordem decrescente
+    # 2. Lista de datas distintas
     datas_disponiveis = CustoOportunidade.listar_datas_atualizacao_distintas()
 
-    # 3. Buscar status REUNIAO de cada data em FIN_TB003 (1 query única)
-    # Resultado: dict {date: bool}
+    # 3. Status REUNIAO de cada data em FIN_TB003
     medias = CustoOportunidadeMedia.query.all()
     mapa_reuniao = {
         m.DT_ATUALIZACAO: bool(m.REUNIAO)
         for m in medias
         if m.DT_ATUALIZACAO is not None
     }
-
-    # 4. Montar lista de tuplas (data, reuniao_bool) na mesma ordem
-    # de datas_disponiveis (mais recente primeiro)
     datas_com_status = [
         (dt, mapa_reuniao.get(dt, False))
         for dt in datas_disponiveis
     ]
 
-    # 5. Determinar qual data mostrar
+    # 4. Determinar qual data mostrar
     if dt_filtro and dt_filtro in datas_disponiveis:
         dt_exibida = dt_filtro
     else:
         dt_exibida = datas_disponiveis[0] if datas_disponiveis else None
 
-    # 6. Buscar registros e ordenar por ANO_MES
+    # 5. Buscar registros + média do pregão exibido
     registros = []
     media_pregao = None
     if dt_exibida:
@@ -120,6 +110,20 @@ def index():
             key=lambda r: (r.ANO_MES or '999999')
         )
         media_pregao = CustoOportunidadeMedia.obter_por_data(dt_exibida)
+
+    # 6. NOVO: buscar a ÚLTIMA TX_SELIC conhecida em pregões anteriores
+    # (qualquer pregão com TX_SELIC IS NOT NULL, mais recente primeiro,
+    # excluindo o pregão exibido pra não confundir com o valor atual)
+    ultima_tx_selic_conhecida = None
+    if dt_exibida:
+        ultimo_reg = CustoOportunidadeMedia.query.filter(
+            CustoOportunidadeMedia.TX_SELIC.isnot(None),
+            CustoOportunidadeMedia.DT_ATUALIZACAO != dt_exibida
+        ).order_by(
+            CustoOportunidadeMedia.DT_ATUALIZACAO.desc()
+        ).first()
+        if ultimo_reg:
+            ultima_tx_selic_conhecida = ultimo_reg.TX_SELIC
 
     # 7. Histórico das últimas 12 médias
     historico_medias = CustoOportunidadeMedia.query.order_by(
@@ -131,18 +135,22 @@ def index():
     pregoes_distintos = len(datas_disponiveis)
     dt_mais_recente = datas_disponiveis[0] if datas_disponiveis else None
 
+    # 9. Data limite configurada (FIN_TB006)
+    ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
+
     response = make_response(render_template(
         'custo_oportunidade/index.html',
         registros=registros,
-        datas_disponiveis=datas_disponiveis,    # mantido p/ compatibilidade
-        datas_com_status=datas_com_status,      # NOVO: lista de (data, reuniao)
+        datas_disponiveis=datas_disponiveis,
+        datas_com_status=datas_com_status,
         dt_exibida=dt_exibida,
         dt_mais_recente=dt_mais_recente,
         total_geral=total_geral,
         pregoes_distintos=pregoes_distintos,
         media_pregao=media_pregao,
         historico_medias=historico_medias,
-        ano_mes_limite=ano_mes_limite_int,  # int ou None
+        ano_mes_limite=ano_mes_limite_int,
+        ultima_tx_selic_conhecida=ultima_tx_selic_conhecida,   # NOVO
     ))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'
