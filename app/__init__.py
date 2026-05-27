@@ -50,6 +50,7 @@ def create_app():
         from app.models.custo_oportunidade_media import CustoOportunidadeMedia
         from app.models.selic import Selic
         from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+        from app.models.titulo_cvs import ResumoCVS
 
         db.create_all()
 
@@ -162,6 +163,9 @@ def create_app():
 
     from app.routes.custo_oportunidade_routes import custo_oportunidade_bp
     app.register_blueprint(custo_oportunidade_bp)
+
+    from app.routes.titulo_cvs_routes import titulo_cvs_bp
+    app.register_blueprint(titulo_cvs_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

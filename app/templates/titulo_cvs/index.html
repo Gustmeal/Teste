@@ -1,0 +1,543 @@
+{% extends "base.html" %}
+
+{% block title %}Título CVS - Portal GEINC{% endblock %}
+
+{% block extra_css %}
+<style>
+    .cvs-section-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        overflow: visible;
+    }
+
+    .table-container {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 600px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .cvs-section-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        overflow: visible !important;
+    }
+
+    .table-container {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow-x: scroll !important;
+        overflow-y: auto;
+        max-height: 600px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table-container > .cvs-table.table {
+        width: 1600px !important;
+        min-width: 1600px !important;
+        max-width: none !important;
+        margin-bottom: 0;
+    }
+
+    .cvs-table thead th,
+    .cvs-table tbody td {
+        white-space: nowrap;
+    }
+
+    .cvs-table thead th {
+        background: #f8f9fc;
+        font-weight: 600;
+        font-size: 0.72rem;
+        color: #5a5c69;
+        border-bottom: 2px solid #e3e6f0;
+        text-transform: uppercase;
+        letter-spacing: 0.2px;
+        padding: 0.45rem 0.55rem;
+        line-height: 1.1;
+    }
+
+    .cvs-table tbody td {
+        font-size: 0.78rem;
+        vertical-align: middle;
+        padding: 0.4rem 0.55rem;
+        line-height: 1.15;
+    }
+
+    .cvs-badge-ativo {
+        font-family: 'Courier New', monospace;
+        font-weight: 700;
+        background: #eef2ff;
+        color: #224abe;
+        padding: 0.15rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.72rem;
+        display: inline-block;
+    }
+
+    .cvs-num {
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+    }
+
+    .cvs-table small {
+        font-size: 0.7rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-file-invoice me-2"></i>Título CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Resumo de Títulos CVS por contrato e data de atualização
+        </p>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card cvs-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap cvs-bg-blue me-3">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Total de registros</div>
+                            <h5 class="mb-0">
+                                {{ "{:,}".format(total_registros).replace(',', '.') }}
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card cvs-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap cvs-bg-green me-3">
+                            <i class="fas fa-file-contract"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Contratos distintos</div>
+                            <h5 class="mb-0">
+                                {{ "{:,}".format(total_contratos).replace(',', '.') }}
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card cvs-stat-card shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="icon-wrap cvs-bg-cyan me-3">
+                            <i class="fas fa-calendar-day"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small mb-1">Datas de atualização</div>
+                            <h5 class="mb-0">{{ total_cargas }}</h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-7">
+            <div class="card cvs-section-card h-100">
+                <div class="cvs-section-header">
+                    <h5><i class="fas fa-file-upload me-2"></i>Importar Planilha Resumo CVS</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted small mb-3">
+                        Envie a planilha Excel no padrão
+                        <code>AAAA-MM-DD_Planilhas Resumo CVS - Contrato NNN.xlsx</code>.
+                        A data e o número do contrato são extraídos automaticamente do nome do arquivo.
+                    </p>
+
+                    <div id="dropzoneCVS" class="cvs-dropzone">
+                        <i class="fas fa-file-excel"></i>
+                        <div class="cvs-dropzone-text">
+                            Arraste o arquivo Excel aqui ou
+                            <strong>clique para selecionar</strong>
+                        </div>
+                        <div class="cvs-dropzone-hint">
+                            Formatos aceitos: .xlsx, .xlsm
+                        </div>
+                        <input
+                            type="file"
+                            id="inputArquivoCVS"
+                            accept=".xlsx,.xlsm"
+                            style="display: none;"
+                        >
+                    </div>
+
+                    <div id="filePreviewCVS" class="cvs-file-preview" style="display: none;">
+                        <div class="file-info">
+                            <div class="file-icon">
+                                <i class="fas fa-file-excel fa-lg"></i>
+                            </div>
+                            <div style="min-width: 0; flex-grow: 1;">
+                                <div class="file-name" id="filePreviewNomeCVS">—</div>
+                                <div class="file-size" id="filePreviewTamanhoCVS">—</div>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-outline-secondary"
+                            id="btnRemoverArquivoCVS"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="d-grid mt-3">
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            id="btnConfirmarUploadCVS"
+                            disabled
+                        >
+                            <i class="fas fa-upload me-2"></i>Enviar arquivo
+                        </button>
+                    </div>
+
+                    <div id="uploadFeedbackCVS" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card cvs-section-card h-100">
+                <div class="cvs-section-header">
+                    <h5><i class="fas fa-filter me-2"></i>Filtrar por Data de Atualização</h5>
+                </div>
+                <div class="card-body">
+                    <form method="GET" action="{{ url_for('titulo_cvs.index') }}">
+                        <div class="mb-3">
+                            <label for="dt_atualizacao" class="form-label small fw-semibold">
+                                Data de Atualização (DT_ATUALIZACAO)
+                            </label>
+                            <select name="dt_atualizacao" id="dt_atualizacao" class="form-select">
+                                {% if not datas_disponiveis %}
+                                    <option value="">— Sem dados —</option>
+                                {% else %}
+                                    {% for dt in datas_disponiveis %}
+                                        <option
+                                            value="{{ dt.strftime('%Y-%m-%d') }}"
+                                            {% if dt_filtro and dt == dt_filtro %}selected{% endif %}
+                                        >
+                                            {{ dt.strftime('%d/%m/%Y') }}
+                                        </option>
+                                    {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="d-grid">
+                            <button
+                                type="submit"
+                                class="btn btn-outline-primary"
+                                {% if not datas_disponiveis %}disabled{% endif %}
+                            >
+                                <i class="fas fa-search me-2"></i>Filtrar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if registros %}
+    <div class="card cvs-section-card">
+        <div class="cvs-section-header">
+            <h5>
+                <i class="fas fa-table me-2"></i>
+                Registros - DT_ATUALIZACAO:
+                {{ dt_filtro.strftime('%d/%m/%Y') if dt_filtro else '—' }}
+                ({{ registros|length }} linha{{ 's' if registros|length != 1 else '' }})
+            </h5>
+        </div>
+
+        <div class="table-container">
+            <table class="table table-hover table-sm cvs-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Contrato</th>
+                        <th>Evento</th>
+                        <th>Ativo</th>
+                        <th class="text-end">Qtde</th>
+                        <th class="text-end">VNA</th>
+                        <th class="text-end">Financeiro</th>
+                        <th class="text-end">PU Retr. Juros</th>
+                        <th class="text-end">Fin. Juros</th>
+                        <th class="text-end">PU Retr. Princ.</th>
+                        <th class="text-end">Fin. Principal</th>
+                        <th class="text-end">Fin. Venc. a Pagar</th>
+                        <th class="text-end">Total</th>
+                        <th>DT Carga</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in registros %}
+                    <tr>
+                        <td><strong>{{ r.NU_CONTRATO }}</strong></td>
+                        <td>
+                            <span class="cvs-badge-ativo">
+                                {{ r.EVENTO if r.EVENTO else '-' }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="cvs-badge-ativo">{{ r.ATIVO }}</span>
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.QTDE is not none %}
+                                {{ "{:,}".format(r.QTDE).replace(',', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.VNA is not none %}
+                                {{ "{:,.2f}".format(r.VNA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.FINANCEIRO is not none %}
+                                {{ "{:,.2f}".format(r.FINANCEIRO|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.PU_RETROATIVO_JUROS is not none %}
+                                {{ "{:,.2f}".format(r.PU_RETROATIVO_JUROS|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.FINANCEIRO_JUROS is not none %}
+                                {{ "{:,.2f}".format(r.FINANCEIRO_JUROS|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.PU_RETROATIVO_PRINC is not none %}
+                                {{ "{:,.2f}".format(r.PU_RETROATIVO_PRINC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.FINANCEIRO_PRINC is not none %}
+                                {{ "{:,.2f}".format(r.FINANCEIRO_PRINC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.FINANCEIRO_VENC_PAGAR is not none %}
+                                {{ "{:,.2f}".format(r.FINANCEIRO_VENC_PAGAR|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end cvs-num">
+                            {% if r.TOTAL is not none %}
+                                <strong>{{ "{:,.2f}".format(r.TOTAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {% if r.DT_CARGA %}
+                                    {{ r.DT_CARGA.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card cvs-section-card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">Nenhum registro a exibir</h5>
+            <p class="text-muted mb-0">
+                Use o card <strong>Importar Planilha Resumo CVS</strong> ao lado para
+                fazer a primeira carga.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+(function () {
+    const dropzone = document.getElementById('dropzoneCVS');
+    const input = document.getElementById('inputArquivoCVS');
+    const preview = document.getElementById('filePreviewCVS');
+    const previewNome = document.getElementById('filePreviewNomeCVS');
+    const previewTamanho = document.getElementById('filePreviewTamanhoCVS');
+    const btnRemover = document.getElementById('btnRemoverArquivoCVS');
+    const btnConfirmar = document.getElementById('btnConfirmarUploadCVS');
+    const feedback = document.getElementById('uploadFeedbackCVS');
+
+    let arquivoSelecionado = null;
+
+    function formatarTamanho(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function selecionarArquivo(file) {
+        if (!file) return;
+        const nome = (file.name || '').toLowerCase();
+
+        if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) {
+            alert('Arquivo deve ser .xlsx ou .xlsm');
+            return;
+        }
+
+        arquivoSelecionado = file;
+        previewNome.textContent = file.name;
+        previewTamanho.textContent = formatarTamanho(file.size);
+        preview.style.display = 'flex';
+        dropzone.style.display = 'none';
+        btnConfirmar.disabled = false;
+        feedback.style.display = 'none';
+        feedback.innerHTML = '';
+    }
+
+    function limparArquivo() {
+        arquivoSelecionado = null;
+        input.value = '';
+        preview.style.display = 'none';
+        dropzone.style.display = 'block';
+        btnConfirmar.disabled = true;
+        feedback.style.display = 'none';
+        feedback.innerHTML = '';
+    }
+
+    dropzone.addEventListener('click', () => input.click());
+
+    input.addEventListener('change', e => {
+        if (e.target.files && e.target.files.length > 0) {
+            selecionarArquivo(e.target.files[0]);
+        }
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('dragover');
+        });
+    });
+
+    ['dragleave', 'drop'].forEach(evt => {
+        dropzone.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        });
+    });
+
+    dropzone.addEventListener('drop', e => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) {
+            selecionarArquivo(files[0]);
+        }
+    });
+
+    btnRemover.addEventListener('click', limparArquivo);
+
+    btnConfirmar.addEventListener('click', () => {
+        if (!arquivoSelecionado) return;
+
+        const formData = new FormData();
+        formData.append('arquivo', arquivoSelecionado);
+
+        const htmlOriginal = btnConfirmar.innerHTML;
+        btnConfirmar.disabled = true;
+        btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Processando planilha... isso pode levar alguns segundos.
+            </div>
+        `;
+
+        fetch("{{ url_for('titulo_cvs.upload_excel') }}", {
+            method: 'POST',
+            headers: { 'X-Silent-Request': 'true' },
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnConfirmar.disabled = false;
+            btnConfirmar.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btnConfirmar.disabled = false;
+            btnConfirmar.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+})();
+</script>
+{% endblock %}

@@ -150,6 +150,12 @@ class PermissaoSistema(db.Model):
             'descricao': 'Importação de dados DI Futuro (DF1) da B3',
             'categoria': 'Gestão Financeira'
         },
+        'titulo_cvs': {
+            'nome': 'Título CVS',
+            'icone': 'fa-file-invoice',
+            'descricao': 'Resumo de Títulos CVS por contrato e data',
+            'categoria': 'Gestão Financeira'
+        },
 
     }
 
