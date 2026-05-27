@@ -4,7 +4,7 @@ from app import db
 
 class ResumoCVS(db.Model):
     """
-    Modelo para a tabela BDG.FIN_TB006_RESUMO_CVS.
+    Modelo para a tabela BDG.FIN_TB007_RESUMO_CVS.
 
     Tabela de Resumo de Títulos CVS (Crédito Securitizado).
     Os dados vêm de planilhas Excel enviadas pelo usuário, cujo nome
@@ -85,3 +85,118 @@ class ResumoCVS(db.Model):
         return db.session.query(
             ResumoCVS.NU_CONTRATO
         ).distinct().count()
+
+
+# =========================================================================
+# Origem / Destino dos ativos CVS
+# =========================================================================
+class OrigemDestinoCVS(db.Model):
+    """
+    Modelo para a tabela BDG.FIN_TB008_ORIGEM_DESTINO_CVS.
+
+    Estrutura real (conforme SSMS):
+      - DT_CARGA        date         NOT NULL
+      - DT_ATUALIZACAO  date         NOT NULL    *chave (PK)
+      - ATIVO           varchar(1)   NOT NULL    *chave (PK)
+      - ORIGEM_DESTINO  varchar(150) NULL
+      - EVENTO          char(1)      NOT NULL    *chave (PK)
+
+    Esta tabela é pré-populada por um processo externo (SQL Job ou
+    similar) com os dados de DT_CARGA, DT_ATUALIZACAO, ATIVO e EVENTO.
+    A coluna ORIGEM_DESTINO normalmente vem NULL e precisa ser
+    preenchida manualmente pelo usuário através do portal.
+
+    Chave primária composta:
+      (DT_ATUALIZACAO, ATIVO, EVENTO)
+    """
+    __tablename__ = 'FIN_TB008_ORIGEM_DESTINO_CVS'
+    __table_args__ = {'schema': 'BDG'}
+
+    DT_ATUALIZACAO = db.Column(db.Date, primary_key=True, nullable=False)
+    ATIVO = db.Column(db.String(1), primary_key=True, nullable=False)
+    EVENTO = db.Column(db.String(1), primary_key=True, nullable=False)
+
+    DT_CARGA = db.Column(db.Date, nullable=False)
+    ORIGEM_DESTINO = db.Column(db.String(150), nullable=True)
+
+    def __repr__(self):
+        return (f'<OrigemDestinoCVS {self.ATIVO}/{self.EVENTO} - '
+                f'{self.DT_ATUALIZACAO} - {self.ORIGEM_DESTINO}>')
+
+    # -------------------------------------------------------------------
+    # CONSULTAS
+    # -------------------------------------------------------------------
+    @staticmethod
+    def listar_datas_atualizacao_distintas():
+        """Lista todas as DT_ATUALIZACAO distintas (desc)."""
+        rows = db.session.query(
+            OrigemDestinoCVS.DT_ATUALIZACAO
+        ).distinct().order_by(
+            OrigemDestinoCVS.DT_ATUALIZACAO.desc()
+        ).all()
+        return [r[0] for r in rows if r[0] is not None]
+
+    @staticmethod
+    def listar_por_data(dt_atualizacao):
+        """Lista todos os registros de uma DT_ATUALIZACAO específica."""
+        return OrigemDestinoCVS.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao
+        ).order_by(
+            OrigemDestinoCVS.ATIVO.asc(),
+            OrigemDestinoCVS.EVENTO.asc()
+        ).all()
+
+    @staticmethod
+    def listar_pendentes(dt_atualizacao):
+        """Lista registros sem ORIGEM_DESTINO preenchido."""
+        return OrigemDestinoCVS.query.filter(
+            OrigemDestinoCVS.DT_ATUALIZACAO == dt_atualizacao,
+            db.or_(
+                OrigemDestinoCVS.ORIGEM_DESTINO.is_(None),
+                OrigemDestinoCVS.ORIGEM_DESTINO == ''
+            )
+        ).order_by(
+            OrigemDestinoCVS.ATIVO.asc(),
+            OrigemDestinoCVS.EVENTO.asc()
+        ).all()
+
+    @staticmethod
+    def listar_preenchidos(dt_atualizacao):
+        """Lista registros COM ORIGEM_DESTINO preenchido."""
+        return OrigemDestinoCVS.query.filter(
+            OrigemDestinoCVS.DT_ATUALIZACAO == dt_atualizacao,
+            OrigemDestinoCVS.ORIGEM_DESTINO.isnot(None),
+            OrigemDestinoCVS.ORIGEM_DESTINO != ''
+        ).order_by(
+            OrigemDestinoCVS.ATIVO.asc(),
+            OrigemDestinoCVS.EVENTO.asc()
+        ).all()
+
+    @staticmethod
+    def obter(dt_atualizacao, ativo, evento):
+        """Obtém um registro específico pela PK composta."""
+        return OrigemDestinoCVS.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao,
+            ATIVO=ativo,
+            EVENTO=evento
+        ).first()
+
+    @staticmethod
+    def contar_por_data(dt_atualizacao):
+        """
+        Retorna (total, pendentes, preenchidos) para uma DT_ATUALIZACAO.
+        """
+        total = OrigemDestinoCVS.query.filter_by(
+            DT_ATUALIZACAO=dt_atualizacao
+        ).count()
+
+        pendentes = OrigemDestinoCVS.query.filter(
+            OrigemDestinoCVS.DT_ATUALIZACAO == dt_atualizacao,
+            db.or_(
+                OrigemDestinoCVS.ORIGEM_DESTINO.is_(None),
+                OrigemDestinoCVS.ORIGEM_DESTINO == ''
+            )
+        ).count()
+
+        preenchidos = total - pendentes
+        return total, pendentes, preenchidos

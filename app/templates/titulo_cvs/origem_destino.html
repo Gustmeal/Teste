@@ -1,0 +1,1081 @@
+{% extends "base.html" %}
+
+{% block title %}Origem / Destino - Título CVS{% endblock %}
+
+{% block content %}
+<style>
+    /* ===================================================================
+       CARDS DE SEÇÃO
+       =================================================================== */
+    .od-section-card {
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
+    }
+
+    .od-section-header {
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+    }
+    .od-section-header h5 {
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
+    }
+    .od-section-header-pendentes {
+        background: linear-gradient(135deg, #f6c23e 0%, #c98a02 100%) !important;
+    }
+    .od-section-header-preenchidos {
+        background: linear-gradient(135deg, #1cc88a 0%, #13855c 100%) !important;
+    }
+    .od-section-header-progresso {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%) !important;
+    }
+
+    .od-badge-count {
+        background: rgba(255, 255, 255, 0.28) !important;
+        color: #fff !important;
+        padding: 0.3rem 0.85rem !important;
+        border-radius: 14px !important;
+        font-size: 0.95rem !important;
+        font-weight: 700 !important;
+        min-width: 44px !important;
+        text-align: center !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ===================================================================
+       LISTAS SCROLLÁVEIS
+       =================================================================== */
+    .od-list-scroll {
+        max-height: 70vh !important;
+        overflow-y: auto !important;
+        padding: 1rem !important;
+        background: #fafbfd !important;
+    }
+    .od-list-scroll::-webkit-scrollbar {
+        width: 10px;
+    }
+    .od-list-scroll::-webkit-scrollbar-track {
+        background: #f1f3f5;
+        border-radius: 5px;
+    }
+    .od-list-scroll::-webkit-scrollbar-thumb {
+        background: #c1c5d3;
+        border-radius: 5px;
+    }
+    .od-list-scroll::-webkit-scrollbar-thumb:hover {
+        background: #4e73df;
+    }
+
+    /* ===================================================================
+       ITEM PENDENTE (linha estilo tabela)
+       =================================================================== */
+    .od-item {
+        background: #fff !important;
+        border: 1px solid #e3e6f0 !important;
+        border-left: 4px solid #f6c23e !important;
+        border-radius: 8px !important;
+        padding: 0.85rem 1rem !important;
+        margin-bottom: 0.6rem !important;
+        transition: all 0.15s ease !important;
+        display: grid !important;
+        grid-template-columns: auto auto auto 1fr auto !important;
+        gap: 0.85rem !important;
+        align-items: center !important;
+    }
+    .od-item:hover {
+        border-color: #4e73df !important;
+        border-left-color: #4e73df !important;
+        box-shadow: 0 4px 12px rgba(78, 115, 223, 0.08) !important;
+    }
+    .od-item.salvando {
+        opacity: 0.6 !important;
+        pointer-events: none !important;
+    }
+    .od-item.fade-out {
+        opacity: 0 !important;
+        transform: translateX(20px) !important;
+        transition: all 0.3s ease !important;
+    }
+
+    .od-col-check {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    .od-col-label {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        gap: 2px !important;
+    }
+    .od-col-label .od-mini-label {
+        font-size: 0.65rem !important;
+        color: #858796 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        line-height: 1 !important;
+    }
+    .od-col-input {
+        display: flex !important;
+        flex-direction: column !important;
+        min-width: 0 !important;
+    }
+    .od-col-input .od-mini-label {
+        font-size: 0.65rem !important;
+        color: #858796 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        margin-bottom: 4px !important;
+    }
+
+    /* Chip dos códigos curtos (1 char) */
+    .od-chip {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-width: 42px !important;
+        height: 40px !important;
+        padding: 0 0.75rem !important;
+        font-family: 'Courier New', monospace !important;
+        font-weight: 800 !important;
+        font-size: 1.15rem !important;
+        border-radius: 8px !important;
+        line-height: 1 !important;
+    }
+    .od-chip-ativo {
+        background: #eef2ff !important;
+        color: #224abe !important;
+        border: 1px solid #c7d2fe !important;
+    }
+    .od-chip-evento {
+        background: #fef3c7 !important;
+        color: #92400e !important;
+        border: 1px solid #fde68a !important;
+    }
+
+    .od-checkbox-item {
+        width: 22px !important;
+        height: 22px !important;
+        accent-color: #4e73df !important;
+        cursor: pointer !important;
+    }
+
+    .od-input-origem {
+        width: 100% !important;
+        height: 40px !important;
+        border: 1px solid #d1d3e2 !important;
+        border-radius: 8px !important;
+        padding: 0 0.75rem !important;
+        font-size: 0.95rem !important;
+        transition: border 0.15s ease, box-shadow 0.15s ease !important;
+        background: #fff !important;
+    }
+    .od-input-origem:focus {
+        outline: none !important;
+        border-color: #4e73df !important;
+        box-shadow: 0 0 0 3px rgba(78, 115, 223, 0.15) !important;
+    }
+
+    .od-btn-salvar {
+        height: 40px !important;
+        padding: 0 1.1rem !important;
+        background: #1cc88a !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        cursor: pointer !important;
+        white-space: nowrap !important;
+        transition: background 0.15s ease !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0.35rem !important;
+    }
+    .od-btn-salvar:hover {
+        background: #17a673 !important;
+    }
+    .od-btn-salvar:disabled {
+        background: #b0d4c1 !important;
+        cursor: not-allowed !important;
+    }
+
+    /* ===================================================================
+       ITEM PREENCHIDO
+       =================================================================== */
+    .od-item-pre {
+        background: #fff !important;
+        border: 1px solid #e3e6f0 !important;
+        border-left: 4px solid #1cc88a !important;
+        border-radius: 8px !important;
+        padding: 0.85rem 1rem !important;
+        margin-bottom: 0.6rem !important;
+        display: grid !important;
+        grid-template-columns: auto auto 1fr auto !important;
+        gap: 0.85rem !important;
+        align-items: center !important;
+        transition: all 0.15s ease !important;
+    }
+    .od-item-pre:hover {
+        box-shadow: 0 4px 12px rgba(28, 200, 138, 0.1) !important;
+    }
+
+    .od-origem-texto {
+        color: #1f2937 !important;
+        font-weight: 500 !important;
+        font-size: 0.92rem !important;
+        word-break: break-word !important;
+        line-height: 1.4 !important;
+    }
+    .od-origem-texto i {
+        color: #1cc88a !important;
+        margin-right: 0.35rem !important;
+    }
+
+    .od-btn-limpar {
+        width: 40px !important;
+        height: 40px !important;
+        background: #fff !important;
+        border: 1px solid #fecaca !important;
+        color: #dc2626 !important;
+        border-radius: 8px !important;
+        cursor: pointer !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        transition: all 0.15s ease !important;
+        flex-shrink: 0 !important;
+    }
+    .od-btn-limpar:hover {
+        background: #dc2626 !important;
+        color: #fff !important;
+        border-color: #dc2626 !important;
+    }
+
+    /* ===================================================================
+       BARRA DE PROGRESSO
+       =================================================================== */
+    .od-progress-bar-bg {
+        height: 32px !important;
+        background: #f1f3f5 !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        position: relative !important;
+        border: 1px solid #e3e6f0 !important;
+    }
+    .od-progress-bar-fill {
+        height: 100% !important;
+        background: linear-gradient(90deg, #1cc88a 0%, #13855c 100%) !important;
+        transition: width 0.4s ease !important;
+        border-radius: 16px !important;
+    }
+    .od-progress-bar-text {
+        position: absolute !important;
+        inset: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-weight: 700 !important;
+        color: #1f2937 !important;
+        font-size: 0.95rem !important;
+    }
+
+    .od-stat-box {
+        text-align: center !important;
+        padding: 0.5rem !important;
+    }
+    .od-stat-label {
+        font-size: 0.75rem !important;
+        color: #858796 !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        margin-bottom: 0.25rem !important;
+    }
+    .od-stat-value {
+        font-size: 1.85rem !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+        margin: 0 !important;
+    }
+    .od-stat-value.total       { color: #4e73df !important; }
+    .od-stat-value.pendentes   { color: #f6c23e !important; }
+    .od-stat-value.preenchidos { color: #1cc88a !important; }
+    .od-stat-value.pct         { color: #224abe !important; }
+
+    /* ===================================================================
+       PAINEL DE LOTE (oculto por padrão)
+       =================================================================== */
+    .od-lote-panel {
+        background: linear-gradient(135deg, #eef2ff 0%, #dbe4ff 100%) !important;
+        border: 1px solid #c7d2fe !important;
+        border-radius: 12px !important;
+        padding: 1.1rem 1.25rem !important;
+        margin-bottom: 1rem !important;
+        display: none !important;
+        box-shadow: 0 4px 12px rgba(78, 115, 223, 0.08) !important;
+    }
+    .od-lote-panel.ativo {
+        display: block !important;
+        animation: odFadeInUp 0.3s ease !important;
+    }
+
+    @keyframes odFadeInUp {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ===================================================================
+       EMPTY STATE
+       =================================================================== */
+    .od-empty {
+        text-align: center !important;
+        padding: 3rem 1rem !important;
+        color: #858796 !important;
+    }
+    .od-empty i {
+        font-size: 3rem !important;
+        opacity: 0.5 !important;
+        display: block !important;
+        margin-bottom: 1rem !important;
+    }
+
+    /* ===================================================================
+       RESPONSIVO
+       =================================================================== */
+    @media (max-width: 768px) {
+        .od-item {
+            grid-template-columns: 1fr !important;
+            gap: 0.5rem !important;
+        }
+        .od-item-pre {
+            grid-template-columns: auto auto 1fr !important;
+        }
+    }
+</style>
+
+<a href="{{ url_for('titulo_cvs.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar ao Título CVS
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-exchange-alt me-2"></i>Origem / Destino - CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Preencha a coluna <code>ORIGEM_DESTINO</code> dos ativos da
+            tabela <code>FIN_TB008_ORIGEM_DESTINO_CVS</code>.
+        </p>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- FILTRO E PROGRESSO                                              -->
+    <!-- =============================================================== -->
+    <div class="card od-section-card mb-4">
+        <div class="od-section-header od-section-header-progresso">
+            <h5><i class="fas fa-tasks me-2"></i>Progresso do Preenchimento</h5>
+            <span class="od-badge-count" id="badgeDataAtual">
+                {% if dt_filtro %}
+                    {{ dt_filtro.strftime('%d/%m/%Y') }}
+                {% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="card-body">
+            <form method="GET"
+                  action="{{ url_for('titulo_cvs.origem_destino_index') }}"
+                  class="row g-3 align-items-end mb-3">
+                <div class="col-md-5">
+                    <label for="dt_atualizacao"
+                           class="form-label small fw-semibold">
+                        Data de Atualização (DT_ATUALIZACAO)
+                    </label>
+                    <select name="dt_atualizacao"
+                            id="dt_atualizacao"
+                            class="form-select">
+                        {% if not datas_disponiveis %}
+                            <option value="">— Sem dados —</option>
+                        {% else %}
+                            {% for dt in datas_disponiveis %}
+                                <option value="{{ dt.strftime('%Y-%m-%d') }}"
+                                    {% if dt_filtro and dt == dt_filtro %}selected{% endif %}>
+                                    {{ dt.strftime('%d/%m/%Y') }}
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label for="buscaAtivo"
+                           class="form-label small fw-semibold">
+                        Buscar nos pendentes
+                    </label>
+                    <input type="text"
+                           id="buscaAtivo"
+                           class="form-control"
+                           placeholder="Filtrar por ATIVO ou EVENTO...">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit"
+                            class="btn btn-primary w-100"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-filter me-2"></i>Carregar Data
+                    </button>
+                </div>
+            </form>
+
+            {% if dt_filtro %}
+            <div class="row g-2 mb-3">
+                <div class="col-md-3">
+                    <div class="od-stat-box">
+                        <div class="od-stat-label">Total</div>
+                        <h3 class="od-stat-value total" id="contadorTotal">{{ total }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="od-stat-box">
+                        <div class="od-stat-label">Pendentes</div>
+                        <h3 class="od-stat-value pendentes"
+                            id="contadorPendentes">{{ qtd_pendentes }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="od-stat-box">
+                        <div class="od-stat-label">Preenchidos</div>
+                        <h3 class="od-stat-value preenchidos"
+                            id="contadorPreenchidos">{{ qtd_preenchidos }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="od-stat-box">
+                        <div class="od-stat-label">% Concluído</div>
+                        <h3 class="od-stat-value pct"
+                            id="contadorPct">{{ progresso_pct }}%</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="od-progress-bar-bg">
+                <div class="od-progress-bar-fill"
+                     id="progressoFill"
+                     style="width: {{ progresso_pct }}%;"></div>
+                <div class="od-progress-bar-text"
+                     id="progressoTexto">
+                    {{ qtd_preenchidos }} de {{ total }}
+                    ({{ progresso_pct }}%)
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if dt_filtro and total > 0 %}
+    <!-- =============================================================== -->
+    <!-- PAINEL DE LOTE (só aparece se houver checkbox marcado)          -->
+    <!-- =============================================================== -->
+    <div class="od-lote-panel" id="painelLote">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-4">
+                <strong style="color: #224abe;">
+                    <i class="fas fa-layer-group me-2"></i>
+                    <span id="contadorSelecionados">0</span> ativo(s) selecionado(s)
+                </strong>
+            </div>
+            <div class="col-md-6">
+                <input type="text"
+                       id="inputLoteOrigem"
+                       class="od-input-origem"
+                       maxlength="150"
+                       placeholder="Origem/Destino para todos os selecionados...">
+            </div>
+            <div class="col-md-2 d-grid">
+                <button type="button"
+                        class="od-btn-salvar"
+                        id="btnSalvarLote">
+                    <i class="fas fa-save"></i>Aplicar
+                </button>
+            </div>
+        </div>
+        <div class="mt-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    id="btnLimparSelecao">
+                <i class="fas fa-times me-1"></i>Limpar seleção
+            </button>
+        </div>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- DOIS PAINÉIS LADO A LADO                                        -->
+    <!-- =============================================================== -->
+    <div class="row g-3">
+        <!-- ========== PENDENTES ========== -->
+        <div class="col-lg-7">
+            <div class="card od-section-card h-100">
+                <div class="od-section-header od-section-header-pendentes">
+                    <h5>
+                        <i class="fas fa-hourglass-half me-2"></i>
+                        Pendentes
+                    </h5>
+                    <span class="od-badge-count"
+                          id="badgePendentes">{{ qtd_pendentes }}</span>
+                </div>
+                <div class="od-list-scroll" id="listaPendentes">
+                    {% if pendentes %}
+                        {% for p in pendentes %}
+                        <div class="od-item"
+                             data-ativo="{{ p.ATIVO }}"
+                             data-evento="{{ p.EVENTO }}"
+                             data-dt="{{ p.DT_ATUALIZACAO.strftime('%Y-%m-%d') }}"
+                             data-busca="{{ p.ATIVO|lower }} {{ p.EVENTO|lower }}">
+
+                            <div class="od-col-check">
+                                <input type="checkbox"
+                                       class="od-checkbox-item od-check"
+                                       title="Selecionar para preenchimento em lote">
+                            </div>
+
+                            <div class="od-col-label">
+                                <span class="od-mini-label">Ativo</span>
+                                <span class="od-chip od-chip-ativo">{{ p.ATIVO }}</span>
+                            </div>
+
+                            <div class="od-col-label">
+                                <span class="od-mini-label">Evento</span>
+                                <span class="od-chip od-chip-evento">{{ p.EVENTO }}</span>
+                            </div>
+
+                            <div class="od-col-input">
+                                <span class="od-mini-label">Origem / Destino</span>
+                                <input type="text"
+                                       class="od-input-origem od-input-pendente"
+                                       maxlength="150"
+                                       placeholder="Digite e pressione Enter...">
+                            </div>
+
+                            <div class="od-col-check">
+                                <button type="button"
+                                        class="od-btn-salvar od-btn-salvar-item">
+                                    <i class="fas fa-check"></i>Salvar
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="od-empty">
+                            <i class="fas fa-check-circle text-success"></i>
+                            <h5 class="text-muted mb-2">
+                                Nenhum pendente
+                            </h5>
+                            <p class="text-muted mb-0">
+                                Todos os ativos desta data já têm
+                                Origem/Destino preenchido. 🎉
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== PREENCHIDOS ========== -->
+        <div class="col-lg-5">
+            <div class="card od-section-card h-100">
+                <div class="od-section-header od-section-header-preenchidos">
+                    <h5>
+                        <i class="fas fa-check-double me-2"></i>
+                        Preenchidos
+                    </h5>
+                    <span class="od-badge-count"
+                          id="badgePreenchidos">{{ qtd_preenchidos }}</span>
+                </div>
+                <div class="od-list-scroll" id="listaPreenchidos">
+                    {% if preenchidos %}
+                        {% for p in preenchidos %}
+                        <div class="od-item-pre"
+                             data-ativo="{{ p.ATIVO }}"
+                             data-evento="{{ p.EVENTO }}"
+                             data-dt="{{ p.DT_ATUALIZACAO.strftime('%Y-%m-%d') }}">
+
+                            <div class="od-col-label">
+                                <span class="od-mini-label">Ativo</span>
+                                <span class="od-chip od-chip-ativo">{{ p.ATIVO }}</span>
+                            </div>
+
+                            <div class="od-col-label">
+                                <span class="od-mini-label">Evento</span>
+                                <span class="od-chip od-chip-evento">{{ p.EVENTO }}</span>
+                            </div>
+
+                            <div class="od-col-input">
+                                <span class="od-mini-label">Origem / Destino</span>
+                                <div class="od-origem-texto">
+                                    <i class="fas fa-arrow-right"></i>{{ p.ORIGEM_DESTINO }}
+                                </div>
+                            </div>
+
+                            <button type="button"
+                                    class="od-btn-limpar"
+                                    title="Limpar e voltar para pendentes">
+                                <i class="fas fa-undo"></i>
+                            </button>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="od-empty">
+                            <i class="fas fa-inbox"></i>
+                            <h5 class="text-muted mb-2">
+                                Nada preenchido ainda
+                            </h5>
+                            <p class="text-muted mb-0">
+                                Comece a preencher os pendentes ao lado.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% elif dt_filtro and total == 0 %}
+    <div class="card od-section-card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">
+                Sem registros para
+                {{ dt_filtro.strftime('%d/%m/%Y') }}
+            </h5>
+            <p class="text-muted mb-0">
+                A tabela <code>FIN_TB008_ORIGEM_DESTINO_CVS</code> não tem
+                registros para esta data.
+            </p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card od-section-card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">Nenhuma data disponível</h5>
+            <p class="text-muted mb-0">
+                A tabela <code>FIN_TB008_ORIGEM_DESTINO_CVS</code> está vazia.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+(function () {
+    // =====================================================================
+    // BUSCA EM TEMPO REAL DENTRO DE PENDENTES
+    // =====================================================================
+    const inputBusca = document.getElementById('buscaAtivo');
+    if (inputBusca) {
+        inputBusca.addEventListener('input', function () {
+            const termo = this.value.trim().toLowerCase();
+            const itens = document.querySelectorAll('#listaPendentes .od-item');
+            itens.forEach(item => {
+                const dados = (item.dataset.busca || '').toLowerCase();
+                item.style.display = (!termo || dados.includes(termo))
+                    ? '' : 'none';
+            });
+        });
+    }
+
+    // =====================================================================
+    // ATUALIZA CONTADORES E BARRA DE PROGRESSO
+    // =====================================================================
+    function atualizarProgresso(p) {
+        if (!p) return;
+        const sets = [
+            ['contadorPendentes',   p.pendentes],
+            ['contadorPreenchidos', p.preenchidos],
+            ['contadorTotal',       p.total],
+            ['contadorPct',         p.percentual + '%'],
+            ['badgePendentes',      p.pendentes],
+            ['badgePreenchidos',    p.preenchidos],
+        ];
+        sets.forEach(([id, val]) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = val;
+        });
+
+        const fill = document.getElementById('progressoFill');
+        if (fill) fill.style.width = p.percentual + '%';
+
+        const texto = document.getElementById('progressoTexto');
+        if (texto) {
+            texto.textContent =
+                p.preenchidos + ' de ' + p.total +
+                ' (' + p.percentual + '%)';
+        }
+    }
+
+    // =====================================================================
+    // TOAST DE FEEDBACK
+    // =====================================================================
+    function mostrarToast(msg, tipo) {
+        tipo = tipo || 'success';
+        const cor = tipo === 'success' ? 'alert-success'
+            : tipo === 'danger' ? 'alert-danger' : 'alert-info';
+        const icone = tipo === 'success' ? 'fa-check-circle'
+            : tipo === 'danger' ? 'fa-times-circle' : 'fa-info-circle';
+
+        const div = document.createElement('div');
+        div.className = 'alert ' + cor + ' shadow';
+        div.style.cssText =
+            'position:fixed;top:20px;right:20px;z-index:9999;' +
+            'min-width:280px;';
+        div.innerHTML = '<i class="fas ' + icone + ' me-2"></i>' + msg;
+        document.body.appendChild(div);
+
+        setTimeout(() => {
+            div.style.transition = 'opacity 0.4s ease';
+            div.style.opacity = '0';
+            setTimeout(() => div.remove(), 400);
+        }, 2500);
+    }
+
+    function escapeHtml(t) {
+        const div = document.createElement('div');
+        div.textContent = t;
+        return div.innerHTML;
+    }
+
+    // =====================================================================
+    // MOVER PENDENTE → PREENCHIDO
+    // =====================================================================
+    function moverParaPreenchido(itemEl, origemDestino) {
+        itemEl.classList.add('fade-out');
+
+        setTimeout(() => {
+            const dt = itemEl.dataset.dt;
+            const ativo = itemEl.dataset.ativo;
+            const evento = itemEl.dataset.evento;
+
+            itemEl.remove();
+
+            const listaPend = document.getElementById('listaPendentes');
+            if (listaPend && listaPend.querySelectorAll('.od-item').length === 0) {
+                listaPend.innerHTML =
+                    '<div class="od-empty">' +
+                    '  <i class="fas fa-check-circle text-success"></i>' +
+                    '  <h5 class="text-muted mb-2">Nenhum pendente</h5>' +
+                    '  <p class="text-muted mb-0">' +
+                    '    Todos os ativos desta data já têm Origem/Destino preenchido. 🎉' +
+                    '  </p>' +
+                    '</div>';
+            }
+
+            const listaPre = document.getElementById('listaPreenchidos');
+            if (listaPre) {
+                const empty = listaPre.querySelector('.od-empty');
+                if (empty) empty.remove();
+
+                const div = document.createElement('div');
+                div.className = 'od-item-pre';
+                div.dataset.ativo = ativo;
+                div.dataset.evento = evento;
+                div.dataset.dt = dt;
+                div.innerHTML =
+                    '<div class="od-col-label">' +
+                    '  <span class="od-mini-label">Ativo</span>' +
+                    '  <span class="od-chip od-chip-ativo">' + escapeHtml(ativo) + '</span>' +
+                    '</div>' +
+                    '<div class="od-col-label">' +
+                    '  <span class="od-mini-label">Evento</span>' +
+                    '  <span class="od-chip od-chip-evento">' + escapeHtml(evento) + '</span>' +
+                    '</div>' +
+                    '<div class="od-col-input">' +
+                    '  <span class="od-mini-label">Origem / Destino</span>' +
+                    '  <div class="od-origem-texto">' +
+                    '    <i class="fas fa-arrow-right"></i>' + escapeHtml(origemDestino) +
+                    '  </div>' +
+                    '</div>' +
+                    '<button type="button" class="od-btn-limpar" title="Limpar e voltar para pendentes">' +
+                    '  <i class="fas fa-undo"></i>' +
+                    '</button>';
+
+                listaPre.insertBefore(div, listaPre.firstChild);
+            }
+        }, 300);
+    }
+
+    // =====================================================================
+    // MOVER PREENCHIDO → PENDENTE
+    // =====================================================================
+    function moverParaPendente(itemEl) {
+        const dt = itemEl.dataset.dt;
+        const ativo = itemEl.dataset.ativo;
+        const evento = itemEl.dataset.evento;
+
+        itemEl.style.transition = 'all 0.3s ease';
+        itemEl.style.opacity = '0';
+        itemEl.style.transform = 'translateX(-20px)';
+
+        setTimeout(() => {
+            itemEl.remove();
+
+            const listaPre = document.getElementById('listaPreenchidos');
+            if (listaPre && listaPre.querySelectorAll('.od-item-pre').length === 0) {
+                listaPre.innerHTML =
+                    '<div class="od-empty">' +
+                    '  <i class="fas fa-inbox"></i>' +
+                    '  <h5 class="text-muted mb-2">Nada preenchido ainda</h5>' +
+                    '  <p class="text-muted mb-0">' +
+                    '    Comece a preencher os pendentes ao lado.' +
+                    '  </p>' +
+                    '</div>';
+            }
+
+            const listaPend = document.getElementById('listaPendentes');
+            if (listaPend) {
+                const empty = listaPend.querySelector('.od-empty');
+                if (empty) empty.remove();
+
+                const div = document.createElement('div');
+                div.className = 'od-item';
+                div.dataset.ativo = ativo;
+                div.dataset.evento = evento;
+                div.dataset.dt = dt;
+                div.dataset.busca = (ativo + ' ' + evento).toLowerCase();
+                div.innerHTML =
+                    '<div class="od-col-check">' +
+                    '  <input type="checkbox" class="od-checkbox-item od-check" title="Selecionar para preenchimento em lote">' +
+                    '</div>' +
+                    '<div class="od-col-label">' +
+                    '  <span class="od-mini-label">Ativo</span>' +
+                    '  <span class="od-chip od-chip-ativo">' + escapeHtml(ativo) + '</span>' +
+                    '</div>' +
+                    '<div class="od-col-label">' +
+                    '  <span class="od-mini-label">Evento</span>' +
+                    '  <span class="od-chip od-chip-evento">' + escapeHtml(evento) + '</span>' +
+                    '</div>' +
+                    '<div class="od-col-input">' +
+                    '  <span class="od-mini-label">Origem / Destino</span>' +
+                    '  <input type="text" class="od-input-origem od-input-pendente" maxlength="150" placeholder="Digite e pressione Enter...">' +
+                    '</div>' +
+                    '<div class="od-col-check">' +
+                    '  <button type="button" class="od-btn-salvar od-btn-salvar-item">' +
+                    '    <i class="fas fa-check"></i>Salvar' +
+                    '  </button>' +
+                    '</div>';
+
+                listaPend.insertBefore(div, listaPend.firstChild);
+            }
+        }, 300);
+    }
+
+    // =====================================================================
+    // SALVAR UM ÚNICO ITEM
+    // =====================================================================
+    function salvarItem(itemEl) {
+        const input = itemEl.querySelector('.od-input-pendente');
+        const valor = (input.value || '').trim();
+
+        if (!valor) {
+            mostrarToast('Digite um valor para Origem/Destino.', 'danger');
+            input.focus();
+            return;
+        }
+
+        itemEl.classList.add('salvando');
+
+        fetch("{{ url_for('titulo_cvs.origem_destino_salvar') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({
+                dt_atualizacao: itemEl.dataset.dt,
+                ativo: itemEl.dataset.ativo,
+                evento: itemEl.dataset.evento,
+                origem_destino: valor
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            itemEl.classList.remove('salvando');
+            if (data.success) {
+                mostrarToast(data.message, 'success');
+                atualizarProgresso(data.progresso);
+                moverParaPreenchido(itemEl, valor);
+            } else {
+                mostrarToast(data.message || 'Erro ao salvar.', 'danger');
+            }
+        })
+        .catch(err => {
+            itemEl.classList.remove('salvando');
+            mostrarToast('Erro de conexão: ' + err, 'danger');
+        });
+    }
+
+    // =====================================================================
+    // LIMPAR UM ITEM
+    // =====================================================================
+    function limparItem(itemEl) {
+        if (!confirm('Limpar o Origem/Destino deste ativo? Ele voltará para a lista de pendentes.')) {
+            return;
+        }
+
+        fetch("{{ url_for('titulo_cvs.origem_destino_limpar') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({
+                dt_atualizacao: itemEl.dataset.dt,
+                ativo: itemEl.dataset.ativo,
+                evento: itemEl.dataset.evento
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                mostrarToast(data.message, 'success');
+                atualizarProgresso(data.progresso);
+                moverParaPendente(itemEl);
+            } else {
+                mostrarToast(data.message || 'Erro.', 'danger');
+            }
+        })
+        .catch(err => {
+            mostrarToast('Erro de conexão: ' + err, 'danger');
+        });
+    }
+
+    // =====================================================================
+    // EVENTOS DELEGADOS
+    // =====================================================================
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.od-btn-salvar-item')) {
+            const item = e.target.closest('.od-item');
+            if (item) salvarItem(item);
+            return;
+        }
+
+        if (e.target.closest('.od-btn-limpar')) {
+            const item = e.target.closest('.od-item-pre');
+            if (item) limparItem(item);
+            return;
+        }
+
+        if (e.target.classList.contains('od-check')) {
+            atualizarContadorLote();
+        }
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && e.target.classList.contains('od-input-pendente')) {
+            e.preventDefault();
+            const item = e.target.closest('.od-item');
+            if (item) salvarItem(item);
+        }
+    });
+
+    // =====================================================================
+    // SELEÇÃO EM LOTE
+    // =====================================================================
+    function atualizarContadorLote() {
+        const checks = document.querySelectorAll('#listaPendentes .od-check:checked');
+        const cont = checks.length;
+        const painel = document.getElementById('painelLote');
+        const contEl = document.getElementById('contadorSelecionados');
+        if (contEl) contEl.textContent = cont;
+        if (painel) painel.classList.toggle('ativo', cont > 0);
+    }
+
+    const btnLimparSel = document.getElementById('btnLimparSelecao');
+    if (btnLimparSel) {
+        btnLimparSel.addEventListener('click', function () {
+            document.querySelectorAll('#listaPendentes .od-check:checked')
+                .forEach(c => c.checked = false);
+            atualizarContadorLote();
+        });
+    }
+
+    const btnSalvarLote = document.getElementById('btnSalvarLote');
+    if (btnSalvarLote) {
+        btnSalvarLote.addEventListener('click', function () {
+            const inputLote = document.getElementById('inputLoteOrigem');
+            const valor = (inputLote.value || '').trim();
+
+            if (!valor) {
+                mostrarToast('Digite um valor para Origem/Destino.', 'danger');
+                return;
+            }
+
+            const checks = document.querySelectorAll('#listaPendentes .od-check:checked');
+            if (checks.length === 0) {
+                mostrarToast('Selecione pelo menos um ativo.', 'danger');
+                return;
+            }
+
+            const itens = [];
+            const itensEls = [];
+            checks.forEach(c => {
+                const item = c.closest('.od-item');
+                if (item) {
+                    itens.push({
+                        dt_atualizacao: item.dataset.dt,
+                        ativo: item.dataset.ativo,
+                        evento: item.dataset.evento,
+                        origem_destino: valor
+                    });
+                    itensEls.push(item);
+                }
+            });
+
+            btnSalvarLote.disabled = true;
+            const htmlOriginal = btnSalvarLote.innerHTML;
+            btnSalvarLote.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i>Salvando...';
+
+            fetch("{{ url_for('titulo_cvs.origem_destino_salvar_lote') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Silent-Request': 'true'
+                },
+                body: JSON.stringify({ itens: itens })
+            })
+            .then(r => r.json())
+            .then(data => {
+                btnSalvarLote.disabled = false;
+                btnSalvarLote.innerHTML = htmlOriginal;
+
+                if (data.success) {
+                    mostrarToast(data.message, 'success');
+                    atualizarProgresso(data.progresso);
+                    itensEls.forEach(el => moverParaPreenchido(el, valor));
+                    inputLote.value = '';
+                    atualizarContadorLote();
+                } else {
+                    mostrarToast(data.message || 'Erro ao salvar lote.', 'danger');
+                }
+            })
+            .catch(err => {
+                btnSalvarLote.disabled = false;
+                btnSalvarLote.innerHTML = htmlOriginal;
+                mostrarToast('Erro de conexão: ' + err, 'danger');
+            });
+        });
+    }
+})();
+</script>
+{% endblock %}

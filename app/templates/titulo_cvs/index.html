@@ -29,7 +29,7 @@
         border: none;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        overflow: hidden; /* garante que o radius do card respeite o scroll interno */
+        overflow: hidden;
     }
     .cvs-section-header {
         background: linear-gradient(135deg, #4e73df, #224abe);
@@ -41,16 +41,6 @@
         margin: 0; font-weight: 600; font-size: 1rem;
     }
 
-    /* =====================================================================
-       SCROLL LATERAL DA TABELA
-       Força scroll horizontal sempre que o container for menor que a tabela.
-       Scrollbar customizada para ficar bem visível ao usuário.
-       ===================================================================== */
-    .cvs-table-scroll {
-        overflow-x: auto;
-        overflow-y: hidden;
-        -webkit-overflow-scrolling: touch;
-    }
     .cvs-table-scroll::-webkit-scrollbar {
         height: 12px;
     }
@@ -65,14 +55,9 @@
     .cvs-table-scroll::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(135deg, #224abe, #1a3a99);
     }
-    /* Firefox */
-    .cvs-table-scroll {
-        scrollbar-width: thin;
-        scrollbar-color: #4e73df #f1f3f5;
-    }
 
     .cvs-table {
-        min-width: 1500px; /* força scroll horizontal em telas comuns */
+        min-width: 1500px;
         margin-bottom: 0;
     }
     .cvs-table thead th {
@@ -83,13 +68,13 @@
         border-bottom: 2px solid #e3e6f0;
         text-transform: uppercase;
         letter-spacing: 0.3px;
-        white-space: nowrap; /* nunca quebrar cabeçalho */
+        white-space: nowrap;
         padding: 0.85rem 1rem;
     }
     .cvs-table tbody td {
         font-size: 0.9rem;
         vertical-align: middle;
-        white-space: nowrap; /* nunca quebrar conteúdo */
+        white-space: nowrap;
         padding: 0.65rem 1rem;
     }
     .cvs-table tbody tr:hover { background: #f8fbff; }
@@ -196,13 +181,20 @@
 
 <div class="editais-container fade-in">
 
-    <div class="page-title-bar mb-4">
-        <h1 class="fw-bold header-with-back mb-0">
-            <i class="fas fa-file-invoice me-2"></i>Título CVS
-        </h1>
-        <p class="text-muted mb-0 mt-1">
-            Resumo de Títulos CVS por contrato e data de atualização
-        </p>
+    <div class="page-title-bar mb-4 d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <h1 class="fw-bold header-with-back mb-0">
+                <i class="fas fa-file-invoice me-2"></i>Título CVS
+            </h1>
+            <p class="text-muted mb-0 mt-1">
+                Resumo de Títulos CVS por contrato e data de atualização
+            </p>
+        </div>
+        <a href="{{ url_for('titulo_cvs.origem_destino_index') }}"
+           class="btn btn-success btn-lg shadow-sm">
+            <i class="fas fa-exchange-alt me-2"></i>
+            Preencher Origem / Destino
+        </a>
     </div>
 
     <div class="row g-3 mb-4">
@@ -366,7 +358,7 @@
     </div>
 
     {% if registros %}
-    <div class="card cvs-section-card">
+    <div class="card cvs-section-card" style="overflow: hidden;">
         <div class="cvs-section-header">
             <h5>
                 <i class="fas fa-table me-2"></i>
@@ -376,8 +368,8 @@
             </h5>
         </div>
 
-        <div class="cvs-table-scroll">
-            <table class="table table-hover table-sm cvs-table mb-0">
+        <div class="cvs-table-scroll" style="overflow-x: auto; overflow-y: hidden; width: 100%; display: block; scrollbar-width: thin; scrollbar-color: #4e73df #f1f3f5;">
+            <table class="table table-hover table-sm cvs-table mb-0" style="min-width: 1500px;">
                 <thead>
                     <tr>
                         <th>Contrato</th>
@@ -392,7 +384,6 @@
                         <th class="text-end">Fin. Principal</th>
                         <th class="text-end">Fin. Venc. a Pagar</th>
                         <th class="text-end">Total</th>
-                        <th>DT Carga</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -470,7 +461,7 @@
                                 <span class="text-muted">-</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <!--<td>
                             <small class="text-muted">
                                 {% if r.DT_CARGA %}
                                     {{ r.DT_CARGA.strftime('%d/%m/%Y') }}
@@ -478,7 +469,7 @@
                                     -
                                 {% endif %}
                             </small>
-                        </td>
+                        </td>-->
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -18,7 +18,7 @@ from flask import (
 )
 from flask_login import login_required
 from app import db
-from app.models.titulo_cvs import ResumoCVS
+from app.models.titulo_cvs import ResumoCVS, OrigemDestinoCVS
 from app.utils.audit import registrar_log
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
@@ -26,6 +26,7 @@ from sqlalchemy import text
 import os
 import re
 import tempfile
+from types import SimpleNamespace
 
 titulo_cvs_bp = Blueprint(
     'titulo_cvs',
@@ -452,3 +453,523 @@ def _to_int(valor):
         return int(float(str(valor).strip()))
     except (ValueError, TypeError):
         return None
+
+
+# =========================================================================
+# ORIGEM / DESTINO — HELPER PRIVADO
+# =========================================================================
+def _contar_origem_destino_completo(dt_atualizacao):
+    """
+    Conta total / pendentes / preenchidos usando o LEFT JOIN entre
+    FIN_TB007_RESUMO_CVS (fonte da verdade) e FIN_TB008_ORIGEM_DESTINO_CVS
+    (onde fica o ORIGEM_DESTINO).
+
+    A contagem é sempre baseada na FIN_TB007 para refletir todos os
+    ativos que precisam ter ORIGEM_DESTINO preenchido.
+
+    Retorna (total, pendentes, preenchidos).
+    """
+    sql = text("""
+        SELECT 
+            COUNT(*) AS total,
+            SUM(CASE WHEN B.[ORIGEM_DESTINO] IS NULL 
+                       OR B.[ORIGEM_DESTINO] = ''
+                     THEN 1 ELSE 0 END) AS pendentes
+        FROM (
+            SELECT DISTINCT
+                   A.[DT_ATUALIZACAO],
+                   A.[EVENTO],
+                   SUBSTRING(A.[ATIVO], 4, 1) AS ATIVO
+            FROM [BDG].[FIN_TB007_RESUMO_CVS] A
+            WHERE A.[DT_ATUALIZACAO] = :dt
+        ) X
+        LEFT JOIN [BDG].[FIN_TB008_ORIGEM_DESTINO_CVS] B
+          ON X.[DT_ATUALIZACAO] = B.[DT_ATUALIZACAO]
+         AND X.[EVENTO]         = B.[EVENTO]
+         AND X.[ATIVO]          = B.[ATIVO];
+    """)
+    row = db.session.execute(sql, {'dt': dt_atualizacao}).fetchone()
+    if not row:
+        return 0, 0, 0
+    total = int(row[0] or 0)
+    pendentes = int(row[1] or 0)
+    preenchidos = total - pendentes
+    return total, pendentes, preenchidos
+
+# =========================================================================
+# ORIGEM / DESTINO — PÁGINA PRINCIPAL
+# =========================================================================
+@titulo_cvs_bp.route('/origem-destino')
+@login_required
+def origem_destino_index():
+    """
+    Página de preenchimento de ORIGEM_DESTINO.
+
+    Lista os ativos vindos da FIN_TB007_RESUMO_CVS (fonte da verdade)
+    fazendo LEFT JOIN com FIN_TB008_ORIGEM_DESTINO_CVS para saber
+    quais já foram preenchidos.
+
+    Query base (conforme acordado):
+        SELECT DISTINCT
+               A.DT_ATUALIZACAO,
+               A.EVENTO,
+               SUBSTRING(A.ATIVO, 4, 1) AS ATIVO,
+               B.ORIGEM_DESTINO
+        FROM FIN_TB007_RESUMO_CVS A
+        LEFT JOIN FIN_TB008_ORIGEM_DESTINO_CVS B
+          ON A.DT_ATUALIZACAO = B.DT_ATUALIZACAO
+         AND A.EVENTO         = B.EVENTO
+         AND SUBSTRING(A.ATIVO, 4, 1) = B.ATIVO
+        WHERE A.DT_ATUALIZACAO = :dt
+    """
+    db.session.expire_all()
+
+    # 1. Datas disponíveis (vêm da FIN_TB007 - fonte da verdade)
+    sql_datas = text("""
+        SELECT DISTINCT [DT_ATUALIZACAO]
+        FROM [BDG].[FIN_TB007_RESUMO_CVS]
+        ORDER BY [DT_ATUALIZACAO] DESC;
+    """)
+    rows_datas = db.session.execute(sql_datas).fetchall()
+    datas_disponiveis = [r[0] for r in rows_datas if r[0] is not None]
+
+    # 2. Filtro de data
+    dt_filtro_str = (request.args.get('dt_atualizacao') or '').strip()
+    dt_filtro = None
+    if dt_filtro_str:
+        try:
+            dt_filtro = datetime.strptime(dt_filtro_str, '%Y-%m-%d').date()
+        except ValueError:
+            dt_filtro = None
+
+    if not dt_filtro and datas_disponiveis:
+        dt_filtro = datas_disponiveis[0]
+
+    # 3. Query principal com LEFT JOIN
+    pendentes = []
+    preenchidos = []
+    if dt_filtro:
+        sql_join = text("""
+            SELECT DISTINCT
+                   A.[DT_ATUALIZACAO],
+                   A.[EVENTO],
+                   SUBSTRING(A.[ATIVO], 4, 1) AS ATIVO,
+                   B.[ORIGEM_DESTINO]
+            FROM [BDG].[FIN_TB007_RESUMO_CVS] A
+            LEFT JOIN [BDG].[FIN_TB008_ORIGEM_DESTINO_CVS] B
+              ON A.[DT_ATUALIZACAO] = B.[DT_ATUALIZACAO]
+             AND A.[EVENTO]         = B.[EVENTO]
+             AND SUBSTRING(A.[ATIVO], 4, 1) = B.[ATIVO]
+            WHERE A.[DT_ATUALIZACAO] = :dt
+            ORDER BY ATIVO, A.[EVENTO];
+        """)
+        rows = db.session.execute(sql_join, {'dt': dt_filtro}).fetchall()
+
+        for r in rows:
+            dt_at = r[0]
+            evento = r[1]
+            ativo = r[2]
+            origem = r[3]
+
+            # Wrapper SimpleNamespace pra manter compatibilidade com o template
+            item = SimpleNamespace(
+                DT_ATUALIZACAO=dt_at,
+                EVENTO=evento,
+                ATIVO=ativo,
+                ORIGEM_DESTINO=origem,
+            )
+
+            if origem and str(origem).strip():
+                preenchidos.append(item)
+            else:
+                pendentes.append(item)
+
+    # 4. Estatísticas
+    total = len(pendentes) + len(preenchidos)
+    qtd_pendentes = len(pendentes)
+    qtd_preenchidos = len(preenchidos)
+    progresso_pct = (
+        round((qtd_preenchidos / total) * 100, 1) if total > 0 else 0
+    )
+
+    response = make_response(render_template(
+        'titulo_cvs/origem_destino.html',
+        datas_disponiveis=datas_disponiveis,
+        dt_filtro=dt_filtro,
+        pendentes=pendentes,
+        preenchidos=preenchidos,
+        total=total,
+        qtd_pendentes=qtd_pendentes,
+        qtd_preenchidos=qtd_preenchidos,
+        progresso_pct=progresso_pct,
+    ))
+    response.headers['Cache-Control'] = (
+        'no-store, no-cache, must-revalidate, max-age=0'
+    )
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+# =========================================================================
+# ORIGEM / DESTINO — SALVAR UM ÚNICO REGISTRO (AJAX)
+# =========================================================================
+@titulo_cvs_bp.route('/origem-destino/salvar', methods=['POST'])
+@login_required
+def origem_destino_salvar():
+    """
+    Salva o ORIGEM_DESTINO de UM registro na FIN_TB008.
+
+    UPSERT: se já existe registro na (DT_ATUALIZACAO, ATIVO, EVENTO),
+    faz UPDATE. Se não existe, faz INSERT com DT_CARGA = hoje.
+
+    Recebe JSON:
+      {
+        "dt_atualizacao": "YYYY-MM-DD",
+        "ativo": "A",         (1 caractere - vem do SUBSTRING)
+        "evento": "E",        (1 caractere)
+        "origem_destino": "texto livre até 150 chars"
+      }
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        ativo = (dados.get('ativo') or '').strip()
+        evento = (dados.get('evento') or '').strip()
+        origem_destino = (dados.get('origem_destino') or '').strip()
+
+        # Validação
+        if not dt_str or not ativo or not evento:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'Parâmetros obrigatórios: dt_atualizacao, ativo, evento.'
+                )
+            }), 400
+
+        if not origem_destino:
+            return jsonify({
+                'success': False,
+                'message': 'O campo Origem/Destino não pode ficar vazio.'
+            }), 400
+
+        if len(origem_destino) > 150:
+            return jsonify({
+                'success': False,
+                'message': 'Origem/Destino excede 150 caracteres.'
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': f'Data inválida: {dt_str}.'
+            }), 400
+
+        # UPSERT
+        registro = OrigemDestinoCVS.obter(dt_atualizacao, ativo, evento)
+
+        if registro:
+            # UPDATE
+            valor_antigo = registro.ORIGEM_DESTINO
+            registro.ORIGEM_DESTINO = origem_destino
+            acao_log = 'editar'
+        else:
+            # INSERT
+            valor_antigo = None
+            novo = OrigemDestinoCVS(
+                DT_CARGA=datetime.now().date(),
+                DT_ATUALIZACAO=dt_atualizacao,
+                ATIVO=ativo,
+                EVENTO=evento,
+                ORIGEM_DESTINO=origem_destino,
+            )
+            db.session.add(novo)
+            acao_log = 'criar'
+
+        db.session.commit()
+
+        # Auditoria
+        registrar_log(
+            acao=acao_log,
+            entidade='origem_destino_cvs',
+            entidade_id=f'{ativo}/{evento}/{dt_str}',
+            descricao=(
+                f'{acao_log.capitalize()} ORIGEM_DESTINO - '
+                f'ATIVO: {ativo}, EVENTO: {evento}, '
+                f'DT_ATUALIZACAO: {dt_atualizacao.strftime("%d/%m/%Y")}'
+            ),
+            dados_antigos={'ORIGEM_DESTINO': valor_antigo},
+            dados_novos={'ORIGEM_DESTINO': origem_destino}
+        )
+
+        # Progresso atualizado (usando o JOIN, baseado na FIN_TB007)
+        total, qtd_pend, qtd_pre = _contar_origem_destino_completo(
+            dt_atualizacao
+        )
+        progresso_pct = (
+            round((qtd_pre / total) * 100, 1) if total > 0 else 0
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Origem/Destino salvo para {ativo} ({evento}).'
+            ),
+            'item': {
+                'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d'),
+                'ativo': ativo,
+                'evento': evento,
+                'origem_destino': origem_destino,
+            },
+            'progresso': {
+                'total': total,
+                'pendentes': qtd_pend,
+                'preenchidos': qtd_pre,
+                'percentual': progresso_pct,
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao salvar Origem/Destino: {str(e)}'
+        }), 500
+
+
+
+# =========================================================================
+# ORIGEM / DESTINO — SALVAR LOTE (AJAX)
+# =========================================================================
+@titulo_cvs_bp.route('/origem-destino/salvar-lote', methods=['POST'])
+@login_required
+def origem_destino_salvar_lote():
+    """
+    Salva o ORIGEM_DESTINO de VÁRIOS registros de uma só vez.
+
+    Cada item faz UPSERT individual na FIN_TB008.
+
+    Recebe JSON:
+      {
+        "itens": [
+          {
+            "dt_atualizacao": "YYYY-MM-DD",
+            "ativo": "A",
+            "evento": "E",
+            "origem_destino": "texto"
+          },
+          ...
+        ]
+      }
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+        itens = dados.get('itens') or []
+
+        if not isinstance(itens, list) or len(itens) == 0:
+            return jsonify({
+                'success': False,
+                'message': 'Nenhum item enviado para salvar.'
+            }), 400
+
+        inseridos = 0
+        atualizados = 0
+        ignorados = 0
+        dt_atualizacao_ref = None
+
+        for item in itens:
+            dt_str = (item.get('dt_atualizacao') or '').strip()
+            ativo = (item.get('ativo') or '').strip()
+            evento = (item.get('evento') or '').strip()
+            origem_destino = (item.get('origem_destino') or '').strip()
+
+            if not dt_str or not ativo or not evento or not origem_destino:
+                ignorados += 1
+                continue
+
+            if len(origem_destino) > 150:
+                ignorados += 1
+                continue
+
+            try:
+                dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+            except ValueError:
+                ignorados += 1
+                continue
+
+            dt_atualizacao_ref = dt_atualizacao
+
+            # UPSERT
+            registro = OrigemDestinoCVS.obter(
+                dt_atualizacao, ativo, evento
+            )
+            if registro:
+                registro.ORIGEM_DESTINO = origem_destino
+                atualizados += 1
+            else:
+                novo = OrigemDestinoCVS(
+                    DT_CARGA=datetime.now().date(),
+                    DT_ATUALIZACAO=dt_atualizacao,
+                    ATIVO=ativo,
+                    EVENTO=evento,
+                    ORIGEM_DESTINO=origem_destino,
+                )
+                db.session.add(novo)
+                inseridos += 1
+
+        db.session.commit()
+
+        # Auditoria
+        registrar_log(
+            acao='editar_lote',
+            entidade='origem_destino_cvs',
+            entidade_id=None,
+            descricao=(
+                f'Preenchimento em lote de ORIGEM_DESTINO - '
+                f'{inseridos} inserido(s), '
+                f'{atualizados} atualizado(s)'
+            ),
+            dados_novos={
+                'inseridos': inseridos,
+                'atualizados': atualizados,
+                'ignorados': ignorados,
+            }
+        )
+
+        # Progresso
+        progresso = {}
+        if dt_atualizacao_ref:
+            total, qtd_pend, qtd_pre = _contar_origem_destino_completo(
+                dt_atualizacao_ref
+            )
+            progresso = {
+                'total': total,
+                'pendentes': qtd_pend,
+                'preenchidos': qtd_pre,
+                'percentual': (
+                    round((qtd_pre / total) * 100, 1) if total > 0 else 0
+                ),
+            }
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'{inseridos + atualizados} registro(s) salvo(s) com sucesso '
+                f'({inseridos} novo(s), {atualizados} atualizado(s)). '
+                f'{ignorados} ignorado(s).'
+            ),
+            'inseridos': inseridos,
+            'atualizados': atualizados,
+            'ignorados': ignorados,
+            'progresso': progresso,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao salvar em lote: {str(e)}'
+        }), 500
+
+
+# =========================================================================
+# ORIGEM / DESTINO — LIMPAR (voltar para pendente)
+# =========================================================================
+@titulo_cvs_bp.route('/origem-destino/limpar', methods=['POST'])
+@login_required
+def origem_destino_limpar():
+    """
+    DELETA o registro da FIN_TB008. Como a query principal usa
+    LEFT JOIN com a FIN_TB007, ao deletar da FIN_TB008 o ativo
+    volta naturalmente para a lista de pendentes (porque
+    B.ORIGEM_DESTINO vira NULL no JOIN).
+
+    Recebe JSON:
+      {
+        "dt_atualizacao": "YYYY-MM-DD",
+        "ativo": "A",
+        "evento": "E"
+      }
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        ativo = (dados.get('ativo') or '').strip()
+        evento = (dados.get('evento') or '').strip()
+
+        if not dt_str or not ativo or not evento:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'Parâmetros obrigatórios: dt_atualizacao, ativo, evento.'
+                )
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': f'Data inválida: {dt_str}.'
+            }), 400
+
+        registro = OrigemDestinoCVS.obter(dt_atualizacao, ativo, evento)
+        if not registro:
+            return jsonify({
+                'success': False,
+                'message': 'Registro não encontrado para limpar.'
+            }), 404
+
+        valor_antigo = registro.ORIGEM_DESTINO
+        db.session.delete(registro)
+        db.session.commit()
+
+        registrar_log(
+            acao='excluir',
+            entidade='origem_destino_cvs',
+            entidade_id=f'{ativo}/{evento}/{dt_str}',
+            descricao=(
+                f'Limpeza de ORIGEM_DESTINO (DELETE em FIN_TB008) - '
+                f'ATIVO: {ativo}, EVENTO: {evento}'
+            ),
+            dados_antigos={'ORIGEM_DESTINO': valor_antigo},
+            dados_novos=None
+        )
+
+        # Progresso (recalculado via JOIN com FIN_TB007)
+        total, qtd_pend, qtd_pre = _contar_origem_destino_completo(
+            dt_atualizacao
+        )
+        progresso_pct = (
+            round((qtd_pre / total) * 100, 1) if total > 0 else 0
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Origem/Destino limpo para {ativo} ({evento}). '
+                f'Voltou para pendentes.'
+            ),
+            'item': {
+                'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d'),
+                'ativo': ativo,
+                'evento': evento,
+            },
+            'progresso': {
+                'total': total,
+                'pendentes': qtd_pend,
+                'preenchidos': qtd_pre,
+                'percentual': progresso_pct,
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao limpar Origem/Destino: {str(e)}'
+        }), 500
