@@ -4,79 +4,104 @@
 
 {% block extra_css %}
 <style>
+    .cvs-stat-card {
+        border: none;
+        border-radius: 12px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        height: 100%;
+    }
+    .cvs-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    }
+    .cvs-stat-card .icon-wrap {
+        width: 48px; height: 48px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.25rem;
+        color: #fff;
+    }
+    .cvs-bg-blue   { background: linear-gradient(135deg, #4e73df, #224abe); }
+    .cvs-bg-green  { background: linear-gradient(135deg, #1cc88a, #13855c); }
+    .cvs-bg-cyan   { background: linear-gradient(135deg, #36b9cc, #258391); }
+
     .cvs-section-card {
         border: none;
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        overflow: visible;
+        overflow: hidden; /* garante que o radius do card respeite o scroll interno */
+    }
+    .cvs-section-header {
+        background: linear-gradient(135deg, #4e73df, #224abe);
+        color: #fff;
+        border-radius: 12px 12px 0 0;
+        padding: 0.85rem 1.25rem;
+    }
+    .cvs-section-header h5 {
+        margin: 0; font-weight: 600; font-size: 1rem;
     }
 
-    .table-container {
-        width: 100%;
-        max-width: 100%;
+    /* =====================================================================
+       SCROLL LATERAL DA TABELA
+       Força scroll horizontal sempre que o container for menor que a tabela.
+       Scrollbar customizada para ficar bem visível ao usuário.
+       ===================================================================== */
+    .cvs-table-scroll {
         overflow-x: auto;
-        overflow-y: auto;
-        max-height: 600px;
+        overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
     }
-
-    .cvs-section-card {
-        border: none;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        overflow: visible !important;
+    .cvs-table-scroll::-webkit-scrollbar {
+        height: 12px;
+    }
+    .cvs-table-scroll::-webkit-scrollbar-track {
+        background: #f1f3f5;
+        border-radius: 6px;
+    }
+    .cvs-table-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #4e73df, #224abe);
+        border-radius: 6px;
+    }
+    .cvs-table-scroll::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #224abe, #1a3a99);
+    }
+    /* Firefox */
+    .cvs-table-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: #4e73df #f1f3f5;
     }
 
-    .table-container {
-        display: block;
-        width: 100%;
-        max-width: 100%;
-        overflow-x: scroll !important;
-        overflow-y: auto;
-        max-height: 600px;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .table-container > .cvs-table.table {
-        width: 1600px !important;
-        min-width: 1600px !important;
-        max-width: none !important;
+    .cvs-table {
+        min-width: 1500px; /* força scroll horizontal em telas comuns */
         margin-bottom: 0;
     }
-
-    .cvs-table thead th,
-    .cvs-table tbody td {
-        white-space: nowrap;
-    }
-
     .cvs-table thead th {
         background: #f8f9fc;
         font-weight: 600;
-        font-size: 0.72rem;
+        font-size: 0.85rem;
         color: #5a5c69;
         border-bottom: 2px solid #e3e6f0;
         text-transform: uppercase;
-        letter-spacing: 0.2px;
-        padding: 0.45rem 0.55rem;
-        line-height: 1.1;
+        letter-spacing: 0.3px;
+        white-space: nowrap; /* nunca quebrar cabeçalho */
+        padding: 0.85rem 1rem;
     }
-
     .cvs-table tbody td {
-        font-size: 0.78rem;
+        font-size: 0.9rem;
         vertical-align: middle;
-        padding: 0.4rem 0.55rem;
-        line-height: 1.15;
+        white-space: nowrap; /* nunca quebrar conteúdo */
+        padding: 0.65rem 1rem;
     }
+    .cvs-table tbody tr:hover { background: #f8fbff; }
 
     .cvs-badge-ativo {
         font-family: 'Courier New', monospace;
         font-weight: 700;
         background: #eef2ff;
         color: #224abe;
-        padding: 0.15rem 0.35rem;
+        padding: 0.25rem 0.5rem;
         border-radius: 4px;
-        font-size: 0.72rem;
-        display: inline-block;
+        font-size: 0.85rem;
     }
 
     .cvs-num {
@@ -84,8 +109,82 @@
         font-weight: 500;
     }
 
-    .cvs-table small {
-        font-size: 0.7rem;
+    .cvs-dropzone {
+        border: 2.5px dashed #d1d3e2;
+        border-radius: 12px;
+        padding: 2.5rem 1.5rem;
+        text-align: center;
+        background: #f8f9fc;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    .cvs-dropzone:hover {
+        border-color: #4e73df;
+        background: #eef2ff;
+    }
+    .cvs-dropzone.dragover {
+        border-color: #4e73df;
+        background: #dbe4ff;
+        transform: scale(1.01);
+    }
+    .cvs-dropzone i {
+        font-size: 3rem;
+        color: #d1d3e2;
+        margin-bottom: 1rem;
+        display: block;
+        transition: color 0.2s ease;
+    }
+    .cvs-dropzone:hover i,
+    .cvs-dropzone.dragover i {
+        color: #4e73df;
+    }
+    .cvs-dropzone-text {
+        font-size: 1rem;
+        color: #5a5c69;
+        font-weight: 500;
+    }
+    .cvs-dropzone-hint {
+        font-size: 0.85rem;
+        color: #858796;
+        margin-top: 0.5rem;
+    }
+
+    .cvs-file-preview {
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+    .cvs-file-preview .file-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-grow: 1;
+        min-width: 0;
+    }
+    .cvs-file-preview .file-icon {
+        background: #d1fae5;
+        color: #047857;
+        width: 42px; height: 42px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+    }
+    .cvs-file-preview .file-name {
+        font-weight: 600;
+        color: #5a5c69;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .cvs-file-preview .file-size {
+        font-size: 0.75rem;
+        color: #858796;
     }
 </style>
 {% endblock %}
