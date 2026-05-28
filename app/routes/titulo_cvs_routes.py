@@ -508,30 +508,60 @@ def origem_destino_index():
     Lista os ativos vindos da FIN_TB007_RESUMO_CVS (fonte da verdade)
     fazendo LEFT JOIN com FIN_TB008_ORIGEM_DESTINO_CVS para saber
     quais já foram preenchidos.
-
-    Query base (conforme acordado):
-        SELECT DISTINCT
-               A.DT_ATUALIZACAO,
-               A.EVENTO,
-               SUBSTRING(A.ATIVO, 4, 1) AS ATIVO,
-               B.ORIGEM_DESTINO
-        FROM FIN_TB007_RESUMO_CVS A
-        LEFT JOIN FIN_TB008_ORIGEM_DESTINO_CVS B
-          ON A.DT_ATUALIZACAO = B.DT_ATUALIZACAO
-         AND A.EVENTO         = B.EVENTO
-         AND SUBSTRING(A.ATIVO, 4, 1) = B.ATIVO
-        WHERE A.DT_ATUALIZACAO = :dt
     """
     db.session.expire_all()
 
-    # 1. Datas disponíveis (vêm da FIN_TB007 - fonte da verdade)
+    # 1. Datas disponíveis COM contagem de pendências/total.
+    #    Ordenadas: primeiro as que têm mais pendências (coisa a fazer),
+    #    depois as concluídas. Base sempre a FIN_TB007 (fonte da verdade).
     sql_datas = text("""
-        SELECT DISTINCT [DT_ATUALIZACAO]
-        FROM [BDG].[FIN_TB007_RESUMO_CVS]
-        ORDER BY [DT_ATUALIZACAO] DESC;
+        SELECT 
+            X.[DT_ATUALIZACAO],
+            COUNT(*) AS total,
+            SUM(CASE WHEN B.[ORIGEM_DESTINO] IS NULL 
+                       OR B.[ORIGEM_DESTINO] = ''
+                     THEN 1 ELSE 0 END) AS pendentes
+        FROM (
+            SELECT DISTINCT
+                   A.[DT_ATUALIZACAO],
+                   A.[EVENTO],
+                   SUBSTRING(A.[ATIVO], 4, 1) AS ATIVO
+            FROM [BDG].[FIN_TB007_RESUMO_CVS] A
+        ) X
+        LEFT JOIN [BDG].[FIN_TB008_ORIGEM_DESTINO_CVS] B
+          ON X.[DT_ATUALIZACAO] = B.[DT_ATUALIZACAO]
+         AND X.[EVENTO]         = B.[EVENTO]
+         AND X.[ATIVO]          = B.[ATIVO]
+        GROUP BY X.[DT_ATUALIZACAO]
+        ORDER BY pendentes DESC, X.[DT_ATUALIZACAO] DESC;
     """)
     rows_datas = db.session.execute(sql_datas).fetchall()
-    datas_disponiveis = [r[0] for r in rows_datas if r[0] is not None]
+
+    datas_com_pendencia = []   # SimpleNamespace(.data, .total, .pendentes, .preenchidos)
+    datas_completas = []
+    datas_disponiveis = []     # lista simples de dates (compatibilidade / default)
+
+    for r in rows_datas:
+        dt_at = r[0]
+        total_d = int(r[1] or 0)
+        pend_d = int(r[2] or 0)
+        pre_d = total_d - pend_d
+
+        if dt_at is None:
+            continue
+
+        info = SimpleNamespace(
+            data=dt_at,
+            total=total_d,
+            pendentes=pend_d,
+            preenchidos=pre_d,
+        )
+        datas_disponiveis.append(dt_at)
+
+        if pend_d > 0:
+            datas_com_pendencia.append(info)
+        else:
+            datas_completas.append(info)
 
     # 2. Filtro de data
     dt_filtro_str = (request.args.get('dt_atualizacao') or '').strip()
@@ -542,6 +572,7 @@ def origem_destino_index():
         except ValueError:
             dt_filtro = None
 
+    # Default: primeira data da lista ordenada (a com mais pendências)
     if not dt_filtro and datas_disponiveis:
         dt_filtro = datas_disponiveis[0]
 
@@ -566,20 +597,13 @@ def origem_destino_index():
         rows = db.session.execute(sql_join, {'dt': dt_filtro}).fetchall()
 
         for r in rows:
-            dt_at = r[0]
-            evento = r[1]
-            ativo = r[2]
-            origem = r[3]
-
-            # Wrapper SimpleNamespace pra manter compatibilidade com o template
             item = SimpleNamespace(
-                DT_ATUALIZACAO=dt_at,
-                EVENTO=evento,
-                ATIVO=ativo,
-                ORIGEM_DESTINO=origem,
+                DT_ATUALIZACAO=r[0],
+                EVENTO=r[1],
+                ATIVO=r[2],
+                ORIGEM_DESTINO=r[3],
             )
-
-            if origem and str(origem).strip():
+            if r[3] and str(r[3]).strip():
                 preenchidos.append(item)
             else:
                 pendentes.append(item)
@@ -595,6 +619,8 @@ def origem_destino_index():
     response = make_response(render_template(
         'titulo_cvs/origem_destino.html',
         datas_disponiveis=datas_disponiveis,
+        datas_com_pendencia=datas_com_pendencia,
+        datas_completas=datas_completas,
         dt_filtro=dt_filtro,
         pendentes=pendentes,
         preenchidos=preenchidos,

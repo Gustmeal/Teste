@@ -353,6 +353,64 @@
     }
 
     /* ===================================================================
+       FILTRO DE DATAS — separação visual pendentes x concluídas
+       =================================================================== */
+    #dt_atualizacao {
+        font-size: 0.95rem !important;
+        padding: 0.5rem 0.75rem !important;
+        border-radius: 8px !important;
+        border: 1px solid #d1d3e2 !important;
+    }
+    #dt_atualizacao optgroup {
+        font-weight: 800 !important;
+        font-style: normal !important;
+        font-size: 0.9rem !important;
+        padding: 6px 0 !important;
+    }
+    #dt_atualizacao optgroup[label^="⏳"] {
+        color: #c98a02 !important;
+        background: #fffbeb !important;
+    }
+    #dt_atualizacao optgroup[label^="✅"] {
+        color: #13855c !important;
+        background: #f0fdf4 !important;
+    }
+    #dt_atualizacao option {
+        font-weight: 500 !important;
+        color: #1f2937 !important;
+        padding: 6px 8px !important;
+    }
+
+    .od-legenda-filtro {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+    }
+    .od-leg-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #5a5c69;
+        font-weight: 600;
+    }
+    .od-leg-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+    .od-leg-dot.pendente {
+        background: linear-gradient(135deg, #f6c23e, #c98a02);
+    }
+    .od-leg-dot.completo {
+        background: linear-gradient(135deg, #1cc88a, #13855c);
+    }
+
+    /* ===================================================================
        RESPONSIVO
        =================================================================== */
     @media (max-width: 768px) {
@@ -406,17 +464,45 @@
                     <select name="dt_atualizacao"
                             id="dt_atualizacao"
                             class="form-select">
-                        {% if not datas_disponiveis %}
+                        {% if not datas_com_pendencia and not datas_completas %}
                             <option value="">— Sem dados —</option>
                         {% else %}
-                            {% for dt in datas_disponiveis %}
-                                <option value="{{ dt.strftime('%Y-%m-%d') }}"
-                                    {% if dt_filtro and dt == dt_filtro %}selected{% endif %}>
-                                    {{ dt.strftime('%d/%m/%Y') }}
+                            {% if datas_com_pendencia %}
+                            <optgroup label="⏳ Com pendências ({{ datas_com_pendencia|length }})">
+                                {% for d in datas_com_pendencia %}
+                                <option value="{{ d.data.strftime('%Y-%m-%d') }}"
+                                    {% if dt_filtro and d.data == dt_filtro %}selected{% endif %}>
+                                    {{ d.data.strftime('%d/%m/%Y') }}
+                                    — {{ d.pendentes }} pendente{{ 's' if d.pendentes != 1 else '' }}
+                                    de {{ d.total }}
                                 </option>
-                            {% endfor %}
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
+                            {% if datas_completas %}
+                            <optgroup label="✅ Concluídas ({{ datas_completas|length }})">
+                                {% for d in datas_completas %}
+                                <option value="{{ d.data.strftime('%Y-%m-%d') }}"
+                                    {% if dt_filtro and d.data == dt_filtro %}selected{% endif %}>
+                                    {{ d.data.strftime('%d/%m/%Y') }} — Completo ✓
+                                </option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endif %}
                         {% endif %}
                     </select>
+
+                    <!-- Legenda visual -->
+                    <div class="od-legenda-filtro">
+                        <span class="od-leg-item">
+                            <span class="od-leg-dot pendente"></span>
+                            {{ datas_com_pendencia|length }} com pendência{{ 's' if datas_com_pendencia|length != 1 else '' }}
+                        </span>
+                        <span class="od-leg-item">
+                            <span class="od-leg-dot completo"></span>
+                            {{ datas_completas|length }} concluída{{ 's' if datas_completas|length != 1 else '' }}
+                        </span>
+                    </div>
                 </div>
                 <div class="col-md-4">
                     <label for="buscaAtivo"
@@ -431,7 +517,7 @@
                 <div class="col-md-3">
                     <button type="submit"
                             class="btn btn-primary w-100"
-                            {% if not datas_disponiveis %}disabled{% endif %}>
+                            {% if not datas_com_pendencia and not datas_completas %}disabled{% endif %}>
                         <i class="fas fa-filter me-2"></i>Carregar Data
                     </button>
                 </div>
@@ -669,7 +755,7 @@
             <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
             <h5 class="text-muted mb-2">Nenhuma data disponível</h5>
             <p class="text-muted mb-0">
-                A tabela <code>FIN_TB008_ORIGEM_DESTINO_CVS</code> está vazia.
+                A tabela <code>FIN_TB007_RESUMO_CVS</code> está vazia.
             </p>
         </div>
     </div>
