@@ -1569,11 +1569,17 @@ def ratear(nu_linha):
 @login_required
 def ratear_multiplo(nu_linha):
     """
-    Ratear o valor de um depósito para MÚLTIPLOS contratos
+    Ratear o valor de um depósito para MÚLTIPLOS contratos.
     O usuário só consegue finalizar quando distribuir TODO o valor.
 
-    NOVO: Cada linha agora tem seu próprio Lançamento RM (manual no formulário).
-    Se vier vazio, usa o Lançamento RM do depósito original como fallback.
+    REGRAS:
+    - Cada linha tem seu próprio Lançamento RM (manual no formulário).
+      Se vier vazio, usa o Lançamento RM do depósito original como fallback.
+    - Se a Data de Identificação for preenchida em uma linha, essa linha
+      nasce com STATUS = 'Concluído' (mesma regra da função editar()).
+    - Após criar as novas linhas, o depósito original é EXCLUÍDO
+      PERMANENTEMENTE (delete físico), junto com seu ProcessosJudiciais
+      vinculado (se existir), para não deixar registro órfão.
     """
     # Buscar o depósito original
     deposito_obj = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
@@ -1581,6 +1587,9 @@ def ratear_multiplo(nu_linha):
     if not deposito_obj:
         flash('Depósito não encontrado.', 'danger')
         return redirect(url_for('depositos_judiciais.edicao'))
+
+    # Guardar o NU_LINHA original em variável local
+    nu_linha_original = deposito_obj.NU_LINHA
 
     # Buscar carteira original
     carteira_original = CentroResultado.query.filter_by(ID_CENTRO=deposito_obj.ID_CENTRO).first()
@@ -1600,11 +1609,13 @@ def ratear_multiplo(nu_linha):
             if not rateios or len(rateios) == 0:
                 raise ValueError("É necessário informar pelo menos um rateio")
 
-            # Validar valor total
-            valor_original = float(deposito_obj.VR_RATEIO)
-            valor_total_rateado = sum(float(r['vr_rateio'].replace('.', '').replace(',', '.')) for r in rateios)
+            # Validar valor total (Decimal para bater com o tipo da coluna Numeric(18,2))
+            valor_original = Decimal(str(deposito_obj.VR_RATEIO or 0))
+            valor_total_rateado = sum(
+                Decimal(r['vr_rateio'].replace('.', '').replace(',', '.')) for r in rateios
+            )
 
-            if abs(valor_total_rateado - valor_original) > 0.01:  # Tolerância de 1 centavo
+            if abs(valor_total_rateado - valor_original) > Decimal('0.01'):  # Tolerância de 1 centavo
                 raise ValueError(
                     f"A soma dos rateios (R$ {valor_total_rateado:.2f}) deve ser igual ao valor original (R$ {valor_original:.2f})"
                 )
@@ -1621,7 +1632,7 @@ def ratear_multiplo(nu_linha):
                 novo_deposito = DepositosSufin()
                 novo_deposito.NU_LINHA = proximo_nu_linha + idx
 
-                # NOVO: Lançamento RM vem do formulário (manual por linha)
+                # Lançamento RM vem do formulário (manual por linha)
                 # Fallback: se vier vazio, usa o do depósito original
                 lancamento_rm_linha = (rateio.get('lancamento_rm') or '').strip()
                 novo_deposito.LANCAMENTO_RM = lancamento_rm_linha if lancamento_rm_linha else lancamento_rm_original
@@ -1632,9 +1643,9 @@ def ratear_multiplo(nu_linha):
                 novo_deposito.DT_MEMO = deposito_obj.DT_MEMO
                 novo_deposito.ID_IDENTIFICADO = deposito_obj.ID_IDENTIFICADO
 
-                # Campos específicos do rateio
+                # Valor do rateio (Decimal para bater com Numeric(18,2))
                 vr_rateio_str = rateio['vr_rateio'].replace('.', '').replace(',', '.')
-                novo_deposito.VR_RATEIO = float(vr_rateio_str)
+                novo_deposito.VR_RATEIO = Decimal(vr_rateio_str)
 
                 # Área
                 id_area = rateio.get('id_area')
@@ -1647,9 +1658,15 @@ def ratear_multiplo(nu_linha):
                     novo_deposito.ID_CENTRO = int(id_centro)
 
                 # Data identificação
+                # REGRA: se a data foi preenchida, o registro nasce como 'Concluído'
+                # (mesma regra usada na função editar() do ramo de edição normal)
                 dt_identificacao = rateio.get('dt_identificacao')
                 if dt_identificacao:
                     novo_deposito.DT_IDENTIFICACAO = datetime.strptime(dt_identificacao, '%Y-%m-%d')
+                    novo_deposito.STATUS = 'Concluído'
+                else:
+                    novo_deposito.DT_IDENTIFICACAO = None
+                    novo_deposito.STATUS = None
 
                 # Data ajuste RM
                 dt_ajuste_rm = rateio.get('dt_ajuste_rm')
@@ -1685,7 +1702,8 @@ def ratear_multiplo(nu_linha):
                 novo_deposito.NU_CONTRATO_2 = None
                 novo_deposito.IC_APROPRIADO = None
                 novo_deposito.IC_INCLUIDO_ACERTO = None
-                novo_deposito.STATUS = None
+                # AREA_STATUS é usada apenas para identificar quem está editando
+                # (status 'Em andamento'). Em 'Concluído' não faz sentido preencher.
                 novo_deposito.AREA_STATUS = None
 
                 db.session.add(novo_deposito)
@@ -1699,8 +1717,22 @@ def ratear_multiplo(nu_linha):
                     novo_processo.NR_PROCESSO = nr_processo.strip()
                     db.session.add(novo_processo)
 
-            # ZERAR o depósito original
-            deposito_obj.VR_RATEIO = 0
+            # ============================================
+            # EXCLUIR PERMANENTEMENTE O DEPÓSITO ORIGINAL
+            # ============================================
+            # Materializa os inserts das novas linhas ANTES de excluir o original.
+            # Assim, se houver erro nos inserts, ele estoura aqui e o rollback
+            # desfaz tudo de forma consistente (não exclui o original "à toa").
+            db.session.flush()
+
+            # 1) Excluir processo judicial vinculado ao NU_LINHA original (se existir).
+            #    Mesma PK do depósito, então sem isso ficaria órfão.
+            processo_original = ProcessosJudiciais.query.filter_by(NU_LINHA=nu_linha_original).first()
+            if processo_original is not None:
+                db.session.delete(processo_original)
+
+            # 2) Excluir o depósito original permanentemente
+            db.session.delete(deposito_obj)
 
             db.session.commit()
 
@@ -1708,18 +1740,20 @@ def ratear_multiplo(nu_linha):
             registrar_log(
                 'depositos_judiciais',
                 'rateio_multiplo',
-                f'Rateio múltiplo realizado - NU_LINHA original: {nu_linha}, criadas {len(linhas_criadas)} linhas',
+                f'Rateio múltiplo realizado - NU_LINHA original {nu_linha_original} excluído, '
+                f'criadas {len(linhas_criadas)} linhas',
                 {
-                    'nu_linha_original': nu_linha,
+                    'nu_linha_original_excluido': nu_linha_original,
                     'linhas_criadas': linhas_criadas,
                     'quantidade': len(linhas_criadas),
-                    'valor_total': valor_total_rateado
+                    'valor_total': float(valor_total_rateado),
+                    'processo_original_excluido': processo_original is not None
                 }
             )
 
             flash(
                 f'Rateio múltiplo realizado com sucesso! Criadas {len(linhas_criadas)} novas linhas. '
-                f'Depósito original zerado.',
+                f'Depósito original (Nº Linha: {nu_linha_original}) excluído permanentemente.',
                 'success'
             )
             return redirect(url_for('depositos_judiciais.edicao'))
