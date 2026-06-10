@@ -200,3 +200,137 @@ class OrigemDestinoCVS(db.Model):
 
         preenchidos = total - pendentes
         return total, pendentes, preenchidos
+
+# =========================================================================
+# Extrato CVS
+# =========================================================================
+class ExtratoCVS(db.Model):
+    """
+    Modelo para a tabela BDG.FIN_TB013_EXTRATO_CVS.
+
+    Estrutura real (conforme SSMS):
+      - NU_LINHA         int          NOT NULL   IDENTITY (gerado pelo banco)
+      - DT_CARGA         date         NOT NULL
+      - DT_MOVIMENTACAO  date         NOT NULL   *chave (PK)
+      - TIPO             varchar(3)   NULL
+      - ORDEM            smallint     NOT NULL   *chave (PK)
+      - HISTORICO        varchar(150) NULL
+      - PERIODO_DE       date         NULL
+      - PERIODO_ATE      date         NULL
+      - VR_MOVIMENTACAO  decimal(18,2) NULL
+      - VR_SALDO         decimal(18,2) NULL
+
+    Chave primária composta: (DT_MOVIMENTACAO, ORDEM)
+
+    OBS: NU_LINHA é IDENTITY no SQL Server e propositalmente NÃO está
+    mapeada no modelo. Assim o SQLAlchemy nunca envia valor para essa
+    coluna no INSERT, e o banco gera automaticamente.
+    """
+    __tablename__ = 'FIN_TB013_EXTRATO_CVS'
+    __table_args__ = {'schema': 'BDG'}
+
+    DT_MOVIMENTACAO = db.Column(db.Date, primary_key=True, nullable=False)
+    ORDEM = db.Column(db.SmallInteger, primary_key=True, nullable=False)
+
+    DT_CARGA = db.Column(db.Date, nullable=False)
+    TIPO = db.Column(db.String(3), nullable=True)
+    HISTORICO = db.Column(db.String(150), nullable=True)
+    PERIODO_DE = db.Column(db.Date, nullable=True)
+    PERIODO_ATE = db.Column(db.Date, nullable=True)
+    VR_MOVIMENTACAO = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_SALDO = db.Column(db.Numeric(18, 2), nullable=True)
+
+    def __repr__(self):
+        return (f'<ExtratoCVS {self.DT_MOVIMENTACAO} - '
+                f'ORDEM {self.ORDEM} - {self.HISTORICO}>')
+
+    @staticmethod
+    def obter_ultima_data_movimentacao():
+        """Retorna a MAX(DT_MOVIMENTACAO) da tabela. None se vazia."""
+        from sqlalchemy import func
+        return db.session.query(
+            func.max(ExtratoCVS.DT_MOVIMENTACAO)
+        ).scalar()
+
+    @staticmethod
+    def listar_por_mes(primeiro_dia_mes, ultimo_dia_mes):
+        """Lista todas as movimentações de um intervalo de datas."""
+        return ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_mes,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_mes
+        ).order_by(
+            ExtratoCVS.DT_MOVIMENTACAO.asc(),
+            ExtratoCVS.ORDEM.asc()
+        ).all()
+
+    @staticmethod
+    def listar_meses_distintos():
+        """
+        Lista os primeiros dias de cada mês com movimentação,
+        em ordem decrescente. Usa SQL nativo do SQL Server
+        (DATEFROMPARTS) para evitar incompatibilidade com
+        SELECT DISTINCT + ORDER BY.
+        """
+        from sqlalchemy import text
+        sql = text("""
+            SELECT DISTINCT 
+                DATEFROMPARTS(
+                    YEAR([DT_MOVIMENTACAO]),
+                    MONTH([DT_MOVIMENTACAO]),
+                    1
+                ) AS PRIMEIRO_DIA_MES
+            FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+            ORDER BY PRIMEIRO_DIA_MES DESC;
+        """)
+        rows = db.session.execute(sql).fetchall()
+        return [r[0] for r in rows if r[0] is not None]
+
+# =========================================================================
+# Posição Mensal de Estoque CVS
+# =========================================================================
+class PosicaoEstoqueCVS(db.Model):
+    """
+    Modelo para a tabela BDG.FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS.
+
+    Estrutura real (conforme SSMS):
+      - DT_CARGA    date          NOT NULL
+      - DT_POSICAO  date          NOT NULL    *chave (PK)
+      - TIPO        varchar(1)    NOT NULL    *chave (PK)
+      - QTDE        int           NULL
+      - VR_PU       decimal(18,2) NULL
+      - VR_TOTAL    decimal(18,2) NULL
+
+    Chave primária composta: (DT_POSICAO, TIPO)
+    """
+    __tablename__ = 'FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS'
+    __table_args__ = {'schema': 'BDG'}
+
+    DT_POSICAO = db.Column(db.Date, primary_key=True, nullable=False)
+    TIPO = db.Column(db.String(1), primary_key=True, nullable=False)
+
+    DT_CARGA = db.Column(db.Date, nullable=False)
+    QTDE = db.Column(db.Integer, nullable=True)
+    VR_PU = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_TOTAL = db.Column(db.Numeric(18, 2), nullable=True)
+
+    def __repr__(self):
+        return (f'<PosicaoEstoqueCVS {self.DT_POSICAO} - '
+                f'{self.TIPO} - QTDE {self.QTDE}>')
+
+    @staticmethod
+    def listar_todos_ordenados():
+        """
+        Lista todas as posições ordenadas por DT_POSICAO (ASC) e TIPO (ASC).
+        """
+        return PosicaoEstoqueCVS.query.order_by(
+            PosicaoEstoqueCVS.DT_POSICAO.asc(),
+            PosicaoEstoqueCVS.TIPO.asc()
+        ).all()
+
+    @staticmethod
+    def obter_ultima_dt_posicao():
+        """Retorna a MAX(DT_POSICAO) ou None se vazia."""
+        from sqlalchemy import func
+        return db.session.query(
+            func.max(PosicaoEstoqueCVS.DT_POSICAO)
+        ).scalar()

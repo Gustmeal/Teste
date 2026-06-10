@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Estoque CVS - Portal GEINC{% endblock %}
+
+{% block content %}
+<style>
+    .est-section-card {
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
+    }
+    .est-section-header {
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        background: linear-gradient(135deg, #6f42c1 0%, #4b258a 100%) !important;
+    }
+    .est-section-header h5 {
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
+    }
+    .est-section-header-acoes {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%) !important;
+    }
+
+    .est-action-btn {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        width: 100%;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: left;
+    }
+    .est-action-btn:hover {
+        border-color: #6f42c1;
+        background: #f8f5ff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(111, 66, 193, 0.12);
+    }
+    .est-action-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .est-action-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #6f42c1, #4b258a);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .est-action-text { flex-grow: 1; min-width: 0; }
+    .est-action-title {
+        font-weight: 700; color: #1f2937; font-size: 1rem;
+        margin-bottom: 0.15rem;
+    }
+    .est-action-desc { font-size: 0.85rem; color: #5a5c69; }
+    .est-action-arrow {
+        color: #6f42c1; font-size: 1.1rem; flex-shrink: 0;
+    }
+
+    .est-table-scroll {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 75vh;
+    }
+    .est-table {
+        margin-bottom: 0;
+        min-width: 800px;
+    }
+    .est-table thead th {
+        background: #f8f9fc;
+        font-weight: 700;
+        font-size: 0.8rem;
+        color: #5a5c69;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+        padding: 0.75rem 0.85rem;
+        border-bottom: 2px solid #e3e6f0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .est-table tbody td {
+        padding: 0.6rem 0.85rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    /* Linha TOTAL (azul claro, igual à imagem do usuário) */
+    .est-row-total td {
+        background: #b8dce4 !important;
+        font-weight: 700;
+        color: #0f3a4a;
+    }
+    .est-row-total td.est-dt-cell {
+        background: #d9eaa3 !important;
+        color: #2b3e0d;
+    }
+
+    /* Coluna da data (verde claro com texto centralizado verticalmente) */
+    .est-dt-cell {
+        background: #d9eaa3 !important;
+        text-align: center;
+        font-weight: 700;
+        color: #2b3e0d;
+        vertical-align: middle !important;
+        font-size: 0.95rem;
+    }
+
+    .est-tipo-cell {
+        text-align: center;
+        font-weight: 700;
+        font-family: 'Courier New', monospace;
+    }
+
+    .est-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .est-stat-box {
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+    }
+    .est-stat-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1rem;
+        background: linear-gradient(135deg, #6f42c1, #4b258a);
+    }
+    .est-stat-icon.blue {
+        background: linear-gradient(135deg, #4e73df, #224abe);
+    }
+    .est-stat-label {
+        font-size: 0.7rem;
+        color: #858796;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .est-stat-value {
+        font-weight: 700;
+        font-size: 1.15rem;
+        color: #1f2937;
+        line-height: 1.1;
+    }
+</style>
+
+<a href="{{ url_for('titulo_cvs.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar ao Título CVS
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-boxes-stacked me-2"></i>Estoque CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Posições mensais consolidadas da tabela
+            <code>FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS</code>.
+        </p>
+    </div>
+
+    <!-- Status -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-6">
+            <div class="est-stat-box">
+                <div class="est-stat-icon">
+                    <i class="fas fa-calendar-day"></i>
+                </div>
+                <div>
+                    <div class="est-stat-label">Última DT_POSICAO</div>
+                    <div class="est-stat-value">
+                        {% if ultima_dt %}
+                            {{ ultima_dt.strftime('%d/%m/%Y') }}
+                        {% else %}—{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="est-stat-box">
+                <div class="est-stat-icon blue">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <div>
+                    <div class="est-stat-label">Total de Posições</div>
+                    <div class="est-stat-value">{{ total_grupos }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ação -->
+    <div class="card est-section-card mb-4">
+        <div class="est-section-header est-section-header-acoes">
+            <h5><i class="fas fa-bolt me-2"></i>Ações Disponíveis</h5>
+        </div>
+        <div class="card-body">
+            <button type="button"
+                    class="est-action-btn"
+                    id="btnAtualizarEstoque">
+                <div class="est-action-icon">
+                    <i class="fas fa-sync-alt"></i>
+                </div>
+                <div class="est-action-text">
+                    <div class="est-action-title">
+                        Atualizar Estoque
+                    </div>
+                    <div class="est-action-desc">
+                        Calcula a próxima posição de estoque baseada na
+                        última DT_POSICAO. Pega a próxima DT_FIM_PRORATA_CVS
+                        válida da view (considerando se é último dia do mês)
+                        e insere as linhas com QTDE da
+                        <code>FIN_TB007</code> e VR_PU da view.
+                    </div>
+                </div>
+                <div class="est-action-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </button>
+
+            <div id="feedbackEstoque"
+                 class="mt-3"
+                 style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="card est-section-card">
+        <div class="est-section-header">
+            <h5>
+                <i class="fas fa-table me-2"></i>
+                Posições Mensais
+            </h5>
+        </div>
+        {% if grupos %}
+        <div class="est-table-scroll">
+            <table class="table est-table mb-0">
+                <thead>
+                    <tr>
+                        <th style="min-width: 130px;">DT Posição</th>
+                        <th style="min-width: 80px;">Tipo</th>
+                        <th class="text-end" style="min-width: 130px;">Qtde</th>
+                        <th class="text-end" style="min-width: 130px;">Vr PU</th>
+                        <th class="text-end" style="min-width: 180px;">Vr Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for g in grupos %}
+                    {# Linha TOTAL #}
+                    <tr class="est-row-total">
+                        <td class="est-dt-cell" rowspan="{{ g.tipos|length + 1 }}">
+                            {{ g.dt.strftime('%d/%m/%Y') }}
+                        </td>
+                        <td class="est-tipo-cell">TOTAL</td>
+                        <td></td>
+                        <td></td>
+                        <td class="est-num">
+                            {% if g.total_vr %}
+                                {{ "{:,.2f}".format(g.total_vr|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {# Linhas por TIPO #}
+                    {% for tipo, p in g.tipos.items()|sort %}
+                    <tr>
+                        <td class="est-tipo-cell">{{ tipo }}</td>
+                        <td class="est-num">
+                            {% if p.QTDE is not none %}
+                                {{ "{:,}".format(p.QTDE).replace(',', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="est-num">
+                            {% if p.VR_PU is not none %}
+                                {{ "{:,.2f}".format(p.VR_PU|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="est-num">
+                            {% if p.VR_TOTAL is not none %}
+                                {{ "{:,.2f}".format(p.VR_TOTAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">Nenhuma posição registrada</h5>
+            <p class="text-muted mb-0">
+                A tabela <code>FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS</code>
+                está vazia.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+(function () {
+    const btn = document.getElementById('btnAtualizarEstoque');
+    const feedback = document.getElementById('feedbackEstoque');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        if (!confirm(
+            'Tem certeza? Esta ação vai atualizar o estoque mensal e ' +
+            'pode excluir a última posição (caso ela não seja o último ' +
+            'dia do mês na view).'
+        )) {
+            return;
+        }
+
+        const htmlOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.querySelector('.est-action-icon').innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i>';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Calculando próxima posição e atualizando estoque...
+            </div>
+        `;
+
+        fetch("{{ url_for('titulo_cvs.estoque_atualizar') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                setTimeout(() => location.reload(), 2200);
+            } else {
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+})();
+</script>
+{% endblock %}

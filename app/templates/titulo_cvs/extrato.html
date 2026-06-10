@@ -1,0 +1,686 @@
+{% extends "base.html" %}
+
+{% block title %}Extrato CVS - Portal GEINC{% endblock %}
+
+{% block content %}
+<style>
+    /* ===================================================================
+       CARDS DE SEÇÃO
+       =================================================================== */
+    .ex-section-card {
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
+    }
+    .ex-section-header {
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        background: linear-gradient(135deg, #36b9cc 0%, #258391 100%) !important;
+    }
+    .ex-section-header h5 {
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
+    }
+    .ex-section-header-acoes {
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%) !important;
+    }
+    .ex-section-header-listagem {
+        background: linear-gradient(135deg, #5a5c69 0%, #373840 100%) !important;
+    }
+
+    /* ===================================================================
+       CARDS DE STATUS
+       =================================================================== */
+    .ex-stat-card {
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 1rem;
+        height: 100%;
+        transition: all 0.15s ease;
+    }
+    .ex-stat-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    .ex-stat-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 1.1rem;
+    }
+    .ex-stat-icon.cyan  { background: linear-gradient(135deg, #36b9cc, #258391); }
+    .ex-stat-icon.blue  { background: linear-gradient(135deg, #4e73df, #224abe); }
+    .ex-stat-icon.green { background: linear-gradient(135deg, #1cc88a, #13855c); }
+    .ex-stat-icon.red   { background: linear-gradient(135deg, #e74a3b, #b22318); }
+    .ex-stat-label {
+        font-size: 0.75rem;
+        color: #858796;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .ex-stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.1;
+        color: #1f2937;
+    }
+    .ex-stat-sub {
+        font-size: 0.78rem;
+        color: #858796;
+        margin-top: 2px;
+    }
+
+    /* ===================================================================
+       BOTÕES DE AÇÃO
+       =================================================================== */
+    .ex-action-btn {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        width: 100%;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: left;
+    }
+    .ex-action-btn:hover {
+        border-color: #4e73df;
+        background: #f8fbff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(78, 115, 223, 0.1);
+    }
+    .ex-action-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    .ex-action-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #4e73df, #224abe);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.3rem;
+        flex-shrink: 0;
+    }
+    .ex-action-text {
+        flex-grow: 1;
+        min-width: 0;
+    }
+    .ex-action-title {
+        font-weight: 700;
+        color: #1f2937;
+        font-size: 1rem;
+        margin-bottom: 0.15rem;
+    }
+    .ex-action-desc {
+        font-size: 0.85rem;
+        color: #5a5c69;
+    }
+    .ex-action-arrow {
+        color: #4e73df;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+    }
+
+    /* ===================================================================
+       TABELA
+       =================================================================== */
+    .ex-table-scroll {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-height: 65vh;
+    }
+    .ex-table-scroll::-webkit-scrollbar {
+        height: 10px;
+        width: 10px;
+    }
+    .ex-table-scroll::-webkit-scrollbar-track {
+        background: #f1f3f5;
+        border-radius: 5px;
+    }
+    .ex-table-scroll::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #36b9cc, #258391);
+        border-radius: 5px;
+    }
+    .ex-table {
+        min-width: 1200px;
+        margin-bottom: 0;
+        font-size: 0.88rem;
+    }
+    .ex-table thead th {
+        background: #f8f9fc;
+        font-weight: 700;
+        font-size: 0.78rem;
+        color: #5a5c69;
+        border-bottom: 2px solid #e3e6f0;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+        padding: 0.75rem 0.85rem;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .ex-table tbody td {
+        vertical-align: middle;
+        white-space: nowrap;
+        padding: 0.55rem 0.85rem;
+        color: #1f2937;
+    }
+    .ex-table tbody tr:hover { background: #f8fbff; }
+    .ex-table .ex-historico {
+        white-space: normal;
+        max-width: 400px;
+    }
+    .ex-num {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        font-weight: 500;
+    }
+    .ex-valor-positivo { color: #1cc88a; font-weight: 600; }
+    .ex-valor-negativo { color: #e74a3b; font-weight: 600; }
+
+    .ex-badge-tipo {
+        display: inline-block;
+        background: #eef2ff;
+        color: #224abe;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        font-family: 'Courier New', monospace;
+    }
+    .ex-badge-historico-prov {
+        background: #fef3c7;
+        color: #92400e;
+        padding: 0.15rem 0.45rem;
+        border-radius: 3px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        margin-right: 0.35rem;
+    }
+    .ex-badge-historico-est {
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 0.15rem 0.45rem;
+        border-radius: 3px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        margin-right: 0.35rem;
+    }
+</style>
+
+<a href="{{ url_for('titulo_cvs.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar ao Título CVS
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-receipt me-2"></i>Extrato CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Processamento de movimentações da tabela
+            <code>FIN_TB013_EXTRATO_CVS</code>.
+        </p>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- STATUS ATUAL                                                    -->
+    <!-- =============================================================== -->
+    <div class="card ex-section-card mb-4">
+        <div class="ex-section-header">
+            <h5><i class="fas fa-info-circle me-2"></i>Status do Extrato</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="ex-stat-card">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="ex-stat-icon cyan">
+                                <i class="fas fa-calendar-day"></i>
+                            </div>
+                            <div>
+                                <div class="ex-stat-label">Último mês</div>
+                                <div class="ex-stat-value">
+                                    {% if primeiro_dia_ultimo_mes %}
+                                        {{ primeiro_dia_ultimo_mes.strftime('%m/%Y') }}
+                                    {% else %}—{% endif %}
+                                </div>
+                                <div class="ex-stat-sub">DT_MOVIMENTACAO</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="ex-stat-card">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="ex-stat-icon blue">
+                                <i class="fas fa-database"></i>
+                            </div>
+                            <div>
+                                <div class="ex-stat-label">Total registros</div>
+                                <div class="ex-stat-value">
+                                    {{ "{:,}".format(total_movimentacoes).replace(',', '.') }}
+                                </div>
+                                <div class="ex-stat-sub">na tabela</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="ex-stat-card">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="ex-stat-icon green">
+                                <i class="fas fa-coins"></i>
+                            </div>
+                            <div>
+                                <div class="ex-stat-label">Provisões</div>
+                                <div class="ex-stat-value">
+                                    {{ qtd_provisoes_ultimo_mes }}
+                                </div>
+                                <div class="ex-stat-sub">no último mês</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="ex-stat-card">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="ex-stat-icon {{ 'red' if qtd_movimentacoes_destino > 0 else 'green' }}">
+                                <i class="fas fa-forward"></i>
+                            </div>
+                            <div>
+                                <div class="ex-stat-label">Próximo mês</div>
+                                <div class="ex-stat-value">
+                                    {% if proximo_mes_destino %}
+                                        {{ proximo_mes_destino.strftime('%m/%Y') }}
+                                    {% else %}—{% endif %}
+                                </div>
+                                <div class="ex-stat-sub">
+                                    {% if qtd_movimentacoes_destino > 0 %}
+                                        {{ qtd_movimentacoes_destino }} registro(s) já existe(m)
+                                    {% else %}
+                                        vazio
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- AÇÕES DISPONÍVEIS                                               -->
+    <!-- =============================================================== -->
+    <div class="card ex-section-card mb-4">
+        <div class="ex-section-header ex-section-header-acoes">
+            <h5><i class="fas fa-bolt me-2"></i>Ações Disponíveis</h5>
+        </div>
+        <div class="card-body">
+            <button type="button"
+                    class="ex-action-btn"
+                    id="btnProcessarProvisoes"
+                    {% if not primeiro_dia_ultimo_mes
+                          or (qtd_provisoes_ultimo_mes == 0 and qtd_incorporacoes == 0)
+                          or qtd_movimentacoes_destino > 0 %}disabled{% endif %}>
+                <div class="ex-action-icon">
+                    <i class="fas fa-sync-alt"></i>
+                </div>
+                <div class="ex-action-text">
+                    <div class="ex-action-title">
+                        Processar Mês
+                        {% if proximo_mes_destino %}
+                            {{ proximo_mes_destino.strftime('%m/%Y') }}
+                        {% endif %}
+                    </div>
+                    <div class="ex-action-desc">
+                        Executa, em sequência:
+                        <strong>1)</strong> Insere os Estornos das
+                        <strong>{{ qtd_provisoes_ultimo_mes }} provisão(ões)</strong>
+                        de
+                        {% if primeiro_dia_ultimo_mes %}
+                            <strong>{{ primeiro_dia_ultimo_mes.strftime('%m/%Y') }}</strong>
+                        {% endif %}
+                        que ainda não têm estorno;
+                        <strong>2)</strong> Copia as
+                        <strong>{{ qtd_incorporacoes }} incorporação(ões)</strong>
+                        da <code>FIN_TB014</code>;
+                        <strong>3)</strong> Recalcula o
+                        <strong>VR_SALDO</strong> de todas as linhas do mês
+                        ({{ "saldo anterior + movimentação" }}).
+                        {% if qtd_movimentacoes_destino > 0 %}
+                            <span class="text-danger d-block mt-1">
+                                ⚠ Já existem registros no mês destino — apague-os para reprocessar.
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="ex-action-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </button>
+
+            <div id="feedbackProcessamento"
+                 class="mt-3"
+                 style="display: none;"></div>
+        </div>
+        <!-- Botão Índices do Dia 1 -->
+            <button type="button"
+                    class="ex-action-btn mt-3"
+                    id="btnIndicesDia1">
+                <div class="ex-action-icon" style="background: linear-gradient(135deg, #36b9cc, #258391);">
+                    <i class="fas fa-calculator"></i>
+                </div>
+                <div class="ex-action-text">
+                    <div class="ex-action-title">
+                        Índices do Dia 1
+                    </div>
+                    <div class="ex-action-desc">
+                        Calcula a próxima linha de
+                        <code>FIN_TB015_INDICES_DIA_1</code> para o
+                        <strong>dia 1 do próximo mês</strong>, com base na
+                        última DT_ATUALIZACAO. Aplica os cálculos de
+                        <strong>PU_ATUALIZADO</strong>,
+                        <strong>JUROS</strong>,
+                        <strong>AMORTIZAÇÃO</strong> e
+                        <strong>PU_CARECA</strong> automaticamente.
+                    </div>
+                </div>
+                <div class="ex-action-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </button>
+
+            <div id="feedbackIndicesDia1"
+                 class="mt-3"
+                 style="display: none;"></div>
+    </div>
+
+    <!-- =============================================================== -->
+    <!-- LISTAGEM DE MOVIMENTAÇÕES                                       -->
+    <!-- =============================================================== -->
+    <div class="card ex-section-card">
+        <div class="ex-section-header ex-section-header-listagem">
+            <h5>
+                <i class="fas fa-list me-2"></i>
+                Movimentações
+                {% if mes_filtro %}
+                    — {{ mes_filtro.strftime('%m/%Y') }}
+                    ({{ movimentacoes|length }} linha{{ 's' if movimentacoes|length != 1 else '' }})
+                {% endif %}
+            </h5>
+        </div>
+        <div class="card-body pb-2">
+            <form method="GET"
+                  action="{{ url_for('titulo_cvs.extrato_index') }}"
+                  class="row g-3 align-items-end mb-3">
+                <div class="col-md-5">
+                    <label for="mes" class="form-label small fw-semibold">
+                        Filtrar por mês
+                    </label>
+                    <select name="mes" id="mes" class="form-select">
+                        {% if not meses_disponiveis %}
+                            <option value="">— Sem dados —</option>
+                        {% else %}
+                            {% for m in meses_disponiveis %}
+                                <option value="{{ m.strftime('%Y-%m-%d') }}"
+                                    {% if mes_filtro and m == mes_filtro %}selected{% endif %}>
+                                    {{ m.strftime('%m/%Y') }}
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit"
+                            class="btn btn-primary w-100"
+                            {% if not meses_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-filter me-2"></i>Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        {% if movimentacoes %}
+        <div class="ex-table-scroll">
+            <table class="table table-hover ex-table mb-0">
+                <thead>
+                    <tr>
+                        <th>DT Movimentação</th>
+                        <th>Tipo</th>
+                        <th>Ordem</th>
+                        <th>Histórico</th>
+                        <th>Período De</th>
+                        <th>Período Até</th>
+                        <th class="text-end">Vr Movimentação</th>
+                        <th class="text-end">Vr Saldo</th>
+                        <th>DT Carga</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in movimentacoes %}
+                    <tr>
+                        <td>
+                            {{ m.DT_MOVIMENTACAO.strftime('%d/%m/%Y') if m.DT_MOVIMENTACAO else '-' }}
+                        </td>
+                        <td>
+                            <span class="ex-badge-tipo">{{ m.TIPO }}</span>
+                        </td>
+                        <td class="ex-num">{{ m.ORDEM }}</td>
+                        <td class="ex-historico">
+                            {% if m.HISTORICO %}
+                                {% set h_lower = m.HISTORICO|lower %}
+                                {% if h_lower.startswith('provisão') or h_lower.startswith('provisao') %}
+                                    <span class="ex-badge-historico-prov">PROV</span>
+                                {% elif h_lower.startswith('estorno') %}
+                                    <span class="ex-badge-historico-est">EST</span>
+                                {% endif %}
+                                {{ m.HISTORICO }}
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ m.PERIODO_DE.strftime('%d/%m/%Y') if m.PERIODO_DE else '-' }}
+                        </td>
+                        <td>
+                            {{ m.PERIODO_ATE.strftime('%d/%m/%Y') if m.PERIODO_ATE else '-' }}
+                        </td>
+                        <td class="ex-num {{ 'ex-valor-negativo' if m.VR_MOVIMENTACAO and m.VR_MOVIMENTACAO < 0 else 'ex-valor-positivo' if m.VR_MOVIMENTACAO and m.VR_MOVIMENTACAO > 0 else '' }}">
+                            {% if m.VR_MOVIMENTACAO is not none %}
+                                {{ "{:,.2f}".format(m.VR_MOVIMENTACAO|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td class="ex-num">
+                            {% if m.VR_SALDO is not none %}
+                                {{ "{:,.2f}".format(m.VR_SALDO|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
+                            <small class="text-muted">
+                                {{ m.DT_CARGA.strftime('%d/%m/%Y') if m.DT_CARGA else '-' }}
+                            </small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="card-body text-center py-5">
+            <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted mb-2">Nenhuma movimentação no mês</h5>
+            <p class="text-muted mb-0">
+                Escolha outro mês no filtro acima.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+(function () {
+    const btn = document.getElementById('btnProcessarProvisoes');
+    const feedback = document.getElementById('feedbackProcessamento');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        if (!confirm(
+            'Tem certeza? Esta ação vai inserir as provisões e estornos ' +
+            'no próximo mês da tabela FIN_TB013_EXTRATO_CVS.'
+        )) {
+            return;
+        }
+
+        const htmlOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.querySelector('.ex-action-icon').innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i>';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Processando provisões... isso pode levar alguns segundos.
+            </div>
+        `;
+
+        fetch("{{ url_for('titulo_cvs.extrato_processar_provisoes') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                setTimeout(() => location.reload(), 2200);
+            } else {
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+})();
+// =========================================================================
+// BOTÃO ÍNDICES DO DIA 1
+// =========================================================================
+(function () {
+    const btn = document.getElementById('btnIndicesDia1');
+    const feedback = document.getElementById('feedbackIndicesDia1');
+    if (!btn) return;
+
+    btn.addEventListener('click', function () {
+        if (!confirm(
+            'Tem certeza? Esta ação vai calcular e inserir os índices ' +
+            'do dia 1 do próximo mês na tabela FIN_TB015_INDICES_DIA_1.'
+        )) {
+            return;
+        }
+
+        const htmlOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.querySelector('.ex-action-icon').innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i>';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Calculando índices... aguarde um instante.
+            </div>
+        `;
+
+        fetch("{{ url_for('titulo_cvs.extrato_indices_dia_1') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+            } else {
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+})();
+</script>
+{% endblock %}

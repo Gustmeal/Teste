@@ -18,7 +18,7 @@ from flask import (
 )
 from flask_login import login_required
 from app import db
-from app.models.titulo_cvs import ResumoCVS, OrigemDestinoCVS
+from app.models.titulo_cvs import ResumoCVS, OrigemDestinoCVS, ExtratoCVS
 from app.utils.audit import registrar_log
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
@@ -27,6 +27,10 @@ import os
 import re
 import tempfile
 from types import SimpleNamespace
+from calendar import monthrange
+from app.models.titulo_cvs import (
+    ResumoCVS, OrigemDestinoCVS, ExtratoCVS, PosicaoEstoqueCVS
+)
 
 titulo_cvs_bp = Blueprint(
     'titulo_cvs',
@@ -998,4 +1002,1042 @@ def origem_destino_limpar():
         return jsonify({
             'success': False,
             'message': f'Erro ao limpar Origem/Destino: {str(e)}'
+        }), 500
+# =========================================================================
+# EXTRATO — HELPERS PRIVADOS
+# =========================================================================
+def _proximo_mes_dia_1(data_qualquer):
+    """Retorna o primeiro dia do mês seguinte à data informada."""
+    if data_qualquer.month == 12:
+        return data_qualquer.replace(
+            year=data_qualquer.year + 1, month=1, day=1
+        )
+    return data_qualquer.replace(month=data_qualquer.month + 1, day=1)
+
+
+def _ultimo_dia_mes(data_qualquer):
+    """Retorna o último dia do mês da data informada."""
+    from calendar import monthrange
+    ultimo = monthrange(data_qualquer.year, data_qualquer.month)[1]
+    return data_qualquer.replace(day=ultimo)
+
+
+def _proxima_ordem_no_mes(primeiro_dia_mes, ultimo_dia_mes):
+    """Retorna MAX(ORDEM) + 1 dentro do intervalo de datas."""
+    from sqlalchemy import func
+    max_ordem = db.session.query(
+        func.max(ExtratoCVS.ORDEM)
+    ).filter(
+        ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_mes,
+        ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_mes,
+    ).scalar()
+    return (int(max_ordem) + 1) if max_ordem is not None else 1
+
+
+def _gerar_historico_estorno(historico_original):
+    """
+    Substitui 'Provisão' (ou 'Provisao' sem acento) do início por
+    'Estorno', mantendo o resto do texto intacto.
+    """
+    if not historico_original:
+        return historico_original
+    match = re.match(
+        r'^Provis[ãa]o(.*)$',
+        historico_original,
+        flags=re.IGNORECASE
+    )
+    if match:
+        return 'Estorno' + match.group(1)
+    return historico_original
+
+def _proximo_nu_linha_extrato():
+    """
+    Retorna MAX(NU_LINHA) + 1 da tabela FIN_TB013_EXTRATO_CVS.
+    Como NU_LINHA é NOT NULL e não é gerada automaticamente,
+    precisamos calcular manualmente para cada INSERT.
+    """
+    from sqlalchemy import func
+    max_nu = db.session.query(
+        func.max(ExtratoCVS.NU_LINHA)
+    ).scalar()
+    return (int(max_nu) + 1) if max_nu is not None else 1
+
+# =========================================================================
+# EXTRATO — PÁGINA PRINCIPAL
+# =========================================================================
+@titulo_cvs_bp.route('/extrato')
+@login_required
+def extrato_index():
+    """
+    Página principal do Extrato CVS.
+    Mostra status, ações disponíveis e a lista de movimentações
+    filtradas por mês.
+    """
+    db.session.expire_all()
+
+    # 1. Último mês disponível na tabela
+    ultima_data = ExtratoCVS.obter_ultima_data_movimentacao()
+    primeiro_dia_ultimo_mes = None
+    ultimo_dia_ultimo_mes = None
+    proximo_mes_destino = None
+
+    if ultima_data:
+        primeiro_dia_ultimo_mes = ultima_data.replace(day=1)
+        ultimo_dia_ultimo_mes = _ultimo_dia_mes(ultima_data)
+        proximo_mes_destino = _proximo_mes_dia_1(ultima_data)
+
+    # 2. Contagens gerais
+    total_movimentacoes = ExtratoCVS.query.count()
+    qtd_provisoes_ultimo_mes = 0
+    qtd_movimentacoes_destino = 0
+
+    if primeiro_dia_ultimo_mes:
+        qtd_provisoes_ultimo_mes = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_ultimo_mes,
+            db.or_(
+                ExtratoCVS.HISTORICO.like('Provisão%'),
+                ExtratoCVS.HISTORICO.like('Provisao%')
+            )
+        ).count()
+
+        ultimo_dia_destino = _ultimo_dia_mes(proximo_mes_destino)
+        qtd_movimentacoes_destino = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= proximo_mes_destino,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
+        ).count()
+
+    # 3. Quantidade na FIN_TB014_INCORPORACOES_MES_CVS
+    qtd_incorporacoes = db.session.execute(
+        text("SELECT COUNT(*) FROM [BDG].[FIN_TB014_INCORPORACOES_MES_CVS]")
+    ).scalar() or 0
+
+    # 4. Filtro de mês para listagem
+    mes_filtro_str = (request.args.get('mes') or '').strip()
+    mes_filtro = None
+    if mes_filtro_str:
+        try:
+            mes_filtro = datetime.strptime(
+                mes_filtro_str, '%Y-%m-%d'
+            ).date()
+        except ValueError:
+            mes_filtro = None
+
+    if not mes_filtro and ultima_data:
+        mes_filtro = primeiro_dia_ultimo_mes
+
+    # 5. Listar meses distintos
+    meses_disponiveis = ExtratoCVS.listar_meses_distintos()
+
+    # 6. Buscar movimentações do mês filtrado
+    movimentacoes = []
+    if mes_filtro:
+        movimentacoes = ExtratoCVS.listar_por_mes(
+            mes_filtro,
+            _ultimo_dia_mes(mes_filtro)
+        )
+
+    response = make_response(render_template(
+        'titulo_cvs/extrato.html',
+        movimentacoes=movimentacoes,
+        meses_disponiveis=meses_disponiveis,
+        mes_filtro=mes_filtro,
+        ultima_data=ultima_data,
+        primeiro_dia_ultimo_mes=primeiro_dia_ultimo_mes,
+        proximo_mes_destino=proximo_mes_destino,
+        total_movimentacoes=total_movimentacoes,
+        qtd_provisoes_ultimo_mes=qtd_provisoes_ultimo_mes,
+        qtd_movimentacoes_destino=qtd_movimentacoes_destino,
+        qtd_incorporacoes=qtd_incorporacoes,
+    ))
+    response.headers['Cache-Control'] = (
+        'no-store, no-cache, must-revalidate, max-age=0'
+    )
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+# =========================================================================
+# EXTRATO — PROCESSAR PROVISÕES (gera próximo mês com estornos)
+# =========================================================================
+@titulo_cvs_bp.route('/extrato/processar-provisoes', methods=['POST'])
+@login_required
+def extrato_processar_provisoes():
+    """
+    Processa o próximo mês do extrato em 3 etapas, dentro de uma
+    única transação (se algo falhar, rollback total):
+
+    ETAPA 1 — Estornos:
+        Para cada Provisão do último mês sem estorno correspondente,
+        insere uma linha de Estorno no dia 1 do mês seguinte com
+        VR_MOVIMENTACAO invertido e VR_SALDO = 0.
+
+    ETAPA 2 — Incorporações:
+        Lê todas as linhas da FIN_TB014_INCORPORACOES_MES_CVS e copia
+        para o dia 1 do mês seguinte (mesma DT_MOVIMENTACAO dos
+        estornos). Demais campos copiados. VR_SALDO = 0.
+
+    ETAPA 3 — Recálculo de VR_SALDO:
+        Para todas as linhas do mês destino, ordenadas por ORDEM:
+            VR_SALDO = VR_SALDO_da_linha_anterior + VR_MOVIMENTACAO
+        Saldo inicial = último VR_SALDO antes do mês destino.
+
+    NU_LINHA é IDENTITY (gerado pelo banco).
+    """
+    try:
+        # =================================================================
+        # 1. Resolver mês origem e mês destino
+        # =================================================================
+        ultima_data = ExtratoCVS.obter_ultima_data_movimentacao()
+        if not ultima_data:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'A tabela FIN_TB013_EXTRATO_CVS está vazia. '
+                    'Nada para processar.'
+                )
+            }), 400
+
+        primeiro_dia_ultimo_mes = ultima_data.replace(day=1)
+        ultimo_dia_ultimo_mes = _ultimo_dia_mes(ultima_data)
+        dt_movimentacao_nova = _proximo_mes_dia_1(ultima_data)
+        ultimo_dia_destino = _ultimo_dia_mes(dt_movimentacao_nova)
+
+        # =================================================================
+        # 2. Já tem coisa no mês destino? Aborta.
+        # =================================================================
+        ja_existe = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
+        ).count()
+        if ja_existe > 0:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Já existem {ja_existe} movimentação(ões) em '
+                    f'{dt_movimentacao_nova.strftime("%m/%Y")}. '
+                    f'Apague-as primeiro para reprocessar.'
+                )
+            }), 400
+
+        # =================================================================
+        # 3. Provisões do último mês + filtro "sem estorno"
+        # =================================================================
+        provisoes = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_ultimo_mes,
+            db.or_(
+                ExtratoCVS.HISTORICO.like('Provisão%'),
+                ExtratoCVS.HISTORICO.like('Provisao%')
+            )
+        ).order_by(ExtratoCVS.ORDEM.asc()).all()
+
+        estornos_mesmo_mes = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_ultimo_mes,
+            ExtratoCVS.HISTORICO.like('Estorno%')
+        ).all()
+
+        historicos_estorno_existentes = set()
+        for est in estornos_mesmo_mes:
+            if est.HISTORICO:
+                historicos_estorno_existentes.add(
+                    est.HISTORICO.strip().lower()
+                )
+
+        provisoes_para_processar = []
+        provisoes_ja_estornadas = 0
+        for prov in provisoes:
+            if not prov.HISTORICO:
+                continue
+            historico_estorno_esperado = _gerar_historico_estorno(
+                prov.HISTORICO
+            )
+            if historico_estorno_esperado:
+                chave = historico_estorno_esperado.strip().lower()
+                if chave in historicos_estorno_existentes:
+                    provisoes_ja_estornadas += 1
+                    continue
+            provisoes_para_processar.append(prov)
+
+        # =================================================================
+        # 4. Carregar todas as incorporações da FIN_TB014
+        # =================================================================
+        sql_incorporacoes = text("""
+            SELECT 
+                [TIPO],
+                [HISTORICO],
+                [PERIODO_DE],
+                [PERIODO_ATE],
+                [VR_MOVIMENTACAO]
+            FROM [BDG].[FIN_TB014_INCORPORACOES_MES_CVS]
+            ORDER BY [DT_MOVIMENTACAO], [TIPO];
+        """)
+        incorporacoes = db.session.execute(sql_incorporacoes).fetchall()
+
+        # =================================================================
+        # 5. Validar que há algo a fazer
+        # =================================================================
+        if not provisoes_para_processar and not incorporacoes:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'Nenhuma provisão precisa ser estornada e a tabela '
+                    'FIN_TB014_INCORPORACOES_MES_CVS está vazia. '
+                    'Nada para processar.'
+                )
+            }), 400
+
+        # =================================================================
+        # 6. ORDEM inicial e validação de limite smallint
+        # =================================================================
+        proxima_ordem = _proxima_ordem_no_mes(
+            dt_movimentacao_nova, ultimo_dia_destino
+        )
+        total_a_inserir = (
+            len(provisoes_para_processar) + len(incorporacoes)
+        )
+        ordem_final_estimada = proxima_ordem + total_a_inserir
+        if ordem_final_estimada > 32767:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'ORDEM final estimada ({ordem_final_estimada}) '
+                    f'ultrapassa o limite de smallint (32767).'
+                )
+            }), 400
+
+        dt_carga_hoje = datetime.now().date()
+        inseridas_estorno = 0
+        inseridas_incorporacao = 0
+
+        # =================================================================
+        # ETAPA 1 — INSERIR ESTORNOS (VR_SALDO = 0)
+        # =================================================================
+        for prov in provisoes_para_processar:
+            historico_estorno = _gerar_historico_estorno(prov.HISTORICO)
+            valor_estorno = (
+                -prov.VR_MOVIMENTACAO
+                if prov.VR_MOVIMENTACAO is not None
+                else None
+            )
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=dt_movimentacao_nova,
+                TIPO=prov.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=historico_estorno,
+                PERIODO_DE=prov.PERIODO_DE,
+                PERIODO_ATE=prov.PERIODO_ATE,
+                VR_MOVIMENTACAO=valor_estorno,
+                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 3
+            ))
+            proxima_ordem += 1
+            inseridas_estorno += 1
+
+        # =================================================================
+        # ETAPA 2 — INSERIR INCORPORAÇÕES (VR_SALDO = 0)
+        # =================================================================
+        for inc in incorporacoes:
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=dt_movimentacao_nova,
+                TIPO=inc.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=inc.HISTORICO,
+                PERIODO_DE=inc.PERIODO_DE,
+                PERIODO_ATE=inc.PERIODO_ATE,
+                VR_MOVIMENTACAO=inc.VR_MOVIMENTACAO,
+                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 3
+            ))
+            proxima_ordem += 1
+            inseridas_incorporacao += 1
+
+        # Flush envia ao banco mas mantém a transação aberta
+        db.session.flush()
+
+        # =================================================================
+        # ETAPA 3 — RECALCULAR VR_SALDO
+        # =================================================================
+        # Saldo inicial = último VR_SALDO antes do mês destino
+        sql_saldo_inicial = text("""
+            SELECT TOP 1 [VR_SALDO]
+            FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+            WHERE [DT_MOVIMENTACAO] < :dt_destino
+              AND [VR_SALDO] IS NOT NULL
+            ORDER BY [DT_MOVIMENTACAO] DESC, [ORDEM] DESC;
+        """)
+        row_saldo = db.session.execute(
+            sql_saldo_inicial, {'dt_destino': dt_movimentacao_nova}
+        ).fetchone()
+        saldo_anterior = (
+            Decimal(str(row_saldo[0]))
+            if row_saldo and row_saldo[0] is not None
+            else Decimal('0')
+        )
+        saldo_inicial_referencia = saldo_anterior
+
+        # Carrega todas as linhas do mês destino, ordenadas por ORDEM
+        linhas_destino = ExtratoCVS.query.filter(
+            ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
+            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
+        ).order_by(
+            ExtratoCVS.DT_MOVIMENTACAO.asc(),
+            ExtratoCVS.ORDEM.asc()
+        ).all()
+
+        saldos_recalculados = 0
+        for linha in linhas_destino:
+            movimentacao = (
+                Decimal(str(linha.VR_MOVIMENTACAO))
+                if linha.VR_MOVIMENTACAO is not None
+                else Decimal('0')
+            )
+            novo_saldo = saldo_anterior + movimentacao
+            linha.VR_SALDO = novo_saldo
+            saldo_anterior = novo_saldo
+            saldos_recalculados += 1
+
+        # Commit final (toda a transação)
+        db.session.commit()
+
+        # =================================================================
+        # 7. Auditoria
+        # =================================================================
+        registrar_log(
+            acao='carga',
+            entidade='extrato_cvs',
+            entidade_id=dt_movimentacao_nova.strftime('%Y-%m-%d'),
+            descricao=(
+                f'Processamento completo do mês '
+                f'{dt_movimentacao_nova.strftime("%m/%Y")}: '
+                f'{inseridas_estorno} estorno(s), '
+                f'{inseridas_incorporacao} incorporação(ões), '
+                f'{saldos_recalculados} saldo(s) recalculado(s).'
+            ),
+            dados_novos={
+                'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
+                'mes_destino': dt_movimentacao_nova.strftime('%Y-%m'),
+                'provisoes_consideradas': len(provisoes),
+                'provisoes_ja_estornadas': provisoes_ja_estornadas,
+                'estornos_inseridos': inseridas_estorno,
+                'incorporacoes_inseridas': inseridas_incorporacao,
+                'saldos_recalculados': saldos_recalculados,
+                'saldo_inicial': str(saldo_inicial_referencia),
+                'saldo_final': str(saldo_anterior),
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Processamento concluído em '
+                f'{dt_movimentacao_nova.strftime("%d/%m/%Y")}: '
+                f'{inseridas_estorno} estorno(s), '
+                f'{inseridas_incorporacao} incorporação(ões), '
+                f'{saldos_recalculados} saldo(s) recalculado(s). '
+                f'({provisoes_ja_estornadas} provisão(ões) ignorada(s) '
+                f'por já ter estorno no mês de origem.)'
+            ),
+            'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
+            'mes_destino': dt_movimentacao_nova.strftime('%Y-%m'),
+            'estornos_inseridos': inseridas_estorno,
+            'incorporacoes_inseridas': inseridas_incorporacao,
+            'provisoes_ja_estornadas': provisoes_ja_estornadas,
+            'saldos_recalculados': saldos_recalculados,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao processar mês: {str(e)}'
+        }), 500
+
+# =========================================================================
+# EXTRATO — ÍNDICES DO DIA 1 (calcula próximo mês na FIN_TB015)
+# =========================================================================
+@titulo_cvs_bp.route('/extrato/indices-dia-1', methods=['POST'])
+@login_required
+def extrato_indices_dia_1():
+    """
+    Calcula a próxima linha (próximo mês, dia 1) da tabela
+    BDG.FIN_TB015_INDICES_DIA_1, com base na última DT_ATUALIZACAO.
+
+    Para cada TIPO existente na última data, gera uma nova linha
+    na data do mês seguinte (dia 1), com os seguintes cálculos:
+
+      fator         = 1 + (numIndicadorEconomico / 100)
+      PU_ATUALIZADO = PU_CARECA_anterior * fator
+      JUROS         = PU_ATUALIZADO * 0.005
+      AMORTIZACAO   = PU_ATUALIZADO / (1 - sequencia * 0.004608) * 0.004608
+      PU_CARECA     = PU_ATUALIZADO - AMORTIZACAO
+
+    Onde:
+      - numIndicadorEconomico vem de
+        [DBPRDINDICADORECONOMICO].[dbo].[tblIndicadorEconomico]
+        com idTipoIndicadorEconomico=2, chDTFinal=YYYYMMDD da nova data
+        e chDTInicio terminando em '01'.
+        IMPORTANTE: o valor vem armazenado como percentual (ex: 0,42
+        significa 0,42% ao mês), por isso convertemos em fator
+        multiplicativo dividindo por 100 e somando 1.
+      - sequencia vem da view BDG.FIN_VW003_SEQUENCIAL_DT_TITULOS_CVS,
+        coluna SEQ_FIN_CVS, onde DIA = última data (mês anterior à nova).
+    """
+    try:
+        # =================================================================
+        # 1. Última DT_ATUALIZACAO da FIN_TB015
+        # =================================================================
+        sql_ultima = text("""
+            SELECT MAX([DT_ATUALIZACAO])
+            FROM [BDG].[FIN_TB015_INDICES_DIA_1];
+        """)
+        ultima_data = db.session.execute(sql_ultima).scalar()
+
+        if not ultima_data:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'A tabela FIN_TB015_INDICES_DIA_1 está vazia. '
+                    'Nada para calcular.'
+                )
+            }), 400
+
+        # =================================================================
+        # 2. Nova data = dia 1 do mês seguinte
+        # =================================================================
+        nova_data = _proximo_mes_dia_1(ultima_data)
+        ch_dt_final = nova_data.strftime('%Y%m%d')  # ex: '20260701'
+
+        # =================================================================
+        # 3. Já existe registro para a nova data? Aborta.
+        # =================================================================
+        sql_ja_existe = text("""
+            SELECT COUNT(*)
+            FROM [BDG].[FIN_TB015_INDICES_DIA_1]
+            WHERE [DT_ATUALIZACAO] = :nova_data;
+        """)
+        ja_existe = db.session.execute(
+            sql_ja_existe, {'nova_data': nova_data}
+        ).scalar() or 0
+        if ja_existe > 0:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Já existem {ja_existe} registro(s) em '
+                    f'{nova_data.strftime("%d/%m/%Y")}. '
+                    f'Apague-os primeiro para reprocessar.'
+                )
+            }), 400
+
+        # =================================================================
+        # 4. Buscar linhas da última data (uma por TIPO)
+        # =================================================================
+        sql_linhas_anteriores = text("""
+            SELECT [TIPO], [PU_CARECA]
+            FROM [BDG].[FIN_TB015_INDICES_DIA_1]
+            WHERE [DT_ATUALIZACAO] = :ultima_data
+            ORDER BY [TIPO];
+        """)
+        linhas_anteriores = db.session.execute(
+            sql_linhas_anteriores, {'ultima_data': ultima_data}
+        ).fetchall()
+
+        if not linhas_anteriores:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Nenhuma linha encontrada em '
+                    f'{ultima_data.strftime("%d/%m/%Y")}.'
+                )
+            }), 400
+
+        # =================================================================
+        # 5. Buscar índice econômico para a NOVA data
+        # =================================================================
+        sql_indice = text("""
+            SELECT TOP 1 [numIndicadorEconomico]
+            FROM [DBPRDINDICADORECONOMICO].[dbo].[tblIndicadorEconomico]
+            WHERE [idTipoIndicadorEconomico] = 2
+              AND [chDTFinal] = :ch_dt_final
+              AND RIGHT([chDTInicio], 2) = '01';
+        """)
+        row_indice = db.session.execute(
+            sql_indice, {'ch_dt_final': ch_dt_final}
+        ).fetchone()
+
+        if not row_indice or row_indice[0] is None:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Índice econômico não encontrado para '
+                    f'chDTFinal={ch_dt_final} '
+                    f'(idTipoIndicadorEconomico=2, '
+                    f'chDTInicio terminando em 01).'
+                )
+            }), 400
+
+        # Valor cru do índice (vem como percentual: ex 0,42 = 0,42%)
+        indice_percentual = Decimal(str(row_indice[0]))
+
+        # Converte em fator multiplicativo: (1 + percentual/100)
+        fator_indice = Decimal('1') + (indice_percentual / Decimal('100'))
+
+        # =================================================================
+        # 6. Buscar sequência da view (DIA = última data)
+        # =================================================================
+        sql_sequencia = text("""
+            SELECT TOP 1 [SEQ_FIN_CVS]
+            FROM [BDG].[FIN_VW003_SEQUENCIAL_DT_TITULOS_CVS]
+            WHERE [DIA] = :ultima_data;
+        """)
+        row_seq = db.session.execute(
+            sql_sequencia, {'ultima_data': ultima_data}
+        ).fetchone()
+
+        if not row_seq or row_seq[0] is None:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'SEQ_FIN_CVS não encontrado em '
+                    f'FIN_VW003_SEQUENCIAL_DT_TITULOS_CVS para '
+                    f'DIA={ultima_data.strftime("%d/%m/%Y")}.'
+                )
+            }), 400
+
+        sequencia = Decimal(str(row_seq[0]))
+
+        # Proteção contra divisão por zero
+        fator_amortizacao = Decimal('0.004608')
+        denominador = Decimal('1') - (sequencia * fator_amortizacao)
+        if denominador == 0:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Denominador da amortização é zero '
+                    f'(sequencia={sequencia}). Cálculo abortado.'
+                )
+            }), 400
+
+        # =================================================================
+        # 7. Para cada TIPO, calcular e inserir nova linha
+        # =================================================================
+        sql_insert = text("""
+            INSERT INTO [BDG].[FIN_TB015_INDICES_DIA_1]
+                ([DT_ATUALIZACAO], [TIPO], [PU_ATUALIZADO],
+                 [JUROS], [AMORTIZACAO], [PU_CARECA])
+            VALUES
+                (:dt, :tipo, :pu_atual, :juros, :amort, :pu_careca);
+        """)
+
+        inseridas = 0
+        detalhes = []
+
+        for linha in linhas_anteriores:
+            tipo = linha[0]
+            pu_careca_anterior = (
+                Decimal(str(linha[1])) if linha[1] is not None
+                else Decimal('0')
+            )
+
+            # PU_ATUALIZADO = PU_CARECA_anterior * fator
+            # (fator = 1 + percentual/100, ex: 0,42% -> 1,0042)
+            pu_atualizado = pu_careca_anterior * fator_indice
+
+            # JUROS: fator varia por TIPO
+            fator_juros = Decimal('0.00256354466262909') if tipo == 'B' else Decimal('0.005')
+            juros = pu_atualizado * fator_juros
+
+            # AMORTIZACAO = PU_ATUALIZADO / (1 - sequencia*0.004608) * 0.004608
+            amortizacao = (pu_atualizado / denominador) * fator_amortizacao
+
+            # PU_CARECA = PU_ATUALIZADO - AMORTIZACAO
+            pu_careca = pu_atualizado - amortizacao
+
+            db.session.execute(sql_insert, {
+                'dt': nova_data,
+                'tipo': tipo,
+                'pu_atual': pu_atualizado,
+                'juros': juros,
+                'amort': amortizacao,
+                'pu_careca': pu_careca,
+            })
+
+            inseridas += 1
+            detalhes.append({
+                'tipo': tipo,
+                'pu_careca_anterior': str(pu_careca_anterior),
+                'pu_atualizado': str(pu_atualizado),
+                'juros': str(juros),
+                'amortizacao': str(amortizacao),
+                'pu_careca': str(pu_careca),
+            })
+
+        db.session.commit()
+    
+        # =================================================================
+        # 8. Auditoria
+        # =================================================================
+        registrar_log(
+            acao='carga',
+            entidade='indices_dia_1_cvs',
+            entidade_id=nova_data.strftime('%Y-%m-%d'),
+            descricao=(
+                f'Cálculo de Índices do Dia 1 para '
+                f'{nova_data.strftime("%d/%m/%Y")} '
+                f'(base: {ultima_data.strftime("%d/%m/%Y")})'
+            ),
+            dados_novos={
+                'ultima_data': ultima_data.strftime('%Y-%m-%d'),
+                'nova_data': nova_data.strftime('%Y-%m-%d'),
+                'ch_dt_final': ch_dt_final,
+                'indice_percentual': str(indice_percentual),
+                'fator_indice': str(fator_indice),
+                'sequencia': str(sequencia),
+                'inseridas': inseridas,
+                'detalhes': detalhes,
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'{inseridas} índice(s) inserido(s) com sucesso para '
+                f'{nova_data.strftime("%d/%m/%Y")}. '
+                f'(índice: {indice_percentual}% / '
+                f'fator: {fator_indice})'
+            ),
+            'nova_data': nova_data.strftime('%Y-%m-%d'),
+            'inseridas': inseridas,
+            'indice_percentual': str(indice_percentual),
+            'fator_indice': str(fator_indice),
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao calcular índices: {str(e)}'
+        }), 500
+# =========================================================================
+# ESTOQUE — PÁGINA PRINCIPAL
+# =========================================================================
+@titulo_cvs_bp.route('/estoque')
+@login_required
+def estoque_index():
+    """
+    Página principal do Estoque CVS.
+
+    Lista todas as posições agrupadas por DT_POSICAO, mostrando
+    cada uma com uma linha TOTAL + uma linha por TIPO (A, B).
+    """
+    db.session.expire_all()
+
+    # Buscar todas as posições ordenadas
+    todas = PosicaoEstoqueCVS.listar_todos_ordenados()
+
+    # Agrupar por DT_POSICAO (mantendo ordem ASC)
+    # estrutura: lista de {dt, tipos: {'A': obj, 'B': obj, ...}, total_qtde, total_vr}
+    from collections import OrderedDict
+    grupos = OrderedDict()
+    for p in todas:
+        if p.DT_POSICAO not in grupos:
+            grupos[p.DT_POSICAO] = {
+                'dt': p.DT_POSICAO,
+                'tipos': {},
+                'total_vr': Decimal('0'),
+            }
+        grupos[p.DT_POSICAO]['tipos'][p.TIPO] = p
+        if p.VR_TOTAL is not None:
+            grupos[p.DT_POSICAO]['total_vr'] += p.VR_TOTAL
+
+    # Lista final pro template (em ordem ASC pela DT_POSICAO)
+    grupos_lista = list(grupos.values())
+
+    # Última DT_POSICAO para info do header
+    ultima_dt = PosicaoEstoqueCVS.obter_ultima_dt_posicao()
+    total_grupos = len(grupos_lista)
+
+    response = make_response(render_template(
+        'titulo_cvs/estoque.html',
+        grupos=grupos_lista,
+        ultima_dt=ultima_dt,
+        total_grupos=total_grupos,
+    ))
+    response.headers['Cache-Control'] = (
+        'no-store, no-cache, must-revalidate, max-age=0'
+    )
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+# =========================================================================
+# ESTOQUE — ATUALIZAR (lógica corrigida — um mês por vez)
+# =========================================================================
+@titulo_cvs_bp.route('/estoque/atualizar', methods=['POST'])
+@login_required
+def estoque_atualizar():
+    """
+    Atualiza o estoque mensal — UM MÊS POR VEZ.
+
+    Lógica:
+      1. Pega MAX(DT_POSICAO) da FIN_TB010  →  ultima_dt
+      2. Verifica se ultima_dt é o MAX do seu próprio mês na view:
+           SIM  → mes_alvo = MÊS SEGUINTE ao ultima_dt
+           NÃO  → mes_alvo = MESMO MÊS do ultima_dt
+                  (re-processa: deleta ultima_dt, pega data mais recente)
+      3. nova_dt = MAX(view) WHERE ano/mês = mes_alvo AND <= hoje
+      4. Se nova_dt == ultima_dt → já está atualizado, nada a fazer.
+      5. Se ultima_dt NÃO era último do mês → DELETE ultima_dt.
+      6. Calcula QTDE por TIPO da FIN_TB007.
+      7. Busca VR_PU da view para nova_dt.
+      8. INSERT com VR_TOTAL = QTDE × VR_PU.  DT_CARGA = hoje.
+
+    Exemplo:
+      ultima_dt = 31/03/2026, hoje = 10/06/2026
+        → 31/03 é MAX de março → mes_alvo = abril
+        → nova_dt = MAX(abril AND <= 10/06) = 30/04/2026  ✅
+      Próximo clique:
+        → ultima_dt = 30/04 é MAX de abril → mes_alvo = maio
+        → nova_dt = MAX(maio AND <= 10/06) = 29/05/2026   ✅
+      Próximo clique:
+        → ultima_dt = 29/05 é MAX de maio → mes_alvo = junho
+        → nova_dt = MAX(junho AND <= 10/06) = 08/06/2026  ✅
+
+    Se feito no meio de abril (hoje = 15/04/2026):
+      ultima_dt = 31/03 → mes_alvo = abril
+      → nova_dt = MAX(abril AND <= 15/04) = 10/04/2026    ✅
+    """
+    try:
+        hoje = datetime.now().date()
+
+        # =================================================================
+        # 1. Última DT_POSICAO
+        # =================================================================
+        ultima_dt = PosicaoEstoqueCVS.obter_ultima_dt_posicao()
+        if not ultima_dt:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'A tabela FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS está '
+                    'vazia. É necessário pelo menos um registro inicial '
+                    'para servir de referência.'
+                )
+            }), 400
+
+        # =================================================================
+        # 2. ultima_dt é o MAX do seu mês na view?
+        # =================================================================
+        sql_max_mes_ultima = text("""
+            SELECT MAX([DT_FIM_PRORATA_CVS])
+            FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
+            WHERE YEAR([DT_FIM_PRORATA_CVS])  = YEAR(:ultima_dt)
+              AND MONTH([DT_FIM_PRORATA_CVS]) = MONTH(:ultima_dt);
+        """)
+        max_do_mes_ultima = db.session.execute(
+            sql_max_mes_ultima, {'ultima_dt': ultima_dt}
+        ).scalar()
+
+        ultima_eh_ultimo_do_mes = (
+            max_do_mes_ultima is not None
+            and max_do_mes_ultima == ultima_dt
+        )
+
+        # =================================================================
+        # 3. Determinar ano/mês alvo
+        # =================================================================
+        if ultima_eh_ultimo_do_mes:
+            # Avança para o mês seguinte
+            if ultima_dt.month == 12:
+                ano_alvo, mes_alvo = ultima_dt.year + 1, 1
+            else:
+                ano_alvo, mes_alvo = ultima_dt.year, ultima_dt.month + 1
+        else:
+            # Re-processa o mesmo mês (busca data mais recente)
+            ano_alvo, mes_alvo = ultima_dt.year, ultima_dt.month
+
+        # =================================================================
+        # 4. nova_dt = MAX(view) WHERE mês alvo AND <= hoje
+        # =================================================================
+        sql_nova_dt = text("""
+            SELECT MAX([DT_FIM_PRORATA_CVS])
+            FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
+            WHERE YEAR([DT_FIM_PRORATA_CVS])  = :ano
+              AND MONTH([DT_FIM_PRORATA_CVS]) = :mes
+              AND [DT_FIM_PRORATA_CVS] <= :hoje;
+        """)
+        nova_dt = db.session.execute(
+            sql_nova_dt, {'ano': ano_alvo, 'mes': mes_alvo, 'hoje': hoje}
+        ).scalar()
+
+        if not nova_dt:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Nenhuma data disponível na view para '
+                    f'{mes_alvo:02d}/{ano_alvo} '
+                    f'até {hoje.strftime("%d/%m/%Y")}. '
+                    f'Aguarde a próxima atualização da view.'
+                )
+            }), 400
+
+        # Já está na data mais recente disponível para este mês?
+        if nova_dt == ultima_dt:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'O estoque já está atualizado até '
+                    f'{ultima_dt.strftime("%d/%m/%Y")}. '
+                    f'Não há data mais recente disponível para '
+                    f'{mes_alvo:02d}/{ano_alvo}.'
+                )
+            }), 400
+
+        # =================================================================
+        # 5. Deletar ultima_dt se NÃO era o último do mês (substituição)
+        # =================================================================
+        registros_excluidos = 0
+        if not ultima_eh_ultimo_do_mes:
+            sql_delete = text("""
+                DELETE FROM [BDG].[FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS]
+                WHERE [DT_POSICAO] = :ultima_dt;
+            """)
+            result_del = db.session.execute(
+                sql_delete, {'ultima_dt': ultima_dt}
+            )
+            registros_excluidos = result_del.rowcount or 0
+
+        # =================================================================
+        # 6. QTDE por TIPO da FIN_TB007
+        # =================================================================
+        sql_qtde = text("""
+            SELECT 
+                SUBSTRING([ATIVO], 4, 1) AS TIPO,
+                SUM([QTDE])              AS QTDE
+            FROM [BDG].[FIN_TB007_RESUMO_CVS]
+            WHERE [DT_ATUALIZACAO] >= '20240716'
+            GROUP BY SUBSTRING([ATIVO], 4, 1)
+            ORDER BY TIPO ASC;
+        """)
+        qtdes_rows = db.session.execute(sql_qtde).fetchall()
+        if not qtdes_rows:
+            db.session.rollback()
+            return jsonify({
+                'success': False,
+                'message': (
+                    'Nenhum dado encontrado em FIN_TB007_RESUMO_CVS '
+                    'para calcular as quantidades.'
+                )
+            }), 400
+
+        # =================================================================
+        # 7. VR_PU (PU_PRORATA) da view para nova_dt
+        # =================================================================
+        sql_pu = text("""
+            SELECT [TIPO], [PU_PRORATA]
+            FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
+            WHERE [DT_FIM_PRORATA_CVS] = :nova_dt;
+        """)
+        pus_rows = db.session.execute(
+            sql_pu, {'nova_dt': nova_dt}
+        ).fetchall()
+        pu_por_tipo = {}
+        for r in pus_rows:
+            if r[0] is not None and r[1] is not None:
+                pu_por_tipo[r[0]] = Decimal(str(r[1]))
+
+        # =================================================================
+        # 8. INSERT na FIN_TB010
+        # =================================================================
+        sql_insert = text("""
+            INSERT INTO [BDG].[FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS]
+                ([DT_CARGA], [DT_POSICAO], [TIPO],
+                 [QTDE], [VR_PU], [VR_TOTAL])
+            VALUES
+                (:dt_carga, :dt_pos, :tipo,
+                 :qtde, :vr_pu, :vr_total);
+        """)
+
+        inseridos = 0
+        detalhes_inseridos = []
+
+        for row in qtdes_rows:
+            tipo = row[0]
+            qtde = int(row[1]) if row[1] is not None else 0
+            vr_pu_decimal = pu_por_tipo.get(tipo)
+
+            vr_total = (
+                Decimal(str(qtde)) * vr_pu_decimal
+                if vr_pu_decimal is not None
+                else None
+            )
+
+            db.session.execute(sql_insert, {
+                'dt_carga': hoje,
+                'dt_pos': nova_dt,
+                'tipo': tipo,
+                'qtde': qtde,
+                'vr_pu': vr_pu_decimal,
+                'vr_total': vr_total,
+            })
+            inseridos += 1
+            detalhes_inseridos.append({
+                'tipo': tipo,
+                'qtde': qtde,
+                'vr_pu': str(vr_pu_decimal) if vr_pu_decimal else None,
+                'vr_total': str(vr_total) if vr_total else None,
+            })
+
+        db.session.commit()
+
+        # =================================================================
+        # 9. Auditoria
+        # =================================================================
+        registrar_log(
+            acao='carga',
+            entidade='posicao_estoque_cvs',
+            entidade_id=nova_dt.strftime('%Y-%m-%d'),
+            descricao=(
+                f'Atualização de Estoque para DT_POSICAO='
+                f'{nova_dt.strftime("%d/%m/%Y")} '
+                f'(base: {ultima_dt.strftime("%d/%m/%Y")}). '
+                f'Excluídos: {registros_excluidos}. '
+                f'Inseridos: {inseridos}.'
+            ),
+            dados_novos={
+                'ultima_dt': ultima_dt.strftime('%Y-%m-%d'),
+                'nova_dt': nova_dt.strftime('%Y-%m-%d'),
+                'mes_alvo': f'{mes_alvo:02d}/{ano_alvo}',
+                'ultima_eh_ultimo_do_mes': ultima_eh_ultimo_do_mes,
+                'registros_excluidos': registros_excluidos,
+                'inseridos': inseridos,
+                'detalhes': detalhes_inseridos,
+            }
+        )
+
+        msg_acao = (
+            f'substituiu {ultima_dt.strftime("%d/%m/%Y")} (intra-mês)'
+            if registros_excluidos > 0
+            else f'manteve fechamento de {ultima_dt.strftime("%d/%m/%Y")}'
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Estoque atualizado! '
+                f'Nova DT_POSICAO: {nova_dt.strftime("%d/%m/%Y")} '
+                f'({inseridos} linha(s) inserida(s); {msg_acao}).'
+            ),
+            'nova_dt': nova_dt.strftime('%Y-%m-%d'),
+            'inseridos': inseridos,
+            'registros_excluidos': registros_excluidos,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao atualizar estoque: {str(e)}'
         }), 500

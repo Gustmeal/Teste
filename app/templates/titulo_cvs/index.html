@@ -190,11 +190,24 @@
                 Resumo de Títulos CVS por contrato e data de atualização
             </p>
         </div>
-        <a href="{{ url_for('titulo_cvs.origem_destino_index') }}"
-           class="btn btn-success btn-lg shadow-sm">
-            <i class="fas fa-exchange-alt me-2"></i>
-            Preencher Origem / Destino
-        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('titulo_cvs.extrato_index') }}"
+               class="btn btn-info btn-lg shadow-sm text-white">
+                <i class="fas fa-receipt me-2"></i>
+                Extrato
+            </a>
+            <a href="{{ url_for('titulo_cvs.estoque_index') }}"
+               class="btn btn-lg shadow-sm text-white"
+               style="background: linear-gradient(135deg, #6f42c1, #4b258a);">
+                <i class="fas fa-boxes-stacked me-2"></i>
+                Estoque
+            </a>
+            <a href="{{ url_for('titulo_cvs.origem_destino_index') }}"
+               class="btn btn-success btn-lg shadow-sm">
+                <i class="fas fa-exchange-alt me-2"></i>
+                Preencher Origem / Destino
+            </a>
+        </div>
     </div>
 
     <div class="row g-3 mb-4">
