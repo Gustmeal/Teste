@@ -27,10 +27,11 @@ import os
 import re
 import tempfile
 from types import SimpleNamespace
-from calendar import monthrange
 from app.models.titulo_cvs import (
-    ResumoCVS, OrigemDestinoCVS, ExtratoCVS, PosicaoEstoqueCVS
+    ResumoCVS, OrigemDestinoCVS, ExtratoCVS, PosicaoEstoqueCVS,
+    RecebimentoCVS,
 )
+
 
 titulo_cvs_bp = Blueprint(
     'titulo_cvs',
@@ -1222,7 +1223,9 @@ def extrato_processar_provisoes():
             }), 400
 
         # =================================================================
-        # 3. Provisões do último mês + filtro "sem estorno"
+        # 3. Provisões do último mês (TODAS — sem filtro por estornos
+        #    existentes no mesmo mês, pois esses estornos pertencem ao
+        #    ciclo anterior e não representam estornos das provisões atuais)
         # =================================================================
         provisoes = ExtratoCVS.query.filter(
             ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
@@ -1233,33 +1236,9 @@ def extrato_processar_provisoes():
             )
         ).order_by(ExtratoCVS.ORDEM.asc()).all()
 
-        estornos_mesmo_mes = ExtratoCVS.query.filter(
-            ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
-            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_ultimo_mes,
-            ExtratoCVS.HISTORICO.like('Estorno%')
-        ).all()
-
-        historicos_estorno_existentes = set()
-        for est in estornos_mesmo_mes:
-            if est.HISTORICO:
-                historicos_estorno_existentes.add(
-                    est.HISTORICO.strip().lower()
-                )
-
-        provisoes_para_processar = []
-        provisoes_ja_estornadas = 0
-        for prov in provisoes:
-            if not prov.HISTORICO:
-                continue
-            historico_estorno_esperado = _gerar_historico_estorno(
-                prov.HISTORICO
-            )
-            if historico_estorno_esperado:
-                chave = historico_estorno_esperado.strip().lower()
-                if chave in historicos_estorno_existentes:
-                    provisoes_ja_estornadas += 1
-                    continue
-            provisoes_para_processar.append(prov)
+        # Todas as provisões com HISTORICO preenchido serão processadas
+        provisoes_para_processar = [p for p in provisoes if p.HISTORICO]
+        provisoes_ja_estornadas = 0          # mantido por compatibilidade
 
         # =================================================================
         # 4. Carregar todas as incorporações da FIN_TB014
@@ -1283,7 +1262,7 @@ def extrato_processar_provisoes():
             return jsonify({
                 'success': False,
                 'message': (
-                    'Nenhuma provisão precisa ser estornada e a tabela '
+                    'Nenhuma provisão encontrada no último mês e a tabela '
                     'FIN_TB014_INCORPORACOES_MES_CVS está vazia. '
                     'Nada para processar.'
                 )
@@ -1473,6 +1452,9 @@ def extrato_indices_dia_1():
       JUROS         = PU_ATUALIZADO * 0.005
       AMORTIZACAO   = PU_ATUALIZADO / (1 - sequencia * 0.004608) * 0.004608
       PU_CARECA     = PU_ATUALIZADO - AMORTIZACAO
+      VR_GANHO_VNA  = ((PU_CARECA_atual - PU_ATUALIZADO_anterior)
+                       / (1 - 0.004608 * SEQ_FIN_CVS_anterior))
+                      * 0.004608
 
     Onde:
       - numIndicadorEconomico vem de
@@ -1484,6 +1466,7 @@ def extrato_indices_dia_1():
         multiplicativo dividindo por 100 e somando 1.
       - sequencia vem da view BDG.FIN_VW003_SEQUENCIAL_DT_TITULOS_CVS,
         coluna SEQ_FIN_CVS, onde DIA = última data (mês anterior à nova).
+      - PU_ATUALIZADO_anterior é da linha base (mês anterior).
     """
     try:
         # =================================================================
@@ -1533,9 +1516,11 @@ def extrato_indices_dia_1():
 
         # =================================================================
         # 4. Buscar linhas da última data (uma por TIPO)
+        #    Agora trazendo também PU_ATUALIZADO (necessário para o
+        #    cálculo do VR_GANHO_VNA).
         # =================================================================
         sql_linhas_anteriores = text("""
-            SELECT [TIPO], [PU_CARECA]
+            SELECT [TIPO], [PU_CARECA], [PU_ATUALIZADO]
             FROM [BDG].[FIN_TB015_INDICES_DIA_1]
             WHERE [DT_ATUALIZACAO] = :ultima_data
             ORDER BY [TIPO];
@@ -1626,11 +1611,13 @@ def extrato_indices_dia_1():
         sql_insert = text("""
             INSERT INTO [BDG].[FIN_TB015_INDICES_DIA_1]
                 ([DT_ATUALIZACAO], [TIPO], [PU_ATUALIZADO],
-                 [JUROS], [AMORTIZACAO], [PU_CARECA])
+                 [JUROS], [AMORTIZACAO], [PU_CARECA], [VR_GANHO_VNA])
             VALUES
-                (:dt, :tipo, :pu_atual, :juros, :amort, :pu_careca);
+                (:dt, :tipo, :pu_atual, :juros, :amort,
+                 :pu_careca, :vr_ganho);
         """)
 
+        fator_juros = Decimal('0.005')
         inseridas = 0
         detalhes = []
 
@@ -1640,13 +1627,16 @@ def extrato_indices_dia_1():
                 Decimal(str(linha[1])) if linha[1] is not None
                 else Decimal('0')
             )
+            pu_atualizado_anterior = (
+                Decimal(str(linha[2])) if linha[2] is not None
+                else Decimal('0')
+            )
 
             # PU_ATUALIZADO = PU_CARECA_anterior * fator
             # (fator = 1 + percentual/100, ex: 0,42% -> 1,0042)
             pu_atualizado = pu_careca_anterior * fator_indice
 
-            # JUROS: fator varia por TIPO
-            fator_juros = Decimal('0.00256354466262909') if tipo == 'B' else Decimal('0.005')
+            # JUROS = PU_ATUALIZADO * 0.005
             juros = pu_atualizado * fator_juros
 
             # AMORTIZACAO = PU_ATUALIZADO / (1 - sequencia*0.004608) * 0.004608
@@ -1655,6 +1645,18 @@ def extrato_indices_dia_1():
             # PU_CARECA = PU_ATUALIZADO - AMORTIZACAO
             pu_careca = pu_atualizado - amortizacao
 
+            # =============================================================
+            # NOVO: VR_GANHO_VNA
+            #   A = PU_CARECA atual - PU_ATUALIZADO anterior
+            #   B = 1 - 0.004608 * SEQ_FIN_CVS anterior  (= denominador)
+            #   C = A / B
+            #   VR_GANHO_VNA = C * 0.004608
+            # =============================================================
+            a_ganho = pu_atualizado - pu_careca_anterior
+            b_ganho = denominador  # mesmo valor já calculado
+            c_ganho = a_ganho / b_ganho
+            vr_ganho_vna = c_ganho * fator_amortizacao
+
             db.session.execute(sql_insert, {
                 'dt': nova_data,
                 'tipo': tipo,
@@ -1662,20 +1664,23 @@ def extrato_indices_dia_1():
                 'juros': juros,
                 'amort': amortizacao,
                 'pu_careca': pu_careca,
+                'vr_ganho': vr_ganho_vna,
             })
 
             inseridas += 1
             detalhes.append({
                 'tipo': tipo,
                 'pu_careca_anterior': str(pu_careca_anterior),
+                'pu_atualizado_anterior': str(pu_atualizado_anterior),
                 'pu_atualizado': str(pu_atualizado),
                 'juros': str(juros),
                 'amortizacao': str(amortizacao),
                 'pu_careca': str(pu_careca),
+                'vr_ganho_vna': str(vr_ganho_vna),
             })
 
         db.session.commit()
-    
+
         # =================================================================
         # 8. Auditoria
         # =================================================================
@@ -2040,4 +2045,242 @@ def estoque_atualizar():
         return jsonify({
             'success': False,
             'message': f'Erro ao atualizar estoque: {str(e)}'
+        }), 500
+
+# =========================================================================
+# RECEBIMENTO — PÁGINA PRINCIPAL (lista + formulário de cadastro)
+# =========================================================================
+@titulo_cvs_bp.route('/recebimento')
+@login_required
+def recebimento_index():
+    """
+    Página de cadastro de Recebimentos CVS.
+
+    Mostra um formulário para adicionar novo registro e a lista
+    dos recebimentos já cadastrados (mais recentes primeiro).
+    """
+    db.session.expire_all()
+
+    recebimentos = RecebimentoCVS.listar_todos()
+    total = len(recebimentos)
+
+    response = make_response(render_template(
+        'titulo_cvs/recebimento.html',
+        recebimentos=recebimentos,
+        total=total,
+    ))
+    response.headers['Cache-Control'] = (
+        'no-store, no-cache, must-revalidate, max-age=0'
+    )
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+# =========================================================================
+# RECEBIMENTO — SALVAR (POST AJAX)
+# =========================================================================
+@titulo_cvs_bp.route('/recebimento/salvar', methods=['POST'])
+@login_required
+def recebimento_salvar():
+    """
+    Salva um novo Recebimento na tabela FIN_TB016_RECEBIMENTO.
+
+    Recebe JSON:
+      {
+        "tipo": "A",                    (1 caractere)
+        "dt_atualizacao": "YYYY-MM-DD",
+        "historico": "texto até 30 chars",
+        "vr_entrada": "1234.5678"       (decimal, opcional)
+      }
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+
+        tipo = (dados.get('tipo') or '').strip().upper()
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        historico = (dados.get('historico') or '').strip()
+        vr_entrada_str = (dados.get('vr_entrada') or '').strip()
+
+        # ----- Validações -----
+        if not tipo or len(tipo) != 1:
+            return jsonify({
+                'success': False,
+                'message': 'TIPO deve ter exatamente 1 caractere.'
+            }), 400
+
+        if not dt_str:
+            return jsonify({
+                'success': False,
+                'message': 'DT_ATUALIZACAO é obrigatória.'
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': f'Data inválida: {dt_str}.'
+            }), 400
+
+        if not historico:
+            return jsonify({
+                'success': False,
+                'message': 'HISTORICO é obrigatório.'
+            }), 400
+
+        if len(historico) > 30:
+            return jsonify({
+                'success': False,
+                'message': 'HISTORICO excede 30 caracteres.'
+            }), 400
+
+        # VR_ENTRADA é opcional, mas se vier precisa ser número válido
+        vr_entrada = None
+        if vr_entrada_str:
+            try:
+                # aceita ',' e '.' como separador decimal
+                vr_limpo = vr_entrada_str.replace(',', '.')
+                vr_entrada = Decimal(vr_limpo)
+            except (InvalidOperation, ValueError):
+                return jsonify({
+                    'success': False,
+                    'message': f'VR_ENTRADA inválido: {vr_entrada_str}.'
+                }), 400
+
+        # ----- Já existe? -----
+        existente = RecebimentoCVS.obter(tipo, dt_atualizacao, historico)
+        if existente:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Já existe registro para TIPO={tipo}, '
+                    f'DT_ATUALIZACAO={dt_atualizacao.strftime("%d/%m/%Y")} '
+                    f'e HISTORICO="{historico}".'
+                )
+            }), 400
+
+        # ----- INSERT -----
+        novo = RecebimentoCVS(
+            TIPO=tipo,
+            DT_ATUALIZACAO=dt_atualizacao,
+            HISTORICO=historico,
+            VR_ENTRADA=vr_entrada,
+        )
+        db.session.add(novo)
+        db.session.commit()
+
+        # ----- Auditoria -----
+        registrar_log(
+            acao='criar',
+            entidade='recebimento_cvs',
+            entidade_id=f'{tipo}/{dt_str}/{historico}',
+            descricao=(
+                f'Cadastro de Recebimento - TIPO: {tipo}, '
+                f'DT: {dt_atualizacao.strftime("%d/%m/%Y")}, '
+                f'HIST: {historico}'
+            ),
+            dados_novos={
+                'TIPO': tipo,
+                'DT_ATUALIZACAO': dt_str,
+                'HISTORICO': historico,
+                'VR_ENTRADA': str(vr_entrada) if vr_entrada else None,
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Recebimento cadastrado: {tipo} / '
+                f'{dt_atualizacao.strftime("%d/%m/%Y")} / {historico}.'
+            ),
+            'item': {
+                'tipo': tipo,
+                'dt_atualizacao': dt_str,
+                'historico': historico,
+                'vr_entrada': str(vr_entrada) if vr_entrada else None,
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao salvar: {str(e)}'
+        }), 500
+
+
+# =========================================================================
+# RECEBIMENTO — EXCLUIR (POST AJAX)
+# =========================================================================
+@titulo_cvs_bp.route('/recebimento/excluir', methods=['POST'])
+@login_required
+def recebimento_excluir():
+    """
+    Exclui um Recebimento pela PK composta.
+
+    Recebe JSON:
+      { "tipo": "A", "dt_atualizacao": "YYYY-MM-DD", "historico": "..." }
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+
+        tipo = (dados.get('tipo') or '').strip().upper()
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        historico = (dados.get('historico') or '').strip()
+
+        if not tipo or not dt_str or not historico:
+            return jsonify({
+                'success': False,
+                'message': 'Parâmetros obrigatórios: tipo, dt_atualizacao, historico.'
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': f'Data inválida: {dt_str}.'
+            }), 400
+
+        registro = RecebimentoCVS.obter(tipo, dt_atualizacao, historico)
+        if not registro:
+            return jsonify({
+                'success': False,
+                'message': 'Registro não encontrado.'
+            }), 404
+
+        valor_antigo = {
+            'TIPO': registro.TIPO,
+            'DT_ATUALIZACAO': dt_str,
+            'HISTORICO': registro.HISTORICO,
+            'VR_ENTRADA': str(registro.VR_ENTRADA) if registro.VR_ENTRADA else None,
+        }
+
+        db.session.delete(registro)
+        db.session.commit()
+
+        registrar_log(
+            acao='excluir',
+            entidade='recebimento_cvs',
+            entidade_id=f'{tipo}/{dt_str}/{historico}',
+            descricao=(
+                f'Exclusão de Recebimento - TIPO: {tipo}, '
+                f'DT: {dt_atualizacao.strftime("%d/%m/%Y")}, '
+                f'HIST: {historico}'
+            ),
+            dados_antigos=valor_antigo,
+            dados_novos=None
+        )
+
+        return jsonify({
+            'success': True,
+            'message': f'Recebimento excluído com sucesso.'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao excluir: {str(e)}'
         }), 500

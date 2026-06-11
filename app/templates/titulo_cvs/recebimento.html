@@ -1,0 +1,719 @@
+{% extends "base.html" %}
+
+{% block title %}Recebimento - Título CVS{% endblock %}
+
+{% block content %}
+<style>
+    /* ===================================================================
+       CARDS DE SEÇÃO
+       =================================================================== */
+    .rec-section-card {
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
+    }
+    .rec-section-header {
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+    }
+    .rec-section-header h5 {
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
+    }
+    .rec-header-form {
+        background: linear-gradient(135deg, #fd7e14 0%, #b85a00 100%) !important;
+    }
+    .rec-header-lista {
+        background: linear-gradient(135deg, #5a5c69 0%, #373840 100%) !important;
+    }
+
+    /* ===================================================================
+       FORMULÁRIO
+       =================================================================== */
+    .rec-form-label {
+        font-size: 0.75rem !important;
+        color: #5a5c69 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px !important;
+        margin-bottom: 0.35rem !important;
+    }
+    .rec-form-input,
+    .rec-form-select {
+        height: 42px !important;
+        border: 1px solid #d1d3e2 !important;
+        border-radius: 8px !important;
+        padding: 0 0.85rem !important;
+        font-size: 0.95rem !important;
+        transition: border 0.15s ease, box-shadow 0.15s ease !important;
+        background: #fff !important;
+        width: 100% !important;
+    }
+    .rec-form-input:focus,
+    .rec-form-select:focus {
+        outline: none !important;
+        border-color: #fd7e14 !important;
+        box-shadow: 0 0 0 3px rgba(253, 126, 20, 0.15) !important;
+    }
+    .rec-form-hint {
+        font-size: 0.75rem !important;
+        color: #858796 !important;
+        margin-top: 0.25rem !important;
+    }
+    .rec-btn-salvar {
+        height: 42px !important;
+        padding: 0 1.5rem !important;
+        background: linear-gradient(135deg, #fd7e14, #b85a00) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        cursor: pointer !important;
+        white-space: nowrap !important;
+        transition: all 0.15s ease !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0.4rem !important;
+    }
+    .rec-btn-salvar:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(253, 126, 20, 0.3) !important;
+    }
+    .rec-btn-salvar:disabled {
+        opacity: 0.6 !important;
+        cursor: not-allowed !important;
+        transform: none !important;
+    }
+
+    /* ===================================================================
+       TABELA
+       =================================================================== */
+    .rec-table-scroll {
+        overflow-x: auto;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+    .rec-table {
+        margin-bottom: 0;
+        min-width: 700px;
+    }
+    .rec-table thead th {
+        background: #f8f9fc;
+        font-weight: 700;
+        font-size: 0.78rem;
+        color: #5a5c69;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+        padding: 0.75rem 0.85rem;
+        border-bottom: 2px solid #e3e6f0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .rec-table tbody td {
+        padding: 0.6rem 0.85rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .rec-table tbody tr:hover { background: #fff7ed; }
+
+    .rec-chip-tipo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 36px;
+        height: 32px;
+        padding: 0 0.6rem;
+        font-family: 'Courier New', monospace;
+        font-weight: 800;
+        font-size: 1rem;
+        background: #ffedd5;
+        color: #9a3412;
+        border: 1px solid #fed7aa;
+        border-radius: 6px;
+    }
+
+    .rec-num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        font-weight: 500;
+    }
+
+    .rec-btn-excluir {
+        background: #fff;
+        border: 1px solid #fecaca;
+        color: #dc2626;
+        width: 32px; height: 32px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center; justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .rec-btn-excluir:hover {
+        background: #dc2626;
+        color: #fff;
+        border-color: #dc2626;
+    }
+
+    .rec-empty {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #858796;
+    }
+    .rec-empty i {
+        font-size: 3rem;
+        opacity: 0.4;
+        display: block;
+        margin-bottom: 1rem;
+    }
+
+    .rec-stat-card {
+        background: #fff;
+        border: 1px solid #e3e6f0;
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+    }
+    .rec-stat-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1rem;
+        background: linear-gradient(135deg, #fd7e14, #b85a00);
+    }
+    .rec-stat-label {
+        font-size: 0.7rem;
+        color: #858796;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .rec-stat-value {
+        font-weight: 700;
+        font-size: 1.25rem;
+        color: #1f2937;
+        line-height: 1.1;
+    }
+</style>
+
+<a href="{{ url_for('titulo_cvs.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar ao Título CVS
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-hand-holding-usd me-2"></i>Recebimento CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Cadastro de recebimentos na tabela
+            <code>FIN_TB016_RECEBIMENTO</code>.
+        </p>
+    </div>
+
+    <!-- Estatística -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="rec-stat-card">
+                <div class="rec-stat-icon">
+                    <i class="fas fa-database"></i>
+                </div>
+                <div>
+                    <div class="rec-stat-label">Total cadastrado</div>
+                    <div class="rec-stat-value" id="totalRegistros">{{ total }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FORMULÁRIO -->
+    <div class="card rec-section-card mb-4">
+        <div class="rec-section-header rec-header-form">
+            <h5><i class="fas fa-plus-circle me-2"></i>Novo Recebimento</h5>
+        </div>
+        <div class="card-body">
+            <form id="formRecebimento" class="row g-3" autocomplete="off">
+                <div class="col-md-2">
+                    <label for="inputTipo" class="rec-form-label">
+                        Tipo *
+                    </label>
+                    <input type="text"
+                           id="inputTipo"
+                           class="rec-form-input"
+                           maxlength="1"
+                           required
+                           style="text-transform: uppercase;"
+                           placeholder="A">
+                    <div class="rec-form-hint">1 caractere (ex: A, B)</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="inputDataAtual" class="rec-form-label">
+                        DT Atualização *
+                    </label>
+                    <input type="date"
+                           id="inputDataAtual"
+                           class="rec-form-input"
+                           required>
+                    <div class="rec-form-hint" id="hintData"></div>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="inputHistorico" class="rec-form-label">
+                        Histórico *
+                    </label>
+                    <select id="inputHistorico"
+                            class="rec-form-select"
+                            required>
+                        <option value="">Selecione...</option>
+                        <option value="AMORTIZAÇÃO">AMORTIZAÇÃO</option>
+                        <option value="JUROS">JUROS</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="inputVrEntrada" class="rec-form-label">
+                        Vr Entrada
+                    </label>
+                    <input type="text"
+                           id="inputVrEntrada"
+                           class="rec-form-input"
+                           placeholder="Ex: 1234,5678">
+                    <div class="rec-form-hint">Opcional</div>
+                </div>
+
+                <div class="col-12 d-flex justify-content-end gap-2 mt-3">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            id="btnLimpar">
+                        <i class="fas fa-eraser me-2"></i>Limpar
+                    </button>
+                    <button type="submit"
+                            class="rec-btn-salvar"
+                            id="btnSalvar">
+                        <i class="fas fa-save"></i>Salvar Recebimento
+                    </button>
+                </div>
+            </form>
+
+            <div id="feedbackForm" class="mt-3" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="card rec-section-card">
+        <div class="rec-section-header rec-header-lista">
+            <h5>
+                <i class="fas fa-list me-2"></i>
+                Recebimentos Cadastrados
+                <span style="font-size: 0.85rem; opacity: 0.85;">
+                    ({{ total }} registro{{ 's' if total != 1 else '' }})
+                </span>
+            </h5>
+        </div>
+
+        {% if recebimentos %}
+        <div class="rec-table-scroll" id="listaRecebimentos">
+            <table class="table table-hover rec-table mb-0">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>DT Atualização</th>
+                        <th>Histórico</th>
+                        <th class="text-end">Vr Entrada</th>
+                        <th class="text-center" style="width: 60px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in recebimentos %}
+                    <tr data-tipo="{{ r.TIPO }}"
+                        data-dt="{{ r.DT_ATUALIZACAO.strftime('%Y-%m-%d') }}"
+                        data-historico="{{ r.HISTORICO }}">
+                        <td>
+                            <span class="rec-chip-tipo">{{ r.TIPO }}</span>
+                        </td>
+                        <td>{{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ r.HISTORICO }}</td>
+                        <td class="rec-num">
+                            {% if r.VR_ENTRADA is not none %}
+                                {{ "{:,.4f}".format(r.VR_ENTRADA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-center">
+                            <button type="button"
+                                    class="rec-btn-excluir btn-excluir-item"
+                                    title="Excluir registro">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="rec-empty">
+            <i class="fas fa-inbox"></i>
+            <h5 class="text-muted mb-2">Nenhum recebimento cadastrado</h5>
+            <p class="text-muted mb-0">
+                Use o formulário acima para incluir o primeiro registro.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+(function () {
+    const form      = document.getElementById('formRecebimento');
+    const inputTipo = document.getElementById('inputTipo');
+    const inputData = document.getElementById('inputDataAtual');
+    const inputHist = document.getElementById('inputHistorico');
+    const inputVr   = document.getElementById('inputVrEntrada');
+    const btnSalvar = document.getElementById('btnSalvar');
+    const btnLimpar = document.getElementById('btnLimpar');
+    const feedback  = document.getElementById('feedbackForm');
+    const hintData  = document.getElementById('hintData');
+
+    // =====================================================================
+    // Retorna {ano, mes (0-indexed)} do mês mais recente na tabela
+    // Caso a tabela esteja vazia, usa o mês atual como fallback
+    // =====================================================================
+    function obterMesMaxTabela() {
+        const rows = document.querySelectorAll('#listaRecebimentos tbody tr');
+        let maxAno = null;
+        let maxMes = null;
+
+        rows.forEach(function (row) {
+            const dt = row.dataset.dt;   // formato YYYY-MM-DD
+            if (!dt) return;
+            const parts = dt.split('-');
+            const ano = parseInt(parts[0]);
+            const mes = parseInt(parts[1]) - 1;   // 0-indexed
+
+            if (
+                maxAno === null ||
+                ano > maxAno ||
+                (ano === maxAno && mes > maxMes)
+            ) {
+                maxAno = ano;
+                maxMes = mes;
+            }
+        });
+
+        if (maxAno === null) {
+            // Fallback: tabela vazia → usa mês atual
+            const hoje = new Date();
+            return { ano: hoje.getFullYear(), mes: hoje.getMonth(), vazio: true };
+        }
+
+        return { ano: maxAno, mes: maxMes, vazio: false };
+    }
+
+    // =====================================================================
+    // Conta registros na tabela cujo DT_ATUALIZACAO pertence ao mês/ano
+    // =====================================================================
+    function contarRegistrosMes(ano, mes) {
+        // mes é 0-indexed
+        const rows = document.querySelectorAll('#listaRecebimentos tbody tr');
+        let count = 0;
+        rows.forEach(function (row) {
+            const dt = row.dataset.dt;
+            if (!dt) return;
+            const parts = dt.split('-');
+            if (
+                parseInt(parts[0]) === ano &&
+                parseInt(parts[1]) - 1 === mes
+            ) {
+                count++;
+            }
+        });
+        return count;
+    }
+
+    // =====================================================================
+    // Segundo dia útil de um mês (seg–sex, sem feriados)
+    // =====================================================================
+    function calcularSegundoDiaUtil(ano, mes) {
+        // mes é 0-indexed
+        let diasUteis = 0;
+        for (let dia = 1; dia <= 31; dia++) {
+            const d = new Date(ano, mes, dia);
+            if (d.getMonth() !== mes) break;
+            const dow = d.getDay();   // 0=Dom … 6=Sab
+            if (dow !== 0 && dow !== 6) {
+                diasUteis++;
+                if (diasUteis === 2) return d;
+            }
+        }
+        return new Date(ano, mes, 2);   // fallback improvável
+    }
+
+    // =====================================================================
+    // Calcula a data sugerida com base no mês mais recente da tabela
+    //
+    // Regra:
+    //   1. Descobre qual é o mês mais recente presente em DT_ATUALIZACAO
+    //   2. Conta quantos registros existem nesse mês
+    //   3. < 4 registros → 2º dia útil desse MESMO mês
+    //      >= 4 registros → 2º dia útil do MÊS SEGUINTE
+    // =====================================================================
+    function sugerirData() {
+        const { ano: anoRef, mes: mesRef, vazio } = obterMesMaxTabela();
+
+        let ano = anoRef;
+        let mes = mesRef;
+
+        const qtd = vazio ? 0 : contarRegistrosMes(ano, mes);
+        const pulou = qtd >= 4;
+
+        if (pulou) {
+            mes += 1;
+            if (mes > 11) { mes = 0; ano += 1; }
+        }
+
+        const dataAlvo = calcularSegundoDiaUtil(ano, mes);
+        const a = dataAlvo.getFullYear();
+        const m = String(dataAlvo.getMonth() + 1).padStart(2, '0');
+        const d = String(dataAlvo.getDate()).padStart(2, '0');
+
+        // Texto do hint para o usuário
+        const nomeMes = dataAlvo.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        const hintTexto = pulou
+            ? `4 registros em ${new Date(anoRef, mesRef, 1).toLocaleString('pt-BR', { month: 'long', year: 'numeric' })} → próximo mês`
+            : `2º dia útil de ${nomeMes}`;
+
+        return { valor: `${a}-${m}-${d}`, hintTexto };
+    }
+
+    function aplicarSugestaoData() {
+        if (!inputData) return;
+        const { valor, hintTexto } = sugerirData();
+        inputData.value = valor;
+        if (hintData) hintData.textContent = hintTexto;
+    }
+
+    // Preenche ao carregar a página
+    aplicarSugestaoData();
+
+    // =====================================================================
+    // Maiúsculo automático no TIPO
+    // =====================================================================
+    if (inputTipo) {
+        inputTipo.addEventListener('input', function () {
+            this.value = this.value.toUpperCase();
+        });
+    }
+
+    // =====================================================================
+    // Feedback visual
+    // =====================================================================
+    function mostrarFeedback(msg, tipo) {
+        tipo = tipo || 'success';
+        const cor   = tipo === 'success' ? 'alert-success'
+                    : tipo === 'danger'  ? 'alert-danger'
+                    : 'alert-info';
+        const icone = tipo === 'success' ? 'fa-check-circle'
+                    : tipo === 'danger'  ? 'fa-times-circle'
+                    : 'fa-info-circle';
+        feedback.style.display = 'block';
+        feedback.innerHTML =
+            '<div class="alert ' + cor + ' mb-0">' +
+            '  <i class="fas ' + icone + ' me-2"></i>' + msg +
+            '</div>';
+    }
+
+    function escapeHtml(t) {
+        const d = document.createElement('div');
+        d.textContent = t == null ? '' : String(t);
+        return d.innerHTML;
+    }
+
+    function formatarValor(v) {
+        if (!v) return '—';
+        const num = parseFloat(v);
+        if (isNaN(num)) return '—';
+        return num.toLocaleString('pt-BR', {
+            minimumFractionDigits: 4,
+            maximumFractionDigits: 4
+        });
+    }
+
+    function formatarData(yyyymmdd) {
+        const p = yyyymmdd.split('-');
+        return p[2] + '/' + p[1] + '/' + p[0];
+    }
+
+    function limparFormulario() {
+        form.reset();
+        feedback.style.display = 'none';
+        aplicarSugestaoData();   // re-sugere com a contagem atual da tabela
+        inputTipo.focus();
+    }
+
+    // =====================================================================
+    // Botão limpar
+    // =====================================================================
+    btnLimpar.addEventListener('click', limparFormulario);
+
+    // =====================================================================
+    // Submit do formulário
+    // =====================================================================
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const dados = {
+            tipo:           inputTipo.value.trim().toUpperCase(),
+            dt_atualizacao: inputData.value.trim(),
+            historico:      inputHist.value.trim(),
+            vr_entrada:     inputVr.value.trim(),
+        };
+
+        if (!dados.tipo || !dados.dt_atualizacao || !dados.historico) {
+            mostrarFeedback('Preencha todos os campos obrigatórios (*).', 'danger');
+            return;
+        }
+
+        btnSalvar.disabled = true;
+        const htmlOriginal = btnSalvar.innerHTML;
+        btnSalvar.innerHTML = '<i class="fas fa-spinner fa-spin"></i>Salvando...';
+        mostrarFeedback('Salvando recebimento...', 'info');
+
+        fetch("{{ url_for('titulo_cvs.recebimento_salvar') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify(dados)
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnSalvar.disabled = false;
+            btnSalvar.innerHTML = htmlOriginal;
+
+            if (data.success) {
+                mostrarFeedback(data.message, 'success');
+                adicionarLinhaNaTabela(data.item);  // insere na DOM antes de re-sugerir
+                atualizarContador(+1);
+                limparFormulario();                 // re-avalia com a nova linha na tabela
+            } else {
+                mostrarFeedback(data.message || 'Erro ao salvar.', 'danger');
+            }
+        })
+        .catch(err => {
+            btnSalvar.disabled = false;
+            btnSalvar.innerHTML = htmlOriginal;
+            mostrarFeedback('Erro de conexão: ' + err, 'danger');
+        });
+    });
+
+    // =====================================================================
+    // Adiciona linha nova na tabela (no topo)
+    // =====================================================================
+    function adicionarLinhaNaTabela(item) {
+        const tbody = document.querySelector('#listaRecebimentos tbody');
+
+        if (!tbody) {
+            setTimeout(() => location.reload(), 800);
+            return;
+        }
+
+        const tr = document.createElement('tr');
+        tr.dataset.tipo      = item.tipo;
+        tr.dataset.dt        = item.dt_atualizacao;
+        tr.dataset.historico = item.historico;
+        tr.innerHTML =
+            '<td><span class="rec-chip-tipo">' + escapeHtml(item.tipo) + '</span></td>' +
+            '<td>' + formatarData(item.dt_atualizacao) + '</td>' +
+            '<td>' + escapeHtml(item.historico) + '</td>' +
+            '<td class="rec-num">' + (item.vr_entrada ? formatarValor(item.vr_entrada) : '—') + '</td>' +
+            '<td class="text-center">' +
+            '  <button type="button" class="rec-btn-excluir btn-excluir-item" title="Excluir registro">' +
+            '    <i class="fas fa-trash"></i>' +
+            '  </button>' +
+            '</td>';
+
+        tbody.insertBefore(tr, tbody.firstChild);
+    }
+
+    // =====================================================================
+    // Excluir registro (delegação de eventos)
+    // =====================================================================
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-excluir-item');
+        if (!btn) return;
+
+        const tr = btn.closest('tr');
+        if (!tr) return;
+
+        const tipo      = tr.dataset.tipo;
+        const dt        = tr.dataset.dt;
+        const historico = tr.dataset.historico;
+
+        if (!confirm(
+            'Excluir o recebimento ' + tipo + ' / ' +
+            formatarData(dt) + ' / ' + historico + '?'
+        )) return;
+
+        fetch("{{ url_for('titulo_cvs.recebimento_excluir') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            },
+            body: JSON.stringify({
+                tipo:           tipo,
+                dt_atualizacao: dt,
+                historico:      historico
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                tr.style.transition = 'all 0.3s ease';
+                tr.style.opacity    = '0';
+                setTimeout(() => {
+                    tr.remove();
+                    atualizarContador(-1);
+                    aplicarSugestaoData();   // re-avalia após exclusão
+                }, 300);
+                mostrarFeedback(data.message, 'success');
+            } else {
+                mostrarFeedback(data.message || 'Erro.', 'danger');
+            }
+        })
+        .catch(err => {
+            mostrarFeedback('Erro de conexão: ' + err, 'danger');
+        });
+    });
+
+    // =====================================================================
+    // Atualiza contador total
+    // =====================================================================
+    function atualizarContador(delta) {
+        const el = document.getElementById('totalRegistros');
+        if (el) {
+            const atual = parseInt(el.textContent) || 0;
+            el.textContent = atual + delta;
+        }
+    }
+})();
+</script>
+{% endblock %}

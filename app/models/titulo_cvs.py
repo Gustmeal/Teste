@@ -334,3 +334,53 @@ class PosicaoEstoqueCVS(db.Model):
         return db.session.query(
             func.max(PosicaoEstoqueCVS.DT_POSICAO)
         ).scalar()
+
+# =========================================================================
+# Recebimento CVS
+# =========================================================================
+class RecebimentoCVS(db.Model):
+    """
+    Modelo para a tabela BDG.FIN_TB016_RECEBIMENTO.
+
+    Estrutura real (conforme SSMS):
+      - TIPO            char(1)        NOT NULL    *chave (PK)
+      - DT_ATUALIZACAO  date           NOT NULL    *chave (PK)
+      - HISTORICO       varchar(30)    NOT NULL    *chave (PK)
+      - VR_ENTRADA      decimal(18,4)  NULL
+
+    Chave primária composta: (TIPO, DT_ATUALIZACAO, HISTORICO)
+    """
+    __tablename__ = 'FIN_TB016_RECEBIMENTO'
+    __table_args__ = {'schema': 'BDG'}
+
+    TIPO = db.Column(db.String(1), primary_key=True, nullable=False)
+    DT_ATUALIZACAO = db.Column(db.Date, primary_key=True, nullable=False)
+    HISTORICO = db.Column(db.String(30), primary_key=True, nullable=False)
+
+    VR_ENTRADA = db.Column(db.Numeric(18, 4), nullable=True)
+
+    def __repr__(self):
+        return (f'<RecebimentoCVS {self.TIPO} - '
+                f'{self.DT_ATUALIZACAO} - {self.HISTORICO}>')
+
+    @staticmethod
+    def listar_todos():
+        """Lista todos os registros ordenados (mais recentes primeiro)."""
+        return RecebimentoCVS.query.order_by(
+            RecebimentoCVS.DT_ATUALIZACAO.desc(),
+            RecebimentoCVS.TIPO.asc(),
+            RecebimentoCVS.HISTORICO.asc()
+        ).all()
+
+    @staticmethod
+    def obter(tipo, dt_atualizacao, historico):
+        """Obtém um registro específico pela PK composta."""
+        return RecebimentoCVS.query.filter_by(
+            TIPO=tipo,
+            DT_ATUALIZACAO=dt_atualizacao,
+            HISTORICO=historico
+        ).first()
+
+    @staticmethod
+    def contar_registros():
+        return RecebimentoCVS.query.count()
