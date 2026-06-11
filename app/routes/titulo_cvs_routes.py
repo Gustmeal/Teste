@@ -1166,21 +1166,24 @@ def extrato_index():
 @login_required
 def extrato_processar_provisoes():
     """
-    Processa o próximo mês do extrato em 3 etapas, dentro de uma
+    Processa o próximo mês do extrato em 4 etapas, dentro de uma
     única transação (se algo falhar, rollback total):
 
     ETAPA 1 — Estornos:
-        Para cada Provisão do último mês sem estorno correspondente,
-        insere uma linha de Estorno no dia 1 do mês seguinte com
-        VR_MOVIMENTACAO invertido e VR_SALDO = 0.
+        Para cada Provisão do último mês, insere uma linha de Estorno
+        no dia 1 do mês seguinte com VR_MOVIMENTACAO invertido e VR_SALDO = 0.
 
     ETAPA 2 — Incorporações:
         Lê todas as linhas da FIN_TB014_INCORPORACOES_MES_CVS e copia
-        para o dia 1 do mês seguinte (mesma DT_MOVIMENTACAO dos
-        estornos). Demais campos copiados. VR_SALDO = 0.
+        para o dia 1 do mês seguinte. VR_SALDO = 0.
 
-    ETAPA 3 — Recálculo de VR_SALDO:
-        Para todas as linhas do mês destino, ordenadas por ORDEM:
+    ETAPA 3 — Recebimentos IR:
+        Lê todas as linhas da FIN_VW006_RECEBIMENTO_IR_CVS e insere
+        com DT_MOVIMENTACAO = DT_PREV_RECEBIMENTO da view. VR_SALDO = 0.
+
+    ETAPA 4 — Recálculo de VR_SALDO:
+        Para todas as linhas do mês destino, ordenadas por
+        DT_MOVIMENTACAO e ORDEM:
             VR_SALDO = VR_SALDO_da_linha_anterior + VR_MOVIMENTACAO
         Saldo inicial = último VR_SALDO antes do mês destino.
 
@@ -1256,26 +1259,47 @@ def extrato_processar_provisoes():
         incorporacoes = db.session.execute(sql_incorporacoes).fetchall()
 
         # =================================================================
-        # 5. Validar que há algo a fazer
+        # 5. Carregar todos os recebimentos IR da FIN_VW006
         # =================================================================
-        if not provisoes_para_processar and not incorporacoes:
+        sql_recebimentos_ir = text("""
+                    SELECT
+                        [DT_PREV_RECEBIMENTO],
+                        [TIPO],
+                        [HISTORICO],
+                        [PERIODO_DE],
+                        [PERIODO_ATE],
+                        [MOVIMENTACAO]
+                    FROM [BDDASHBOARDBI].[BDG].[FIN_VW006_RECEBIMENTO_IR_CVS]
+                    WHERE YEAR([DT_PREV_RECEBIMENTO])  = YEAR(:dt_destino)
+                      AND MONTH([DT_PREV_RECEBIMENTO]) = MONTH(:dt_destino)
+                    ORDER BY [DT_PREV_RECEBIMENTO], [TIPO];
+                """)
+        recebimentos_ir = db.session.execute(
+            sql_recebimentos_ir, {'dt_destino': dt_movimentacao_nova}
+        ).fetchall()
+
+        # =================================================================
+        # 6. Validar que há algo a fazer
+        # =================================================================
+        if not provisoes_para_processar and not incorporacoes and not recebimentos_ir:
             return jsonify({
                 'success': False,
                 'message': (
-                    'Nenhuma provisão encontrada no último mês e a tabela '
-                    'FIN_TB014_INCORPORACOES_MES_CVS está vazia. '
+                    'Nenhuma provisão encontrada no último mês, a tabela '
+                    'FIN_TB014_INCORPORACOES_MES_CVS está vazia e a view '
+                    'FIN_VW006_RECEBIMENTO_IR_CVS não retornou dados. '
                     'Nada para processar.'
                 )
             }), 400
 
         # =================================================================
-        # 6. ORDEM inicial e validação de limite smallint
+        # 7. ORDEM inicial e validação de limite smallint
         # =================================================================
         proxima_ordem = _proxima_ordem_no_mes(
             dt_movimentacao_nova, ultimo_dia_destino
         )
         total_a_inserir = (
-            len(provisoes_para_processar) + len(incorporacoes)
+            len(provisoes_para_processar) + len(incorporacoes) + len(recebimentos_ir)
         )
         ordem_final_estimada = proxima_ordem + total_a_inserir
         if ordem_final_estimada > 32767:
@@ -1290,6 +1314,7 @@ def extrato_processar_provisoes():
         dt_carga_hoje = datetime.now().date()
         inseridas_estorno = 0
         inseridas_incorporacao = 0
+        inseridas_recebimento = 0
 
         # =================================================================
         # ETAPA 1 — INSERIR ESTORNOS (VR_SALDO = 0)
@@ -1310,7 +1335,7 @@ def extrato_processar_provisoes():
                 PERIODO_DE=prov.PERIODO_DE,
                 PERIODO_ATE=prov.PERIODO_ATE,
                 VR_MOVIMENTACAO=valor_estorno,
-                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 3
+                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
             ))
             proxima_ordem += 1
             inseridas_estorno += 1
@@ -1328,16 +1353,34 @@ def extrato_processar_provisoes():
                 PERIODO_DE=inc.PERIODO_DE,
                 PERIODO_ATE=inc.PERIODO_ATE,
                 VR_MOVIMENTACAO=inc.VR_MOVIMENTACAO,
-                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 3
+                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
             ))
             proxima_ordem += 1
             inseridas_incorporacao += 1
+
+        # =================================================================
+        # ETAPA 3 — INSERIR RECEBIMENTOS IR (VR_SALDO = 0)
+        # =================================================================
+        for rec in recebimentos_ir:
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=rec.DT_PREV_RECEBIMENTO,
+                TIPO=rec.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=rec.HISTORICO,
+                PERIODO_DE=rec.PERIODO_DE,
+                PERIODO_ATE=rec.PERIODO_ATE,
+                VR_MOVIMENTACAO=rec.MOVIMENTACAO,
+                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
+            ))
+            proxima_ordem += 1
+            inseridas_recebimento += 1
 
         # Flush envia ao banco mas mantém a transação aberta
         db.session.flush()
 
         # =================================================================
-        # ETAPA 3 — RECALCULAR VR_SALDO
+        # ETAPA 4 — RECALCULAR VR_SALDO
         # =================================================================
         # Saldo inicial = último VR_SALDO antes do mês destino
         sql_saldo_inicial = text("""
@@ -1357,7 +1400,9 @@ def extrato_processar_provisoes():
         )
         saldo_inicial_referencia = saldo_anterior
 
-        # Carrega todas as linhas do mês destino, ordenadas por ORDEM
+        # Carrega todas as linhas do mês destino, ordenadas por
+        # DT_MOVIMENTACAO e ORDEM (cobre estornos, incorporações e
+        # recebimentos IR, que podem ter DT_MOVIMENTACAO diferente)
         linhas_destino = ExtratoCVS.query.filter(
             ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
             ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
@@ -1382,7 +1427,7 @@ def extrato_processar_provisoes():
         db.session.commit()
 
         # =================================================================
-        # 7. Auditoria
+        # 8. Auditoria
         # =================================================================
         registrar_log(
             acao='carga',
@@ -1393,6 +1438,7 @@ def extrato_processar_provisoes():
                 f'{dt_movimentacao_nova.strftime("%m/%Y")}: '
                 f'{inseridas_estorno} estorno(s), '
                 f'{inseridas_incorporacao} incorporação(ões), '
+                f'{inseridas_recebimento} recebimento(s) IR, '
                 f'{saldos_recalculados} saldo(s) recalculado(s).'
             ),
             dados_novos={
@@ -1402,6 +1448,7 @@ def extrato_processar_provisoes():
                 'provisoes_ja_estornadas': provisoes_ja_estornadas,
                 'estornos_inseridos': inseridas_estorno,
                 'incorporacoes_inseridas': inseridas_incorporacao,
+                'recebimentos_ir_inseridos': inseridas_recebimento,
                 'saldos_recalculados': saldos_recalculados,
                 'saldo_inicial': str(saldo_inicial_referencia),
                 'saldo_final': str(saldo_anterior),
@@ -1415,6 +1462,7 @@ def extrato_processar_provisoes():
                 f'{dt_movimentacao_nova.strftime("%d/%m/%Y")}: '
                 f'{inseridas_estorno} estorno(s), '
                 f'{inseridas_incorporacao} incorporação(ões), '
+                f'{inseridas_recebimento} recebimento(s) IR, '
                 f'{saldos_recalculados} saldo(s) recalculado(s). '
                 f'({provisoes_ja_estornadas} provisão(ões) ignorada(s) '
                 f'por já ter estorno no mês de origem.)'
@@ -1423,6 +1471,7 @@ def extrato_processar_provisoes():
             'mes_destino': dt_movimentacao_nova.strftime('%Y-%m'),
             'estornos_inseridos': inseridas_estorno,
             'incorporacoes_inseridas': inseridas_incorporacao,
+            'recebimentos_ir_inseridos': inseridas_recebimento,
             'provisoes_ja_estornadas': provisoes_ja_estornadas,
             'saldos_recalculados': saldos_recalculados,
         })
