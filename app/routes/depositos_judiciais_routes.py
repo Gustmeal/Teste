@@ -45,15 +45,12 @@ def inclusao():
     - Antes de salvar, valida se já existe outro depósito com o mesmo Lançamento RM.
     - EVENTO_CONTABIL_ANTERIOR e EVENTO_CONTABIL_ATUAL ficam fixos em 22607
       (código contábil da carteira Institucional / Pendência de Depósito Judicial).
-      Esses valores são mostrados na tela (readonly) e gravados no banco.
+      Esses valores são mostrados na tela (readonly) e gravados no backend.
     """
 
-    # Constantes dos eventos contábeis da carteira Institucional
-    # (passadas ao template para exibição readonly e usadas no INSERT)
     EVENTO_INSTITUCIONAL_CODIGO = 22607
     EVENTO_INSTITUCIONAL_DESCRICAO = 'PENDÊNCIA DE DEPÓSITO JUDICIAL'
 
-    # Buscar a carteira "Institucional" do banco (não usar ID fixo no front)
     centro_institucional = CentroResultado.query.filter(
         CentroResultado.NO_CARTEIRA == 'Institucional'
     ).first()
@@ -65,19 +62,11 @@ def inclusao():
 
     if request.method == 'POST':
         try:
-            # ============================================
-            # VALIDAÇÃO 1: Lançamento RM obrigatório
-            # ============================================
             lancamento_rm = (request.form.get('lancamento_rm') or '').strip()
             if not lancamento_rm:
                 flash('O campo Lançamento RM é obrigatório.', 'danger')
                 return redirect(url_for('depositos_judiciais.inclusao'))
 
-            # ============================================
-            # VALIDAÇÃO 2: Lançamento RM duplicado
-            # ============================================
-            # Verifica se já existe depósito com o mesmo Lançamento RM
-            # (sem constraint no banco, apenas validação aplicativo)
             existente = DepositosSufin.query.filter(
                 func.rtrim(DepositosSufin.LANCAMENTO_RM) == lancamento_rm
             ).first()
@@ -90,31 +79,24 @@ def inclusao():
                 )
                 return redirect(url_for('depositos_judiciais.inclusao'))
 
-            # ============================================
-            # CRIAÇÃO DO NOVO DEPÓSITO
-            # ============================================
             proximo_nu_linha = obter_proximo_nu_linha()
 
             novo_deposito = DepositosSufin()
             novo_deposito.NU_LINHA = proximo_nu_linha
             novo_deposito.LANCAMENTO_RM = lancamento_rm
 
-            # Data Lançamento DJ - OBRIGATÓRIO
             dt_lancamento_dj = request.form.get('dt_lancamento_dj')
             if not dt_lancamento_dj:
                 raise ValueError("Data Lançamento DJ é obrigatória")
             novo_deposito.DT_LANCAMENTO_DJ = datetime.strptime(dt_lancamento_dj, '%Y-%m-%d')
 
-            # Valor Rateio - permite valores negativos
             vr_rateio = request.form.get('vr_rateio') or ''
             vr_rateio_limpo = vr_rateio.replace('.', '').replace(',', '.')
             if vr_rateio_limpo and vr_rateio_limpo not in ('-', ''):
                 novo_deposito.VR_RATEIO = Decimal(vr_rateio_limpo)
 
-            # Memo SUFIN (opcional)
             novo_deposito.MEMO_SUFIN = request.form.get('memo_sufin')
 
-            # Data Memo (opcional) - se preenchida, marca como identificado
             dt_memo = request.form.get('dt_memo')
             if dt_memo:
                 novo_deposito.DT_MEMO = datetime.strptime(dt_memo, '%Y-%m-%d')
@@ -123,7 +105,6 @@ def inclusao():
                 novo_deposito.DT_MEMO = None
                 novo_deposito.ID_IDENTIFICADO = False
 
-            # Campos não presentes no formulário - SEMPRE NULL na inclusão
             novo_deposito.DT_IDENTIFICACAO = None
             novo_deposito.DT_AJUSTE_RM = None
             novo_deposito.DT_SISCOR = None
@@ -131,30 +112,22 @@ def inclusao():
             novo_deposito.NU_CONTRATO_2 = None
             novo_deposito.ID_AJUSTE_RM = False
 
-            # ID_AREA do dropdown (opcional)
             novo_deposito.ID_AREA = int(request.form.get('id_area')) if request.form.get('id_area') else None
             novo_deposito.ID_AREA_2 = None
 
-            # ID_CENTRO - SEMPRE Institucional (força mesmo se vier outro valor do form)
             novo_deposito.ID_CENTRO = centro_institucional.ID_CENTRO
 
-            # Eventos contábeis - SEMPRE da carteira Institucional nesta tela
-            # (mesmo valor exibido na tela em readonly)
             novo_deposito.EVENTO_CONTABIL_ANTERIOR = EVENTO_INSTITUCIONAL_CODIGO
             novo_deposito.EVENTO_CONTABIL_ATUAL = EVENTO_INSTITUCIONAL_CODIGO
 
-            # Observação (opcional)
             novo_deposito.OBS = request.form.get('obs')
 
-            # Campos de controle - sempre NULL
             novo_deposito.IC_APROPRIADO = None
             novo_deposito.IC_INCLUIDO_ACERTO = None
 
-            # Salvar no banco
             db.session.add(novo_deposito)
             db.session.commit()
 
-            # Registrar log
             registrar_log(
                 'depositos_judiciais',
                 'create',
@@ -162,11 +135,10 @@ def inclusao():
                 {'nu_linha': proximo_nu_linha}
             )
 
-            # Verificar qual botão foi clicado
             if 'salvar_e_sair' in request.form:
                 flash('Depósito judicial incluído com sucesso!', 'success')
                 return redirect(url_for('depositos_judiciais.index'))
-            else:  # salvar_e_continuar
+            else:
                 flash('Depósito judicial incluído com sucesso! Pronto para incluir outro.', 'success')
                 return redirect(url_for('depositos_judiciais.inclusao'))
 
@@ -180,14 +152,25 @@ def inclusao():
             flash(f'Erro ao incluir depósito: {str(e)}', 'danger')
             return redirect(url_for('depositos_judiciais.inclusao'))
 
-    # GET - Buscar dados para os dropdowns
+    # GET - Buscar dados para os dropdowns e tabela de últimos incluídos
     areas = Area.query.order_by(Area.NO_AREA).all()
+
+    ultimos_incluidos = (
+        DepositosSufin.query
+        .order_by(DepositosSufin.NU_LINHA.desc())
+        .limit(10)
+        .all()
+    )
+
+    areas_dict = {area.ID_AREA: area.NO_AREA for area in areas}
 
     return render_template('depositos_judiciais/inclusao.html',
                            areas=areas,
                            centro_institucional=centro_institucional,
                            evento_contabil_codigo=EVENTO_INSTITUCIONAL_CODIGO,
-                           evento_contabil_descricao=EVENTO_INSTITUCIONAL_DESCRICAO)
+                           evento_contabil_descricao=EVENTO_INSTITUCIONAL_DESCRICAO,
+                           ultimos_incluidos=ultimos_incluidos,
+                           areas_dict=areas_dict)
 
 
 @depositos_judiciais_bp.route('/api/areas')

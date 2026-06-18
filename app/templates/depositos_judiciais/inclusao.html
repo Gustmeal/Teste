@@ -35,42 +35,27 @@
                             </button>
                             <input type="text" class="form-control money" id="vr_rateio" name="vr_rateio"
                                    required placeholder="0,00">
-                            <input type="hidden" id="vr_rateio_negativo" value="false">
                         </div>
-                        <small class="text-muted">Clique no botão <i class="fas fa-plus-minus"></i> para negativar</small>
                     </div>
 
                     <div class="col-md-3">
                         <label for="memo_sufin" class="form-label">Memo SUFIN</label>
                         <input type="text" class="form-control" id="memo_sufin" name="memo_sufin"
-                               maxlength="15" placeholder="Ex: 3247/2022">
+                               maxlength="20" placeholder="Ex: M0001/2024">
                     </div>
 
-                    <!-- Linha 2 (ordem do Excel: Data Memo | Área | Centro de Resultado) -->
-                    <div class="col-md-4">
+                    <!-- Linha 2 (ordem do Excel: Data Memo | Centro de Resultado | Área) -->
+                    <div class="col-md-3">
                         <label for="dt_memo" class="form-label">Data Memo</label>
                         <input type="date" class="form-control" id="dt_memo" name="dt_memo">
-                        <small class="text-muted">Se preenchida, marca como identificado</small>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label for="id_area" class="form-label">Área</label>
-                        <select class="form-select" id="id_area" name="id_area">
-                            <option value="">Selecione uma área...</option>
-                            {% for area in areas %}
-                            <option value="{{ area.ID_AREA }}" {% if area.ID_AREA == 8 %}selected{% endif %}>
-                                {{ area.NO_AREA }}
-                            </option>
-                            {% endfor %}
-                        </select>
                         <small class="text-muted">
-                            <i class="fas fa-info-circle"></i> SUJUR é selecionado por padrão, mas você pode alterar
+                            <i class="fas fa-info-circle"></i> Preenchendo a data, o depósito será marcado como identificado
                         </small>
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label for="id_centro_display" class="form-label">
-                            Centro de Resultado (Carteira) <span class="text-danger">*</span>
+                            Centro de Resultado
                             <i class="fas fa-lock text-muted ms-1" title="Campo fixo - não pode ser alterado"></i>
                         </label>
                         <input type="text" class="form-control bg-light" id="id_centro_display"
@@ -80,6 +65,16 @@
                         <small class="text-muted">
                             <i class="fas fa-info-circle"></i> Toda inclusão é registrada como Institucional
                         </small>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="id_area" class="form-label">Área</label>
+                        <select class="form-select" id="id_area" name="id_area">
+                            <option value="">Selecione uma área (opcional)</option>
+                            {% for area in areas %}
+                            <option value="{{ area.ID_AREA }}">{{ area.NO_AREA }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                     <!-- Linha 3 (ordem do Excel: Evento Contábil Anterior | Evento Contábil Atual)
@@ -114,7 +109,7 @@
                                 <button type="submit" class="btn btn-success" name="salvar_e_continuar">
                                     <i class="fas fa-plus me-2"></i> Salvar e Incluir Mais
                                 </button>
-                                <button type="submit" class="btn btn-primary" name="salvar_e_sair">
+                                <button type="submit" class="btn btn-primary ms-2" name="salvar_e_sair">
                                     <i class="fas fa-save me-2"></i> Salvar e Sair
                                 </button>
                             </div>
@@ -124,6 +119,70 @@
             </form>
         </div>
     </div>
+
+    <!-- =========================================================
+         TABELA: 10 ÚLTIMOS DEPÓSITOS INCLUÍDOS
+         Dados sempre vindos do backend/banco — nunca fixos no front
+    ========================================================= -->
+    <div class="card shadow mt-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0">
+                <i class="fas fa-history me-2"></i> Últimos 10 Depósitos Incluídos
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            {% if ultimos_incluidos %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover table-sm mb-0" id="tabelaUltimos">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nº Linha</th>
+                            <th>Lançamento RM</th>
+                            <th>Data Lançamento</th>
+                            <th class="text-end">Valor Rateio</th>
+                            <th>Memo SUFIN</th>
+                            <th>Área</th>
+                            <th>Observação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dep in ultimos_incluidos %}
+                        <tr>
+                            <td>{{ dep.NU_LINHA }}</td>
+                            <td>{{ dep.LANCAMENTO_RM | trim if dep.LANCAMENTO_RM else '-' }}</td>
+                            <td>
+                                {{ dep.DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if dep.DT_LANCAMENTO_DJ else '-' }}
+                            </td>
+                            <td class="text-end {% if dep.VR_RATEIO and dep.VR_RATEIO < 0 %}text-danger{% elif dep.VR_RATEIO and dep.VR_RATEIO > 0 %}text-success{% endif %}">
+                                {% if dep.VR_RATEIO is not none %}
+                                    {{ 'R$ {:,.2f}'.format(dep.VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ dep.MEMO_SUFIN | trim if dep.MEMO_SUFIN else '-' }}</td>
+                            <td>
+                                {% if dep.ID_AREA and dep.ID_AREA in areas_dict %}
+                                    {{ areas_dict[dep.ID_AREA] }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ dep.OBS | trim if dep.OBS else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted p-4">
+                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                Nenhum depósito incluído ainda.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
 </div>
 
 <style>
@@ -149,6 +208,12 @@
     #evento_contabil_anterior_display,
     #evento_contabil_atual_display {
         cursor: not-allowed;
+        font-weight: 600;
+    }
+
+    /* Destaque na primeira linha da tabela de últimos (o mais recente) */
+    #tabelaUltimos tbody tr:first-child {
+        background-color: rgba(13, 110, 253, 0.06);
         font-weight: 600;
     }
 </style>
@@ -187,6 +252,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // =========================================================
+    // BOTÃO TOGGLE SINAL (positivo / negativo)
+    // =========================================================
+    const btnToggle = document.getElementById('btn_toggle_sinal');
+    if (btnToggle && moneyInput) {
+        btnToggle.addEventListener('click', function() {
+            let valor = moneyInput.value.replace(/\./g, '').replace(',', '.');
+            let num = parseFloat(valor) || 0;
+            if (num === 0) return;
+            num = num * -1;
+            // Reformatar para padrão BR
+            let formatado = Math.abs(num).toFixed(2);
+            let partes = formatado.split('.');
+            partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            moneyInput.value = (num < 0 ? '-' : '') + partes.join(',');
+        });
+    }
+
+    // =========================================================
     // SUBMIT DO FORMULÁRIO - Validações ao salvar
     // =========================================================
     const form = document.getElementById('formInclusao');
@@ -194,9 +277,6 @@ document.addEventListener('DOMContentLoaded', function() {
         form.addEventListener('submit', function(e) {
             e.preventDefault();
 
-            // Validar campos obrigatórios
-            // (id_centro é hidden e sempre tem valor vindo do backend, mas mantemos
-            //  na lista por segurança)
             const camposObrigatorios = ['lancamento_rm', 'dt_lancamento_dj', 'vr_rateio', 'id_centro'];
             let valido = true;
 
@@ -216,7 +296,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Tudo ok, submete o formulário
             this.submit();
         });
     }
@@ -227,8 +306,6 @@ document.addEventListener('DOMContentLoaded', function() {
     window.limparFormulario = function() {
         if (confirm('Deseja limpar todos os campos do formulário?')) {
             form.reset();
-            // Após o reset, os campos travados (Centro de Resultado e Eventos Contábeis)
-            // mantêm o valor original do template (porque vêm do Jinja, não do usuário)
         }
     };
 

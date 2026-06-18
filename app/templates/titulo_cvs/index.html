@@ -4,136 +4,118 @@
 
 {% block extra_css %}
 <style>
-    .cvs-stat-card {
-        border: none;
-        border-radius: 12px;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        height: 100%;
+    .btn-importar-cvs {
+        background: linear-gradient(135deg, #4e73df, #2e4d99) !important;
+        color: #fff !important;
+        border: none !important;
+        transition: all 0.15s ease !important;
     }
-    .cvs-stat-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+    .btn-importar-cvs:hover {
+        color: #fff !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(78, 115, 223, 0.3) !important;
     }
-    .cvs-stat-card .icon-wrap {
-        width: 48px; height: 48px;
-        border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        font-size: 1.25rem;
-        color: #fff;
+
+    .btn-indices-dia1 {
+        background: linear-gradient(135deg, #f6c23e, #c98a02) !important;
+        color: #fff !important;
+        border: none !important;
+        transition: all 0.15s ease !important;
     }
-    .cvs-bg-blue   { background: linear-gradient(135deg, #4e73df, #224abe); }
-    .cvs-bg-green  { background: linear-gradient(135deg, #1cc88a, #13855c); }
-    .cvs-bg-cyan   { background: linear-gradient(135deg, #36b9cc, #258391); }
+    .btn-indices-dia1:hover {
+        color: #fff !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(246, 194, 62, 0.4) !important;
+    }
+    .btn-indices-dia1:disabled {
+        opacity: 0.7;
+        transform: none !important;
+    }
 
     .cvs-section-card {
-        border: none;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-        overflow: hidden;
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
     }
     .cvs-section-header {
-        background: linear-gradient(135deg, #4e73df, #224abe);
-        color: #fff;
-        border-radius: 12px 12px 0 0;
-        padding: 0.85rem 1.25rem;
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%) !important;
     }
     .cvs-section-header h5 {
-        margin: 0; font-weight: 600; font-size: 1rem;
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
     }
 
-    .cvs-table-scroll::-webkit-scrollbar {
-        height: 12px;
-    }
-    .cvs-table-scroll::-webkit-scrollbar-track {
-        background: #f1f3f5;
-        border-radius: 6px;
-    }
+    .cvs-table-scroll::-webkit-scrollbar { height: 10px; width: 10px; }
+    .cvs-table-scroll::-webkit-scrollbar-track { background: #f1f3f5; border-radius: 5px; }
     .cvs-table-scroll::-webkit-scrollbar-thumb {
         background: linear-gradient(135deg, #4e73df, #224abe);
-        border-radius: 6px;
-    }
-    .cvs-table-scroll::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #224abe, #1a3a99);
-    }
-
-    .cvs-table {
-        min-width: 1500px;
-        margin-bottom: 0;
+        border-radius: 5px;
     }
     .cvs-table thead th {
         background: #f8f9fc;
-        font-weight: 600;
-        font-size: 0.85rem;
+        font-weight: 700;
+        font-size: 0.78rem;
         color: #5a5c69;
-        border-bottom: 2px solid #e3e6f0;
         text-transform: uppercase;
         letter-spacing: 0.3px;
         white-space: nowrap;
-        padding: 0.85rem 1rem;
+        padding: 0.75rem 0.85rem;
+        border-bottom: 2px solid #e3e6f0;
     }
     .cvs-table tbody td {
-        font-size: 0.9rem;
         vertical-align: middle;
         white-space: nowrap;
-        padding: 0.65rem 1rem;
+        padding: 0.55rem 0.85rem;
+        color: #1f2937;
     }
     .cvs-table tbody tr:hover { background: #f8fbff; }
-
+    .cvs-num { font-variant-numeric: tabular-nums; font-weight: 500; }
     .cvs-badge-ativo {
-        font-family: 'Courier New', monospace;
-        font-weight: 700;
+        display: inline-block;
         background: #eef2ff;
         color: #224abe;
-        padding: 0.25rem 0.5rem;
+        padding: 0.2rem 0.55rem;
         border-radius: 4px;
-        font-size: 0.85rem;
-    }
-
-    .cvs-num {
-        font-variant-numeric: tabular-nums;
-        font-weight: 500;
+        font-size: 0.78rem;
+        font-weight: 700;
+        font-family: 'Courier New', monospace;
     }
 
     .cvs-dropzone {
-        border: 2.5px dashed #d1d3e2;
+        border: 2px dashed #d1d3e2;
         border-radius: 12px;
         padding: 2.5rem 1.5rem;
         text-align: center;
-        background: #f8f9fc;
-        transition: all 0.2s ease;
         cursor: pointer;
+        transition: all 0.15s ease;
+        background: #f8fbff;
     }
-    .cvs-dropzone:hover {
+    .cvs-dropzone:hover, .cvs-dropzone.dragover {
         border-color: #4e73df;
-        background: #eef2ff;
-    }
-    .cvs-dropzone.dragover {
-        border-color: #4e73df;
-        background: #dbe4ff;
-        transform: scale(1.01);
+        background: #e7eeff;
     }
     .cvs-dropzone i {
-        font-size: 3rem;
-        color: #d1d3e2;
-        margin-bottom: 1rem;
-        display: block;
-        transition: color 0.2s ease;
-    }
-    .cvs-dropzone:hover i,
-    .cvs-dropzone.dragover i {
+        font-size: 2.5rem;
         color: #4e73df;
+        margin-bottom: 0.75rem;
+        display: block;
     }
-    .cvs-dropzone-text {
-        font-size: 1rem;
-        color: #5a5c69;
-        font-weight: 500;
-    }
+    .cvs-dropzone-text { color: #5a5c69; font-weight: 500; }
     .cvs-dropzone-hint {
         font-size: 0.85rem;
         color: #858796;
         margin-top: 0.5rem;
     }
-
     .cvs-file-preview {
         background: #fff;
         border: 1px solid #e3e6f0;
@@ -191,188 +173,93 @@
             </p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url_for('titulo_cvs.extrato_index') }}"
-               class="btn btn-info btn-lg shadow-sm text-white">
-                <i class="fas fa-receipt me-2"></i>
-                Extrato
+
+            <!-- 1) Importar Planilha -->
+            <button type="button"
+                    class="btn btn-lg shadow-sm btn-importar-cvs"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalImportarCVS">
+                <i class="fas fa-file-upload me-2"></i>
+                Importar Planilha
+            </button>
+
+            <!-- 2) Preencher Origem / Destino -->
+            <a href="{{ url_for('titulo_cvs.origem_destino_index') }}"
+               class="btn btn-success btn-lg shadow-sm">
+                <i class="fas fa-exchange-alt me-2"></i>
+                Preencher Origem / Destino
             </a>
+
+            <!-- 3) Estoque -->
             <a href="{{ url_for('titulo_cvs.estoque_index') }}"
                class="btn btn-lg shadow-sm text-white"
                style="background: linear-gradient(135deg, #6f42c1, #4b258a);">
                 <i class="fas fa-boxes-stacked me-2"></i>
                 Estoque
             </a>
-            <a href="{{ url_for('titulo_cvs.origem_destino_index') }}"
-               class="btn btn-success btn-lg shadow-sm">
-                <i class="fas fa-exchange-alt me-2"></i>
-                Preencher Origem / Destino
-            </a>
+
+            <!-- 4) Recebimento — tooltip NATIVO (atributo title) -->
             <a href="{{ url_for('titulo_cvs.recebimento_index') }}"
                class="btn btn-lg shadow-sm text-white"
-               style="background: linear-gradient(135deg, #fd7e14, #b85a00);">
+               style="background: linear-gradient(135deg, #fd7e14, #b85a00);"
+               title="Informe os valores de juros e amortização do extrato da conta">
                 <i class="fas fa-hand-holding-usd me-2"></i>
                 Recebimento
             </a>
+
+            <!-- 5) Índices do Dia 1 — tooltip NATIVO + abre modal de confirmação -->
+            <button type="button"
+                    id="btnIndicesDia1Index"
+                    class="btn btn-lg shadow-sm btn-indices-dia1"
+                    title="Calcula os índices financeiros do próximo dia 1"
+                    data-ultima-data="{{ ultima_dt_indice.strftime('%d/%m/%Y') if ultima_dt_indice else '' }}">
+                <i class="fas fa-calendar-day me-2"></i>
+                Índices do Dia 1
+            </button>
+
+            <!-- 6) Extrato -->
+            <a href="{{ url_for('titulo_cvs.extrato_index') }}"
+               class="btn btn-info btn-lg shadow-sm text-white">
+                <i class="fas fa-receipt me-2"></i>
+                Extrato
+            </a>
+
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="card cvs-stat-card shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="icon-wrap cvs-bg-blue me-3">
-                            <i class="fas fa-database"></i>
-                        </div>
-                        <div>
-                            <div class="text-muted small mb-1">Total de registros</div>
-                            <h5 class="mb-0">
-                                {{ "{:,}".format(total_registros).replace(',', '.') }}
-                            </h5>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <div id="feedbackIndicesDia1Index" class="mb-3" style="display: none;"></div>
+
+    <div class="card cvs-section-card mb-4">
+        <div class="cvs-section-header">
+            <h5><i class="fas fa-filter me-2"></i>Filtrar por Data de Atualização</h5>
         </div>
-
-        <div class="col-md-4">
-            <div class="card cvs-stat-card shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="icon-wrap cvs-bg-green me-3">
-                            <i class="fas fa-file-contract"></i>
-                        </div>
-                        <div>
-                            <div class="text-muted small mb-1">Contratos distintos</div>
-                            <h5 class="mb-0">
-                                {{ "{:,}".format(total_contratos).replace(',', '.') }}
-                            </h5>
-                        </div>
-                    </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('titulo_cvs.index') }}"
+                  class="row g-3 align-items-end">
+                <div class="col-md-6">
+                    <label for="dt_atualizacao" class="form-label small fw-semibold">
+                        Data de Atualização (DT_ATUALIZACAO)
+                    </label>
+                    <select name="dt_atualizacao" id="dt_atualizacao" class="form-select">
+                        {% if not datas_disponiveis %}
+                            <option value="">— Sem dados —</option>
+                        {% else %}
+                            {% for dt in datas_disponiveis %}
+                                <option value="{{ dt.strftime('%Y-%m-%d') }}"
+                                    {% if dt_filtro and dt == dt_filtro %}selected{% endif %}>
+                                    {{ dt.strftime('%d/%m/%Y') }}
+                                </option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
                 </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card cvs-stat-card shadow-sm">
-                <div class="card-body">
-                    <div class="d-flex align-items-center">
-                        <div class="icon-wrap cvs-bg-cyan me-3">
-                            <i class="fas fa-calendar-day"></i>
-                        </div>
-                        <div>
-                            <div class="text-muted small mb-1">Datas de atualização</div>
-                            <h5 class="mb-0">{{ total_cargas }}</h5>
-                        </div>
-                    </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-outline-primary w-100"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-search me-2"></i>Filtrar
+                    </button>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-lg-7">
-            <div class="card cvs-section-card h-100">
-                <div class="cvs-section-header">
-                    <h5><i class="fas fa-file-upload me-2"></i>Importar Planilha Resumo CVS</h5>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted small mb-3">
-                        Envie a planilha Excel no padrão
-                        <code>AAAA-MM-DD_Planilhas Resumo CVS - Contrato NNN.xlsx</code>.
-                        A data e o número do contrato são extraídos automaticamente do nome do arquivo.
-                    </p>
-
-                    <div id="dropzoneCVS" class="cvs-dropzone">
-                        <i class="fas fa-file-excel"></i>
-                        <div class="cvs-dropzone-text">
-                            Arraste o arquivo Excel aqui ou
-                            <strong>clique para selecionar</strong>
-                        </div>
-                        <div class="cvs-dropzone-hint">
-                            Formatos aceitos: .xlsx, .xlsm
-                        </div>
-                        <input
-                            type="file"
-                            id="inputArquivoCVS"
-                            accept=".xlsx,.xlsm"
-                            style="display: none;"
-                        >
-                    </div>
-
-                    <div id="filePreviewCVS" class="cvs-file-preview" style="display: none;">
-                        <div class="file-info">
-                            <div class="file-icon">
-                                <i class="fas fa-file-excel fa-lg"></i>
-                            </div>
-                            <div style="min-width: 0; flex-grow: 1;">
-                                <div class="file-name" id="filePreviewNomeCVS">—</div>
-                                <div class="file-size" id="filePreviewTamanhoCVS">—</div>
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            class="btn btn-sm btn-outline-secondary"
-                            id="btnRemoverArquivoCVS"
-                        >
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <div class="d-grid mt-3">
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            id="btnConfirmarUploadCVS"
-                            disabled
-                        >
-                            <i class="fas fa-upload me-2"></i>Enviar arquivo
-                        </button>
-                    </div>
-
-                    <div id="uploadFeedbackCVS" class="mt-3" style="display: none;"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-5">
-            <div class="card cvs-section-card h-100">
-                <div class="cvs-section-header">
-                    <h5><i class="fas fa-filter me-2"></i>Filtrar por Data de Atualização</h5>
-                </div>
-                <div class="card-body">
-                    <form method="GET" action="{{ url_for('titulo_cvs.index') }}">
-                        <div class="mb-3">
-                            <label for="dt_atualizacao" class="form-label small fw-semibold">
-                                Data de Atualização (DT_ATUALIZACAO)
-                            </label>
-                            <select name="dt_atualizacao" id="dt_atualizacao" class="form-select">
-                                {% if not datas_disponiveis %}
-                                    <option value="">— Sem dados —</option>
-                                {% else %}
-                                    {% for dt in datas_disponiveis %}
-                                        <option
-                                            value="{{ dt.strftime('%Y-%m-%d') }}"
-                                            {% if dt_filtro and dt == dt_filtro %}selected{% endif %}
-                                        >
-                                            {{ dt.strftime('%d/%m/%Y') }}
-                                        </option>
-                                    {% endfor %}
-                                {% endif %}
-                            </select>
-                        </div>
-                        <div class="d-grid">
-                            <button
-                                type="submit"
-                                class="btn btn-outline-primary"
-                                {% if not datas_disponiveis %}disabled{% endif %}
-                            >
-                                <i class="fas fa-search me-2"></i>Filtrar
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+            </form>
         </div>
     </div>
 
@@ -386,8 +273,10 @@
                 ({{ registros|length }} linha{{ 's' if registros|length != 1 else '' }})
             </h5>
         </div>
-
-        <div class="cvs-table-scroll" style="overflow-x: auto; overflow-y: hidden; width: 100%; display: block; scrollbar-width: thin; scrollbar-color: #4e73df #f1f3f5;">
+        <div class="cvs-table-scroll"
+             style="overflow-x: auto; overflow-y: hidden; width: 100%;
+                    display: block; scrollbar-width: thin;
+                    scrollbar-color: #4e73df #f1f3f5;">
             <table class="table table-hover table-sm cvs-table mb-0" style="min-width: 1500px;">
                 <thead>
                     <tr>
@@ -409,86 +298,53 @@
                     {% for r in registros %}
                     <tr>
                         <td><strong>{{ r.NU_CONTRATO }}</strong></td>
-                        <td>
-                            <span class="cvs-badge-ativo">
-                                {{ r.EVENTO if r.EVENTO else '-' }}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="cvs-badge-ativo">{{ r.ATIVO }}</span>
-                        </td>
+                        <td><span class="cvs-badge-ativo">{{ r.EVENTO if r.EVENTO else '-' }}</span></td>
+                        <td><span class="cvs-badge-ativo">{{ r.ATIVO }}</span></td>
                         <td class="text-end cvs-num">
                             {% if r.QTDE is not none %}
                                 {{ "{:,}".format(r.QTDE).replace(',', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.VNA is not none %}
                                 {{ "{:,.2f}".format(r.VNA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.FINANCEIRO is not none %}
                                 {{ "{:,.2f}".format(r.FINANCEIRO|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.PU_RETROATIVO_JUROS is not none %}
                                 {{ "{:,.2f}".format(r.PU_RETROATIVO_JUROS|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.FINANCEIRO_JUROS is not none %}
                                 {{ "{:,.2f}".format(r.FINANCEIRO_JUROS|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.PU_RETROATIVO_PRINC is not none %}
                                 {{ "{:,.2f}".format(r.PU_RETROATIVO_PRINC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.FINANCEIRO_PRINC is not none %}
                                 {{ "{:,.2f}".format(r.FINANCEIRO_PRINC|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.FINANCEIRO_VENC_PAGAR is not none %}
                                 {{ "{:,.2f}".format(r.FINANCEIRO_VENC_PAGAR|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
                         <td class="text-end cvs-num">
                             {% if r.TOTAL is not none %}
                                 <strong>{{ "{:,.2f}".format(r.TOTAL|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}</strong>
-                            {% else %}
-                                <span class="text-muted">-</span>
-                            {% endif %}
+                            {% else %}<span class="text-muted">-</span>{% endif %}
                         </td>
-                        <!--<td>
-                            <small class="text-muted">
-                                {% if r.DT_CARGA %}
-                                    {{ r.DT_CARGA.strftime('%d/%m/%Y') }}
-                                {% else %}
-                                    -
-                                {% endif %}
-                            </small>
-                        </td>-->
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -501,8 +357,8 @@
             <i class="fas fa-inbox fa-3x text-muted mb-3 d-block"></i>
             <h5 class="text-muted mb-2">Nenhum registro a exibir</h5>
             <p class="text-muted mb-0">
-                Use o card <strong>Importar Planilha Resumo CVS</strong> ao lado para
-                fazer a primeira carga.
+                Clique em <strong>Importar Planilha</strong> acima
+                para fazer a primeira carga.
             </p>
         </div>
     </div>
@@ -510,7 +366,117 @@
 
 </div>
 
+
+<!-- =================================================================== -->
+<!-- MODAL — IMPORTAR PLANILHA RESUMO CVS                                -->
+<!-- =================================================================== -->
+<div class="modal fade" id="modalImportarCVS" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 14px;">
+            <div class="modal-header"
+                 style="background: linear-gradient(135deg, #4e73df, #2e4d99);
+                        color: #fff; border-radius: 14px 14px 0 0;">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-upload me-2"></i>
+                    Importar Planilha Resumo CVS
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted small mb-3">
+                    Envie a planilha Excel no padrão
+                    <code>AAAA-MM-DD_Planilhas Resumo CVS - Contrato NNN.xlsx</code>.
+                    A data e o número do contrato são extraídos
+                    automaticamente do nome do arquivo.
+                </p>
+
+                <div id="dropzoneCVS" class="cvs-dropzone">
+                    <i class="fas fa-file-excel"></i>
+                    <div class="cvs-dropzone-text">
+                        Arraste o arquivo Excel aqui ou
+                        <strong>clique para selecionar</strong>
+                    </div>
+                    <div class="cvs-dropzone-hint">Formatos aceitos: .xlsx, .xlsm</div>
+                    <input type="file" id="inputArquivoCVS"
+                           accept=".xlsx,.xlsm" style="display: none;">
+                </div>
+
+                <div id="filePreviewCVS" class="cvs-file-preview" style="display: none;">
+                    <div class="file-info">
+                        <div class="file-icon">
+                            <i class="fas fa-file-excel fa-lg"></i>
+                        </div>
+                        <div style="min-width: 0; flex-grow: 1;">
+                            <div class="file-name" id="filePreviewNomeCVS">—</div>
+                            <div class="file-size" id="filePreviewTamanhoCVS">—</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            id="btnRemoverArquivoCVS">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="d-grid mt-3">
+                    <button type="button" class="btn btn-primary"
+                            id="btnConfirmarUploadCVS" disabled>
+                        <i class="fas fa-upload me-2"></i>Enviar arquivo
+                    </button>
+                </div>
+
+                <div id="uploadFeedbackCVS" class="mt-3" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- =================================================================== -->
+<!-- MODAL — CONFIRMAR CÁLCULO DE ÍNDICES DO DIA 1                       -->
+<!-- =================================================================== -->
+<div class="modal fade" id="modalConfirmIndices" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 14px;">
+            <div class="modal-header"
+                 style="background: linear-gradient(135deg, #f6c23e, #c98a02);
+                        color: #fff; border-radius: 14px 14px 0 0;">
+                <h5 class="modal-title">
+                    <i class="fas fa-calendar-day me-2"></i>
+                    Calcular Índices do Dia 1
+                </h5>
+                <button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="mb-3" style="font-size: 1rem;">
+                    Confirma o cálculo dos
+                    <strong>Índices do Dia 1</strong> para a próxima data?
+                </p>
+                <div class="alert alert-light border mb-0" style="background: #fffbeb;">
+                    <i class="fas fa-info-circle me-1 text-warning"></i>
+                    <span id="textoUltimaDataIndices">—</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-indices-dia1"
+                        id="btnConfirmarProcessamentoIndices">
+                    <i class="fas fa-check me-2"></i>Sim, processar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 <script>
+// =====================================================================
+// UPLOAD DE PLANILHA (modal)
+// =====================================================================
 (function () {
     const dropzone = document.getElementById('dropzoneCVS');
     const input = document.getElementById('inputArquivoCVS');
@@ -520,6 +486,7 @@
     const btnRemover = document.getElementById('btnRemoverArquivoCVS');
     const btnConfirmar = document.getElementById('btnConfirmarUploadCVS');
     const feedback = document.getElementById('uploadFeedbackCVS');
+    if (!dropzone) return;
 
     let arquivoSelecionado = null;
 
@@ -532,12 +499,10 @@
     function selecionarArquivo(file) {
         if (!file) return;
         const nome = (file.name || '').toLowerCase();
-
         if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) {
             alert('Arquivo deve ser .xlsx ou .xlsm');
             return;
         }
-
         arquivoSelecionado = file;
         previewNome.textContent = file.name;
         previewTamanho.textContent = formatarTamanho(file.size);
@@ -559,13 +524,11 @@
     }
 
     dropzone.addEventListener('click', () => input.click());
-
     input.addEventListener('change', e => {
         if (e.target.files && e.target.files.length > 0) {
             selecionarArquivo(e.target.files[0]);
         }
     });
-
     ['dragenter', 'dragover'].forEach(evt => {
         dropzone.addEventListener(evt, e => {
             e.preventDefault();
@@ -573,7 +536,6 @@
             dropzone.classList.add('dragover');
         });
     });
-
     ['dragleave', 'drop'].forEach(evt => {
         dropzone.addEventListener(evt, e => {
             e.preventDefault();
@@ -581,7 +543,6 @@
             dropzone.classList.remove('dragover');
         });
     });
-
     dropzone.addEventListener('drop', e => {
         const files = e.dataTransfer && e.dataTransfer.files;
         if (files && files.length > 0) {
@@ -593,14 +554,12 @@
 
     btnConfirmar.addEventListener('click', () => {
         if (!arquivoSelecionado) return;
-
         const formData = new FormData();
         formData.append('arquivo', arquivoSelecionado);
-
         const htmlOriginal = btnConfirmar.innerHTML;
         btnConfirmar.disabled = true;
-        btnConfirmar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
-
+        btnConfirmar.innerHTML =
+            '<i class="fas fa-spinner fa-spin me-2"></i>Enviando...';
         feedback.style.display = 'block';
         feedback.innerHTML = `
             <div class="alert alert-info mb-0">
@@ -608,7 +567,6 @@
                 Processando planilha... isso pode levar alguns segundos.
             </div>
         `;
-
         fetch("{{ url_for('titulo_cvs.upload_excel') }}", {
             method: 'POST',
             headers: { 'X-Silent-Request': 'true' },
@@ -618,7 +576,6 @@
         .then(data => {
             btnConfirmar.disabled = false;
             btnConfirmar.innerHTML = htmlOriginal;
-
             if (data.success) {
                 feedback.innerHTML = `
                     <div class="alert alert-success mb-0">
@@ -639,6 +596,117 @@
         .catch(err => {
             btnConfirmar.disabled = false;
             btnConfirmar.innerHTML = htmlOriginal;
+            feedback.innerHTML = `
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-times-circle me-2"></i>
+                    <strong>Erro de conexão:</strong> ${err}
+                </div>
+            `;
+        });
+    });
+})();
+
+
+// =====================================================================
+// ÍNDICES DO DIA 1 — abre modal de confirmação e processa via AJAX
+// =====================================================================
+(function () {
+    const btn = document.getElementById('btnIndicesDia1Index');
+    const btnConfirmar = document.getElementById('btnConfirmarProcessamentoIndices');
+    const textoUltimaData = document.getElementById('textoUltimaDataIndices');
+    const feedback = document.getElementById('feedbackIndicesDia1Index');
+    const modalEl = document.getElementById('modalConfirmIndices');
+    if (!btn || !modalEl || !btnConfirmar) return;
+
+    // Tenta usar a API JS do Bootstrap; se não disponível, faz fallback
+    let modalConfirm = null;
+    try {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            modalConfirm = new bootstrap.Modal(modalEl);
+        }
+    } catch (e) {
+        console.warn('Falha ao iniciar Bootstrap Modal:', e);
+    }
+
+    function abrirModal() {
+        if (modalConfirm) {
+            modalConfirm.show();
+        } else {
+            // Fallback manual: adiciona as classes diretamente
+            modalEl.classList.add('show');
+            modalEl.style.display = 'block';
+            document.body.classList.add('modal-open');
+        }
+    }
+
+    function fecharModal() {
+        if (modalConfirm) {
+            modalConfirm.hide();
+        } else {
+            modalEl.classList.remove('show');
+            modalEl.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    btn.addEventListener('click', () => {
+        const ultimaData = (btn.getAttribute('data-ultima-data') || '').trim();
+        if (ultimaData) {
+            textoUltimaData.innerHTML =
+                'Última data processada: <strong>' + ultimaData + '</strong>';
+        } else {
+            textoUltimaData.innerHTML = 'Nenhum índice foi processado ainda.';
+        }
+        abrirModal();
+    });
+
+    btnConfirmar.addEventListener('click', () => {
+        fecharModal();
+
+        const htmlOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML =
+            '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML = `
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                Calculando os Índices do Dia 1...
+            </div>
+        `;
+
+        fetch("{{ url_for('titulo_cvs.extrato_indices_dia_1') }}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Silent-Request': 'true'
+            }
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
+            if (data.success) {
+                feedback.innerHTML = `
+                    <div class="alert alert-success mb-0">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Sucesso!</strong> ${data.message}
+                    </div>
+                `;
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                feedback.innerHTML = `
+                    <div class="alert alert-danger mb-0">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Erro!</strong> ${data.message}
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = htmlOriginal;
             feedback.innerHTML = `
                 <div class="alert alert-danger mb-0">
                     <i class="fas fa-times-circle me-2"></i>

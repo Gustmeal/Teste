@@ -89,20 +89,28 @@ def index():
     if dt_filtro:
         registros = ResumoCVS.listar_por_data_atualizacao(dt_filtro)
 
-    # Estatísticas
-    total_registros = ResumoCVS.contar_registros()
-    total_contratos = ResumoCVS.contar_contratos_distintos()
-    total_cargas = len(datas_disponiveis)
+        # Estatísticas
+        total_registros = ResumoCVS.contar_registros()
+        total_contratos = ResumoCVS.contar_contratos_distintos()
+        total_cargas = len(datas_disponiveis)
 
-    response = make_response(render_template(
-        'titulo_cvs/index.html',
-        registros=registros,
-        datas_disponiveis=datas_disponiveis,
-        dt_filtro=dt_filtro,
-        total_registros=total_registros,
-        total_contratos=total_contratos,
-        total_cargas=total_cargas,
-    ))
+        # Última DT_ATUALIZACAO dos Índices do Dia 1 (FIN_TB015)
+        sql_ultima_dt_indice = text("""
+            SELECT MAX([DT_ATUALIZACAO])
+            FROM [BDG].[FIN_TB015_INDICES_DIA_1]
+        """)
+        ultima_dt_indice = db.session.execute(sql_ultima_dt_indice).scalar()
+
+        response = make_response(render_template(
+            'titulo_cvs/index.html',
+            registros=registros,
+            datas_disponiveis=datas_disponiveis,
+            dt_filtro=dt_filtro,
+            total_registros=total_registros,
+            total_contratos=total_contratos,
+            total_cargas=total_cargas,
+            ultima_dt_indice=ultima_dt_indice,
+        ))
     response.headers['Cache-Control'] = (
         'no-store, no-cache, must-revalidate, max-age=0'
     )
@@ -1160,32 +1168,26 @@ def extrato_index():
 
 
 # =========================================================================
-# EXTRATO — PROCESSAR PROVISÕES (gera próximo mês com estornos)
+# EXTRATO — PROCESSAR PROVISÕES (gera próximo mês completo)
 # =========================================================================
 @titulo_cvs_bp.route('/extrato/processar-provisoes', methods=['POST'])
 @login_required
 def extrato_processar_provisoes():
     """
-    Processa o próximo mês do extrato em 4 etapas, dentro de uma
+    Processa o próximo mês do extrato em 8 etapas, dentro de uma
     única transação (se algo falhar, rollback total):
 
-    ETAPA 1 — Estornos:
-        Para cada Provisão do último mês, insere uma linha de Estorno
-        no dia 1 do mês seguinte com VR_MOVIMENTACAO invertido e VR_SALDO = 0.
-
-    ETAPA 2 — Incorporações:
-        Lê todas as linhas da FIN_TB014_INCORPORACOES_MES_CVS e copia
-        para o dia 1 do mês seguinte. VR_SALDO = 0.
-
-    ETAPA 3 — Recebimentos IR:
-        Lê todas as linhas da FIN_VW006_RECEBIMENTO_IR_CVS e insere
-        com DT_MOVIMENTACAO = DT_PREV_RECEBIMENTO da view. VR_SALDO = 0.
-
-    ETAPA 4 — Recálculo de VR_SALDO:
-        Para todas as linhas do mês destino, ordenadas por
-        DT_MOVIMENTACAO e ORDEM:
-            VR_SALDO = VR_SALDO_da_linha_anterior + VR_MOVIMENTACAO
-        Saldo inicial = último VR_SALDO antes do mês destino.
+    ETAPA 1 — Estornos.
+    ETAPA 2 — Incorporações (FIN_TB014).
+    ETAPA 3 — Recebimentos IR (FIN_VW006).
+    ETAPA 4 — Entrada Títulos Pro Rata (FIN_VW007).
+    ETAPA 5 — Provisão ATM/Juros (FIN_VW008) — cada linha vira 2.
+    ETAPA 6 — Provisão Pro Rata (FIN_VW010) — cada linha vira 2.
+    ETAPA 7 — Recálculo de VR_SALDO.
+    ETAPA 8 — Ajuste de Saldo Prov Juros (FIN_VW011):
+        Pega AJUSTE da view (vem negativo) → abs() → divide por 2.
+        Soma metade no VR_MOVIMENTACAO e metade no VR_SALDO da
+        ÚLTIMA linha do mês destino.
 
     NU_LINHA é IDENTITY (gerado pelo banco).
     """
@@ -1226,9 +1228,7 @@ def extrato_processar_provisoes():
             }), 400
 
         # =================================================================
-        # 3. Provisões do último mês (TODAS — sem filtro por estornos
-        #    existentes no mesmo mês, pois esses estornos pertencem ao
-        #    ciclo anterior e não representam estornos das provisões atuais)
+        # 3. Provisões do último mês
         # =================================================================
         provisoes = ExtratoCVS.query.filter(
             ExtratoCVS.DT_MOVIMENTACAO >= primeiro_dia_ultimo_mes,
@@ -1239,12 +1239,11 @@ def extrato_processar_provisoes():
             )
         ).order_by(ExtratoCVS.ORDEM.asc()).all()
 
-        # Todas as provisões com HISTORICO preenchido serão processadas
         provisoes_para_processar = [p for p in provisoes if p.HISTORICO]
-        provisoes_ja_estornadas = 0          # mantido por compatibilidade
+        provisoes_ja_estornadas = 0  # mantido por compatibilidade
 
         # =================================================================
-        # 4. Carregar todas as incorporações da FIN_TB014
+        # 4. Incorporações (FIN_TB014) — filtradas pelo mês/ano destino
         # =================================================================
         sql_incorporacoes = text("""
             SELECT 
@@ -1254,52 +1253,131 @@ def extrato_processar_provisoes():
                 [PERIODO_ATE],
                 [VR_MOVIMENTACAO]
             FROM [BDG].[FIN_TB014_INCORPORACOES_MES_CVS]
+            WHERE YEAR([DT_MOVIMENTACAO])  = YEAR(:dt_destino)
+              AND MONTH([DT_MOVIMENTACAO]) = MONTH(:dt_destino)
             ORDER BY [DT_MOVIMENTACAO], [TIPO];
         """)
-        incorporacoes = db.session.execute(sql_incorporacoes).fetchall()
+        incorporacoes = db.session.execute(
+            sql_incorporacoes, {'dt_destino': dt_movimentacao_nova}
+        ).fetchall()
 
         # =================================================================
-        # 5. Carregar todos os recebimentos IR da FIN_VW006
+        # 5. Recebimentos IR (FIN_VW006)
         # =================================================================
         sql_recebimentos_ir = text("""
-                    SELECT
-                        [DT_PREV_RECEBIMENTO],
-                        [TIPO],
-                        [HISTORICO],
-                        [PERIODO_DE],
-                        [PERIODO_ATE],
-                        [MOVIMENTACAO]
-                    FROM [BDDASHBOARDBI].[BDG].[FIN_VW006_RECEBIMENTO_IR_CVS]
-                    WHERE YEAR([DT_PREV_RECEBIMENTO])  = YEAR(:dt_destino)
-                      AND MONTH([DT_PREV_RECEBIMENTO]) = MONTH(:dt_destino)
-                    ORDER BY [DT_PREV_RECEBIMENTO], [TIPO];
-                """)
+            SELECT
+                [DT_PREV_RECEBIMENTO],
+                [TIPO],
+                [HISTORICO],
+                [PERIODO_DE],
+                [PERIODO_ATE],
+                [MOVIMENTACAO]
+            FROM [BDDASHBOARDBI].[BDG].[FIN_VW006_RECEBIMENTO_IR_CVS]
+            WHERE YEAR([DT_PREV_RECEBIMENTO])  = YEAR(:dt_destino)
+              AND MONTH([DT_PREV_RECEBIMENTO]) = MONTH(:dt_destino)
+            ORDER BY [DT_PREV_RECEBIMENTO], [TIPO];
+        """)
         recebimentos_ir = db.session.execute(
             sql_recebimentos_ir, {'dt_destino': dt_movimentacao_nova}
         ).fetchall()
 
         # =================================================================
-        # 6. Validar que há algo a fazer
+        # 6. Entrada Títulos Pro Rata (FIN_VW007)
         # =================================================================
-        if not provisoes_para_processar and not incorporacoes and not recebimentos_ir:
+        sql_entrada_pro_rata = text("""
+            SELECT
+                [DT_ATUALIZACAO],
+                [TIPO],
+                [HISTORICO],
+                [PU_ATU_PRO],
+                [VR_JR_PRORATA],
+                [QTDE_TITULOS]
+            FROM [BDG].[FIN_VW007_ENTRADA_TITULOS_PRORATA_CVS]
+            WHERE YEAR([DT_ATUALIZACAO])  = YEAR(:dt_destino)
+              AND MONTH([DT_ATUALIZACAO]) = MONTH(:dt_destino)
+            ORDER BY [DT_ATUALIZACAO], [TIPO];
+        """)
+        entradas_pro_rata = db.session.execute(
+            sql_entrada_pro_rata, {'dt_destino': dt_movimentacao_nova}
+        ).fetchall()
+
+        # =================================================================
+        # 7. Provisão ATM/Juros (FIN_VW008) — cada linha vira 2 no extrato
+        # =================================================================
+        sql_provisao_atm_juros = text("""
+            SELECT
+                [DT_ATUALIZACAO],
+                [PERIODO_DE],
+                [PERIODO_ATE],
+                [TIPO],
+                [HISTORICO1],
+                [MOVIMENTACAO1],
+                [HISTORICO2],
+                [MOVIMENTACAO2]
+            FROM [BDG].[FIN_VW008_PROVISAO_ATM_JUROS_CVS]
+            WHERE YEAR([DT_ATUALIZACAO])  = YEAR(:dt_destino)
+              AND MONTH([DT_ATUALIZACAO]) = MONTH(:dt_destino)
+            ORDER BY [DT_ATUALIZACAO], [TIPO];
+        """)
+        provisoes_atm_juros = db.session.execute(
+            sql_provisao_atm_juros, {'dt_destino': dt_movimentacao_nova}
+        ).fetchall()
+
+        # =================================================================
+        # 8. Provisão Pro Rata (FIN_VW010) — cada linha vira 2 no extrato
+        # =================================================================
+        sql_provisao_pro_rata = text("""
+            SELECT
+                [DT_ATUALIZACAO],
+                [PERIODO_DE],
+                [PERIODO_ATE],
+                [TIPO],
+                [HISTORICO],
+                [MOVIMENTACAO],
+                [HISTORICO2],
+                [MOVIMENTACAO2]
+            FROM [BDG].[FIN_VW010_PROVISAO_PRORATA_CVS]
+            WHERE YEAR([DT_ATUALIZACAO])  = YEAR(:dt_destino)
+              AND MONTH([DT_ATUALIZACAO]) = MONTH(:dt_destino)
+            ORDER BY [DT_ATUALIZACAO], [TIPO];
+        """)
+        provisoes_pro_rata = db.session.execute(
+            sql_provisao_pro_rata, {'dt_destino': dt_movimentacao_nova}
+        ).fetchall()
+
+        # =================================================================
+        # 9. Validar que há algo a fazer
+        # =================================================================
+        if (not provisoes_para_processar
+                and not incorporacoes
+                and not recebimentos_ir
+                and not entradas_pro_rata
+                and not provisoes_atm_juros
+                and not provisoes_pro_rata):
             return jsonify({
                 'success': False,
                 'message': (
-                    'Nenhuma provisão encontrada no último mês, a tabela '
-                    'FIN_TB014_INCORPORACOES_MES_CVS está vazia e a view '
-                    'FIN_VW006_RECEBIMENTO_IR_CVS não retornou dados. '
-                    'Nada para processar.'
+                    'Nenhum dado encontrado para processar em '
+                    f'{dt_movimentacao_nova.strftime("%m/%Y")}. '
+                    '(Provisões, Incorporações, Recebimentos IR, Entrada '
+                    'Pro Rata, Provisão ATM/Juros e Provisão Pro Rata '
+                    'estão todas vazias.)'
                 )
             }), 400
 
         # =================================================================
-        # 7. ORDEM inicial e validação de limite smallint
+        # 10. ORDEM inicial e validação de limite smallint
         # =================================================================
         proxima_ordem = _proxima_ordem_no_mes(
             dt_movimentacao_nova, ultimo_dia_destino
         )
         total_a_inserir = (
-            len(provisoes_para_processar) + len(incorporacoes) + len(recebimentos_ir)
+            len(provisoes_para_processar)
+            + len(incorporacoes)
+            + len(recebimentos_ir)
+            + len(entradas_pro_rata)
+            + (len(provisoes_atm_juros) * 2)
+            + (len(provisoes_pro_rata) * 2)
         )
         ordem_final_estimada = proxima_ordem + total_a_inserir
         if ordem_final_estimada > 32767:
@@ -1315,9 +1393,12 @@ def extrato_processar_provisoes():
         inseridas_estorno = 0
         inseridas_incorporacao = 0
         inseridas_recebimento = 0
+        inseridas_entrada_pro_rata = 0
+        inseridas_provisao_atm_juros = 0
+        inseridas_provisao_pro_rata = 0
 
         # =================================================================
-        # ETAPA 1 — INSERIR ESTORNOS (VR_SALDO = 0)
+        # ETAPA 1 — INSERIR ESTORNOS
         # =================================================================
         for prov in provisoes_para_processar:
             historico_estorno = _gerar_historico_estorno(prov.HISTORICO)
@@ -1335,13 +1416,13 @@ def extrato_processar_provisoes():
                 PERIODO_DE=prov.PERIODO_DE,
                 PERIODO_ATE=prov.PERIODO_ATE,
                 VR_MOVIMENTACAO=valor_estorno,
-                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
+                VR_SALDO=Decimal('0'),
             ))
             proxima_ordem += 1
             inseridas_estorno += 1
 
         # =================================================================
-        # ETAPA 2 — INSERIR INCORPORAÇÕES (VR_SALDO = 0)
+        # ETAPA 2 — INSERIR INCORPORAÇÕES
         # =================================================================
         for inc in incorporacoes:
             db.session.add(ExtratoCVS(
@@ -1353,13 +1434,13 @@ def extrato_processar_provisoes():
                 PERIODO_DE=inc.PERIODO_DE,
                 PERIODO_ATE=inc.PERIODO_ATE,
                 VR_MOVIMENTACAO=inc.VR_MOVIMENTACAO,
-                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
+                VR_SALDO=Decimal('0'),
             ))
             proxima_ordem += 1
             inseridas_incorporacao += 1
 
         # =================================================================
-        # ETAPA 3 — INSERIR RECEBIMENTOS IR (VR_SALDO = 0)
+        # ETAPA 3 — INSERIR RECEBIMENTOS IR
         # =================================================================
         for rec in recebimentos_ir:
             db.session.add(ExtratoCVS(
@@ -1371,18 +1452,107 @@ def extrato_processar_provisoes():
                 PERIODO_DE=rec.PERIODO_DE,
                 PERIODO_ATE=rec.PERIODO_ATE,
                 VR_MOVIMENTACAO=rec.MOVIMENTACAO,
-                VR_SALDO=Decimal('0'),  # será recalculado na ETAPA 4
+                VR_SALDO=Decimal('0'),
             ))
             proxima_ordem += 1
             inseridas_recebimento += 1
 
-        # Flush envia ao banco mas mantém a transação aberta
+        # =================================================================
+        # ETAPA 4 — INSERIR ENTRADA TÍTULOS PRO RATA (FIN_VW007)
+        # =================================================================
+        for ent in entradas_pro_rata:
+            vr_movimentacao_entrada = None
+            if (ent.PU_ATU_PRO is not None
+                    and ent.VR_JR_PRORATA is not None
+                    and ent.QTDE_TITULOS is not None):
+                pu = Decimal(str(ent.PU_ATU_PRO))
+                jr = Decimal(str(ent.VR_JR_PRORATA))
+                qtd = Decimal(str(ent.QTDE_TITULOS))
+                vr_movimentacao_entrada = (pu + jr) * qtd
+
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=ent.DT_ATUALIZACAO,
+                TIPO=ent.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=ent.HISTORICO,
+                PERIODO_DE=ent.DT_ATUALIZACAO,
+                PERIODO_ATE=ent.DT_ATUALIZACAO,
+                VR_MOVIMENTACAO=vr_movimentacao_entrada,
+                VR_SALDO=Decimal('0'),
+            ))
+            proxima_ordem += 1
+            inseridas_entrada_pro_rata += 1
+
+        # =================================================================
+        # ETAPA 5 — INSERIR PROVISÃO ATM/JUROS (FIN_VW008)
+        # =================================================================
+        for prv in provisoes_atm_juros:
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=prv.DT_ATUALIZACAO,
+                TIPO=prv.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=prv.HISTORICO1,
+                PERIODO_DE=prv.PERIODO_DE,
+                PERIODO_ATE=prv.PERIODO_ATE,
+                VR_MOVIMENTACAO=prv.MOVIMENTACAO1,
+                VR_SALDO=Decimal('0'),
+            ))
+            proxima_ordem += 1
+            inseridas_provisao_atm_juros += 1
+
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=prv.DT_ATUALIZACAO,
+                TIPO=prv.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=prv.HISTORICO2,
+                PERIODO_DE=prv.PERIODO_DE,
+                PERIODO_ATE=prv.PERIODO_ATE,
+                VR_MOVIMENTACAO=prv.MOVIMENTACAO2,
+                VR_SALDO=Decimal('0'),
+            ))
+            proxima_ordem += 1
+            inseridas_provisao_atm_juros += 1
+
+        # =================================================================
+        # ETAPA 6 — INSERIR PROVISÃO PRO RATA (FIN_VW010)
+        # =================================================================
+        for prv in provisoes_pro_rata:
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=prv.DT_ATUALIZACAO,
+                TIPO=prv.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=prv.HISTORICO,
+                PERIODO_DE=prv.PERIODO_DE,
+                PERIODO_ATE=prv.PERIODO_ATE,
+                VR_MOVIMENTACAO=prv.MOVIMENTACAO,
+                VR_SALDO=Decimal('0'),
+            ))
+            proxima_ordem += 1
+            inseridas_provisao_pro_rata += 1
+
+            db.session.add(ExtratoCVS(
+                DT_CARGA=dt_carga_hoje,
+                DT_MOVIMENTACAO=prv.DT_ATUALIZACAO,
+                TIPO=prv.TIPO,
+                ORDEM=proxima_ordem,
+                HISTORICO=prv.HISTORICO2,
+                PERIODO_DE=prv.PERIODO_DE,
+                PERIODO_ATE=prv.PERIODO_ATE,
+                VR_MOVIMENTACAO=prv.MOVIMENTACAO2,
+                VR_SALDO=Decimal('0'),
+            ))
+            proxima_ordem += 1
+            inseridas_provisao_pro_rata += 1
+
         db.session.flush()
 
         # =================================================================
-        # ETAPA 4 — RECALCULAR VR_SALDO
+        # ETAPA 7 — RECALCULAR VR_SALDO
         # =================================================================
-        # Saldo inicial = último VR_SALDO antes do mês destino
         sql_saldo_inicial = text("""
             SELECT TOP 1 [VR_SALDO]
             FROM [BDG].[FIN_TB013_EXTRATO_CVS]
@@ -1400,9 +1570,6 @@ def extrato_processar_provisoes():
         )
         saldo_inicial_referencia = saldo_anterior
 
-        # Carrega todas as linhas do mês destino, ordenadas por
-        # DT_MOVIMENTACAO e ORDEM (cobre estornos, incorporações e
-        # recebimentos IR, que podem ter DT_MOVIMENTACAO diferente)
         linhas_destino = ExtratoCVS.query.filter(
             ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
             ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
@@ -1423,11 +1590,92 @@ def extrato_processar_provisoes():
             saldo_anterior = novo_saldo
             saldos_recalculados += 1
 
+        # Flush para a FIN_VW011 enxergar os dados recém recalculados
+        db.session.flush()
+
+        # =================================================================
+        # ETAPA 8 — AJUSTE DE SALDO PROV JUROS (FIN_VW011)
+        #
+        # Aplica o UPDATE diretamente via SQL raw:
+        #
+        #   UPDATE A
+        #   SET A.VR_MOVIMENTACAO = A.VR_MOVIMENTACAO + B.AJUSTE,
+        #       A.VR_SALDO        = A.VR_SALDO        + B.AJUSTE
+        #   FROM FIN_TB013_EXTRATO_CVS A
+        #   INNER JOIN FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS B
+        #     ON FORMAT(CONVERT(DATE, A.DT_MOVIMENTACAO), 'yyyyMM')
+        #        = B.ANO_MES
+        #   WHERE A.NU_LINHA = (SELECT MAX(NU_LINHA) FROM FIN_TB013...)
+        #
+        # Sinal do AJUSTE preservado (negativo subtrai, positivo soma).
+        # =================================================================
+        ano_mes_destino = int(dt_movimentacao_nova.strftime('%Y%m'))
+
+        # Captura o valor do AJUSTE antes do UPDATE (apenas para
+        # auditoria/retorno — o UPDATE em si lê o valor direto da view)
+        sql_pegar_ajuste = text("""
+                    SELECT [AJUSTE]
+                    FROM [BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS]
+                    WHERE [ANO_MES] = :ano_mes;
+                """)
+        row_ajuste = db.session.execute(
+            sql_pegar_ajuste, {'ano_mes': ano_mes_destino}
+        ).fetchone()
+
+        ajuste_aplicado = Decimal('0')
+        ultima_linha_ajustada = None
+
+        if row_ajuste and row_ajuste[0] is not None:
+            ajuste_aplicado = Decimal(str(row_ajuste[0]))
+
+            if ajuste_aplicado != 0:
+                # UPDATE direto, exatamente como você passou
+                sql_update_ajuste = text("""
+                            UPDATE A
+                            SET A.[VR_MOVIMENTACAO] =
+                                    A.[VR_MOVIMENTACAO] + B.[AJUSTE],
+                                A.[VR_SALDO] =
+                                    A.[VR_SALDO] + B.[AJUSTE]
+                            FROM [BDG].[FIN_TB013_EXTRATO_CVS] AS A
+                            INNER JOIN
+                                [BDDASHBOARDBI].[BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS] AS B
+                                ON FORMAT(
+                                        CONVERT(DATE, A.[DT_MOVIMENTACAO]),
+                                        'yyyyMM'
+                                   ) = B.[ANO_MES]
+                            WHERE A.[NU_LINHA] = (
+                                SELECT MAX([NU_LINHA])
+                                FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+                            );
+                        """)
+                result_update = db.session.execute(sql_update_ajuste)
+                qtd_linhas_atualizadas = result_update.rowcount or 0
+                ultima_linha_ajustada = (
+                    f'MAX(NU_LINHA) — {qtd_linhas_atualizadas} '
+                    f'linha(s) atualizada(s)'
+                )
+
+                # Recarregar saldo_anterior (para retorno coerente).
+                # Como o UPDATE foi via SQL raw, atualiza a sessão.
+                db.session.expire_all()
+                ultima_linha_atualizada = ExtratoCVS.query.filter(
+                    ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
+                    ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino
+                ).order_by(
+                    ExtratoCVS.DT_MOVIMENTACAO.desc(),
+                    ExtratoCVS.ORDEM.desc()
+                ).first()
+                if ultima_linha_atualizada is not None and \
+                        ultima_linha_atualizada.VR_SALDO is not None:
+                    saldo_anterior = Decimal(
+                        str(ultima_linha_atualizada.VR_SALDO)
+                    )
+
         # Commit final (toda a transação)
         db.session.commit()
 
         # =================================================================
-        # 8. Auditoria
+        # 11. Auditoria
         # =================================================================
         registrar_log(
             acao='carga',
@@ -1439,7 +1687,11 @@ def extrato_processar_provisoes():
                 f'{inseridas_estorno} estorno(s), '
                 f'{inseridas_incorporacao} incorporação(ões), '
                 f'{inseridas_recebimento} recebimento(s) IR, '
-                f'{saldos_recalculados} saldo(s) recalculado(s).'
+                f'{inseridas_entrada_pro_rata} entrada(s) pro rata, '
+                f'{inseridas_provisao_atm_juros} provisão(ões) ATM/Juros, '
+                f'{inseridas_provisao_pro_rata} provisão(ões) pro rata, '
+                f'{saldos_recalculados} saldo(s) recalculado(s), '
+                f'ajuste aplicado: {ajuste_aplicado}.'
             ),
             dados_novos={
                 'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
@@ -1449,9 +1701,14 @@ def extrato_processar_provisoes():
                 'estornos_inseridos': inseridas_estorno,
                 'incorporacoes_inseridas': inseridas_incorporacao,
                 'recebimentos_ir_inseridos': inseridas_recebimento,
+                'entrada_pro_rata_inseridas': inseridas_entrada_pro_rata,
+                'provisao_atm_juros_inseridas': inseridas_provisao_atm_juros,
+                'provisao_pro_rata_inseridas': inseridas_provisao_pro_rata,
                 'saldos_recalculados': saldos_recalculados,
                 'saldo_inicial': str(saldo_inicial_referencia),
                 'saldo_final': str(saldo_anterior),
+                'ajuste_aplicado': str(ajuste_aplicado),
+                'ultima_linha_ajustada': ultima_linha_ajustada,
             }
         )
 
@@ -1463,17 +1720,22 @@ def extrato_processar_provisoes():
                 f'{inseridas_estorno} estorno(s), '
                 f'{inseridas_incorporacao} incorporação(ões), '
                 f'{inseridas_recebimento} recebimento(s) IR, '
+                f'{inseridas_entrada_pro_rata} entrada(s) pro rata, '
+                f'{inseridas_provisao_atm_juros} provisão(ões) ATM/Juros, '
+                f'{inseridas_provisao_pro_rata} provisão(ões) pro rata, '
                 f'{saldos_recalculados} saldo(s) recalculado(s). '
-                f'({provisoes_ja_estornadas} provisão(ões) ignorada(s) '
-                f'por já ter estorno no mês de origem.)'
+                f'Ajuste aplicado: {ajuste_aplicado}.'
             ),
             'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
             'mes_destino': dt_movimentacao_nova.strftime('%Y-%m'),
             'estornos_inseridos': inseridas_estorno,
             'incorporacoes_inseridas': inseridas_incorporacao,
             'recebimentos_ir_inseridos': inseridas_recebimento,
-            'provisoes_ja_estornadas': provisoes_ja_estornadas,
+            'entrada_pro_rata_inseridas': inseridas_entrada_pro_rata,
+            'provisao_atm_juros_inseridas': inseridas_provisao_atm_juros,
+            'provisao_pro_rata_inseridas': inseridas_provisao_pro_rata,
             'saldos_recalculados': saldos_recalculados,
+            'ajuste_aplicado': str(ajuste_aplicado),
         })
 
     except Exception as e:
