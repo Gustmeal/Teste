@@ -855,6 +855,11 @@ def excluir(nu_linha):
         if not deposito:
             return jsonify({'success': False, 'erro': 'Depósito não encontrado.'}), 404
 
+        dados = request.get_json() or {}
+        obs_exclusao = (dados.get('obs') or '').strip()
+        if not obs_exclusao:
+            return jsonify({'success': False, 'erro': 'O motivo da exclusão é obrigatório.'}), 400
+
         # Segurança: confirmar que é institucional antes de excluir
         carteira = CentroResultado.query.filter_by(ID_CENTRO=deposito.ID_CENTRO).first()
         if not carteira or carteira.NO_CARTEIRA != 'Institucional':
@@ -882,7 +887,7 @@ def excluir(nu_linha):
         excluido.NU_CONTRATO_2            = deposito.NU_CONTRATO_2
         excluido.EVENTO_CONTABIL_ANTERIOR = deposito.EVENTO_CONTABIL_ANTERIOR
         excluido.EVENTO_CONTABIL_ATUAL    = deposito.EVENTO_CONTABIL_ATUAL
-        excluido.OBS                      = deposito.OBS
+        excluido.OBS                      = obs_exclusao
         excluido.IC_APROPRIADO            = deposito.IC_APROPRIADO
         excluido.DT_SISCOR                = deposito.DT_SISCOR
         excluido.IC_INCLUIDO_ACERTO       = deposito.IC_INCLUIDO_ACERTO

@@ -257,6 +257,14 @@
                     <i class="fas fa-info-circle me-1"></i>
                     O registro será transferido para a tabela de exclusões e <strong>removido permanentemente</strong> da listagem principal.
                 </p>
+                <div class="mt-3">
+                    <label for="obsExclusao" class="form-label fw-bold">
+                        Motivo da Exclusão <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" class="form-control" id="obsExclusao"
+                           maxlength="70" placeholder="Informe o motivo da exclusão">
+                    <div class="invalid-feedback">O motivo da exclusão é obrigatório.</div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
@@ -342,6 +350,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const btn = this;
             const htmlOriginal = btn.innerHTML;
 
+            const obsInput = document.getElementById('obsExclusao');
+            const obs = obsInput.value.trim();
+
+            if (!obs) {
+                obsInput.classList.add('is-invalid');
+                return;
+            }
+            obsInput.classList.remove('is-invalid');
+
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Excluindo...';
 
@@ -350,7 +367,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-Silent-Request': 'true'
-                }
+                },
+                body: JSON.stringify({ obs: obs })
             })
             .then(response => response.json().then(data => ({ status: response.status, data })))
             .then(({ status, data }) => {
