@@ -64,3 +64,32 @@ class ProcessosJudiciais(db.Model):
 
     NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=False)
     NR_PROCESSO = db.Column(db.String(100))
+
+class DepositosSufinExclusao(db.Model):
+    """Tabela de destino para depósitos institucionais excluídos (transferência física)"""
+    __tablename__ = 'DPJ_TB010_DEPOSITOS_SUFIN_EXCLUSAO'
+    __table_args__ = {'schema': 'BDG'}
+
+    NU_LINHA                 = db.Column(db.Integer, primary_key=True, autoincrement=False)
+    LANCAMENTO_RM            = db.Column(db.String(15))
+    DT_LANCAMENTO_DJ         = db.Column(db.Date)
+    VR_RATEIO                = db.Column(db.Numeric(18, 2))
+    MEMO_SUFIN               = db.Column(db.String(15))
+    DT_MEMO                  = db.Column(db.Date)
+    ID_IDENTIFICADO          = db.Column(db.Boolean)
+    DT_IDENTIFICACAO         = db.Column(db.Date)
+    ID_AREA                  = db.Column(db.Integer)
+    ID_AREA_2                = db.Column(db.Integer)
+    ID_CENTRO                = db.Column(db.Integer)
+    ID_AJUSTE_RM             = db.Column(db.Boolean)
+    DT_AJUSTE_RM             = db.Column(db.Date)
+    NU_CONTRATO              = db.Column(db.BigInteger)
+    NU_CONTRATO_2            = db.Column(db.BigInteger)
+    EVENTO_CONTABIL_ANTERIOR = db.Column(db.Integer)
+    EVENTO_CONTABIL_ATUAL    = db.Column(db.Integer)
+    OBS                      = db.Column(db.String(70))
+    IC_APROPRIADO            = db.Column(db.Boolean)
+    DT_SISCOR                = db.Column(db.Date)
+    IC_INCLUIDO_ACERTO       = db.Column(db.Boolean)
+    STATUS                   = db.Column(db.String(20))
+    AREA_STATUS              = db.Column(db.String(100))

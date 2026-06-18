@@ -180,11 +180,17 @@
                 <hr class="my-4">
 
                 <div class="d-flex justify-content-between align-items-center">
-                    <div>
+                    <div class="d-flex gap-2">
                         <a href="{{ url_for('depositos_judiciais.ratear_multiplo', nu_linha=deposito.NU_LINHA) }}"
                            class="btn btn-info ms-2">
                             <i class="fas fa-layer-group me-2"></i>Ratear Valor
                         </a>
+                        {% if is_institucional %}
+                        <button type="button" class="btn btn-danger" id="btnExcluir"
+                                data-nu-linha="{{ deposito.NU_LINHA }}">
+                            <i class="fas fa-trash me-2"></i>Excluir
+                        </button>
+                        {% endif %}
                     </div>
                     <div>
                         <!-- IMPORTANTE: Cancelar leva os filtros consigo -->
@@ -229,6 +235,41 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Confirmar Exclusão -->
+{% if is_institucional %}
+<div class="modal fade" id="modalExcluir" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Confirmar Exclusão
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Você está prestes a excluir o depósito:</p>
+                <ul>
+                    <li><strong>Nº Linha:</strong> {{ deposito.NU_LINHA }}</li>
+                    <li><strong>Lançamento RM:</strong> {{ deposito.LANCAMENTO_RM | trim if deposito.LANCAMENTO_RM else '-' }}</li>
+                </ul>
+                <p class="text-danger mb-0">
+                    <i class="fas fa-info-circle me-1"></i>
+                    O registro será transferido para a tabela de exclusões e <strong>removido permanentemente</strong> da listagem principal.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-danger" id="btnConfirmarExclusao">
+                    <i class="fas fa-trash me-2"></i>Confirmar Exclusão
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <style>
     .form-label { font-weight: 600; color: var(--text-color); }
@@ -287,6 +328,48 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Erro de conexão: ' + err.message);
             });
         });
+        // =========================================================
+    // BOTÃO EXCLUIR (apenas institucional)
+    // =========================================================
+    const btnExcluir = document.getElementById('btnExcluir');
+    if (btnExcluir) {
+        btnExcluir.addEventListener('click', function() {
+            new bootstrap.Modal(document.getElementById('modalExcluir')).show();
+        });
+
+        document.getElementById('btnConfirmarExclusao').addEventListener('click', function() {
+            const nuLinha = btnExcluir.dataset.nuLinha;
+            const btn = this;
+            const htmlOriginal = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Excluindo...';
+
+            fetch(`/depositos-judiciais/excluir/${nuLinha}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Silent-Request': 'true'
+                }
+            })
+            .then(response => response.json().then(data => ({ status: response.status, data })))
+            .then(({ status, data }) => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('modalExcluir')).hide();
+                    window.location.href = "{{ url_for('depositos_judiciais.edicao', **filtros_ativos) }}";
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = htmlOriginal;
+                    alert('Erro ao excluir: ' + (data.erro || 'Erro desconhecido'));
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = htmlOriginal;
+                alert('Erro de conexão: ' + err.message);
+            });
+        });
+    }
     }
 
     // ATUALIZAÇÃO DINÂMICA DO EVENTO CONTÁBIL ATUAL
@@ -435,5 +518,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
 });
+
 </script>
 {% endblock %}

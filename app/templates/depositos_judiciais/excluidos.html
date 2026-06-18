@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="editais-container fade-in">
+    <a href="{{ url_for('depositos_judiciais.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="page-title-bar">
+        <h1>Registros Excluídos</h1>
+        <p class="text-muted">Depósitos institucionais removidos da listagem principal</p>
+    </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-trash-alt me-2"></i> Depósitos Excluídos
+            </h5>
+            <span class="badge bg-light text-dark">{{ registros|length }} registro(s)</span>
+        </div>
+        <div class="card-body p-0">
+            {% if registros %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover table-sm mb-0">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Nº Linha</th>
+                            <th>Lançamento RM</th>
+                            <th>Data Lançamento</th>
+                            <th class="text-end">Valor Rateio</th>
+                            <th>Memo SUFIN</th>
+                            <th>Data Memo</th>
+                            <th>Nº Contrato</th>
+                            <th>Observação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reg in registros %}
+                        <tr>
+                            <td>{{ reg.NU_LINHA }}</td>
+                            <td>{{ reg.LANCAMENTO_RM | trim if reg.LANCAMENTO_RM else '-' }}</td>
+                            <td>{{ reg.DT_LANCAMENTO_DJ.strftime('%d/%m/%Y') if reg.DT_LANCAMENTO_DJ else '-' }}</td>
+                            <td class="text-end {% if reg.VR_RATEIO and reg.VR_RATEIO < 0 %}text-danger{% elif reg.VR_RATEIO and reg.VR_RATEIO > 0 %}text-success{% endif %}">
+                                {% if reg.VR_RATEIO is not none %}
+                                    {{ 'R$ {:,.2f}'.format(reg.VR_RATEIO).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>{{ reg.MEMO_SUFIN | trim if reg.MEMO_SUFIN else '-' }}</td>
+                            <td>{{ reg.DT_MEMO.strftime('%d/%m/%Y') if reg.DT_MEMO else '-' }}</td>
+                            <td>{{ reg.NU_CONTRATO or '-' }}</td>
+                            <td>{{ reg.OBS | trim if reg.OBS else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted p-5">
+                <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                Nenhum registro excluído encontrado.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

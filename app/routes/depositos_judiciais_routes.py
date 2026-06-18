@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import func, or_, and_, extract
 from decimal import Decimal
 from sqlalchemy import text
+from app.models.depositos_judiciais import DepositosSufin, DepositosSufinExclusao, Area, CentroResultado, ProcessosJudiciais
 
 
 depositos_judiciais_bp = Blueprint('depositos_judiciais', __name__, url_prefix='/depositos-judiciais')
@@ -821,6 +822,10 @@ def editar(nu_linha):
     areas = Area.query.order_by(Area.NO_AREA).all()
     centros = CentroResultado.query.order_by(CentroResultado.NO_CARTEIRA).all()
 
+    # Verificar se o depósito é institucional para exibir botão Excluir
+    carteira = CentroResultado.query.filter_by(ID_CENTRO=deposito_obj.ID_CENTRO).first()
+    is_institucional = carteira is not None and carteira.NO_CARTEIRA == 'Institucional'
+
     return render_template('depositos_judiciais/editar.html',
                            deposito=deposito_obj,
                            nr_processo=nr_processo,
@@ -829,7 +834,77 @@ def editar(nu_linha):
                            eventos_por_centro=EVENTOS_POR_CENTRO,
                            evento_anterior_codigo=22607,
                            evento_anterior_descricao='PENDÊNCIA DE DEPÓSITO JUDICIAL',
-                           filtros_ativos=filtros_ativos)  # NOVO
+                           filtros_ativos=filtros_ativos,
+                           is_institucional=is_institucional)
+
+@depositos_judiciais_bp.route('/excluir/<int:nu_linha>', methods=['POST'])
+@login_required
+def excluir(nu_linha):
+    """
+    Transfere um depósito institucional da tabela principal
+    para DPJ_TB010_DEPOSITOS_SUFIN_EXCLUSAO e o remove fisicamente da original.
+
+    LÓGICA:
+    - Só permite exclusão se o depósito pertencer à carteira Institucional.
+    - Em uma única transação: INSERT na TB010 + DELETE na TB004.
+    - Registra log de auditoria.
+    """
+    try:
+        deposito = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
+
+        if not deposito:
+            return jsonify({'success': False, 'erro': 'Depósito não encontrado.'}), 404
+
+        # Segurança: confirmar que é institucional antes de excluir
+        carteira = CentroResultado.query.filter_by(ID_CENTRO=deposito.ID_CENTRO).first()
+        if not carteira or carteira.NO_CARTEIRA != 'Institucional':
+            return jsonify({
+                'success': False,
+                'erro': 'Exclusão permitida somente para depósitos da carteira Institucional.'
+            }), 403
+
+        # Copiar para a tabela de exclusão
+        excluido = DepositosSufinExclusao()
+        excluido.NU_LINHA                 = deposito.NU_LINHA
+        excluido.LANCAMENTO_RM            = deposito.LANCAMENTO_RM
+        excluido.DT_LANCAMENTO_DJ         = deposito.DT_LANCAMENTO_DJ
+        excluido.VR_RATEIO                = deposito.VR_RATEIO
+        excluido.MEMO_SUFIN               = deposito.MEMO_SUFIN
+        excluido.DT_MEMO                  = deposito.DT_MEMO
+        excluido.ID_IDENTIFICADO          = deposito.ID_IDENTIFICADO
+        excluido.DT_IDENTIFICACAO         = deposito.DT_IDENTIFICACAO
+        excluido.ID_AREA                  = deposito.ID_AREA
+        excluido.ID_AREA_2                = deposito.ID_AREA_2
+        excluido.ID_CENTRO                = deposito.ID_CENTRO
+        excluido.ID_AJUSTE_RM             = deposito.ID_AJUSTE_RM
+        excluido.DT_AJUSTE_RM             = deposito.DT_AJUSTE_RM
+        excluido.NU_CONTRATO              = deposito.NU_CONTRATO
+        excluido.NU_CONTRATO_2            = deposito.NU_CONTRATO_2
+        excluido.EVENTO_CONTABIL_ANTERIOR = deposito.EVENTO_CONTABIL_ANTERIOR
+        excluido.EVENTO_CONTABIL_ATUAL    = deposito.EVENTO_CONTABIL_ATUAL
+        excluido.OBS                      = deposito.OBS
+        excluido.IC_APROPRIADO            = deposito.IC_APROPRIADO
+        excluido.DT_SISCOR                = deposito.DT_SISCOR
+        excluido.IC_INCLUIDO_ACERTO       = deposito.IC_INCLUIDO_ACERTO
+        excluido.STATUS                   = deposito.STATUS
+        excluido.AREA_STATUS              = deposito.AREA_STATUS
+
+        db.session.add(excluido)
+        db.session.delete(deposito)
+        db.session.commit()
+
+        registrar_log(
+            'depositos_judiciais',
+            'delete',
+            f'Depósito institucional excluído - NU_LINHA: {nu_linha}',
+            {'nu_linha': nu_linha}
+        )
+
+        return jsonify({'success': True, 'mensagem': f'Depósito Nº {nu_linha} excluído com sucesso.'})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'erro': str(e)}), 500
 
 
 @depositos_judiciais_bp.route('/executar-scripts-relatorio', methods=['POST'])
@@ -1307,6 +1382,17 @@ def verificar_contratos_invalidos():
             'success': False,
             'erro': str(e)
         }), 500
+
+@depositos_judiciais_bp.route('/excluidos')
+@login_required
+def excluidos():
+    """Página para visualizar depósitos institucionais excluídos (DPJ_TB010)"""
+    registros = (
+        DepositosSufinExclusao.query
+        .order_by(DepositosSufinExclusao.NU_LINHA.desc())
+        .all()
+    )
+    return render_template('depositos_judiciais/excluidos.html', registros=registros)
 
 @depositos_judiciais_bp.route('/contratos-invalidos')
 @login_required
