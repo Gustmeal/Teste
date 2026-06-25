@@ -231,7 +231,7 @@ class ExtratoCVS(db.Model):
 
     DT_MOVIMENTACAO = db.Column(db.Date, primary_key=True, nullable=False)
     ORDEM = db.Column(db.SmallInteger, primary_key=True, nullable=False)
-
+    NU_LINHA = db.Column(db.Integer, primary_key=True, autoincrement=True, nullable=False)
     DT_CARGA = db.Column(db.Date, nullable=False)
     TIPO = db.Column(db.String(3), nullable=True)
     HISTORICO = db.Column(db.String(150), nullable=True)

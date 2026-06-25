@@ -1644,7 +1644,7 @@ def ratear_multiplo(nu_linha):
     - Cada linha tem seu próprio Lançamento RM (manual no formulário).
       Se vier vazio, usa o Lançamento RM do depósito original como fallback.
     - Se a Data de Identificação for preenchida em uma linha, essa linha
-      nasce com STATUS = 'Concluído' (mesma regra da função editar()).
+      nasce com STATUS = 'Concluído ' (mesma regra da função editar()).
     - Após criar as novas linhas, o depósito original é EXCLUÍDO
       PERMANENTEMENTE (delete físico), junto com seu ProcessosJudiciais
       vinculado (se existir), para não deixar registro órfão.
