@@ -141,7 +141,9 @@ class DeliberacaoPagamento(db.Model):
     PREJUIZO_FINANCEIRO_CAIXA = db.Column(db.Text, nullable=True)
     CONSIDERACOES_GESTOR_SUMOV = db.Column(db.Text, nullable=True)  # ← ADICIONE ESTA LINHA
 
-
+    # ==== IPTU (NOVO) ====
+    SITUACAO_IPTU = db.Column(db.String(20), nullable=True)  # 'Quitado', 'Em andamento' ou 'Em aberto'
+    VR_IPTU = db.Column(db.Numeric(18, 2), nullable=True)  # preenchido apenas quando 'Em aberto'
 
     # Datas do período de cobrança (NOVO)
     DT_PERIODO_COBRANCA_INICIO = db.Column(db.Date, nullable=True)
