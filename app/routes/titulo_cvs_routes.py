@@ -1030,6 +1030,39 @@ def _ultimo_dia_mes(data_qualquer):
     ultimo = monthrange(data_qualquer.year, data_qualquer.month)[1]
     return data_qualquer.replace(day=ultimo)
 
+def _primeiro_dia_util_mes(dt_qualquer_no_mes):
+    """
+    Retorna o primeiro dia útil do mês de dt_qualquer_no_mes,
+    consultando BDG.PAR_TB020_CALENDARIO.
+
+    Critério: menor [DIA] no mesmo (ano, mês) com [DIA_UTIL] = 1.
+    Se nenhum dia útil for encontrado (cenário improvável), retorna
+    o próprio dia 1 do mês como fallback.
+    """
+    primeiro_do_mes = dt_qualquer_no_mes.replace(day=1)
+    ultimo_do_mes = _ultimo_dia_mes(dt_qualquer_no_mes)
+
+    sql = text("""
+        SELECT TOP 1 [DIA]
+        FROM [BDG].[PAR_TB020_CALENDARIO]
+        WHERE [DIA] BETWEEN :dt_ini AND :dt_fim
+          AND [DIA_UTIL] = 1
+        ORDER BY [DIA] ASC;
+    """)
+    row = db.session.execute(
+        sql,
+        {'dt_ini': primeiro_do_mes, 'dt_fim': ultimo_do_mes}
+    ).fetchone()
+
+    if row and row[0] is not None:
+        valor = row[0]
+        # Pode vir como date ou datetime — normaliza para date
+        if hasattr(valor, 'date'):
+            return valor.date()
+        return valor
+
+    # Fallback: dia 1 (caso o calendário esteja vazio no mês)
+    return primeiro_do_mes
 
 def _proxima_ordem_no_mes(primeiro_dia_mes, ultimo_dia_mes):
     """Retorna MAX(ORDEM) + 1 dentro do intervalo de datas."""
@@ -1402,7 +1435,10 @@ def extrato_processar_provisoes():
 
         # =================================================================
         # ETAPA 1 — INSERIR ESTORNOS
+        # DT_MOVIMENTACAO = primeiro dia útil do mês destino, conforme
+        # BDG.PAR_TB020_CALENDARIO (coluna DIA_UTIL = 1).
         # =================================================================
+        dt_estorno = _primeiro_dia_util_mes(dt_movimentacao_nova)
         for prov in provisoes_para_processar:
             historico_estorno = _gerar_historico_estorno(prov.HISTORICO)
             valor_estorno = (
@@ -1412,7 +1448,7 @@ def extrato_processar_provisoes():
             )
             db.session.add(ExtratoCVS(
                 DT_CARGA=dt_carga_hoje,
-                DT_MOVIMENTACAO=dt_movimentacao_nova,
+                DT_MOVIMENTACAO=dt_estorno,
                 TIPO=prov.TIPO,
                 ORDEM=proxima_ordem,
                 HISTORICO=historico_estorno,
