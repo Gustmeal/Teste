@@ -2178,41 +2178,38 @@ def estoque_index():
 
 
 # =========================================================================
-# ESTOQUE — ATUALIZAR (lógica corrigida — um mês por vez)
+# ESTOQUE — ATUALIZAR (dia útil a dia útil até hoje)
 # =========================================================================
 @titulo_cvs_bp.route('/estoque/atualizar', methods=['POST'])
 @login_required
 def estoque_atualizar():
     """
-    Atualiza o estoque mensal — UM MÊS POR VEZ.
+    Atualiza o estoque calculando UMA NOVA POSIÇÃO para CADA DIA ÚTIL
+    entre a última DT_POSICAO existente e hoje (inclusive).
 
     Lógica:
-      1. Pega MAX(DT_POSICAO) da FIN_TB010  →  ultima_dt
-      2. Verifica se ultima_dt é o MAX do seu próprio mês na view:
-           SIM  → mes_alvo = MÊS SEGUINTE ao ultima_dt
-           NÃO  → mes_alvo = MESMO MÊS do ultima_dt
-                  (re-processa: deleta ultima_dt, pega data mais recente)
-      3. nova_dt = MAX(view) WHERE ano/mês = mes_alvo AND <= hoje
-      4. Se nova_dt == ultima_dt → já está atualizado, nada a fazer.
-      5. Se ultima_dt NÃO era último do mês → DELETE ultima_dt.
-      6. Calcula QTDE por TIPO da FIN_TB007.
-      7. Busca VR_PU da view para nova_dt.
-      8. INSERT com VR_TOTAL = QTDE × VR_PU.  DT_CARGA = hoje.
+      1. Pega MAX(DT_POSICAO) da FIN_TB010 → ultima_dt
+      2. Consulta BDG.PAR_TB020_CALENDARIO buscando todos os
+         [DIA] tais que:
+             ultima_dt < DIA <= hoje
+             E DIA_UTIL = 1
+      3. Calcula QTDE por TIPO uma única vez (FIN_TB007).
+      4. Para cada dia útil encontrado:
+            a) Busca VR_PU (PU_PRORATA) por TIPO na
+               FIN_VW004_ATUALIZACAO_PRORATA_CVS
+               WHERE DT_FIM_PRORATA_CVS = dia.
+            b) INSERT em FIN_TB010 (DT_POSICAO=dia, TIPO, QTDE, VR_PU,
+               VR_TOTAL = QTDE × VR_PU). DT_CARGA = hoje.
+            c) Se a view não tem dados para algum TIPO nessa data,
+               grava VR_PU/VR_TOTAL como NULL (mantém o registro).
 
     Exemplo:
-      ultima_dt = 31/03/2026, hoje = 10/06/2026
-        → 31/03 é MAX de março → mes_alvo = abril
-        → nova_dt = MAX(abril AND <= 10/06) = 30/04/2026  ✅
-      Próximo clique:
-        → ultima_dt = 30/04 é MAX de abril → mes_alvo = maio
-        → nova_dt = MAX(maio AND <= 10/06) = 29/05/2026   ✅
-      Próximo clique:
-        → ultima_dt = 29/05 é MAX de maio → mes_alvo = junho
-        → nova_dt = MAX(junho AND <= 10/06) = 08/06/2026  ✅
+      ultima_dt = 12/04/2026, hoje = 30/06/2026
+        → Para cada dia útil entre 13/04 e 30/06, gera registros.
+      Se entre essas datas há 55 dias úteis, serão 55 novas
+      DT_POSICAO inseridas.
 
-    Se feito no meio de abril (hoje = 15/04/2026):
-      ultima_dt = 31/03 → mes_alvo = abril
-      → nova_dt = MAX(abril AND <= 15/04) = 10/04/2026    ✅
+    Tudo em uma única transação (rollback automático em caso de erro).
     """
     try:
         hoje = datetime.now().date()
@@ -2231,90 +2228,55 @@ def estoque_atualizar():
                 )
             }), 400
 
+        if ultima_dt >= hoje:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'A última DT_POSICAO ({ultima_dt.strftime("%d/%m/%Y")}) '
+                    f'já está em dia (>= hoje, '
+                    f'{hoje.strftime("%d/%m/%Y")}). Nada a processar.'
+                )
+            }), 400
+
         # =================================================================
-        # 2. ultima_dt é o MAX do seu mês na view?
+        # 2. Dias úteis entre (ultima_dt, hoje] no calendário
         # =================================================================
-        sql_max_mes_ultima = text("""
-            SELECT MAX([DT_FIM_PRORATA_CVS])
-            FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
-            WHERE YEAR([DT_FIM_PRORATA_CVS])  = YEAR(:ultima_dt)
-              AND MONTH([DT_FIM_PRORATA_CVS]) = MONTH(:ultima_dt);
+        sql_dias_uteis = text("""
+            SELECT [DIA]
+            FROM [BDG].[PAR_TB020_CALENDARIO]
+            WHERE [DIA] >  :ultima_dt
+              AND [DIA] <= :hoje
+              AND [DIA_UTIL] = 1
+            ORDER BY [DIA] ASC;
         """)
-        max_do_mes_ultima = db.session.execute(
-            sql_max_mes_ultima, {'ultima_dt': ultima_dt}
-        ).scalar()
+        rows_dias = db.session.execute(
+            sql_dias_uteis,
+            {'ultima_dt': ultima_dt, 'hoje': hoje}
+        ).fetchall()
 
-        ultima_eh_ultimo_do_mes = (
-            max_do_mes_ultima is not None
-            and max_do_mes_ultima == ultima_dt
-        )
-
-        # =================================================================
-        # 3. Determinar ano/mês alvo
-        # =================================================================
-        if ultima_eh_ultimo_do_mes:
-            # Avança para o mês seguinte
-            if ultima_dt.month == 12:
-                ano_alvo, mes_alvo = ultima_dt.year + 1, 1
+        dias_uteis = []
+        for r in rows_dias:
+            valor = r[0]
+            if valor is None:
+                continue
+            # Normaliza para date (caso venha datetime)
+            if hasattr(valor, 'date'):
+                dias_uteis.append(valor.date())
             else:
-                ano_alvo, mes_alvo = ultima_dt.year, ultima_dt.month + 1
-        else:
-            # Re-processa o mesmo mês (busca data mais recente)
-            ano_alvo, mes_alvo = ultima_dt.year, ultima_dt.month
+                dias_uteis.append(valor)
 
-        # =================================================================
-        # 4. nova_dt = MAX(view) WHERE mês alvo AND <= hoje
-        # =================================================================
-        sql_nova_dt = text("""
-            SELECT MAX([DT_FIM_PRORATA_CVS])
-            FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
-            WHERE YEAR([DT_FIM_PRORATA_CVS])  = :ano
-              AND MONTH([DT_FIM_PRORATA_CVS]) = :mes
-              AND [DT_FIM_PRORATA_CVS] <= :hoje;
-        """)
-        nova_dt = db.session.execute(
-            sql_nova_dt, {'ano': ano_alvo, 'mes': mes_alvo, 'hoje': hoje}
-        ).scalar()
-
-        if not nova_dt:
+        if not dias_uteis:
             return jsonify({
                 'success': False,
                 'message': (
-                    f'Nenhuma data disponível na view para '
-                    f'{mes_alvo:02d}/{ano_alvo} '
-                    f'até {hoje.strftime("%d/%m/%Y")}. '
-                    f'Aguarde a próxima atualização da view.'
-                )
-            }), 400
-
-        # Já está na data mais recente disponível para este mês?
-        if nova_dt == ultima_dt:
-            return jsonify({
-                'success': False,
-                'message': (
-                    f'O estoque já está atualizado até '
-                    f'{ultima_dt.strftime("%d/%m/%Y")}. '
-                    f'Não há data mais recente disponível para '
-                    f'{mes_alvo:02d}/{ano_alvo}.'
+                    f'Nenhum dia útil encontrado entre '
+                    f'{ultima_dt.strftime("%d/%m/%Y")} e '
+                    f'{hoje.strftime("%d/%m/%Y")} no calendário.'
                 )
             }), 400
 
         # =================================================================
-        # 5. Deletar ultima_dt se NÃO era o último do mês (substituição)
-        # =================================================================
-        registros_excluidos = 0
-        if not ultima_eh_ultimo_do_mes:
-            sql_delete = text("""
-                DELETE FROM [BDG].[FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS]
-                WHERE [DT_POSICAO] = :ultima_dt;
-            """)
-            result_del = db.session.execute(
-                sql_delete, {'ultima_dt': ultima_dt}
-            )
-            registros_excluidos = result_del.rowcount or 0
-
-        # =================================================================
-        # 6. QTDE por TIPO da FIN_TB007
+        # 3. QTDE por TIPO da FIN_TB007 (carregada uma única vez)
         # =================================================================
         sql_qtde = text("""
             SELECT 
@@ -2327,7 +2289,6 @@ def estoque_atualizar():
         """)
         qtdes_rows = db.session.execute(sql_qtde).fetchall()
         if not qtdes_rows:
-            db.session.rollback()
             return jsonify({
                 'success': False,
                 'message': (
@@ -2336,25 +2297,20 @@ def estoque_atualizar():
                 )
             }), 400
 
+        qtdes_por_tipo = {}
+        for r in qtdes_rows:
+            if r[0] is not None:
+                qtdes_por_tipo[r[0]] = int(r[1]) if r[1] is not None else 0
+
         # =================================================================
-        # 7. VR_PU (PU_PRORATA) da view para nova_dt
+        # 4. INSERT em cadeia — um conjunto de linhas por dia útil
         # =================================================================
         sql_pu = text("""
             SELECT [TIPO], [PU_PRORATA]
             FROM [BDG].[FIN_VW004_ATUALIZACAO_PRORATA_CVS]
-            WHERE [DT_FIM_PRORATA_CVS] = :nova_dt;
+            WHERE [DT_FIM_PRORATA_CVS] = :dia;
         """)
-        pus_rows = db.session.execute(
-            sql_pu, {'nova_dt': nova_dt}
-        ).fetchall()
-        pu_por_tipo = {}
-        for r in pus_rows:
-            if r[0] is not None and r[1] is not None:
-                pu_por_tipo[r[0]] = Decimal(str(r[1]))
 
-        # =================================================================
-        # 8. INSERT na FIN_TB010
-        # =================================================================
         sql_insert = text("""
             INSERT INTO [BDG].[FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS]
                 ([DT_CARGA], [DT_POSICAO], [TIPO],
@@ -2364,79 +2320,125 @@ def estoque_atualizar():
                  :qtde, :vr_pu, :vr_total);
         """)
 
-        inseridos = 0
-        detalhes_inseridos = []
+        sql_ja_existe = text("""
+            SELECT COUNT(*)
+            FROM [BDG].[FIN_TB010_POSICAO_MENSAL_ESTOQUE_CVS]
+            WHERE [DT_POSICAO] = :dia;
+        """)
 
-        for row in qtdes_rows:
-            tipo = row[0]
-            qtde = int(row[1]) if row[1] is not None else 0
-            vr_pu_decimal = pu_por_tipo.get(tipo)
+        total_dias_processados = 0
+        total_linhas_inseridas = 0
+        total_dias_pulados = 0
+        detalhes_por_dia = []
 
-            vr_total = (
-                Decimal(str(qtde)) * vr_pu_decimal
-                if vr_pu_decimal is not None
-                else None
-            )
+        for dia in dias_uteis:
+            # Pula se já existir registro para este dia (evita duplicação)
+            ja_existe = db.session.execute(
+                sql_ja_existe, {'dia': dia}
+            ).scalar() or 0
+            if ja_existe > 0:
+                total_dias_pulados += 1
+                continue
 
-            db.session.execute(sql_insert, {
-                'dt_carga': hoje,
-                'dt_pos': nova_dt,
-                'tipo': tipo,
-                'qtde': qtde,
-                'vr_pu': vr_pu_decimal,
-                'vr_total': vr_total,
-            })
-            inseridos += 1
-            detalhes_inseridos.append({
-                'tipo': tipo,
-                'qtde': qtde,
-                'vr_pu': str(vr_pu_decimal) if vr_pu_decimal else None,
-                'vr_total': str(vr_total) if vr_total else None,
+            # PU_PRORATA por TIPO da view nesse dia
+            pus_rows = db.session.execute(sql_pu, {'dia': dia}).fetchall()
+            pu_por_tipo = {}
+            for r in pus_rows:
+                if r[0] is not None and r[1] is not None:
+                    pu_por_tipo[r[0]] = Decimal(str(r[1]))
+
+            linhas_dia = 0
+            for tipo, qtde in qtdes_por_tipo.items():
+                vr_pu_decimal = pu_por_tipo.get(tipo)
+                vr_total = (
+                    Decimal(str(qtde)) * vr_pu_decimal
+                    if vr_pu_decimal is not None
+                    else None
+                )
+                db.session.execute(sql_insert, {
+                    'dt_carga': hoje,
+                    'dt_pos': dia,
+                    'tipo': tipo,
+                    'qtde': qtde,
+                    'vr_pu': vr_pu_decimal,
+                    'vr_total': vr_total,
+                })
+                linhas_dia += 1
+                total_linhas_inseridas += 1
+
+            total_dias_processados += 1
+            detalhes_por_dia.append({
+                'dia': dia.strftime('%Y-%m-%d'),
+                'linhas_inseridas': linhas_dia,
+                'tipos_sem_pu': [
+                    tipo for tipo in qtdes_por_tipo
+                    if tipo not in pu_por_tipo
+                ],
             })
 
         db.session.commit()
 
         # =================================================================
-        # 9. Auditoria
+        # 5. Auditoria
         # =================================================================
+        nova_ultima_dt = (
+            detalhes_por_dia[-1]['dia']
+            if detalhes_por_dia
+            else ultima_dt.strftime('%Y-%m-%d')
+        )
+
         registrar_log(
             acao='carga',
             entidade='posicao_estoque_cvs',
-            entidade_id=nova_dt.strftime('%Y-%m-%d'),
+            entidade_id=nova_ultima_dt,
             descricao=(
-                f'Atualização de Estoque para DT_POSICAO='
-                f'{nova_dt.strftime("%d/%m/%Y")} '
-                f'(base: {ultima_dt.strftime("%d/%m/%Y")}). '
-                f'Excluídos: {registros_excluidos}. '
-                f'Inseridos: {inseridos}.'
+                f'Atualização de Estoque — varredura de dias úteis. '
+                f'Base: {ultima_dt.strftime("%d/%m/%Y")} → '
+                f'Hoje: {hoje.strftime("%d/%m/%Y")}. '
+                f'Dias úteis processados: {total_dias_processados}. '
+                f'Linhas inseridas: {total_linhas_inseridas}. '
+                f'Dias pulados (já existentes): {total_dias_pulados}.'
             ),
             dados_novos={
-                'ultima_dt': ultima_dt.strftime('%Y-%m-%d'),
-                'nova_dt': nova_dt.strftime('%Y-%m-%d'),
-                'mes_alvo': f'{mes_alvo:02d}/{ano_alvo}',
-                'ultima_eh_ultimo_do_mes': ultima_eh_ultimo_do_mes,
-                'registros_excluidos': registros_excluidos,
-                'inseridos': inseridos,
-                'detalhes': detalhes_inseridos,
+                'ultima_dt_base': ultima_dt.strftime('%Y-%m-%d'),
+                'hoje': hoje.strftime('%Y-%m-%d'),
+                'dias_uteis_encontrados': len(dias_uteis),
+                'dias_processados': total_dias_processados,
+                'dias_pulados': total_dias_pulados,
+                'linhas_inseridas': total_linhas_inseridas,
+                'nova_ultima_dt': nova_ultima_dt,
+                'detalhes': detalhes_por_dia,
             }
         )
 
-        msg_acao = (
-            f'substituiu {ultima_dt.strftime("%d/%m/%Y")} (intra-mês)'
-            if registros_excluidos > 0
-            else f'manteve fechamento de {ultima_dt.strftime("%d/%m/%Y")}'
-        )
+        if total_dias_processados == 0:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Nenhum dia útil novo foi processado entre '
+                    f'{ultima_dt.strftime("%d/%m/%Y")} e '
+                    f'{hoje.strftime("%d/%m/%Y")} '
+                    f'(todos já tinham registro).'
+                )
+            }), 400
 
         return jsonify({
             'success': True,
             'message': (
                 f'Estoque atualizado! '
-                f'Nova DT_POSICAO: {nova_dt.strftime("%d/%m/%Y")} '
-                f'({inseridos} linha(s) inserida(s); {msg_acao}).'
+                f'{total_dias_processados} dia(s) útil(eis) processado(s) '
+                f'entre {ultima_dt.strftime("%d/%m/%Y")} e '
+                f'{hoje.strftime("%d/%m/%Y")}. '
+                f'Total de {total_linhas_inseridas} linha(s) inserida(s).'
+                + (f' {total_dias_pulados} dia(s) pulado(s) por já existirem.'
+                   if total_dias_pulados else '')
             ),
-            'nova_dt': nova_dt.strftime('%Y-%m-%d'),
-            'inseridos': inseridos,
-            'registros_excluidos': registros_excluidos,
+            'ultima_dt_base': ultima_dt.strftime('%Y-%m-%d'),
+            'hoje': hoje.strftime('%Y-%m-%d'),
+            'dias_processados': total_dias_processados,
+            'dias_pulados': total_dias_pulados,
+            'linhas_inseridas': total_linhas_inseridas,
+            'nova_ultima_dt': nova_ultima_dt,
         })
 
     except Exception as e:
