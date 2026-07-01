@@ -96,6 +96,9 @@
 const VALOR_ORIGINAL = {{ deposito_original.VR_RATEIO or 0 }};
 // Lançamento RM do depósito original - usado como valor inicial em cada nova linha
 const LANCAMENTO_RM_ORIGINAL = {{ deposito_original.LANCAMENTO_RM|tojson }};
+// Mapa de eventos contábeis por ID_CENTRO (mesmo do editar), vindo do backend.
+// Usado para pré-preencher o Evento Contábil Atual ao selecionar o Centro.
+const EVENTOS_POR_CENTRO = {{ eventos_por_centro|tojson }};
 let contadorLinhas = 0;
 let linhas = [];
 
@@ -114,21 +117,30 @@ document.addEventListener('DOMContentLoaded', function() {
             return false;
         }
 
+        // Helper: lê o valor de um campo pelo id, retornando '' se ele não existir.
+        // Evita o TypeError que ocorria quando um campo (ex.: evento_contabil_anterior)
+        // não está presente no formulário, o que impedia o this.submit() de rodar
+        // e deixava o botão "processando" para sempre.
+        const getVal = (id) => {
+            const el = document.getElementById(id);
+            return el ? el.value : '';
+        };
+
         // Preparar dados para envio
         const dadosRateios = linhas.map(linha => {
             return {
-                lancamento_rm: document.getElementById(`lancamento_rm_${linha.id}`).value,
-                vr_rateio: document.getElementById(`vr_rateio_${linha.id}`).value,
-                nu_contrato: document.getElementById(`nu_contrato_${linha.id}`).value,
-                id_area: document.getElementById(`id_area_${linha.id}`).value,
-                id_centro: document.getElementById(`id_centro_${linha.id}`).value,
-                dt_identificacao: document.getElementById(`dt_identificacao_${linha.id}`).value,
-                dt_ajuste_rm: document.getElementById(`dt_ajuste_rm_${linha.id}`).value,
-                dt_siscor: document.getElementById(`dt_siscor_${linha.id}`).value,
-                evento_contabil_anterior: document.getElementById(`evento_contabil_anterior_${linha.id}`).value,
-                evento_contabil_atual: document.getElementById(`evento_contabil_atual_${linha.id}`).value,
-                obs: document.getElementById(`obs_${linha.id}`).value,
-                nr_processo: document.getElementById(`nr_processo_${linha.id}`).value
+                lancamento_rm: getVal(`lancamento_rm_${linha.id}`),
+                vr_rateio: getVal(`vr_rateio_${linha.id}`),
+                nu_contrato: getVal(`nu_contrato_${linha.id}`),
+                id_area: getVal(`id_area_${linha.id}`),
+                id_centro: getVal(`id_centro_${linha.id}`),
+                dt_identificacao: getVal(`dt_identificacao_${linha.id}`),
+                dt_ajuste_rm: getVal(`dt_ajuste_rm_${linha.id}`),
+                dt_siscor: getVal(`dt_siscor_${linha.id}`),
+                evento_contabil_anterior: getVal(`evento_contabil_anterior_${linha.id}`),
+                evento_contabil_atual: getVal(`evento_contabil_atual_${linha.id}`),
+                obs: getVal(`obs_${linha.id}`),
+                nr_processo: getVal(`nr_processo_${linha.id}`)
             };
         });
 
@@ -207,7 +219,8 @@ function adicionarLinha() {
                     <!-- Centro de Resultado -->
                     <div class="col-md-3">
                         <label class="form-label">Centro de Resultado <span class="text-danger">*</span></label>
-                        <select class="form-select" id="id_centro_${linhaId}" required>
+                        <select class="form-select" id="id_centro_${linhaId}" required
+                                onchange="atualizarEventoLinha(${linhaId})">
                             <option value="">Selecione</option>
                             {% for centro in centros %}
                             <option value="{{ centro.ID_CENTRO }}">{{ centro.NO_CARTEIRA }}</option>
@@ -234,10 +247,11 @@ function adicionarLinha() {
                     </div>
 
 
-                    <!-- Evento Contábil Atual -->
+                    <!-- Evento Contábil Atual (preenchido automaticamente pelo Centro de Resultado) -->
                     <div class="col-md-2">
                         <label class="form-label">Evento Atual</label>
-                        <input type="number" class="form-control" id="evento_contabil_atual_${linhaId}">
+                        <input type="number" class="form-control bg-light" id="evento_contabil_atual_${linhaId}"
+                               readonly title="Preenchido automaticamente conforme o Centro de Resultado">
                     </div>
 
                     <!-- Observação -->
@@ -398,6 +412,30 @@ function calcularRestante() {
         btnFinalizar.disabled = true;
         msgStatus.innerHTML = `<i class="fas fa-info-circle me-1 text-warning"></i>Ainda falta distribuir R$ ${restante.toFixed(2).replace('.', ',')}`;
         msgStatus.className = 'text-warning';
+    }
+}
+
+/**
+ * Preenche automaticamente o Evento Contábil Atual da linha conforme o
+ * Centro de Resultado selecionado (mesma lógica da tela de edição).
+ * O mapa EVENTOS_POR_CENTRO vem do backend; o campo guarda o código numérico,
+ * que é o valor efetivamente enviado e salvo (int) pela rota ratear_multiplo.
+ */
+function atualizarEventoLinha(linhaId) {
+    const selectCentro = document.getElementById(`id_centro_${linhaId}`);
+    const campoEvento = document.getElementById(`evento_contabil_atual_${linhaId}`);
+    if (!selectCentro || !campoEvento) {
+        return;
+    }
+
+    const idCentro = selectCentro.value;
+    if (idCentro && EVENTOS_POR_CENTRO[idCentro]) {
+        const evento = EVENTOS_POR_CENTRO[idCentro];
+        campoEvento.value = evento.codigo;
+        campoEvento.title = evento.codigo + ' - ' + evento.descricao;
+    } else {
+        campoEvento.value = '';
+        campoEvento.title = 'Preenchido automaticamente conforme o Centro de Resultado';
     }
 }
 

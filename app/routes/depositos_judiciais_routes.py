@@ -573,7 +573,7 @@ def editar(nu_linha):
                 carteira_antiga and carteira_antiga.NO_CARTEIRA == 'Institucional') or centro_antigo == 6
             eh_institucional_novo = (nova_carteira and nova_carteira.NO_CARTEIRA == 'Institucional') or novo_centro == 6
 
-            if novo_centro != centro_antigo and not eh_institucional_novo and not eh_institucional_antigo:
+            if novo_centro != centro_antigo and not eh_institucional_antigo:
                 # PROCESSO ESPECIAL: NÃO ALTERA O ORIGINAL, CRIA ESTORNO E NOVA
                 proximo_nu_linha_estorno = obter_proximo_nu_linha()
 
@@ -1649,6 +1649,19 @@ def ratear_multiplo(nu_linha):
       PERMANENTEMENTE (delete físico), junto com seu ProcessosJudiciais
       vinculado (se existir), para não deixar registro órfão.
     """
+    # Mapeamento dos eventos contábeis por ID_CENTRO
+    # (mesmo mapa usado na função editar(); enviado ao template para
+    #  pré-preencher o Evento Contábil Atual quando o Centro é selecionado)
+    EVENTOS_POR_CENTRO = {
+        1: {'codigo': 22611, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PJ'},
+        2: {'codigo': 22612, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUD. COMERCIAL'},
+        3: {'codigo': 22610, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PF'},
+        4: {'codigo': 22611, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUDICIAL PJ'},
+        5: {'codigo': 22613, 'descricao': 'LEVANTAMENTO DE DEPÓSITO JUD. IMÓVEIS'},
+        6: {'codigo': 22607, 'descricao': 'PENDÊNCIA DE DEPÓSITO JUDICIAL'},
+        7: {'codigo': 22710, 'descricao': 'EVENTO CONTÁBIL 22710'}
+    }
+
     # Buscar o depósito original
     deposito_obj = DepositosSufin.query.filter_by(NU_LINHA=nu_linha).first()
 
@@ -1842,4 +1855,5 @@ def ratear_multiplo(nu_linha):
                            deposito_original=deposito_obj,
                            carteira_original=carteira_original,
                            areas=areas,
-                           centros=centros)
+                           centros=centros,
+                           eventos_por_centro=EVENTOS_POR_CENTRO)
