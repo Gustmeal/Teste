@@ -716,6 +716,53 @@
                         </div>
                     </div>
 
+                    <!-- IPTU (NOVO) -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-header bg-secondary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-home me-2"></i>IPTU do Imóvel
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- Situação do IPTU -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="situacao_iptu" class="form-label fw-bold">
+                                        <i class="fas fa-clipboard-check text-primary me-1"></i>
+                                        Situação do IPTU
+                                    </label>
+                                    <select class="form-select" id="situacao_iptu" name="situacao_iptu">
+                                        <option value="">Selecione...</option>
+                                        <option value="Quitado" {% if deliberacao.SITUACAO_IPTU == 'Quitado' %}selected{% endif %}>Quitado</option>
+                                        <option value="Em andamento" {% if deliberacao.SITUACAO_IPTU == 'Em andamento' %}selected{% endif %}>Em andamento</option>
+                                        <option value="Em aberto" {% if deliberacao.SITUACAO_IPTU == 'Em aberto' %}selected{% endif %}>Em aberto</option>
+                                    </select>
+                                    <small class="text-success">
+                                        <i class="fas fa-edit me-1"></i>Campo editável
+                                    </small>
+                                </div>
+
+                                <!-- Valor do IPTU (bloqueado; libera só em "Em aberto") -->
+                                <div class="col-md-6 mb-3">
+                                    <label for="vr_iptu" class="form-label fw-bold">
+                                        <i class="fas fa-dollar-sign text-danger me-1"></i>
+                                        Valor do IPTU
+                                    </label>
+                                    <input type="text"
+                                           class="form-control"
+                                           id="vr_iptu"
+                                           name="vr_iptu"
+                                           placeholder="R$ 0,00"
+                                           value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_IPTU).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_IPTU else '' }}"
+                                           {% if deliberacao.SITUACAO_IPTU != 'Em aberto' %}disabled{% endif %}>
+                                    <small id="msgIptu" class="text-muted">
+                                        <i class="fas fa-lock me-1"></i>Disponível apenas quando a situação for "Em aberto"
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Penalidade ANS/Caixa (EDITÁVEL) -->
                     <div class="mb-3">
                         <label for="penalidade_ans_caixa" class="form-label fw-bold">
@@ -890,6 +937,40 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.target.value = '';
             }
         });
+    }
+});
+
+// ===== IPTU: trava/destrava o valor conforme a situação =====
+document.addEventListener('DOMContentLoaded', function () {
+    const selectSituacaoIptu = document.getElementById('situacao_iptu');
+    const inputVrIptu = document.getElementById('vr_iptu');
+    const msgIptu = document.getElementById('msgIptu');
+
+    if (selectSituacaoIptu && inputVrIptu) {
+        // Máscara monetária pt-BR (R$ 0,00) - mesmo padrão do campo de dívida manual
+        inputVrIptu.addEventListener('input', function (e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value === '') { e.target.value = ''; return; }
+            value = parseInt(value, 10);
+            e.target.value = 'R$ ' + (value / 100).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        });
+
+        // Ao trocar a situação: libera em "Em aberto", bloqueia e limpa nos demais
+        selectSituacaoIptu.addEventListener('change', function () {
+            if (this.value === 'Em aberto') {
+                inputVrIptu.disabled = false;
+                if (msgIptu) msgIptu.innerHTML = '<i class="fas fa-unlock text-success me-1"></i>Informe o valor do IPTU em aberto';
+            } else {
+                inputVrIptu.value = '';
+                inputVrIptu.disabled = true;
+                if (msgIptu) msgIptu.innerHTML = '<i class="fas fa-lock me-1"></i>Disponível apenas quando a situação for "Em aberto"';
+            }
+        });
+        // Obs.: o estado inicial (bloqueado/liberado) já vem correto do backend,
+        // por isso não chamamos a regra no load — assim o valor salvo não é apagado.
     }
 });
 </script>

@@ -935,6 +935,10 @@ def deliberacao_pagamento_nova():
             consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
             tipo_pagamento_venda = request.form.get('tipo_pagamento_venda', '').strip() or None
 
+            # ===== IPTU (NOVO) =====
+            situacao_iptu = request.form.get('situacao_iptu', '').strip() or None
+            vr_iptu_str = request.form.get('vr_iptu', '').strip()
+
             # ===== VALIDAÇÕES OBRIGATÓRIAS =====
             if not contrato:
                 flash('Por favor, informe o Contrato/Imóvel.', 'danger')
@@ -994,6 +998,17 @@ def deliberacao_pagamento_nova():
                         vr_divida_condominio_2 = Decimal(valor_limpo)
                 except (ValueError, InvalidOperation):
                     flash('Valor da Dívida (Manual) inválido.', 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            # ===== IPTU (NOVO): converter valor só quando "Em aberto" =====
+            vr_iptu = None
+            if situacao_iptu == 'Em aberto' and vr_iptu_str:
+                try:
+                    valor_iptu_limpo = vr_iptu_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                    if valor_iptu_limpo:
+                        vr_iptu = Decimal(valor_iptu_limpo)
+                except (ValueError, InvalidOperation):
+                    flash('Valor do IPTU inválido.', 'danger')
                     return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
             # ===== BUSCA 1: Data de Entrada no Estoque =====
@@ -1242,6 +1257,8 @@ def deliberacao_pagamento_nova():
                 deliberacao_existente.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
                 deliberacao_existente.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
                 deliberacao_existente.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
+                deliberacao_existente.SITUACAO_IPTU = situacao_iptu  # NOVO
+                deliberacao_existente.VR_IPTU = vr_iptu  # NOVO
                 deliberacao_existente.STATUS_DOCUMENTO = status_documento
                 # Atualizar usuário geral (mantém o primeiro)
                 if status_documento == 'DELIBERADO' and not deliberacao_existente.USUARIO_DELIBEROU:
@@ -1302,6 +1319,8 @@ def deliberacao_pagamento_nova():
                     CONSIDERACOES_GESTOR_GEADI=consideracoes_gestor,
                     CONSIDERACOES_GESTOR_SUMOV=consideracoes_gestor_sumov,
                     TIPO_PAGAMENTO_VENDA=tipo_pagamento_venda,
+                    SITUACAO_IPTU=situacao_iptu,  # NOVO
+                    VR_IPTU=vr_iptu,  # NOVO
                     STATUS_DOCUMENTO=status_documento,
                     USUARIO_GESTOR_GEADI=usuario_gestor_geadi,  # ← NOVO
                     USUARIO_GESTOR_SUMOV=usuario_gestor_sumov,  # ← NOVO
@@ -1730,6 +1749,10 @@ def deliberacao_pagamento_editar(contrato):
                 penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
                 prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
 
+                # ===== IPTU (NOVO) =====
+                situacao_iptu = request.form.get('situacao_iptu', '').strip() or None
+                vr_iptu_str = request.form.get('vr_iptu', '').strip()
+
                 # ✅ CONVERSÃO DE DATAS
                 dt_arrematacao = None
                 if dt_arrematacao_str:
@@ -1756,6 +1779,17 @@ def deliberacao_pagamento_editar(contrato):
                             vr_divida_condominio_2 = Decimal(valor_limpo)
                     except (ValueError, InvalidOperation):
                         flash('Valor da Dívida (Manual) inválido.', 'danger')
+                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+
+                # ✅ CONVERSÃO DO VALOR DO IPTU (só quando "Em aberto")
+                vr_iptu = None
+                if situacao_iptu == 'Em aberto' and vr_iptu_str:
+                    try:
+                        valor_iptu_limpo = vr_iptu_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
+                        if valor_iptu_limpo:
+                            vr_iptu = Decimal(valor_iptu_limpo)
+                    except (ValueError, InvalidOperation):
+                        flash('Valor do IPTU inválido.', 'danger')
                         return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
 
                 # ✅ VERIFICAR SE GESTOR GEADI PREENCHEU/MUDOU CONSIDERAÇÕES
@@ -1787,6 +1821,8 @@ def deliberacao_pagamento_editar(contrato):
                 deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
                 deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
                 deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
+                deliberacao.SITUACAO_IPTU = situacao_iptu  # NOVO
+                deliberacao.VR_IPTU = vr_iptu  # NOVO
 
                 # LÓGICA: Se alguma consideração de gestor foi preenchida
                 if consideracoes_gestor_geadi or consideracoes_gestor_sumov:
