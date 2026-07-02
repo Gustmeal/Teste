@@ -620,6 +620,8 @@
 
     // Tenta usar a API JS do Bootstrap; se não disponível, faz fallback
     let modalConfirm = null;
+    let backdropEl = null;
+
     try {
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             modalConfirm = new bootstrap.Modal(modalEl);
@@ -628,14 +630,38 @@
         console.warn('Falha ao iniciar Bootstrap Modal:', e);
     }
 
+    // -----------------------------------------------------------------
+    // Fallback manual: cria/remove um backdrop (fundo escurecido) para
+    // que o modal apareça e se comporte corretamente mesmo quando o
+    // Bootstrap JS não iniciou.
+    // -----------------------------------------------------------------
+    function criarBackdrop() {
+        if (backdropEl) return;
+        backdropEl = document.createElement('div');
+        backdropEl.className = 'modal-backdrop fade show';
+        document.body.appendChild(backdropEl);
+        // Fecha o modal ao clicar no backdrop
+        backdropEl.addEventListener('click', fecharModal);
+    }
+
+    function removerBackdrop() {
+        if (backdropEl && backdropEl.parentNode) {
+            backdropEl.parentNode.removeChild(backdropEl);
+        }
+        backdropEl = null;
+    }
+
     function abrirModal() {
         if (modalConfirm) {
             modalConfirm.show();
         } else {
-            // Fallback manual: adiciona as classes diretamente
+            // Fallback manual
             modalEl.classList.add('show');
             modalEl.style.display = 'block';
+            modalEl.removeAttribute('aria-hidden');
+            modalEl.setAttribute('aria-modal', 'true');
             document.body.classList.add('modal-open');
+            criarBackdrop();
         }
     }
 
@@ -645,9 +671,31 @@
         } else {
             modalEl.classList.remove('show');
             modalEl.style.display = 'none';
+            modalEl.setAttribute('aria-hidden', 'true');
+            modalEl.removeAttribute('aria-modal');
             document.body.classList.remove('modal-open');
+            removerBackdrop();
         }
     }
+
+    // -----------------------------------------------------------------
+    // GARANTE que o X e o Cancelar sempre fechem o modal, mesmo se o
+    // Bootstrap JS estiver com problema. Escuta cliques em qualquer
+    // elemento com data-bs-dismiss="modal" dentro deste modal.
+    // -----------------------------------------------------------------
+    modalEl.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (el) {
+        el.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            fecharModal();
+        });
+    });
+
+    // Também fecha o modal com a tecla ESC (comportamento nativo do Bootstrap)
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && modalEl.classList.contains('show')) {
+            fecharModal();
+        }
+    });
 
     btn.addEventListener('click', () => {
         const ultimaData = (btn.getAttribute('data-ultima-data') || '').trim();
