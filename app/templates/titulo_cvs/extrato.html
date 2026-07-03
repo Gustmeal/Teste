@@ -384,6 +384,55 @@
                 </div>
             </button>
 
+            <!-- Botão: Ajustar Saldo (FIN_VW011) -->
+            <button type="button"
+                    class="ex-action-btn mt-3"
+                    id="btnAjustarSaldo"
+                    {% if not primeiro_dia_ultimo_mes
+                          or ajuste_pendente is none
+                          or ajuste_pendente == 0 %}disabled{% endif %}>
+                <div class="ex-action-icon" style="background: linear-gradient(135deg, #fd7e14, #b85a00);">
+                    <i class="fas fa-balance-scale"></i>
+                </div>
+                <div class="ex-action-text">
+                    <div class="ex-action-title">
+                        Ajustar Saldo
+                        {% if primeiro_dia_ultimo_mes %}
+                            {{ primeiro_dia_ultimo_mes.strftime('%m/%Y') }}
+                        {% endif %}
+                    </div>
+                    <div class="ex-action-desc">
+                        Aplica o <strong>AJUSTE</strong> da view
+                        <code>FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS</code>
+                        na linha de
+                        <strong>Provisão Juros Pro Rata</strong>
+                        (TIPO A) e recalcula em cadeia o
+                        <strong>VR_SALDO</strong> das linhas posteriores
+                        do mesmo mês.
+                        {% if ajuste_pendente is not none and ajuste_pendente != 0 %}
+                            <span class="d-block mt-1" style="color: #b85a00;">
+                                <strong>AJUSTE atual da view:</strong>
+                                {{ "{:,.2f}".format(ajuste_pendente|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            </span>
+                        {% elif ajuste_pendente is not none and ajuste_pendente == 0 %}
+                            <span class="text-success d-block mt-1">
+                                ✓ O AJUSTE já está zerado — nada a ajustar.
+                            </span>
+                        {% else %}
+                            <span class="text-muted d-block mt-1">
+                                A view não retornou registro para
+                                {% if primeiro_dia_ultimo_mes %}
+                                    {{ primeiro_dia_ultimo_mes.strftime('%m/%Y') }}.
+                                {% else %}o mês atual.{% endif %}
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="ex-action-arrow">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </button>
+
             <div id="feedbackProcessamento"
                  class="mt-3"
                  style="display: none;"></div>
@@ -582,18 +631,20 @@
         });
     });
 })();
+
 // =========================================================================
-// BOTÃO ÍNDICES DO DIA 1
+// BOTÃO AJUSTAR SALDO (FIN_VW011)
 // =========================================================================
 (function () {
-    const btn = document.getElementById('btnIndicesDia1');
-    const feedback = document.getElementById('feedbackIndicesDia1');
+    const btn = document.getElementById('btnAjustarSaldo');
+    const feedback = document.getElementById('feedbackProcessamento');  // ← CORRIGIDO AQUI
     if (!btn) return;
 
     btn.addEventListener('click', function () {
         if (!confirm(
-            'Tem certeza? Esta ação vai calcular e inserir os índices ' +
-            'do dia 1 do próximo mês na tabela FIN_TB015_INDICES_DIA_1.'
+            'Tem certeza? Esta ação vai somar o AJUSTE da FIN_VW011 na ' +
+            'linha de Provisão Juros Pro Rata (TIPO A) do último mês ' +
+            'e recalcular em cadeia o VR_SALDO das linhas posteriores.'
         )) {
             return;
         }
@@ -607,11 +658,11 @@
         feedback.innerHTML = `
             <div class="alert alert-info mb-0">
                 <i class="fas fa-spinner fa-spin me-2"></i>
-                Calculando índices... aguarde um instante.
+                Aplicando ajuste de saldo... aguarde um instante.
             </div>
         `;
 
-        fetch("{{ url_for('titulo_cvs.extrato_indices_dia_1') }}", {
+        fetch("{{ url_for('titulo_cvs.extrato_ajustar_saldo') }}", {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -631,6 +682,7 @@
                         <strong>Sucesso!</strong> ${data.message}
                     </div>
                 `;
+                setTimeout(() => location.reload(), 2200);
             } else {
                 feedback.innerHTML = `
                     <div class="alert alert-danger mb-0">

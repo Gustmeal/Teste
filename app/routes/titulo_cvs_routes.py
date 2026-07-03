@@ -1107,6 +1107,9 @@ def _proximo_nu_linha_extrato():
 # =========================================================================
 # EXTRATO — PÁGINA PRINCIPAL
 # =========================================================================
+# =========================================================================
+# EXTRATO — PÁGINA PRINCIPAL
+# =========================================================================
 @titulo_cvs_bp.route('/extrato')
 @login_required
 def extrato_index():
@@ -1154,7 +1157,23 @@ def extrato_index():
         text("SELECT COUNT(*) FROM [BDG].[FIN_TB014_INCORPORACOES_MES_CVS]")
     ).scalar() or 0
 
-    # 4. Filtro de mês para listagem
+    # 4. AJUSTE pendente na FIN_VW011 para o último mês com dados
+    #    (usado pelo botão de "Ajustar Saldo")
+    ajuste_pendente = None
+    if primeiro_dia_ultimo_mes:
+        ano_mes_ajuste = int(primeiro_dia_ultimo_mes.strftime('%Y%m'))
+        row_ajuste = db.session.execute(
+            text("""
+                SELECT [AJUSTE]
+                FROM [BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS]
+                WHERE [ANO_MES] = :ano_mes;
+            """),
+            {'ano_mes': ano_mes_ajuste}
+        ).fetchone()
+        if row_ajuste and row_ajuste[0] is not None:
+            ajuste_pendente = Decimal(str(row_ajuste[0]))
+
+    # 5. Filtro de mês para listagem
     mes_filtro_str = (request.args.get('mes') or '').strip()
     mes_filtro = None
     if mes_filtro_str:
@@ -1168,10 +1187,10 @@ def extrato_index():
     if not mes_filtro and ultima_data:
         mes_filtro = primeiro_dia_ultimo_mes
 
-    # 5. Listar meses distintos
+    # 6. Listar meses distintos
     meses_disponiveis = ExtratoCVS.listar_meses_distintos()
 
-    # 6. Buscar movimentações do mês filtrado
+    # 7. Buscar movimentações do mês filtrado
     movimentacoes = []
     if mes_filtro:
         movimentacoes = ExtratoCVS.listar_por_mes(
@@ -1191,6 +1210,7 @@ def extrato_index():
         qtd_provisoes_ultimo_mes=qtd_provisoes_ultimo_mes,
         qtd_movimentacoes_destino=qtd_movimentacoes_destino,
         qtd_incorporacoes=qtd_incorporacoes,
+        ajuste_pendente=ajuste_pendente,
     ))
     response.headers['Cache-Control'] = (
         'no-store, no-cache, must-revalidate, max-age=0'
@@ -1199,7 +1219,6 @@ def extrato_index():
     response.headers['Expires'] = '0'
     return response
 
-
 # =========================================================================
 # EXTRATO — PROCESSAR PROVISÕES (gera próximo mês completo)
 # =========================================================================
@@ -1207,7 +1226,7 @@ def extrato_index():
 @login_required
 def extrato_processar_provisoes():
     """
-    Processa o próximo mês do extrato em 8 etapas, dentro de uma
+    Processa o próximo mês do extrato em 7 etapas, dentro de uma
     única transação (se algo falhar, rollback total):
 
     ETAPA 1 — Estornos.
@@ -1217,13 +1236,10 @@ def extrato_processar_provisoes():
     ETAPA 5 — Provisão ATM/Juros (FIN_VW008) — cada linha vira 2.
     ETAPA 6 — Provisão Pro Rata (FIN_VW010) — cada linha vira 2.
     ETAPA 7 — Recálculo de VR_SALDO.
-    ETAPA 8 — Ajuste de Saldo Prov Juros (FIN_VW011):
-        (a) Soma AJUSTE no VR_MOVIMENTACAO e VR_SALDO da linha de
-            'Provisão Juros Pro Rata' + TIPO 'A' do mês destino.
-        (b) Recalcula em cadeia o VR_SALDO de TODAS as linhas
-            posteriores (NU_LINHA maior) do mesmo mês:
-              novo_saldo = saldo_anterior + VR_MOVIMENTACAO
-            Garantindo coerência matemática completa.
+
+    O AJUSTE de Saldo de Provisão de Juros (FIN_VW011) NÃO é aplicado
+    aqui — ele fica na rota separada /extrato/ajustar-saldo, acionada
+    pelo botão "Ajustar Saldo" na tela do extrato.
 
     NU_LINHA é IDENTITY (gerado pelo banco).
     """
@@ -1629,136 +1645,6 @@ def extrato_processar_provisoes():
             saldo_anterior = novo_saldo
             saldos_recalculados += 1
 
-        # Flush para a FIN_VW011 enxergar os dados recém recalculados
-        db.session.flush()
-
-        # =================================================================
-        # ETAPA 8 — AJUSTE DE SALDO PROV JUROS (FIN_VW011)
-        #
-        # (a) Aplica o AJUSTE da view na linha de:
-        #       HISTORICO LIKE 'Provisão Juros Pro Rata%'  (ou 'Provisao...')
-        #       TIPO = 'A'
-        #     do mês destino, somando-o em VR_MOVIMENTACAO e VR_SALDO.
-        #
-        # (b) Recalcula em CADEIA o VR_SALDO de todas as linhas
-        #     POSTERIORES (NU_LINHA maior) do mesmo mês destino:
-        #       novo_saldo = saldo_anterior + VR_MOVIMENTACAO
-        #     para manter a coerência matemática completa.
-        # =================================================================
-        ano_mes_destino = int(dt_movimentacao_nova.strftime('%Y%m'))
-
-        sql_pegar_ajuste = text("""
-            SELECT [AJUSTE]
-            FROM [BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS]
-            WHERE [ANO_MES] = :ano_mes;
-        """)
-        row_ajuste = db.session.execute(
-            sql_pegar_ajuste, {'ano_mes': ano_mes_destino}
-        ).fetchone()
-
-        ajuste_aplicado = Decimal('0')
-        ultima_linha_ajustada = None
-
-        if row_ajuste and row_ajuste[0] is not None:
-            ajuste_aplicado = Decimal(str(row_ajuste[0]))
-
-            if ajuste_aplicado != 0:
-                # ---- (a) UPDATE principal: linha de Prov. Juros Pro Rata TIPO A
-                sql_update_ajuste = text("""
-                    UPDATE A
-                    SET A.[VR_MOVIMENTACAO] =
-                            A.[VR_MOVIMENTACAO] + B.[AJUSTE],
-                        A.[VR_SALDO] =
-                            A.[VR_SALDO] + B.[AJUSTE]
-                    FROM [BDG].[FIN_TB013_EXTRATO_CVS] AS A
-                    INNER JOIN
-                        [BDDASHBOARDBI].[BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS] AS B
-                        ON FORMAT(
-                                CONVERT(DATE, A.[DT_MOVIMENTACAO]),
-                                'yyyyMM'
-                           ) = B.[ANO_MES]
-                    WHERE A.[NU_LINHA] = (
-                        SELECT MAX(X.[NU_LINHA])
-                        FROM [BDG].[FIN_TB013_EXTRATO_CVS] AS X
-                        WHERE YEAR(X.[DT_MOVIMENTACAO])  = YEAR(:dt_destino)
-                          AND MONTH(X.[DT_MOVIMENTACAO]) = MONTH(:dt_destino)
-                          AND LTRIM(RTRIM(X.[TIPO])) = 'A'
-                          AND (
-                              X.[HISTORICO] LIKE N'Provisão Juros Pro Rata%'
-                              OR X.[HISTORICO] LIKE N'Provisao Juros Pro Rata%'
-                          )
-                    );
-                """)
-                result_update = db.session.execute(
-                    sql_update_ajuste,
-                    {'dt_destino': dt_movimentacao_nova}
-                )
-                qtd_linhas_atualizadas = result_update.rowcount or 0
-
-                # ---- (b) RECALCULAR em cadeia o saldo das linhas POSTERIORES
-                db.session.expire_all()
-
-                # Descobre o NU_LINHA da linha ajustada
-                sql_nu_linha_ajustada = text("""
-                    SELECT MAX(X.[NU_LINHA])
-                    FROM [BDG].[FIN_TB013_EXTRATO_CVS] AS X
-                    WHERE YEAR(X.[DT_MOVIMENTACAO])  = YEAR(:dt_destino)
-                      AND MONTH(X.[DT_MOVIMENTACAO]) = MONTH(:dt_destino)
-                      AND LTRIM(RTRIM(X.[TIPO])) = 'A'
-                      AND (
-                          X.[HISTORICO] LIKE N'Provisão Juros Pro Rata%'
-                          OR X.[HISTORICO] LIKE N'Provisao Juros Pro Rata%'
-                      );
-                """)
-                row_nu = db.session.execute(
-                    sql_nu_linha_ajustada,
-                    {'dt_destino': dt_movimentacao_nova}
-                ).fetchone()
-                nu_linha_ajustada = row_nu[0] if row_nu else None
-
-                qtd_linhas_propagadas = 0
-
-                if nu_linha_ajustada is not None:
-                    # Pega o VR_SALDO da linha ajustada — ponto de partida
-                    linha_ajustada_obj = ExtratoCVS.query.filter_by(
-                        NU_LINHA=nu_linha_ajustada
-                    ).first()
-
-                    if linha_ajustada_obj is not None and \
-                            linha_ajustada_obj.VR_SALDO is not None:
-                        saldo_acumulado = Decimal(
-                            str(linha_ajustada_obj.VR_SALDO)
-                        )
-
-                        # Linhas POSTERIORES do mesmo mês destino,
-                        # ordenadas por NU_LINHA crescente
-                        linhas_posteriores = ExtratoCVS.query.filter(
-                            ExtratoCVS.DT_MOVIMENTACAO >= dt_movimentacao_nova,
-                            ExtratoCVS.DT_MOVIMENTACAO <= ultimo_dia_destino,
-                            ExtratoCVS.NU_LINHA > nu_linha_ajustada
-                        ).order_by(ExtratoCVS.NU_LINHA.asc()).all()
-
-                        for linha in linhas_posteriores:
-                            mov = (
-                                Decimal(str(linha.VR_MOVIMENTACAO))
-                                if linha.VR_MOVIMENTACAO is not None
-                                else Decimal('0')
-                            )
-                            saldo_acumulado = saldo_acumulado + mov
-                            linha.VR_SALDO = saldo_acumulado
-                            qtd_linhas_propagadas += 1
-
-                        # Saldo final coerente para o retorno
-                        saldo_anterior = saldo_acumulado
-
-                ultima_linha_ajustada = (
-                    f'Provisão Juros Pro Rata / TIPO A '
-                    f'(NU_LINHA={nu_linha_ajustada}) — '
-                    f'{qtd_linhas_atualizadas} linha(s) ajustada(s); '
-                    f'{qtd_linhas_propagadas} linha(s) posterior(es) '
-                    f'com saldo recalculado em cadeia.'
-                )
-
         # Commit final (toda a transação)
         db.session.commit()
 
@@ -1778,8 +1664,7 @@ def extrato_processar_provisoes():
                 f'{inseridas_entrada_pro_rata} entrada(s) pro rata, '
                 f'{inseridas_provisao_atm_juros} provisão(ões) ATM/Juros, '
                 f'{inseridas_provisao_pro_rata} provisão(ões) pro rata, '
-                f'{saldos_recalculados} saldo(s) recalculado(s), '
-                f'ajuste aplicado: {ajuste_aplicado}.'
+                f'{saldos_recalculados} saldo(s) recalculado(s).'
             ),
             dados_novos={
                 'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
@@ -1795,8 +1680,6 @@ def extrato_processar_provisoes():
                 'saldos_recalculados': saldos_recalculados,
                 'saldo_inicial': str(saldo_inicial_referencia),
                 'saldo_final': str(saldo_anterior),
-                'ajuste_aplicado': str(ajuste_aplicado),
-                'ultima_linha_ajustada': ultima_linha_ajustada,
             }
         )
 
@@ -1811,8 +1694,7 @@ def extrato_processar_provisoes():
                 f'{inseridas_entrada_pro_rata} entrada(s) pro rata, '
                 f'{inseridas_provisao_atm_juros} provisão(ões) ATM/Juros, '
                 f'{inseridas_provisao_pro_rata} provisão(ões) pro rata, '
-                f'{saldos_recalculados} saldo(s) recalculado(s). '
-                f'Ajuste aplicado: {ajuste_aplicado}.'
+                f'{saldos_recalculados} saldo(s) recalculado(s).'
             ),
             'mes_origem': primeiro_dia_ultimo_mes.strftime('%Y-%m'),
             'mes_destino': dt_movimentacao_nova.strftime('%Y-%m'),
@@ -1823,7 +1705,6 @@ def extrato_processar_provisoes():
             'provisao_atm_juros_inseridas': inseridas_provisao_atm_juros,
             'provisao_pro_rata_inseridas': inseridas_provisao_pro_rata,
             'saldos_recalculados': saldos_recalculados,
-            'ajuste_aplicado': str(ajuste_aplicado),
         })
 
     except Exception as e:
@@ -1831,6 +1712,243 @@ def extrato_processar_provisoes():
         return jsonify({
             'success': False,
             'message': f'Erro ao processar mês: {str(e)}'
+        }), 500
+
+# =========================================================================
+# EXTRATO — AJUSTAR SALDO (aplica AJUSTE da FIN_VW011 no último mês)
+# =========================================================================
+@titulo_cvs_bp.route('/extrato/ajustar-saldo', methods=['POST'])
+@login_required
+def extrato_ajustar_saldo():
+    """
+    Aplica o AJUSTE de Saldo de Provisão de Juros no mês do
+    último registro do extrato.
+
+    Etapas (dentro de uma única transação):
+
+    ETAPA A — Descobrir o mês alvo:
+        Mês do ajuste = primeiro dia do mês da MAX(DT_MOVIMENTACAO).
+
+    ETAPA B — Ler AJUSTE da view FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS
+        WHERE ANO_MES = YYYYMM do mês alvo.
+        Se não existir registro, ou AJUSTE = 0, aborta com mensagem.
+
+    ETAPA C — UPDATE na linha de:
+            HISTORICO LIKE 'Provisão Juros Pro Rata%'
+                (ou 'Provisao Juros Pro Rata%' sem acento)
+            TIPO = 'A'
+        do mês alvo, somando AJUSTE em VR_MOVIMENTACAO e VR_SALDO.
+        Considera a linha de MAIOR NU_LINHA (caso haja mais de uma).
+
+    ETAPA D — Recalcula em CADEIA o VR_SALDO de todas as linhas
+        POSTERIORES (NU_LINHA maior) do mesmo mês alvo:
+            novo_saldo = saldo_anterior + VR_MOVIMENTACAO
+        Garantindo coerência matemática completa.
+
+    Se AJUSTE for zero ou não existir na view, nada é feito.
+    """
+    try:
+        # =================================================================
+        # A. Determinar o mês do ajuste (último mês com dados)
+        # =================================================================
+        ultima_data = ExtratoCVS.obter_ultima_data_movimentacao()
+        if not ultima_data:
+            return jsonify({
+                'success': False,
+                'message': (
+                    'A tabela FIN_TB013_EXTRATO_CVS está vazia. '
+                    'Nada para ajustar.'
+                )
+            }), 400
+
+        primeiro_dia_mes = ultima_data.replace(day=1)
+        ultimo_dia_mes = _ultimo_dia_mes(ultima_data)
+        ano_mes = int(primeiro_dia_mes.strftime('%Y%m'))
+
+        # =================================================================
+        # B. Ler AJUSTE da view FIN_VW011
+        # =================================================================
+        sql_ajuste = text("""
+            SELECT [AJUSTE]
+            FROM [BDG].[FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS]
+            WHERE [ANO_MES] = :ano_mes;
+        """)
+        row_ajuste = db.session.execute(
+            sql_ajuste, {'ano_mes': ano_mes}
+        ).fetchone()
+
+        if not row_ajuste or row_ajuste[0] is None:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Nenhum registro encontrado na view '
+                    f'FIN_VW011_AJUSTE_SALDO_PROV_JUROS_CVS para '
+                    f'{primeiro_dia_mes.strftime("%m/%Y")}.'
+                )
+            }), 400
+
+        ajuste = Decimal(str(row_ajuste[0]))
+
+        if ajuste == 0:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'O AJUSTE de {primeiro_dia_mes.strftime("%m/%Y")} '
+                    f'já está zerado. Nada a ajustar.'
+                )
+            }), 400
+
+        # =================================================================
+        # C.1. Encontrar NU_LINHA da linha alvo
+        #      HISTORICO LIKE 'Provisão Juros Pro Rata%' e TIPO = 'A'
+        # =================================================================
+        sql_nu_linha_alvo = text("""
+            SELECT MAX([NU_LINHA])
+            FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+            WHERE YEAR([DT_MOVIMENTACAO])  = YEAR(:dt_mes)
+              AND MONTH([DT_MOVIMENTACAO]) = MONTH(:dt_mes)
+              AND LTRIM(RTRIM([TIPO])) = 'A'
+              AND (
+                  [HISTORICO] LIKE N'Provisão Juros Pro Rata%'
+                  OR [HISTORICO] LIKE N'Provisao Juros Pro Rata%'
+              );
+        """)
+        row_nu = db.session.execute(
+            sql_nu_linha_alvo, {'dt_mes': primeiro_dia_mes}
+        ).fetchone()
+        nu_linha_alvo = row_nu[0] if row_nu else None
+
+        if nu_linha_alvo is None:
+            return jsonify({
+                'success': False,
+                'message': (
+                    f'Nenhuma linha "Provisão Juros Pro Rata" com TIPO A '
+                    f'encontrada em {primeiro_dia_mes.strftime("%m/%Y")}.'
+                )
+            }), 400
+
+        # =================================================================
+        # C.2. UPDATE somando AJUSTE em VR_MOVIMENTACAO e VR_SALDO
+        # =================================================================
+        sql_update_alvo = text("""
+            UPDATE [BDG].[FIN_TB013_EXTRATO_CVS]
+            SET [VR_MOVIMENTACAO] = [VR_MOVIMENTACAO] + :ajuste,
+                [VR_SALDO]        = [VR_SALDO]        + :ajuste
+            WHERE [NU_LINHA] = :nu_linha;
+        """)
+        db.session.execute(
+            sql_update_alvo,
+            {'ajuste': ajuste, 'nu_linha': nu_linha_alvo}
+        )
+
+        # =================================================================
+        # C.3. Ler o novo VR_SALDO da linha alvo (ponto de partida
+        #      para o recálculo em cadeia)
+        # =================================================================
+        sql_saldo_alvo = text("""
+            SELECT [VR_SALDO]
+            FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+            WHERE [NU_LINHA] = :nu_linha;
+        """)
+        row_saldo = db.session.execute(
+            sql_saldo_alvo, {'nu_linha': nu_linha_alvo}
+        ).fetchone()
+        saldo_acumulado = (
+            Decimal(str(row_saldo[0]))
+            if row_saldo and row_saldo[0] is not None
+            else Decimal('0')
+        )
+        saldo_apos_ajuste = saldo_acumulado
+
+        # =================================================================
+        # D. Recalcular em CADEIA o saldo das linhas POSTERIORES
+        # =================================================================
+        sql_posteriores = text("""
+            SELECT [NU_LINHA], [VR_MOVIMENTACAO]
+            FROM [BDG].[FIN_TB013_EXTRATO_CVS]
+            WHERE YEAR([DT_MOVIMENTACAO])  = YEAR(:dt_mes)
+              AND MONTH([DT_MOVIMENTACAO]) = MONTH(:dt_mes)
+              AND [NU_LINHA] > :nu_linha_alvo
+            ORDER BY [NU_LINHA] ASC;
+        """)
+        rows_posteriores = db.session.execute(
+            sql_posteriores,
+            {
+                'dt_mes': primeiro_dia_mes,
+                'nu_linha_alvo': nu_linha_alvo,
+            }
+        ).fetchall()
+
+        sql_update_saldo = text("""
+            UPDATE [BDG].[FIN_TB013_EXTRATO_CVS]
+            SET [VR_SALDO] = :vr_saldo
+            WHERE [NU_LINHA] = :nu_linha;
+        """)
+
+        qtd_recalculadas = 0
+        for r in rows_posteriores:
+            nu = r[0]
+            mov = r[1]
+            mov_decimal = (
+                Decimal(str(mov)) if mov is not None else Decimal('0')
+            )
+            saldo_acumulado = saldo_acumulado + mov_decimal
+            db.session.execute(
+                sql_update_saldo,
+                {'vr_saldo': saldo_acumulado, 'nu_linha': nu}
+            )
+            qtd_recalculadas += 1
+
+        # =================================================================
+        # Commit final da transação
+        # =================================================================
+        db.session.commit()
+
+        # =================================================================
+        # Auditoria
+        # =================================================================
+        registrar_log(
+            acao='ajustar',
+            entidade='extrato_cvs',
+            entidade_id=primeiro_dia_mes.strftime('%Y-%m-%d'),
+            descricao=(
+                f'Ajuste de saldo aplicado em '
+                f'{primeiro_dia_mes.strftime("%m/%Y")}: '
+                f'AJUSTE = {ajuste}. '
+                f'{qtd_recalculadas} saldo(s) posterior(es) recalculado(s). '
+                f'Saldo final: {saldo_acumulado}.'
+            ),
+            dados_novos={
+                'mes_ajuste': primeiro_dia_mes.strftime('%Y-%m'),
+                'ano_mes': ano_mes,
+                'nu_linha_alvo': int(nu_linha_alvo),
+                'ajuste_aplicado': str(ajuste),
+                'saldo_apos_ajuste_na_linha_alvo': str(saldo_apos_ajuste),
+                'saldos_recalculados': qtd_recalculadas,
+                'saldo_final': str(saldo_acumulado),
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (
+                f'Ajuste aplicado com sucesso em '
+                f'{primeiro_dia_mes.strftime("%m/%Y")}. '
+                f'Valor: {ajuste}. '
+                f'{qtd_recalculadas} saldo(s) posterior(es) recalculado(s). '
+                f'Saldo final: {saldo_acumulado}.'
+            ),
+            'mes_ajuste': primeiro_dia_mes.strftime('%Y-%m'),
+            'ajuste_aplicado': str(ajuste),
+            'saldos_recalculados': qtd_recalculadas,
+            'saldo_final': str(saldo_acumulado),
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Erro ao ajustar saldo: {str(e)}'
         }), 500
 
 # =========================================================================
