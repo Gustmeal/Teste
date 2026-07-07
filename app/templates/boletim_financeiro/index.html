@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .bf-dropzone {
+        border: 2px dashed #b8c2cc;
+        border-radius: 14px;
+        padding: 2.2rem 1rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all .2s ease;
+        background: #f8fafc;
+    }
+    .bf-dropzone:hover,
+    .bf-dropzone.dragover {
+        border-color: #4e73df;
+        background: #eef2ff;
+    }
+    .bf-dropzone i {
+        font-size: 2.6rem;
+        color: #1c7c54;
+        margin-bottom: .6rem;
+    }
+    .bf-dropzone-text { font-size: 1.05rem; color: #4a5568; }
+    .bf-dropzone-hint { font-size: .85rem; color: #94a3b8; margin-top: .35rem; }
+
+    .bf-file-preview {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .75rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: .75rem 1rem;
+        margin-top: 1rem;
+        background: #fff;
+    }
+    .bf-file-preview .file-info {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        min-width: 0;
+    }
+    .bf-file-preview .file-icon { color: #1c7c54; }
+    .bf-file-preview .file-name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .bf-file-preview .file-size { font-size: .8rem; color: #94a3b8; }
+
+    .bf-stat {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #1c7c54, #0f5132);
+        color: #fff;
+    }
+    .bf-stat .bf-stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1; }
+    .bf-stat .bf-stat-label { font-size: .85rem; opacity: .9; }
+</style>
+
+<div class="editais-container fade-in">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">Boletim Financeiro</h1>
+    </div>
+
+    <div class="row g-4">
+        <!-- ============================================================ -->
+        <!-- UPLOAD DO BOLETIM (ETAPA 1)                                   -->
+        <!-- ============================================================ -->
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-excel me-2"></i>Importar Boletim Financeiro
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Selecione o Excel do Boletim Financeiro. O sistema captura as
+                        naturezas <strong>abaixo de "SALDO FINAL DE CAIXA"</strong>,
+                        ignorando as linhas de total, e grava os valores por mês
+                        (competência no formato <code>AAAAMM</code>).
+                    </div>
+
+                    <div id="bfDropzone" class="bf-dropzone">
+                        <i class="fas fa-file-excel"></i>
+                        <div class="bf-dropzone-text">
+                            Arraste o arquivo Excel aqui ou
+                            <strong>clique para selecionar</strong>
+                        </div>
+                        <div class="bf-dropzone-hint">Formatos aceitos: .xlsx, .xlsm</div>
+                        <input type="file" id="bfInputArquivo"
+                               accept=".xlsx,.xlsm" style="display: none;">
+                    </div>
+
+                    <div id="bfFilePreview" class="bf-file-preview" style="display: none;">
+                        <div class="file-info">
+                            <div class="file-icon">
+                                <i class="fas fa-file-excel fa-lg"></i>
+                            </div>
+                            <div style="min-width: 0; flex-grow: 1;">
+                                <div class="file-name" id="bfFileNome">—</div>
+                                <div class="file-size" id="bfFileTamanho">—</div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                id="bfBtnRemover">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="d-grid mt-3">
+                        <button type="button" class="btn btn-primary"
+                                id="bfBtnEnviar" disabled>
+                            <i class="fas fa-upload me-2"></i>Enviar arquivo
+                        </button>
+                    </div>
+
+                    <div id="bfFeedback" class="mt-3" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- RESUMO (dados vindos do backend)                             -->
+        <!-- ============================================================ -->
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-database me-2"></i>Situação atual
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="bf-stat">
+                        <i class="fas fa-list-ol fa-2x"></i>
+                        <div>
+                            <div class="bf-stat-num">{{ total_registros }}</div>
+                            <div class="bf-stat-label">registro(s) em FIN_TB020</div>
+                        </div>
+                    </div>
+                    <p class="text-muted mt-3 mb-0" style="font-size: .85rem;">
+                        Reenviar o Boletim de um ano substitui apenas os meses
+                        contidos no arquivo, sem duplicar registros.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// =====================================================================
+// BOLETIM FINANCEIRO — Upload (dropzone + AJAX)
+// =====================================================================
+(function () {
+    const dropzone   = document.getElementById('bfDropzone');
+    const inputFile  = document.getElementById('bfInputArquivo');
+    const preview    = document.getElementById('bfFilePreview');
+    const nomeEl     = document.getElementById('bfFileNome');
+    const tamanhoEl  = document.getElementById('bfFileTamanho');
+    const btnRemover = document.getElementById('bfBtnRemover');
+    const btnEnviar  = document.getElementById('bfBtnEnviar');
+    const feedback   = document.getElementById('bfFeedback');
+
+    if (!dropzone || !inputFile || !btnEnviar) return;
+
+    function formatarTamanho(bytes) {
+        if (!bytes && bytes !== 0) return '—';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function extensaoValida(nome) {
+        const n = (nome || '').toLowerCase();
+        return n.endsWith('.xlsx') || n.endsWith('.xlsm');
+    }
+
+    function mostrarPreview(file) {
+        nomeEl.textContent = file.name;
+        tamanhoEl.textContent = formatarTamanho(file.size);
+        preview.style.display = 'flex';
+        btnEnviar.disabled = false;
+    }
+
+    function limparArquivo() {
+        inputFile.value = '';
+        preview.style.display = 'none';
+        btnEnviar.disabled = true;
+    }
+
+    // --- Clique na dropzone abre o seletor de arquivo ---
+    dropzone.addEventListener('click', () => inputFile.click());
+
+    // --- Seleção via input ---
+    inputFile.addEventListener('change', () => {
+        const file = inputFile.files && inputFile.files[0];
+        if (!file) { limparArquivo(); return; }
+        if (!extensaoValida(file.name)) {
+            feedback.style.display = 'block';
+            feedback.innerHTML =
+                '<div class="alert alert-warning mb-0">' +
+                '<i class="fas fa-exclamation-triangle me-2"></i>' +
+                'Selecione um arquivo .xlsx ou .xlsm.</div>';
+            limparArquivo();
+            return;
+        }
+        feedback.style.display = 'none';
+        mostrarPreview(file);
+    });
+
+    // --- Drag & drop ---
+    ['dragenter', 'dragover'].forEach(ev => {
+        dropzone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+        dropzone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation();
+            dropzone.classList.remove('dragover');
+        });
+    });
+    dropzone.addEventListener('drop', e => {
+        const file = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        if (!extensaoValida(file.name)) {
+            feedback.style.display = 'block';
+            feedback.innerHTML =
+                '<div class="alert alert-warning mb-0">' +
+                '<i class="fas fa-exclamation-triangle me-2"></i>' +
+                'Selecione um arquivo .xlsx ou .xlsm.</div>';
+            return;
+        }
+        inputFile.files = e.dataTransfer.files;
+        feedback.style.display = 'none';
+        mostrarPreview(file);
+    });
+
+    // --- Remover arquivo selecionado ---
+    btnRemover.addEventListener('click', limparArquivo);
+
+    // --- Enviar ---
+    btnEnviar.addEventListener('click', () => {
+        const file = inputFile.files && inputFile.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('arquivo', file);
+
+        const htmlOriginal = btnEnviar.innerHTML;
+        btnEnviar.disabled = true;
+        btnEnviar.innerHTML =
+            '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
+
+        feedback.style.display = 'block';
+        feedback.innerHTML =
+            '<div class="alert alert-info mb-0">' +
+            '<i class="fas fa-file-upload me-2"></i>' +
+            'Enviando e processando o Boletim...</div>';
+
+        fetch("{{ url_for('boletim_financeiro.upload') }}", {
+            method: 'POST',
+            headers: { 'X-Silent-Request': 'true' },
+            body: formData
+        })
+        .then(r => r.json())
+        .then(data => {
+            btnEnviar.innerHTML = htmlOriginal;
+            if (data.success) {
+                feedback.innerHTML =
+                    '<div class="alert alert-success mb-0">' +
+                    '<i class="fas fa-check-circle me-2"></i>' +
+                    '<strong>Sucesso!</strong> ' + data.message + '</div>';
+                setTimeout(() => location.reload(), 2200);
+            } else {
+                btnEnviar.disabled = false;
+                feedback.innerHTML =
+                    '<div class="alert alert-danger mb-0">' +
+                    '<i class="fas fa-times-circle me-2"></i>' +
+                    '<strong>Erro!</strong> ' + data.message + '</div>';
+            }
+        })
+        .catch(err => {
+            btnEnviar.disabled = false;
+            btnEnviar.innerHTML = htmlOriginal;
+            feedback.innerHTML =
+                '<div class="alert alert-danger mb-0">' +
+                '<i class="fas fa-times-circle me-2"></i>' +
+                '<strong>Erro de conexão:</strong> ' + err + '</div>';
+        });
+    });
+})();
+</script>
+{% endblock %}
