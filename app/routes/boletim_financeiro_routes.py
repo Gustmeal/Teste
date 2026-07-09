@@ -12,6 +12,8 @@ from flask_login import login_required
 from app import db
 from app.models.boletim_financeiro import BoletimFinanceiro
 from app.utils.audit import registrar_log
+from app.models.boletim_financeiro import BoletimFinanceiro
+from app.models.estrutura_boletim import EstruturaBoletim
 
 boletim_financeiro_bp = Blueprint(
     'boletim_financeiro', __name__, url_prefix='/boletim-financeiro'
@@ -97,38 +99,37 @@ def _to_decimal_2(valor):
     except (InvalidOperation, ValueError):
         return Decimal('0.00')
 
+def _chave_natureza(nome):
+    """Normaliza o nome da natureza para comparação (trim + espaços + UPPER)."""
+    return re.sub(r'\s+', ' ', (nome or '').strip()).upper()
 
 # =========================================================================
 # PROCESSAMENTO DO EXCEL DO BOLETIM (ETAPA 1)
 # =========================================================================
 def _processar_excel_boletim(caminho_arquivo):
     """
-    Lê o Excel do Boletim Financeiro e grava em BDG.FIN_TB020_BOLETIM_FINANCEIRO.
+    Lê o Excel do Boletim e grava em BDG.FIN_TB020_BOLETIM_FINANCEIRO.
 
-    Regras:
-      - ANO vem do texto 'ANO: AAAA' (parte superior, não capturada como natureza).
-      - Captura a partir da linha SEGUINTE a ' SALDO FINAL DE CAIXA'.
-      - Ignora linhas VERDES (totais/subtotais) por cor E por nome.
-      - Para no rodapé 'NATUREZAS MOVIMENTADAS...'.
-      - MES_EXECUCAO = 'AAAAMM' (JANEIRO -> 01 ... DEZEMBRO -> 12).
-      - Grava só os meses ATÉ o último mês com dados (não grava meses futuros
-        zerados). Para gravar sempre os 12 meses, veja o comentário abaixo.
+    NU_LINHA: obtido da FIN_TB019_ESTRUTURA_BOLETIM comparando a NATUREZA.
+    Idempotência: apaga apenas as competências (MES_EXECUCAO) presentes no
+    arquivo e reinsere. Ano diferente => competências diferentes => nada antigo
+    é apagado.
 
-    Retorna dict com resumo do processamento.
+    Também reporta: naturezas sem NU_LINHA (não encontradas na FIN_TB019),
+    naturezas com nome repetido no Excel (ambíguas para casamento por nome) e
+    conflitos de chave (NU_LINHA, MES_EXECUCAO).
     """
     from openpyxl import load_workbook
 
     wb = load_workbook(caminho_arquivo, data_only=True)
     ws = wb.active
 
-    # -----------------------------------------------------------------
-    # 1. ANO (ex.: 'ANO: 2026' -> '2026')
-    # -----------------------------------------------------------------
+    # 1. ANO ('ANO: 2026' -> '2026')
     ano = None
     for r in range(1, 9):
         for c in range(1, ws.max_column + 1):
-            texto = _texto_limpo(ws.cell(r, c).value)
-            m = re.search(r'ANO[:\s]*?(\d{4})', texto, re.IGNORECASE)
+            m = re.search(r'ANO[:\s]*?(\d{4})',
+                          _texto_limpo(ws.cell(r, c).value), re.IGNORECASE)
             if m:
                 ano = m.group(1)
                 break
@@ -137,9 +138,7 @@ def _processar_excel_boletim(caminho_arquivo):
     if not ano:
         raise Exception("Não foi possível localizar o ANO (ex.: 'ANO: 2026') na planilha.")
 
-    # -----------------------------------------------------------------
     # 2. Cabeçalho -> coluna da NATUREZA e mapa mês -> coluna
-    # -----------------------------------------------------------------
     col_natureza = None
     header_row = None
     mapa_mes = {}
@@ -158,9 +157,7 @@ def _processar_excel_boletim(caminho_arquivo):
     if header_row is None or not mapa_mes:
         raise Exception("Cabeçalho (NATUREZA / meses) não encontrado na planilha.")
 
-    # -----------------------------------------------------------------
     # 3. Marcador de início (SALDO FINAL DE CAIXA)
-    # -----------------------------------------------------------------
     marcador = None
     for r in range(header_row + 1, ws.max_row + 1):
         if _texto_limpo(ws.cell(r, col_natureza).value).upper() == _MARCADOR_INICIO:
@@ -169,10 +166,10 @@ def _processar_excel_boletim(caminho_arquivo):
     if marcador is None:
         raise Exception("Marcador ' SALDO FINAL DE CAIXA' não encontrado na planilha.")
 
-    # -----------------------------------------------------------------
-    # 4. Captura das naturezas (ignorando verdes/totais)
-    # -----------------------------------------------------------------
-    capturadas = []  # lista de (linha_excel, nome_natureza)
+    # 4. Captura das naturezas (guardando o GRUPO = último cabeçalho verde acima)
+    #    grupo_atual será útil quando a FIN_TB019 permitir casar por grupo+natureza.
+    capturadas = []  # (grupo, nome, linha_excel)
+    grupo_atual = _texto_limpo(ws.cell(marcador, col_natureza).value)
     for r in range(marcador + 1, ws.max_row + 1):
         celula = ws.cell(r, col_natureza)
         nome = _texto_limpo(celula.value)
@@ -181,63 +178,86 @@ def _processar_excel_boletim(caminho_arquivo):
         if nome.upper().startswith(_MARCADOR_FIM):
             break
         if _eh_celula_verde(celula) or nome.upper() in _TOTAIS_NOME:
+            grupo_atual = nome  # cabeçalho verde vira o grupo das linhas seguintes
             continue
-        capturadas.append((r, nome))
-
+        capturadas.append((grupo_atual, nome, r))
     if not capturadas:
         raise Exception("Nenhuma natureza capturada abaixo de 'SALDO FINAL DE CAIXA'.")
 
-    # -----------------------------------------------------------------
-    # 5. Último mês com dados (para não gravar meses futuros zerados)
-    #    >>> Para gravar SEMPRE os 12 meses, troque a linha abaixo por:
-    #        ultimo_mes = max(mapa_mes.keys())
-    # -----------------------------------------------------------------
+    # 5. Último mês com dados (não grava meses futuros zerados)
+    #    >>> Para gravar SEMPRE os 12 meses: ultimo_mes = max(mapa_mes.keys())
     ultimo_mes = 0
     for mes, col in mapa_mes.items():
-        for (r, _nome) in capturadas:
-            val = ws.cell(r, col).value or 0
-            if val not in (0, None):
+        for (_g, _n, r) in capturadas:
+            if (ws.cell(r, col).value or 0) not in (0, None):
                 ultimo_mes = max(ultimo_mes, mes)
                 break
     if ultimo_mes == 0:
         ultimo_mes = max(mapa_mes.keys())
-
     meses_do_arquivo = [f"{ano}{m:02d}" for m in range(1, ultimo_mes + 1)]
 
-    # -----------------------------------------------------------------
-    # 6. Idempotência: apaga os meses do arquivo antes de reinserir
-    # -----------------------------------------------------------------
+    # 6. Mapa NATUREZA -> NU_LINHA (FIN_TB019)
+    mapa_nu_linha = EstruturaBoletim.carregar_mapa_natureza_nu_linha()
+    if not mapa_nu_linha:
+        raise Exception('FIN_TB019_ESTRUTURA_BOLETIM está vazia — não há NU_LINHA para vincular.')
+
+    # 6b. Naturezas com nome repetido no Excel (casamento por nome não distingue)
+    contagem = {}
+    for (_g, nome, _r) in capturadas:
+        k = _chave_natureza(nome)
+        contagem[k] = contagem.get(k, 0) + 1
+    ambiguas = sorted({nome for (_g, nome, _r) in capturadas
+                       if contagem[_chave_natureza(nome)] > 1})
+
+    # 7. Resolve NU_LINHA por nome
+    #    >>> Quando a FIN_TB019 tiver grupo/pai, troque a chave de casamento
+    #        aqui e no carregar_mapa_natureza_nu_linha() para (grupo+natureza).
+    nao_encontradas = []
+    resolvidas = []  # (nu_linha, nome, linha_excel)
+    for (_g, nome, r) in capturadas:
+        nu = mapa_nu_linha.get(_chave_natureza(nome))
+        if nu is None:
+            nao_encontradas.append(nome)
+            continue
+        resolvidas.append((nu, nome, r))
+
+    # 8. Idempotência: apaga as competências do arquivo antes de reinserir
     apagados = BoletimFinanceiro.query.filter(
         BoletimFinanceiro.MES_EXECUCAO.in_(meses_do_arquivo)
     ).delete(synchronize_session=False)
-    db.session.flush()  # garante que o MAX(NU_LINHA) já reflita a exclusão
+    db.session.flush()
 
-    # -----------------------------------------------------------------
-    # 7. Monta e insere os registros
-    # -----------------------------------------------------------------
-    proximo_nu = BoletimFinanceiro.obter_proximo_nu_linha()
+    # 9. Monta os registros, evitando colisão de PK (NU_LINHA, MES_EXECUCAO)
     registros = []
-    for (r, nome) in capturadas:
+    vistos = set()
+    conflitos = 0
+    for (nu, nome, r) in resolvidas:
         for mes in range(1, ultimo_mes + 1):
-            col = mapa_mes[mes]
-            vr = _to_decimal_2(ws.cell(r, col).value)
+            mes_exec = f"{ano}{mes:02d}"
+            if (nu, mes_exec) in vistos:
+                conflitos += 1
+                continue
+            vistos.add((nu, mes_exec))
             registros.append(BoletimFinanceiro(
-                NU_LINHA=proximo_nu,
+                NU_LINHA=nu,
                 NATUREZA=nome,
-                MES_EXECUCAO=f"{ano}{mes:02d}",
-                VR_EXECUTADO=vr,
+                MES_EXECUCAO=mes_exec,
+                VR_EXECUTADO=_to_decimal_2(ws.cell(r, mapa_mes[mes]).value),
             ))
-            proximo_nu += 1
 
     db.session.bulk_save_objects(registros)
     db.session.commit()
 
     return {
         'ano': ano,
-        'naturezas': len(capturadas),
+        'capturadas': len(capturadas),
+        'resolvidas': len(resolvidas),
         'meses': ultimo_mes,
         'apagados': int(apagados or 0),
         'inseridos': len(registros),
+        'nao_encontradas': nao_encontradas,
+        'ambiguas': ambiguas,
+        'conflitos': conflitos,
     }
 
 
@@ -286,6 +306,29 @@ def upload():
     try:
         resumo = _processar_excel_boletim(caminho_tmp)
 
+        partes = [
+            f'Boletim {resumo["ano"]}: {resumo["inseridos"]} registro(s) inserido(s) '
+            f'({resumo["resolvidas"]} natureza(s) × {resumo["meses"]} mês(es); '
+            f'{resumo["apagados"]} substituído(s)).'
+        ]
+        if resumo['ambiguas']:
+            partes.append(
+                f'⚠ {len(resumo["ambiguas"])} natureza(s) com nome repetido no Excel — '
+                f'o NU_LINHA por nome não as distingue: '
+                + '; '.join(resumo['ambiguas']) + '.'
+            )
+        if resumo['nao_encontradas']:
+            partes.append(
+                f'⚠ {len(resumo["nao_encontradas"])} natureza(s) sem correspondência na '
+                f'FIN_TB019 (ignoradas): ' + '; '.join(resumo['nao_encontradas']) + '.'
+            )
+        if resumo['conflitos']:
+            partes.append(
+                f'⚠ {resumo["conflitos"]} registro(s) ignorado(s) por colisão de '
+                f'(NU_LINHA, MES_EXECUCAO).'
+            )
+        mensagem = ' '.join(partes)
+
         registrar_log(
             acao='carga',
             entidade='boletim_financeiro',
@@ -294,16 +337,7 @@ def upload():
             dados_novos={'arquivo': nome_arquivo, **resumo},
         )
 
-        return jsonify({
-            'success': True,
-            'message': (
-                f'Boletim {resumo["ano"]} carregado. '
-                f'{resumo["naturezas"]} natureza(s) × {resumo["meses"]} mês(es) = '
-                f'{resumo["inseridos"]} registro(s) inserido(s) '
-                f'({resumo["apagados"]} substituído(s)).'
-            ),
-            **resumo,
-        })
+        return jsonify({'success': True, 'message': mensagem, **resumo})
 
     except Exception as e:
         db.session.rollback()

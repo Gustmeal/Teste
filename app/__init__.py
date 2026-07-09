@@ -52,6 +52,8 @@ def create_app():
         from app.models.config_custo_oportunidade import ConfigCustoOportunidade
         from app.models.titulo_cvs import ResumoCVS
         from app.models.boletim_financeiro import BoletimFinanceiro
+        from app.models.estrutura_boletim import EstruturaBoletim
+        from app.models.relatorio_gestao_item import RelatorioGestaoItem
 
         db.create_all()
 
@@ -170,6 +172,9 @@ def create_app():
 
     from app.routes.boletim_financeiro_routes import boletim_financeiro_bp
     app.register_blueprint(boletim_financeiro_bp)
+
+    from app.routes.relatorio_gestao_routes import relatorio_gestao_bp
+    app.register_blueprint(relatorio_gestao_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rg-container { max-width: 900px; margin: 0 auto; }
+    .rg-page {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 2.5rem 3rem; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .rg-title { text-align: center; font-weight: 700; color: #1e3a8a; margin-bottom: .25rem; }
+    .rg-subtitle { text-align: center; color: #64748b; margin-bottom: 2rem; font-size: 1.05rem; }
+    .rg-paragrafo { text-align: justify; line-height: 1.75; margin-bottom: 1.1rem; color: #1f2937; }
+    .rg-reservado {
+        border: 2px dashed #cbd5e1; border-radius: 10px; padding: 1.6rem;
+        text-align: center; color: #94a3b8; margin: 1.3rem 0; background: #f8fafc;
+    }
+    .rg-reservado i { font-size: 1.6rem; display: block; margin-bottom: .4rem; }
+</style>
+
+<div class="rg-container fade-in">
+    <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Ainda não há dados na <strong>FIN_TB023</strong> para a página
+        <code>SUMARIO_EXECUTIVO</code>. Os textos aparecem com os valores do
+        modelo até que a competência (POSICAO) seja preenchida.
+    </div>
+    {% endif %}
+
+    <div class="rg-page">
+        <h2 class="rg-title">Sumário Executivo</h2>
+        <div class="rg-subtitle">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+
+        {% for item in itens %}
+            {% if item.tipo == 'texto' %}
+                <p class="rg-paragrafo">{{ item.conteudo }}</p>
+            {% elif item.tipo == 'grafico' %}
+                <div class="rg-reservado">
+                    <i class="fas fa-chart-column"></i>
+                    Espaço reservado para gráfico{% if item.titulo %} — {{ item.titulo }}{% endif %}
+                </div>
+            {% elif item.tipo == 'tabela' %}
+                <div class="rg-reservado">
+                    <i class="fas fa-table"></i>
+                    Espaço reservado para tabela{% if item.titulo %} — {{ item.titulo }}{% endif %}
+                </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
