@@ -1928,7 +1928,7 @@ def deliberacao_pagamento_editar(contrato):
 @sumov_bp.route('/deliberacao-pagamento/excluir/<contrato>', methods=['POST'])
 @login_required
 def deliberacao_pagamento_excluir(contrato):
-    """Excluir (soft delete) uma Deliberação de Pagamento"""
+    """Excluir (delete físico) uma Deliberação de Pagamento"""
     try:
         deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
 
@@ -1936,28 +1936,25 @@ def deliberacao_pagamento_excluir(contrato):
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # Soft delete
-        deliberacao.DELETED_AT = datetime.utcnow()
-        deliberacao.USUARIO_ATUALIZACAO = current_user.nome
-        deliberacao.UPDATED_AT = datetime.utcnow()
+        # Registrar log antes de excluir fisicamente o registro
+        registrar_log(
+            acao='excluir',
+            entidade='deliberacao_pagamento',
+            entidade_id=contrato,
+            descricao=f'Deliberação de Pagamento excluída (delete físico): {contrato}'
+        )
 
-        if deliberacao.salvar():
-            registrar_log(
-                acao='excluir',
-                entidade='deliberacao_pagamento',
-                entidade_id=contrato,
-                descricao=f'Deliberação de Pagamento excluída: {contrato}'
-            )
-            flash('Deliberação excluída com sucesso!', 'success')
-        else:
-            flash('Erro ao excluir deliberação.', 'danger')
+        # Delete físico (remove a linha do banco)
+        db.session.delete(deliberacao)
+        db.session.commit()
 
-        return redirect(url_for('sumov.deliberacao_pagamento'))
+        flash('Deliberação excluída com sucesso!', 'success')
 
     except Exception as e:
+        db.session.rollback()
         flash(f'Erro ao excluir deliberação: {str(e)}', 'danger')
-        return redirect(url_for('sumov.deliberacao_pagamento'))
 
+    return redirect(url_for('sumov.deliberacao_pagamento'))
 
 @sumov_bp.route('/deliberacao-pagamento/pdf/<contrato>')
 @login_required
