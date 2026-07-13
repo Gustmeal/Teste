@@ -10,6 +10,8 @@
     .rg-title { text-align: center; font-weight: 700; color: #1e3a8a; margin-bottom: .25rem; }
     .rg-subtitle { text-align: center; color: #64748b; margin-bottom: 2rem; font-size: 1.05rem; }
     .rg-paragrafo { text-align: justify; line-height: 1.75; margin-bottom: 1.1rem; color: #1f2937; }
+    .rg-chart-wrap { height: 360px; margin: 1.4rem 0; }
+    .rg-chart-fonte { text-align: center; font-size: .8rem; color: #94a3b8; margin-top: -.6rem; margin-bottom: 1.2rem; }
     .rg-reservado {
         border: 2px dashed #cbd5e1; border-radius: 10px; padding: 1.6rem;
         text-align: center; color: #94a3b8; margin: 1.3rem 0; background: #f8fafc;
@@ -26,8 +28,8 @@
     <div class="alert alert-warning">
         <i class="fas fa-exclamation-triangle me-2"></i>
         Ainda não há dados na <strong>FIN_TB023</strong> para a página
-        <code>SUMARIO_EXECUTIVO</code>. Os textos aparecem com os valores do
-        modelo até que a competência (POSICAO) seja preenchida.
+        <code>SUMARIO</code>. Os textos aparecem com os valores do modelo até
+        que a competência (POSICAO) seja preenchida.
     </div>
     {% endif %}
 
@@ -38,11 +40,19 @@
         {% for item in itens %}
             {% if item.tipo == 'texto' %}
                 <p class="rg-paragrafo">{{ item.conteudo }}</p>
+
+            {% elif item.tipo == 'grafico' and item.chave == 'ingressos' %}
+                <div class="rg-chart-wrap">
+                    <canvas id="chartIngressos"></canvas>
+                </div>
+                {% if item.titulo %}<div class="rg-chart-fonte">{{ item.titulo }}</div>{% endif %}
+
             {% elif item.tipo == 'grafico' %}
                 <div class="rg-reservado">
                     <i class="fas fa-chart-column"></i>
                     Espaço reservado para gráfico{% if item.titulo %} — {{ item.titulo }}{% endif %}
                 </div>
+
             {% elif item.tipo == 'tabela' %}
                 <div class="rg-reservado">
                     <i class="fas fa-table"></i>
@@ -52,4 +62,94 @@
         {% endfor %}
     </div>
 </div>
+
+<script id="dadosIngressos" type="application/json">{{ grafico_ingressos | tojson }}</script>
+<script>
+(function () {
+    function fmtBR(v) {
+        try {
+            return Number(v).toLocaleString('pt-BR',
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch (e) { return v; }
+    }
+
+    function initGraficoIngressos() {
+        var el = document.getElementById('chartIngressos');
+        if (!el) return;
+
+        var dados;
+        try {
+            dados = JSON.parse(document.getElementById('dadosIngressos').textContent);
+        } catch (e) { dados = { labels: [], datasets: [] }; }
+
+        if (dados.erro || !dados.datasets || dados.datasets.length === 0) {
+            el.parentElement.innerHTML =
+                '<div class="rg-reservado"><i class="fas fa-chart-column"></i>' +
+                (dados.erro ? 'Erro ao ler a view: ' + dados.erro
+                            : 'Sem dados na FIN_VW013 para o gráfico de Ingressos.') +
+                '</div>';
+            return;
+        }
+
+        // Paleta (tons de azul/verde) aplicada por série.
+        var cores = ['#1e3a8a', '#0ea5e9', '#22c55e', '#f59e0b',
+                     '#ef4444', '#8b5cf6', '#14b8a6', '#eab308'];
+        dados.datasets.forEach(function (ds, i) {
+            var cor = cores[i % cores.length];
+            ds.backgroundColor = cor;
+            ds.borderColor = cor;
+            ds.borderWidth = 1;
+            ds.maxBarThickness = 36; // menos espessura vertical quando horizontal
+        });
+
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                indexAxis: 'y', // <-- torna as barras horizontais
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            // em gráfico horizontal os valores ficam em parsed.x
+                            label: function (context) {
+                                return context.dataset.label + ': ' + fmtBR(context.parsed.x);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    // eixo X agora é o numérico (valores)
+                    x: {
+                        beginAtZero: true,
+                        ticks: { callback: function (v) { return fmtBR(v); } }
+                    },
+                    // eixo Y é categórico (rótulos)
+                    y: {
+                        ticks: { autoSkip: false }
+                    }
+                }
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof Chart === 'undefined') {
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload = initGraficoIngressos;
+            s.onerror = function () {
+                var el = document.getElementById('chartIngressos');
+                if (el) el.parentElement.innerHTML =
+                    '<div class="rg-reservado">Chart.js não pôde ser carregado.</div>';
+            };
+            document.head.appendChild(s);
+        } else {
+            initGraficoIngressos();
+        }
+    });
+})();
+</script>
 {% endblock %}

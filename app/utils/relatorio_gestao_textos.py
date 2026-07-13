@@ -28,7 +28,7 @@ SUMARIO_EXECUTIVO = [
         'as Novações FCVS com 38,1% (R$ 27,32 milhões) e as Carteiras de Créditos '
         'Operacionais com 10,3% (R$ 7,39 milhões).'},
 
-    {'tipo': 'grafico', 'titulo': 'Ingressos (Fonte: Sistema RM Fluxus)'},
+    {'tipo': 'grafico', 'chave': 'ingressos', 'titulo': 'Ingressos (Fonte: Sistema RM Fluxus)'},
 
     {'tipo': 'texto', 'texto':
         'Já as Saídas alcançaram R$ 56,78 milhões, apresentando queda de 62,7% '

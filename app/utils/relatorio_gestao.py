@@ -104,5 +104,6 @@ def renderizar_pagina(estrutura, mapa_id_vr, mes_ref, mes_ref_cap, ano_ref):
             itens.append({'tipo': 'texto', 'conteudo': texto})
         else:
             itens.append({'tipo': item.get('tipo', 'texto'),
-                          'titulo': item.get('titulo', '')})
+                          'titulo': item.get('titulo', ''),
+                          'chave': item.get('chave', '')})
     return itens
