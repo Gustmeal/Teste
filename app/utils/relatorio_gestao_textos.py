@@ -42,7 +42,7 @@ SUMARIO_EXECUTIVO = [
         'Serviços de Terceiros; 3,9% (R$ 2,89 milhões) com Outros Dispêndios '
         'Correntes (Operacionais) e 0,3% (R$ 0,18 milhão) com Prêmios e Seguros.'},
 
-    {'tipo': 'grafico', 'titulo': 'Saídas (Fonte: Sistema RM Fluxus)'},
+    {'tipo': 'grafico', 'chave': 'saidas', 'titulo': 'Saídas (Fonte: Sistema RM Fluxus)'},
 
     {'tipo': 'texto', 'texto':
         'Quanto a aplicação das Disponibilidades, segue o quadro com a '

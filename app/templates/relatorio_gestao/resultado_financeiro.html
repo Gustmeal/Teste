@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rf-container { max-width: 1280px; margin: 0 auto; }
+    .rf-page {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .rf-title { text-align: center; font-weight: 700; color: #1e3a8a; margin-bottom: .25rem; }
+    .rf-subtitle { text-align: center; color: #64748b; }
+    .rf-unidade { text-align: right; font-size: .8rem; color: #64748b; margin-bottom: .5rem; }
+
+    .rf-scroll {
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        border: 1px solid #cbd5e1; border-radius: 8px;
+    }
+    table.rf-table {
+        width: 100%; min-width: 1180px; border-collapse: collapse; font-size: .8rem;
+    }
+
+    /* Cabeçalho */
+    table.rf-table thead th {
+        color: #fff; text-align: center; padding: .45rem .55rem; white-space: nowrap;
+    }
+    .rf-grupo { background: #1f4e79; font-weight: 700; border-left: 2px solid #fff; }
+    .rf-sub   { background: #2e5496; font-weight: 600; }
+    th.rf-item-h {
+        background: #1f4e79; text-align: left; min-width: 240px;
+        position: sticky; left: 0; z-index: 3;
+    }
+
+    /* Corpo */
+    table.rf-table td {
+        padding: .35rem .55rem; text-align: right; white-space: nowrap;
+        border-bottom: 1px solid #e8eef5;
+    }
+    table.rf-table td.rf-item {
+        text-align: left; position: sticky; left: 0; background: #fff; z-index: 1;
+    }
+    tr.rf-destaque td { font-weight: 700; background: #d9e1f2; }
+    tr.rf-destaque td.rf-item { background: #d9e1f2; }
+
+    /* Separador vertical entre grupos */
+    .rf-gsep { border-left: 2px solid #b9c6dd; }
+
+    .rf-neg { color: #c00000; }
+    .rf-num { color: #64748b; font-weight: 600; margin-right: .2rem; }
+
+    .rf-nav { text-align: center; margin-top: 1.4rem; }
+    .rf-nav a { color: #1e3a8a; font-size: 1.9rem; text-decoration: none; }
+</style>
+
+<div class="rf-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao Sumário
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Não há dados na <strong>FIN_TB024</strong> para a competência de referência.
+    </div>
+    {% else %}
+    <div class="rf-page">
+        <h2 class="rf-title">Resultado Financeiro</h2>
+        <div class="rf-subtitle">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+        <div class="rf-unidade">Valores em R$ milhões</div>
+
+        <div class="rf-scroll">
+            <table class="rf-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="rf-item-h">Item</th>
+                        {% for g in grupos %}
+                            <th colspan="{{ g.cols|length }}" class="rf-grupo">{{ g.titulo }}</th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for g in grupos %}
+                            {% for c in g.cols %}
+                                <th class="rf-sub {{ 'rf-gsep' if loop.first }}">{{ c.sub }}</th>
+                            {% endfor %}
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in linhas %}
+                    <tr class="{{ 'rf-destaque' if linha.nivel == 0 }}">
+                        <td class="rf-item"
+                            style="padding-left: {{ 0.55 + linha.nivel * 1.15 }}rem;">
+                            {% if linha.numero %}<span class="rf-num">{{ linha.numero }}</span>{% endif %}{{ linha.nome }}
+                        </td>
+                        {% for c in linha.cells %}
+                            <td class="{{ 'rf-neg' if c.neg }} {{ 'rf-gsep' if c.sep }}">{{ c.txt }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <<div class="rf-nav">
+        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" title="Voltar ao Sumário">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+        <a href="{{ url_for('relatorio_gestao.consideracoes') }}"
+           title="Ir para Considerações" style="margin-left: 1.5rem;">
+            <i class="fas fa-arrow-down"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}

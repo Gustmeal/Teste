@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rg-container { max-width: 900px; margin: 0 auto; }
+    .rg-page {
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 2.5rem 3rem; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .rg-title { text-align: center; font-weight: 700; color: #1e3a8a; margin-bottom: .25rem; }
+    .rg-subtitle { text-align: center; color: #64748b; margin-bottom: 2rem; font-size: 1.05rem; }
+    .rg-secao {
+        font-weight: 700; color: #1e3a8a; font-size: 1.15rem;
+        margin: 1.6rem 0 .8rem; padding-bottom: .3rem; border-bottom: 2px solid #e2e8f0;
+    }
+    .rg-paragrafo { text-align: justify; line-height: 1.7; margin-bottom: .9rem; color: #1f2937; }
+    .rg-paragrafo .rg-sub { font-weight: 700; }
+    .rg-chart-wrap { height: 340px; margin: 1.2rem 0 .3rem; }
+    .rg-chart-fonte { text-align: center; font-size: .8rem; color: #94a3b8; margin-bottom: 1.4rem; }
+    .rg-reservado {
+        border: 2px dashed #cbd5e1; border-radius: 10px; padding: 1.6rem;
+        text-align: center; color: #94a3b8; margin: 1.2rem 0; background: #f8fafc;
+    }
+    .rg-nav { text-align: center; margin-top: 1.4rem; }
+    .rg-nav a { color: #1e3a8a; font-size: 1.9rem; text-decoration: none; }
+</style>
+
+<div class="rg-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.resultado_financeiro') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao Resultado Financeiro
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Não há dados na <strong>FIN_TB025</strong> para a competência de referência.
+    </div>
+    {% else %}
+    <div class="rg-page">
+        <h2 class="rg-title">Considerações</h2>
+        <div class="rg-subtitle">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+
+        {% for secao in secoes %}
+            <div class="rg-secao">{{ secao.item_label }}</div>
+            {% for bloco in secao.blocos %}
+                <p class="rg-paragrafo">
+                    <span class="rg-sub">{{ bloco.subitem }}</span> {{ bloco.texto }}
+                </p>
+                {% if bloco.grafico == 'ingressos' %}
+                    <div class="rg-chart-wrap"><canvas id="chartCompIngressos"></canvas></div>
+                    <div class="rg-chart-fonte">Fonte: Sistema RM Fluxus</div>
+                {% elif bloco.grafico == 'saidas' %}
+                    <div class="rg-chart-wrap"><canvas id="chartCompSaidas"></canvas></div>
+                    <div class="rg-chart-fonte">Fonte: Sistema RM Fluxus</div>
+                {% endif %}
+            {% endfor %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="rg-nav">
+        <a href="{{ url_for('relatorio_gestao.resultado_financeiro') }}" title="Voltar">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+    </div>
+</div>
+
+<script id="dadosCompIngressos" type="application/json">{{ grafico_ingressos_consid | tojson }}</script>
+<script id="dadosCompSaidas" type="application/json">{{ grafico_saidas_consid | tojson }}</script>
+
+<script>
+(function () {
+    function fmtBR(v) {
+        try {
+            return Number(v).toLocaleString('pt-BR',
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } catch (e) { return v; }
+    }
+
+    // Paleta no espírito do modelo (verde, azul, laranja, roxo, ...)
+    var PALETA = ['#548235', '#2e75b6', '#ed7d31', '#7030a0',
+                  '#ffc000', '#c00000', '#4472c4', '#70ad47'];
+
+    function initEmpilhado(canvasId, jsonId) {
+        var el = document.getElementById(canvasId);
+        if (!el) return;
+
+        var dados;
+        try { dados = JSON.parse(document.getElementById(jsonId).textContent); }
+        catch (e) { dados = { labels: [], datasets: [] }; }
+
+        if (dados.erro || !dados.datasets || dados.datasets.length === 0) {
+            el.parentElement.innerHTML =
+                '<div class="rg-reservado">' +
+                (dados.erro ? 'Erro ao ler a view: ' + dados.erro
+                            : 'Sem dados para o gráfico.') + '</div>';
+            return;
+        }
+
+        dados.datasets.forEach(function (ds, i) {
+            var cor = PALETA[i % PALETA.length];
+            ds.backgroundColor = cor;
+            ds.borderColor = cor;
+            ds.borderWidth = 0;
+            ds.maxBarThickness = 60;
+        });
+
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right' },
+                    title: { display: !!dados.titulo, text: dados.titulo || '' },
+                    tooltip: {
+                        callbacks: {
+                            label: function (c) {
+                                return c.dataset.label + ': ' + fmtBR(c.parsed.y);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { stacked: true },
+                    y: {
+                        stacked: true, beginAtZero: true,
+                        title: { display: true, text: 'R$ milhões' },
+                        ticks: { callback: function (v) { return fmtBR(v); } }
+                    }
+                }
+            }
+        });
+    }
+
+    function initGraficosConsid() {
+        initEmpilhado('chartCompIngressos', 'dadosCompIngressos');
+        initEmpilhado('chartCompSaidas', 'dadosCompSaidas');
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof Chart === 'undefined') {
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload = initGraficosConsid;
+            s.onerror = function () {
+                ['chartCompIngressos', 'chartCompSaidas'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.parentElement.innerHTML =
+                        '<div class="rg-reservado">Chart.js não pôde ser carregado.</div>';
+                });
+            };
+            document.head.appendChild(s);
+        } else {
+            initGraficosConsid();
+        }
+    });
+})();
+</script>
+{% endblock %}

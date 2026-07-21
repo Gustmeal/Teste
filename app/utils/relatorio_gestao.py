@@ -107,3 +107,85 @@ def renderizar_pagina(estrutura, mapa_id_vr, mes_ref, mes_ref_cap, ano_ref):
                           'titulo': item.get('titulo', ''),
                           'chave': item.get('chave', '')})
     return itens
+
+_ITEM_LABEL_CONSID = {
+    'INGRESSOS': 'Ingressos',
+    'SAIDAS': 'Saídas',
+    'DISPONIBILIDADES': 'Disponibilidades',
+}
+
+
+def _fmt_valor_consideracoes(vr, tipo):
+    """Formata o VR EM MÓDULO (o sinal fica por conta das palavras do TEXTO,
+    'queda de'/'aumento de'/etc.)."""
+    if vr is None:
+        return '0'
+    d = abs(Decimal(str(vr)))
+    if tipo == 'perc':
+        corpo = _fmt_br(d, 2)
+        if ',' in corpo:
+            corpo = corpo.rstrip('0').rstrip(',')
+        return corpo
+    return _fmt_br(d, 2)
+
+def preencher_fragmento(texto, vr):
+    """Troca o '...' do TEXTO pelo VR (módulo). '' se vazio/NULL; devolve o
+    próprio texto se não houver '...'."""
+    if texto is None:
+        return ''
+    t = str(texto).strip()
+    if t == '' or t.upper() == 'NULL':
+        return ''
+    if '...' not in t:
+        return t
+    tipo = 'perc' if '%' in t else 'moeda'
+    return t.replace('...', _fmt_valor_consideracoes(vr, tipo), 1)
+
+
+def montar_consideracoes(registros):
+    """
+    Agrupa por ITEM -> SUBITEM (ordem do ID) e monta o parágrafo de cada
+    SUBITEM concatenando os TEXTO (com o VR em módulo no lugar do '...').
+    Como as palavras 'queda/aumento/não houve' estão no TEXTO, o texto se
+    adapta sozinho quando a regra do mês muda.
+    Marca 'grafico' com 'ingressos'/'saidas' nos subitens de "Composição"
+    (o espaço do gráfico entra logo depois deles, como no .docx); '' nos demais.
+    Retorna: [{'item','item_label','blocos':[{'subitem','texto','grafico'}]}]
+    """
+    from collections import OrderedDict
+    grupos = OrderedDict()
+    for r in registros:
+        item = (getattr(r, 'ITEM', '') or '').strip()
+        sub = (getattr(r, 'SUBITEM', '') or '').strip()
+        grupos.setdefault(item, OrderedDict()).setdefault(sub, []).append(r)
+
+    resultado = []
+    for item, subs in grupos.items():
+        blocos = []
+        for sub, linhas in subs.items():
+            partes = [preencher_fragmento(getattr(l, 'TEXTO', None),
+                                          getattr(l, 'VR', None)) for l in linhas]
+            texto = ' '.join(p for p in partes if p)
+            texto = re.sub(r'\s+', ' ', texto).strip()
+            texto = re.sub(r'\s+([,.;:)%])', r'\1', texto)
+
+            # Qual gráfico entra após este subitem (Composições)
+            sub_l = sub.lower()
+            if 'composi' in sub_l and 'ingresso' in sub_l:
+                grafico = 'ingressos'
+            elif 'composi' in sub_l and ('desembolso' in sub_l or 'saíd' in sub_l or 'said' in sub_l):
+                grafico = 'saidas'
+            else:
+                grafico = ''
+
+            blocos.append({
+                'subitem': sub,
+                'texto': texto,
+                'grafico': grafico,
+            })
+        resultado.append({
+            'item': item,
+            'item_label': _ITEM_LABEL_CONSID.get(item, item.capitalize()),
+            'blocos': blocos,
+        })
+    return resultado

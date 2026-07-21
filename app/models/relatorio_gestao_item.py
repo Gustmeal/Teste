@@ -3,7 +3,7 @@ from app import db
 
 class RelatorioGestaoItem(db.Model):
     """
-    Tabela BDG.FIN_TB023_RELATORIO_GESTAO_ITENS.
+    Tabela BDG.FIN_TB023_RELATORIO_GESTAO_SUMARIO.
 
     Guarda os valores que substituem os números dos textos do Relatório de
     Gestão. A substituição é por CONTAGEM: o n-ésimo valor do texto (ordem de
@@ -18,7 +18,7 @@ class RelatorioGestaoItem(db.Model):
 
     Chave primária composta: (PAGINA, POSICAO, ID).
     """
-    __tablename__ = 'FIN_TB023_RELATORIO_GESTAO_ITENS'
+    __tablename__ = 'FIN_TB023_RELATORIO_GESTAO_SUMARIO'
     __table_args__ = {'schema': 'BDG'}
 
     PAGINA = db.Column(db.String(20), primary_key=True, nullable=False)

@@ -54,6 +54,8 @@ def create_app():
         from app.models.boletim_financeiro import BoletimFinanceiro
         from app.models.estrutura_boletim import EstruturaBoletim
         from app.models.relatorio_gestao_item import RelatorioGestaoItem
+        from app.models.relatorio_resultado_financeiro import RelatorioResultadoFinanceiro
+        from app.models.relatorio_consideracoes_item import RelatorioConsideracoesItem
 
         db.create_all()
 

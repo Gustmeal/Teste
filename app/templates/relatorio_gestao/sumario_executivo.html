@@ -47,6 +47,12 @@
                 </div>
                 {% if item.titulo %}<div class="rg-chart-fonte">{{ item.titulo }}</div>{% endif %}
 
+            {% elif item.tipo == 'grafico' and item.chave == 'saidas' %}
+                <div class="rg-chart-wrap" style="height: 420px;">
+                    <canvas id="chartSaidas"></canvas>
+                </div>
+                {% if item.titulo %}<div class="rg-chart-fonte">{{ item.titulo }}</div>{% endif %}
+
             {% elif item.tipo == 'grafico' %}
                 <div class="rg-reservado">
                     <i class="fas fa-chart-column"></i>
@@ -61,9 +67,18 @@
             {% endif %}
         {% endfor %}
     </div>
+    <div style="text-align:center; margin-top:1.4rem;">
+            <a href="{{ url_for('relatorio_gestao.resultado_financeiro') }}"
+               title="Ir para Resultado Financeiro"
+               style="color:#1e3a8a; font-size:1.9rem; text-decoration:none;">
+                <i class="fas fa-arrow-down"></i>
+            </a>
+        </div>
 </div>
 
 <script id="dadosIngressos" type="application/json">{{ grafico_ingressos | tojson }}</script>
+<script id="dadosSaidas" type="application/json">{{ grafico_saidas | tojson }}</script>
+
 <script>
 (function () {
     function fmtBR(v) {
@@ -135,19 +150,88 @@
         });
     }
 
+    function initGraficoSaidas() {
+        var el = document.getElementById('chartSaidas');
+        if (!el) return;
+
+        var dados;
+        try {
+            dados = JSON.parse(document.getElementById('dadosSaidas').textContent);
+        } catch (e) { dados = { labels: [], datasets: [] }; }
+
+        if (dados.erro || !dados.datasets || dados.datasets.length === 0) {
+            el.parentElement.innerHTML =
+                '<div class="rg-reservado"><i class="fas fa-chart-bar"></i>' +
+                (dados.erro ? 'Erro ao ler a view: ' + dados.erro
+                            : 'Sem dados na FIN_VW014 para o gráfico de Saídas.') +
+                '</div>';
+            return;
+        }
+
+        // Paleta (tons de vermelho/laranja) aplicada por série.
+        var cores = ['#b91c1c', '#f59e0b', '#0ea5e9', '#22c55e',
+                     '#8b5cf6', '#14b8a6', '#eab308', '#1e3a8a'];
+        dados.datasets.forEach(function (ds, i) {
+            var cor = cores[i % cores.length];
+            ds.backgroundColor = cor;
+            ds.borderColor = cor;
+            ds.borderWidth = 1;
+            ds.maxBarThickness = 36; // menos espessura vertical quando horizontal
+        });
+
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                indexAxis: 'y', // <-- torna as barras horizontais
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            // em gráfico horizontal os valores ficam em parsed.x
+                            label: function (context) {
+                                return context.dataset.label + ': ' + fmtBR(context.parsed.x);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    // eixo X agora é o numérico (valores)
+                    x: {
+                        beginAtZero: true,
+                        ticks: { callback: function (v) { return fmtBR(v); } }
+                    },
+                    // eixo Y é categórico (rótulos)
+                    y: {
+                        ticks: { autoSkip: false }
+                    }
+                }
+            }
+        });
+    }
+
+    function initGraficosSumario() {
+        initGraficoIngressos();
+        initGraficoSaidas();
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
         if (typeof Chart === 'undefined') {
             var s = document.createElement('script');
             s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
-            s.onload = initGraficoIngressos;
+            s.onload = initGraficosSumario;
             s.onerror = function () {
-                var el = document.getElementById('chartIngressos');
-                if (el) el.parentElement.innerHTML =
-                    '<div class="rg-reservado">Chart.js não pôde ser carregado.</div>';
+                ['chartIngressos', 'chartSaidas'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el) el.parentElement.innerHTML =
+                        '<div class="rg-reservado">Chart.js não pôde ser carregado.</div>';
+                });
             };
             document.head.appendChild(s);
         } else {
-            initGraficoIngressos();
+            initGraficosSumario();
         }
     });
 })();
