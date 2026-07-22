@@ -14,9 +14,11 @@ from sqlalchemy import or_, func, text
 import math
 import random
 import logging
+from app.utils.distribuir_contratos import obter_resultados_finais_distribuicao, contar_contratos_serasa
 
 limite_bp = Blueprint('limite', __name__, url_prefix='/credenciamento')
 
+COD_EMPRESA_SERASA = 223371
 
 @limite_bp.context_processor
 def inject_current_year():
@@ -114,7 +116,15 @@ def lista_limites():
 
 def selecionar_contratos():
     """
-    VERSÃO OTIMIZADA - Permite contratos com suspensão judicial
+    Base de contagem para o cálculo dos percentuais das ASSESSORIAS (pool DCA_TB006),
+    lendo da COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS.
+
+    O pool das assessorias recebe:
+      (a) TODO contrato JUDICIALIZADO (sempre assessoria, mesmo em CPF-Serasa);
+      (b) contratos ONDE='ASSESSORIA' de CPFs que NÃO são Serasa;
+      (c) CPFs com acordo vigente em empresa que PERMANECE (por inteiro).
+    Os CPFs marcados como SERASA NÃO entram aqui (são alocados à parte, empresa 223371),
+    logo o total retornado é a base sobre a qual as assessorias rateiam o percentual.
     """
     try:
         with db.engine.connect() as connection:
@@ -125,47 +135,38 @@ def selecionar_contratos():
 
                 insert_sql = text("""
                     -- ================================================================
-                    -- PREPARAÇÃO: Criar tabelas temporárias para otimização
+                    -- PREPARAÇÃO
                     -- ================================================================
-
-                    -- Último edital e período (calcula UMA VEZ)
                     DECLARE @UltimoEdital INT = (
-                        SELECT TOP 1 ID 
-                        FROM [BDG].[DCA_TB008_EDITAIS] 
-                        WHERE DELETED_AT IS NULL 
-                        ORDER BY ID DESC
+                        SELECT TOP 1 ID FROM [BDG].[DCA_TB008_EDITAIS]
+                        WHERE DELETED_AT IS NULL ORDER BY ID DESC
                     );
-
                     DECLARE @UltimoPeriodo INT = (
-                        SELECT TOP 1 ID_PERIODO 
-                        FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO] 
-                        WHERE DELETED_AT IS NULL 
-                        ORDER BY ID_PERIODO DESC
+                        SELECT TOP 1 ID_PERIODO FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO]
+                        WHERE DELETED_AT IS NULL ORDER BY ID_PERIODO DESC
                     );
 
                     PRINT 'Edital: ' + CAST(@UltimoEdital AS VARCHAR(10)) + ' | Período: ' + CAST(@UltimoPeriodo AS VARCHAR(10));
 
-                    -- CPFs que têm contrato no SERASA (para exclusão)
-                    IF OBJECT_ID('tempdb..#CPFsNoSerasa') IS NOT NULL
-                        DROP TABLE #CPFsNoSerasa;
-
+                    -- CPFs marcados como SERASA (base <= 1.000) - ficam FORA do pool
+                    IF OBJECT_ID('tempdb..#CPFsSerasa') IS NOT NULL DROP TABLE #CPFsSerasa;
                     SELECT DISTINCT NR_CPF_CNPJ
-                    INTO #CPFsNoSerasa
-                    FROM [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA]
+                    INTO #CPFsSerasa
+                    FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
                     WHERE ONDE = 'SERASA';
-
-                    CREATE INDEX IX_CPF ON #CPFsNoSerasa(NR_CPF_CNPJ);
+                    CREATE INDEX IX_CPF ON #CPFsSerasa(NR_CPF_CNPJ);
 
                     DECLARE @QtdeCPFsSerasa INT;
-                    SELECT @QtdeCPFsSerasa = COUNT(*) FROM #CPFsNoSerasa;
-                    PRINT 'CPFs no SERASA (para exclusão): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
+                    SELECT @QtdeCPFsSerasa = COUNT(*) FROM #CPFsSerasa;
+                    PRINT 'CPFs SERASA (fora do pool): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 1: Contratos ASSESSORIA (EXCLUINDO CPFs no SERASA)
-                    -- PERMITE contratos com suspensão judicial
+                    -- ETAPA 1: Pool das ASSESSORIAS
+                    --   (a) judicializados (sempre assessoria, inclusive em CPF-Serasa)
+                    --   (b) ONDE='ASSESSORIA' de CPFs que NÃO são Serasa
                     -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    SELECT 
+                    SELECT
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
                         SIT.VR_SD_DEVEDOR,
@@ -178,27 +179,25 @@ def selecionar_contratos():
                             ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
                         INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
                             ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
-                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
-                        LEFT JOIN #CPFsNoSerasa AS SERASA
-                            ON CON.NR_CPF_CNPJ = SERASA.NR_CPF_CNPJ
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS] AS T
+                            ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
+                        LEFT JOIN #CPFsSerasa AS SER
+                            ON CON.NR_CPF_CNPJ = SER.NR_CPF_CNPJ
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
-                        AND TEMP.ONDE = 'ASSESSORIA'
-                        AND TEMP.SIT_ESPECIAL IS NULL
-                        AND SERASA.NR_CPF_CNPJ IS NULL;
+                        AND T.SIT_ESPECIAL IS NULL
+                        AND (
+                              T.JUDICIALIZADOS IS NOT NULL
+                              OR (T.ONDE = 'ASSESSORIA' AND SER.NR_CPF_CNPJ IS NULL)
+                            );
 
                     DECLARE @QtdeEtapa1 INT = @@ROWCOUNT;
-                    PRINT 'ETAPA 1 - Contratos ASSESSORIA: ' + CAST(@QtdeEtapa1 AS VARCHAR(10));
+                    PRINT 'ETAPA 1 - Pool assessorias: ' + CAST(@QtdeEtapa1 AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 2: CPFs com acordo em empresas que PERMANECEM
-                    -- (dos contratos que NÃO passaram na TEMP)
-                    -- PERMITE contratos com suspensão judicial
+                    -- ETAPA 2: CPFs com acordo vigente em empresas que PERMANECEM
                     -- ================================================================
-                    IF OBJECT_ID('tempdb..#CPFsComAcordo') IS NOT NULL
-                        DROP TABLE #CPFsComAcordo;
-
+                    IF OBJECT_ID('tempdb..#CPFsComAcordo') IS NOT NULL DROP TABLE #CPFsComAcordo;
                     SELECT DISTINCT CON.NR_CPF_CNPJ
                     INTO #CPFsComAcordo
                     FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
@@ -213,27 +212,20 @@ def selecionar_contratos():
                             AND EMP.ID_EDITAL = @UltimoEdital
                             AND EMP.ID_PERIODO = @UltimoPeriodo
                             AND EMP.DS_CONDICAO = 'PERMANECE'
-                        LEFT JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
-                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
-                            AND TEMP.ONDE = 'ASSESSORIA'
-                            AND TEMP.SIT_ESPECIAL IS NULL
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
-                        AND ALV.fkEstadoAcordo = 1
-                        AND TEMP.fkContratoSISCTR IS NULL;
-
+                        AND ALV.fkEstadoAcordo = 1;
                     CREATE INDEX IX_CPF ON #CPFsComAcordo(NR_CPF_CNPJ);
 
                     DECLARE @QtdeCPFsComAcordo INT;
                     SELECT @QtdeCPFsComAcordo = COUNT(*) FROM #CPFsComAcordo;
-                    PRINT 'ETAPA 2 - CPFs com acordo: ' + CAST(@QtdeCPFsComAcordo AS VARCHAR(10));
+                    PRINT 'ETAPA 2 - CPFs com acordo permanece: ' + CAST(@QtdeCPFsComAcordo AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 3: Adicionar TODOS os contratos dos CPFs com acordo
-                    -- PERMITE contratos com suspensão judicial
+                    -- ETAPA 3: Adicionar TODOS os contratos dos CPFs com acordo permanece
                     -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    SELECT 
+                    SELECT
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
                         SIT.VR_SD_DEVEDOR,
@@ -255,10 +247,9 @@ def selecionar_contratos():
                         AND JA_INS.FkContratoSISCTR IS NULL;
 
                     DECLARE @QtdeEtapa3 INT = @@ROWCOUNT;
-                    PRINT 'ETAPA 3 - Contratos arrastados: ' + CAST(@QtdeEtapa3 AS VARCHAR(10));
+                    PRINT 'ETAPA 3 - Contratos de acordo arrastados: ' + CAST(@QtdeEtapa3 AS VARCHAR(10));
 
-                    -- Limpar tabelas temporárias
-                    DROP TABLE #CPFsNoSerasa;
+                    DROP TABLE #CPFsSerasa;
                     DROP TABLE #CPFsComAcordo;
                 """)
 
@@ -267,8 +258,7 @@ def selecionar_contratos():
 
                 count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
                 num_contratos = connection.execute(count_sql).scalar()
-
-                logging.info(f"Total: {num_contratos}")
+                logging.info(f"Total (pool assessorias): {num_contratos}")
                 return num_contratos
 
             except Exception as e:
@@ -276,7 +266,6 @@ def selecionar_contratos():
                 import traceback
                 logging.error(traceback.format_exc())
                 raise
-
     except Exception as e:
         logging.error(f"Erro: {str(e)}")
         return 0
@@ -1210,53 +1199,44 @@ def ajustar_percentuais_finais(empresas):
 @login_required
 def analise_limites():
     try:
-        # Obter o edital mais recente
         ultimo_edital = Edital.query.filter(Edital.DELETED_AT == None).order_by(Edital.ID.desc()).first()
-
         if not ultimo_edital:
             flash('Não foram encontrados editais cadastrados.', 'warning')
             return redirect(url_for('edital.lista_editais'))
 
-        # Obter o período mais recente
         ultimo_periodo = PeriodoAvaliacao.query.filter(
             PeriodoAvaliacao.DELETED_AT == None,
             PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID
         ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
-
         if not ultimo_periodo:
             flash('Não foram encontrados períodos para o edital mais recente.', 'warning')
             return redirect(url_for('periodo.lista_periodos'))
 
-        # Buscar empresas participantes do último período
         empresas = EmpresaParticipante.query.filter(
             EmpresaParticipante.ID_EDITAL == ultimo_edital.ID,
             EmpresaParticipante.ID_PERIODO == ultimo_periodo.ID_PERIODO,
+            EmpresaParticipante.ID_EMPRESA != 223371,
             EmpresaParticipante.DELETED_AT == None
         ).all()
-
         if not empresas:
             flash('Não foram encontradas empresas participantes para o período atual.', 'warning')
             return redirect(url_for('empresa.lista_empresas', periodo_id=ultimo_periodo.ID))
 
-        # Analisar condições das empresas
         todas_permanece = all(empresa.DS_CONDICAO == 'PERMANECE' for empresa in empresas)
         todas_novas = all(empresa.DS_CONDICAO == 'NOVA' for empresa in empresas)
         alguma_permanece = any(empresa.DS_CONDICAO == 'PERMANECE' for empresa in empresas)
 
-        # Obter período anterior para os cálculos
         periodo_anterior = None
-        if not todas_novas:  # Se todas são novas, não precisamos do período anterior
+        if not todas_novas:
             periodo_anterior = PeriodoAvaliacao.query.filter(
                 PeriodoAvaliacao.ID_EDITAL == ultimo_edital.ID,
                 PeriodoAvaliacao.ID_PERIODO < ultimo_periodo.ID_PERIODO,
                 PeriodoAvaliacao.DELETED_AT == None
             ).order_by(PeriodoAvaliacao.ID_PERIODO.desc()).first()
-
             if not periodo_anterior and not todas_novas:
                 flash('Não foi encontrado período anterior para realizar os cálculos.', 'warning')
                 return redirect(url_for('limite.lista_limites'))
 
-        # Realizar cálculos conforme a condição das empresas
         resultado_calculo = None
         num_contratos = selecionar_contratos()
 
@@ -1271,7 +1251,6 @@ def analise_limites():
             resultado_calculo = calcular_limites_empresas_novas(
                 ultimo_edital, ultimo_periodo, empresas)
         elif alguma_permanece:
-            # Empresas mistas (PERMANECE + NOVAS)
             if periodo_anterior:
                 resultado_calculo = calcular_limites_empresas_mistas(
                     ultimo_edital, ultimo_periodo, periodo_anterior, empresas)
@@ -1280,20 +1259,26 @@ def analise_limites():
                 return redirect(url_for('limite.lista_limites'))
 
         if not resultado_calculo:
-            # Se não for possível calcular, redirecionar com mensagem
             flash('Não foi possível realizar o cálculo dos limites. Verifique a configuração das empresas e períodos.',
                   'warning')
             return redirect(url_for('limite.lista_limites'))
 
-        # Verificar o tipo de resultado e preparar dados para o template
         if isinstance(resultado_calculo, dict):
             resultados_calculo = resultado_calculo.get('resultados', [])
             tipo_calculo = resultado_calculo.get('tipo_calculo', '')
-            metadados = resultado_calculo.get('metadados', {})
             num_contratos = resultado_calculo.get('num_contratos', 0)
-
-            # Pega a variável diretamente se ela não vier no metadados
             todas_empresas_anteriores = resultado_calculo.get('todas_empresas_anteriores', {})
+
+            # ================================================================
+            # SERASA (informativo): percentual sobre o TOTAL de contratos.
+            # num_contratos = pool das assessorias; total = pool + Serasa.
+            # A Serasa NÃO participa do rateio de 100% das assessorias.
+            # ================================================================
+            contratos_serasa = contar_contratos_serasa(ultimo_edital.ID, ultimo_periodo.ID_PERIODO)
+            total_geral_contratos = (num_contratos or 0) + contratos_serasa
+            pct_serasa = truncate_decimal(
+                (contratos_serasa / total_geral_contratos * 100) if total_geral_contratos > 0 else 0.0
+            )
 
             dados_template = {
                 'edital': ultimo_edital,
@@ -1306,10 +1291,14 @@ def analise_limites():
                 'resultados_calculo': resultados_calculo,
                 'num_contratos': num_contratos,
                 'tipo_calculo': tipo_calculo,
-                'todas_empresas_anteriores': todas_empresas_anteriores  # ✅ adiciona aqui
+                'todas_empresas_anteriores': todas_empresas_anteriores,
+                # Dados da SERASA para exibição (todos vindos do back-end)
+                'cod_empresa_serasa': 223371,
+                'contratos_serasa': contratos_serasa,
+                'total_geral_contratos': total_geral_contratos,
+                'pct_serasa': pct_serasa
             }
 
-            # Adiciona outras variáveis extras (mistas)
             if tipo_calculo == 'mistas':
                 for chave, valor in resultado_calculo.items():
                     if chave != 'resultados':
@@ -1384,6 +1373,8 @@ def salvar_limites():
         percentuais_validados = []
         for i in range(len(empresas_data)):
             if situacoes[i].upper() == 'DESCREDENCIADA':
+                continue
+            if int(empresas_data[i]) == 223371:  # SERASA não recebe limite
                 continue
 
             # Tratar o valor percentual diretamente como float (evitar conversões intermediárias)

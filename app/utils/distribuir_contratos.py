@@ -2,32 +2,42 @@ from app import db
 from sqlalchemy import text
 import logging
 
+COD_EMPRESA_SERASA = 223371
 
 def selecionar_contratos_distribuiveis():
     """
-    VERSÃO COM COMMIT EXPLÍCITO E LOGS DE DEBUG
+    Seleciona os contratos distribuíveis para o POOL DAS ASSESSORIAS (DCA_TB006),
+    lendo da nova tabela COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS.
+
+    Regras aplicadas nesta seleção:
+      - O pool das assessorias recebe:
+          (a) TODO contrato JUDICIALIZADO (JUDICIALIZADOS IS NOT NULL) -> sempre assessoria,
+              mesmo que o CPF seja da Serasa (o judicializado "quebra" o arrasto);
+          (b) contratos ONDE='ASSESSORIA' de CPFs que NÃO são da Serasa.
+      - Os CPFs marcados como SERASA (ONDE='SERASA') NÃO entram no pool (são tratados
+        na função distribuir_contratos_serasa), salvo seus contratos judicializados.
+      - CPFs com acordo vigente em empresa que PERMANECE são trazidos por inteiro
+        (etapas 2 e 3), pois o acordo prevalece sobre a Serasa.
     """
     try:
         with db.engine.connect() as connection:
-            # *** CRÍTICO: Iniciar transação explícita ***
             trans = connection.begin()
-
             try:
                 logging.info("Limpando tabelas...")
                 connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB006_DISTRIBUIVEIS]"))
                 connection.execute(text("TRUNCATE TABLE [BDG].[DCA_TB007_ARRASTAVEIS]"))
 
-                # *** VERIFICAR SE A TEMP TEM DADOS ***
-                verificar_temp = text("""
-                    SELECT COUNT(*) 
-                    FROM [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA]
-                    WHERE ONDE = 'ASSESSORIA' AND SIT_ESPECIAL IS NULL
+                # Verificar se a COM_TB082 tem dados
+                verificar_fonte = text("""
+                    SELECT COUNT(*)
+                    FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
+                    WHERE SIT_ESPECIAL IS NULL
                 """)
-                qtde_temp = connection.execute(verificar_temp).scalar()
-                logging.info(f"*** VERIFICAÇÃO TEMP: {qtde_temp} contratos ASSESSORIA disponíveis ***")
+                qtde_fonte = connection.execute(verificar_fonte).scalar()
+                logging.info(f"*** VERIFICAÇÃO COM_TB082: {qtde_fonte} contratos disponíveis ***")
 
-                if qtde_temp == 0:
-                    logging.error("ERRO: Tabela TEMP está VAZIA! Não há contratos para selecionar!")
+                if qtde_fonte == 0:
+                    logging.error("ERRO: COM_TB082 está VAZIA! Não há contratos para selecionar!")
                     trans.rollback()
                     return 0
 
@@ -36,42 +46,36 @@ def selecionar_contratos_distribuiveis():
                     -- PREPARAÇÃO
                     -- ================================================================
                     DECLARE @UltimoEdital INT = (
-                        SELECT TOP 1 ID 
-                        FROM [BDG].[DCA_TB008_EDITAIS] 
-                        WHERE DELETED_AT IS NULL 
-                        ORDER BY ID DESC
+                        SELECT TOP 1 ID FROM [BDG].[DCA_TB008_EDITAIS]
+                        WHERE DELETED_AT IS NULL ORDER BY ID DESC
                     );
-
                     DECLARE @UltimoPeriodo INT = (
-                        SELECT TOP 1 ID_PERIODO 
-                        FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO] 
-                        WHERE DELETED_AT IS NULL 
-                        ORDER BY ID_PERIODO DESC
+                        SELECT TOP 1 ID_PERIODO FROM [BDG].[DCA_TB001_PERIODO_AVALIACAO]
+                        WHERE DELETED_AT IS NULL ORDER BY ID_PERIODO DESC
                     );
 
                     PRINT '========================================';
                     PRINT 'Edital: ' + CAST(@UltimoEdital AS VARCHAR(10)) + ' | Período: ' + CAST(@UltimoPeriodo AS VARCHAR(10));
 
-                    -- CPFs que têm contrato no SERASA
-                    IF OBJECT_ID('tempdb..#CPFsNoSerasa') IS NOT NULL
-                        DROP TABLE #CPFsNoSerasa;
-
+                    -- CPFs marcados como SERASA (base <= 1.000)
+                    IF OBJECT_ID('tempdb..#CPFsSerasa') IS NOT NULL DROP TABLE #CPFsSerasa;
                     SELECT DISTINCT NR_CPF_CNPJ
-                    INTO #CPFsNoSerasa
-                    FROM [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA]
+                    INTO #CPFsSerasa
+                    FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
                     WHERE ONDE = 'SERASA';
-
-                    CREATE INDEX IX_CPF ON #CPFsNoSerasa(NR_CPF_CNPJ);
+                    CREATE INDEX IX_CPF ON #CPFsSerasa(NR_CPF_CNPJ);
 
                     DECLARE @QtdeCPFsSerasa INT;
-                    SELECT @QtdeCPFsSerasa = COUNT(*) FROM #CPFsNoSerasa;
-                    PRINT 'CPFs no SERASA (para exclusão): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
+                    SELECT @QtdeCPFsSerasa = COUNT(*) FROM #CPFsSerasa;
+                    PRINT 'CPFs SERASA (tratados à parte): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 1: Contratos ASSESSORIA (EXCLUINDO CPFs no SERASA)
+                    -- ETAPA 1: Pool das ASSESSORIAS
+                    --   (a) judicializados (sempre assessoria, inclusive em CPF-Serasa)
+                    --   (b) ONDE='ASSESSORIA' de CPFs que NÃO são Serasa
                     -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    SELECT 
+                    SELECT
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
                         SIT.VR_SD_DEVEDOR,
@@ -84,25 +88,26 @@ def selecionar_contratos_distribuiveis():
                             ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
                         INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
                             ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
-                        INNER JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
-                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
-                        LEFT JOIN #CPFsNoSerasa AS SERASA
-                            ON CON.NR_CPF_CNPJ = SERASA.NR_CPF_CNPJ
+                        INNER JOIN [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS] AS T
+                            ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
+                        LEFT JOIN #CPFsSerasa AS SER
+                            ON CON.NR_CPF_CNPJ = SER.NR_CPF_CNPJ
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
-                        AND TEMP.ONDE = 'ASSESSORIA'
-                        AND TEMP.SIT_ESPECIAL IS NULL
-                        AND SERASA.NR_CPF_CNPJ IS NULL;
+                        AND T.SIT_ESPECIAL IS NULL
+                        AND (
+                              T.JUDICIALIZADOS IS NOT NULL
+                              OR (T.ONDE = 'ASSESSORIA' AND SER.NR_CPF_CNPJ IS NULL)
+                            );
 
                     DECLARE @QtdeEtapa1 INT = @@ROWCOUNT;
-                    PRINT 'ETAPA 1 - Contratos ASSESSORIA: ' + CAST(@QtdeEtapa1 AS VARCHAR(10));
+                    PRINT 'ETAPA 1 - Pool assessorias: ' + CAST(@QtdeEtapa1 AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 2: CPFs com acordo em empresas PERMANECE
+                    -- ETAPA 2: CPFs com acordo vigente em empresas que PERMANECEM
+                    -- (o acordo prevalece; trazemos o CPF inteiro para as assessorias)
                     -- ================================================================
-                    IF OBJECT_ID('tempdb..#CPFsComAcordo') IS NOT NULL
-                        DROP TABLE #CPFsComAcordo;
-
+                    IF OBJECT_ID('tempdb..#CPFsComAcordo') IS NOT NULL DROP TABLE #CPFsComAcordo;
                     SELECT DISTINCT CON.NR_CPF_CNPJ
                     INTO #CPFsComAcordo
                     FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] AS ECA
@@ -117,26 +122,21 @@ def selecionar_contratos_distribuiveis():
                             AND EMP.ID_EDITAL = @UltimoEdital
                             AND EMP.ID_PERIODO = @UltimoPeriodo
                             AND EMP.DS_CONDICAO = 'PERMANECE'
-                        LEFT JOIN [BDDASHBOARDBI].[BDG].[TEMP_DISTRIBUICAO_SERASA_ASSESSORIA] AS TEMP
-                            ON ECA.fkContratoSISCTR = TEMP.fkContratoSISCTR
-                            AND TEMP.ONDE = 'ASSESSORIA'
-                            AND TEMP.SIT_ESPECIAL IS NULL
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
-                        AND ALV.fkEstadoAcordo = 1
-                        AND TEMP.fkContratoSISCTR IS NULL;
-
+                        AND ALV.fkEstadoAcordo = 1;
                     CREATE INDEX IX_CPF ON #CPFsComAcordo(NR_CPF_CNPJ);
 
                     DECLARE @QtdeCPFsComAcordo INT;
                     SELECT @QtdeCPFsComAcordo = COUNT(*) FROM #CPFsComAcordo;
-                    PRINT 'ETAPA 2 - CPFs com acordo: ' + CAST(@QtdeCPFsComAcordo AS VARCHAR(10));
+                    PRINT 'ETAPA 2 - CPFs com acordo permanece: ' + CAST(@QtdeCPFsComAcordo AS VARCHAR(10));
 
                     -- ================================================================
-                    -- ETAPA 3: Adicionar contratos dos CPFs com acordo
+                    -- ETAPA 3: Adicionar TODOS os contratos dos CPFs com acordo permanece
+                    -- (que ainda não estejam no pool)
                     -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
-                    SELECT 
+                    SELECT
                         ECA.fkContratoSISCTR,
                         CON.NR_CPF_CNPJ,
                         SIT.VR_SD_DEVEDOR,
@@ -158,24 +158,21 @@ def selecionar_contratos_distribuiveis():
                         AND JA_INS.FkContratoSISCTR IS NULL;
 
                     DECLARE @QtdeEtapa3 INT = @@ROWCOUNT;
-                    PRINT 'ETAPA 3 - Contratos arrastados: ' + CAST(@QtdeEtapa3 AS VARCHAR(10));
-                    PRINT 'TOTAL: ' + CAST(@QtdeEtapa1 + @QtdeEtapa3 AS VARCHAR(10));
+                    PRINT 'ETAPA 3 - Contratos de acordo arrastados: ' + CAST(@QtdeEtapa3 AS VARCHAR(10));
+                    PRINT 'TOTAL POOL ASSESSORIAS: ' + CAST(@QtdeEtapa1 + @QtdeEtapa3 AS VARCHAR(10));
                     PRINT '========================================';
 
-                    DROP TABLE #CPFsNoSerasa;
+                    DROP TABLE #CPFsSerasa;
                     DROP TABLE #CPFsComAcordo;
                 """)
 
                 connection.execute(insert_sql)
-
-                # *** COMMIT EXPLÍCITO ***
                 trans.commit()
                 logging.info("*** TRANSAÇÃO COMMITADA COM SUCESSO ***")
 
                 count_sql = text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
                 num_contratos = connection.execute(count_sql).scalar()
-
-                logging.info(f"Total final: {num_contratos}")
+                logging.info(f"Total final (pool assessorias): {num_contratos}")
                 return num_contratos
 
             except Exception as e:
@@ -184,7 +181,6 @@ def selecionar_contratos_distribuiveis():
                 import traceback
                 logging.error(traceback.format_exc())
                 raise
-
     except Exception as e:
         logging.error(f"Erro fatal: {str(e)}")
         return 0
@@ -629,6 +625,7 @@ def aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id):
                 WHERE EP.ID_EDITAL = :edital_id
                 AND EP.ID_PERIODO = :periodo_id
                 AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
+                AND EP.ID_EMPRESA <> 223371
                 AND LD.PERCENTUAL_FINAL > 0;
 
                 IF NOT EXISTS (SELECT 1 FROM #EmpresasInfo) BEGIN
@@ -739,6 +736,7 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                  WHERE EP.ID_EDITAL = :edital_id
                    AND EP.ID_PERIODO = :periodo_id
                    AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
+                   AND EP.ID_EMPRESA <> 223371
                    AND (LD.PERCENTUAL_FINAL > 0 OR LD.PERCENTUAL_FINAL IS NULL)
                  """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
@@ -805,7 +803,8 @@ def distribuir_demais_contratos(edital_id, periodo_id):
                 AND EP.ID_PERIODO = LD.ID_PERIODO
             WHERE EP.ID_EDITAL = :edital_id
             AND EP.ID_PERIODO = :periodo_id
-            AND EP.DS_CONDICAO <> 'DESCREDENCIADA';
+            AND EP.DS_CONDICAO <> 'DESCREDENCIADA'
+            AND EP.ID_EMPRESA <> 223371;
 
             -- ETAPA 3: Normalizar percentuais
             DECLARE @total_percentual DECIMAL(10,6);
@@ -1005,15 +1004,17 @@ def distribuir_demais_contratos(edital_id, periodo_id):
 def atualizar_limites_distribuicao(edital_id, periodo_id):
     """
     Atualiza a tabela de limites de distribuição preenchendo:
-    - VR_ARRECADACAO: valor arrecadado por cada empresa
-    - QTDE_MAXIMA: quantidade máxima de contratos por empresa
-    - VALOR_MAXIMO: valor máximo distribuído por empresa
-    - PERCENTUAL_FINAL: percentual final mantido como cadastrado originalmente
+    - VR_ARRECADACAO, QTDE_MAXIMA, VALOR_MAXIMO
+    - PERCENTUAL_FINAL é mantido como cadastrado originalmente
+
+    A SERASA (223371) é excluída na consulta de ESTATÍSTICAS (DCA_TB005), pois não
+    participa do rateio e não deve gerar linha de limite.
+    ATENÇÃO: em DCA_TB003 a coluna de empresa é ID_EMPRESA (não COD_EMPRESA_COBRANCA).
     """
     try:
         print(f"Atualizando tabela de limites de distribuição - Edital: {edital_id}, Período: {periodo_id}")
 
-        # 1. Obter estatísticas de distribuição por empresa
+        # 1. Estatísticas por empresa (DCA_TB005) - AQUI a coluna é COD_EMPRESA_COBRANCA
         estatisticas = db.session.execute(
             text("""
                  SELECT COD_EMPRESA_COBRANCA,
@@ -1022,15 +1023,15 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                  FROM [BDG].[DCA_TB005_DISTRIBUICAO]
                  WHERE ID_EDITAL = :edital_id
                    AND ID_PERIODO = :periodo_id
+                   AND COD_EMPRESA_COBRANCA <> 223371
                    AND DELETED_AT IS NULL
                  GROUP BY COD_EMPRESA_COBRANCA
                  """),
             {"edital_id": edital_id, "periodo_id": periodo_id}
         ).fetchall()
 
-        # 2. Para cada empresa, atualizar informações nos limites EXCETO percentual
         for empresa_id, qtde, valor_total in estatisticas:
-            # Verificar se o limite já existe para esta empresa
+            # 2. Verificar limite existente (DCA_TB003) - AQUI a coluna é ID_EMPRESA
             limite_existente = db.session.execute(
                 text("""
                      SELECT ID, PERCENTUAL_FINAL
@@ -1044,23 +1045,15 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
             ).fetchone()
 
             if not limite_existente:
-                # Se não existe, inserir novo registro com percentual padrão
                 db.session.execute(
                     text("""
                          INSERT INTO [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                         (ID_EDITAL,
-                          ID_PERIODO,
-                          ID_EMPRESA,
-                          COD_CRITERIO_SELECAO,
-                          QTDE_MAXIMA,
-                          VALOR_MAXIMO,
-                          PERCENTUAL_FINAL,
-                          VR_ARRECADACAO,
-                          DT_APURACAO,
-                          CREATED_AT)
+                         (ID_EDITAL, ID_PERIODO, ID_EMPRESA, COD_CRITERIO_SELECAO,
+                          QTDE_MAXIMA, VALOR_MAXIMO, PERCENTUAL_FINAL,
+                          VR_ARRECADACAO, DT_APURACAO, CREATED_AT)
                          VALUES (
-                             :edital_id, :periodo_id, :empresa_id, 4, -- Código padrão
-                             :qtde, :valor_total, 0,                  -- Percentual provisório
+                             :edital_id, :periodo_id, :empresa_id, 4,
+                             :qtde, :valor_total, 0,
                              :valor_total, GETDATE(), GETDATE()
                              )
                          """),
@@ -1073,13 +1066,14 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
                     }
                 )
             else:
-                # Se existe, atualizar apenas quantidade e valor, mantendo percentual
                 db.session.execute(
                     text("""
                          UPDATE [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
-                         SET
-                             VR_ARRECADACAO = :valor_total, QTDE_MAXIMA = :qtde, VALOR_MAXIMO = :valor_total, UPDATED_AT = GETDATE(), DT_APURACAO = GETDATE()
-                         -- PERCENTUAL_FINAL não é alterado
+                         SET VR_ARRECADACAO = :valor_total,
+                             QTDE_MAXIMA    = :qtde,
+                             VALOR_MAXIMO   = :valor_total,
+                             UPDATED_AT     = GETDATE(),
+                             DT_APURACAO    = GETDATE()
                          WHERE ID_EDITAL = :edital_id
                            AND ID_PERIODO = :periodo_id
                            AND ID_EMPRESA = :empresa_id
@@ -1096,14 +1090,9 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
         db.session.commit()
         print("Atualização dos limites de distribuição concluída com sucesso")
 
-        # Exibir resumo dos limites atualizados
         limites = db.session.execute(
             text("""
-                 SELECT ID_EMPRESA,
-                        VR_ARRECADACAO,
-                        QTDE_MAXIMA,
-                        VALOR_MAXIMO,
-                        PERCENTUAL_FINAL
+                 SELECT ID_EMPRESA, VR_ARRECADACAO, QTDE_MAXIMA, VALOR_MAXIMO, PERCENTUAL_FINAL
                  FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
                  WHERE ID_EDITAL = :edital_id
                    AND ID_PERIODO = :periodo_id
@@ -1119,19 +1108,15 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
 
         total_contratos = 0
         total_percentual = 0
-
         for limite in limites:
             empresa_id = limite[0]
             arrecadacao = limite[1] or 0
             qtd_max = limite[2] or 0
             valor_max = limite[3] or 0
             percentual = limite[4] or 0
-
             total_contratos += qtd_max
             total_percentual += percentual
-
-            print(
-                f"{empresa_id} | R$ {float(arrecadacao):.2f} | {qtd_max} | R$ {float(valor_max):.2f} | {percentual:.2f}%")
+            print(f"{empresa_id} | R$ {float(arrecadacao):.2f} | {qtd_max} | R$ {float(valor_max):.2f} | {percentual:.2f}%")
 
         print("--------------------------------------------------------------")
         print(f"TOTAL | - | {total_contratos} | - | {total_percentual:.2f}%")
@@ -1146,42 +1131,41 @@ def atualizar_limites_distribuicao(edital_id, periodo_id):
 def obter_resultados_finais_distribuicao(edital_id, periodo_id):
     """
     Obtém os resultados finais da distribuição com totais e percentuais.
-
-    Args:
-        edital_id: ID do edital
-        periodo_id: ID do período
-
-    Returns:
-        dict: Contendo a lista de resultados e totais
+    O nome da empresa é resolvido por COALESCE: DCA_TB002 -> PAR_TB002 -> código,
+    para que a SERASA (223371), que não está na DCA_TB002, também apareça no resumo.
     """
     try:
         print(f"Obtendo resultados finais da distribuição - Edital: {edital_id}, Período: {periodo_id}")
 
-        # Executar consulta SQL para obter resultados da distribuição
         query = text("""
-                     SELECT DIS.[COD_EMPRESA_COBRANCA],
-                            EMP.NO_EMPRESA_ABREVIADA,
-                            COUNT(*)                 AS QTDE,
-                            SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
+                     SELECT
+                        DIS.[COD_EMPRESA_COBRANCA],
+                        COALESCE(
+                            MAX(EMP.NO_EMPRESA_ABREVIADA),
+                            MAX(PAR.NO_ABREVIADO_EMPRESA),
+                            CAST(DIS.[COD_EMPRESA_COBRANCA] AS VARCHAR(20))
+                        ) AS NO_EMPRESA_ABREVIADA,
+                        COUNT(*)                 AS QTDE,
+                        SUM(DIS.[VR_SD_DEVEDOR]) AS SALDO
                      FROM [BDG].[DCA_TB005_DISTRIBUICAO] AS DIS
-                         INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
-                     ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA
-                         AND EMP.ID_EDITAL = :edital_id
-                         AND EMP.ID_PERIODO = :periodo_id
+                         LEFT JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] AS EMP
+                            ON DIS.[COD_EMPRESA_COBRANCA] = EMP.ID_EMPRESA
+                            AND EMP.ID_EDITAL = :edital_id
+                            AND EMP.ID_PERIODO = :periodo_id
+                         LEFT JOIN [BDG].[PAR_TB002_EMPRESA_RESPONSAVEL_COBRANCA] AS PAR
+                            ON DIS.[COD_EMPRESA_COBRANCA] = PAR.pkEmpresaResponsavelCobranca
                      WHERE DIS.ID_EDITAL = :edital_id
                        AND DIS.ID_PERIODO = :periodo_id
                        AND DIS.DELETED_AT IS NULL
-                     GROUP BY [COD_EMPRESA_COBRANCA], EMP.NO_EMPRESA_ABREVIADA
-                     ORDER BY EMP.NO_EMPRESA_ABREVIADA
+                     GROUP BY DIS.[COD_EMPRESA_COBRANCA]
+                     ORDER BY NO_EMPRESA_ABREVIADA
                      """)
 
         resultados = db.session.execute(query, {"edital_id": edital_id, "periodo_id": periodo_id}).fetchall()
 
-        # Calcular totais
         total_qtde = 0
         total_saldo = 0
 
-        # Converter para lista de dicionários e calcular totais
         lista_resultados = []
         for resultado in resultados:
             cod_empresa = resultado[0]
@@ -1199,7 +1183,6 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
                 'saldo': saldo
             })
 
-        # Adicionar percentuais
         for resultado in lista_resultados:
             resultado['pct_qtde'] = (resultado['qtde'] / total_qtde * 100) if total_qtde > 0 else 0
             resultado['pct_saldo'] = (resultado['saldo'] / total_saldo * 100) if total_saldo > 0 else 0
@@ -1215,6 +1198,73 @@ def obter_resultados_finais_distribuicao(edital_id, periodo_id):
         import traceback
         print(traceback.format_exc())
         return {'resultados': [], 'total_qtde': 0, 'total_saldo': 0}
+
+
+def contar_contratos_serasa(edital_id, periodo_id):
+    """
+    Conta quantos contratos IRÃO para a SERASA (223371), aplicando a mesma regra de
+    elegibilidade da distribuir_contratos_serasa, mas SEM depender da DCA_TB005 (serve
+    para a tela de análise de limite, antes de a distribuição rodar):
+      - CPFs marcados como SERASA (ONDE='SERASA');
+      - contratos NÃO judicializados;
+      - excluindo CPFs com acordo vigente em empresa que PERMANECE.
+    Retorna o total de contratos (o arrasto do ACIMA_1000 já entra por ser filtro por CPF).
+    """
+    try:
+        sql = text("""
+            SET NOCOUNT ON;
+
+            IF OBJECT_ID('tempdb..#CPFsSerasa') IS NOT NULL DROP TABLE #CPFsSerasa;
+            SELECT DISTINCT NR_CPF_CNPJ
+            INTO #CPFsSerasa
+            FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
+            WHERE ONDE = 'SERASA';
+            CREATE INDEX IX_CPF ON #CPFsSerasa(NR_CPF_CNPJ);
+
+            IF OBJECT_ID('tempdb..#CPFsAcordoPermanece') IS NOT NULL DROP TABLE #CPFsAcordoPermanece;
+            SELECT DISTINCT CON.NR_CPF_CNPJ
+            INTO #CPFsAcordoPermanece
+            FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+            INNER JOIN [BDG].[COM_TB001_CONTRATO] CON
+                ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
+                ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
+                ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+                AND EMP.ID_EDITAL = :edital_id
+                AND EMP.ID_PERIODO = :periodo_id
+                AND EMP.DS_CONDICAO = 'PERMANECE'
+            WHERE ALV.fkEstadoAcordo = 1;
+            CREATE INDEX IX_CPF2 ON #CPFsAcordoPermanece(NR_CPF_CNPJ);
+
+            SELECT COUNT(*) AS QTDE
+            FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+            INNER JOIN [BDG].[COM_TB001_CONTRATO] CON
+                ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+            INNER JOIN [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS] T
+                ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
+            INNER JOIN #CPFsSerasa S
+                ON CON.NR_CPF_CNPJ = S.NR_CPF_CNPJ
+            LEFT JOIN #CPFsAcordoPermanece AP
+                ON CON.NR_CPF_CNPJ = AP.NR_CPF_CNPJ
+            WHERE
+                SIT.[fkSituacaoCredito] = 1
+                AND T.SIT_ESPECIAL IS NULL
+                AND T.JUDICIALIZADOS IS NULL
+                AND AP.NR_CPF_CNPJ IS NULL;
+
+            DROP TABLE #CPFsSerasa;
+            DROP TABLE #CPFsAcordoPermanece;
+        """)
+        qtde = db.session.execute(sql, {"edital_id": edital_id, "periodo_id": periodo_id}).scalar()
+        return int(qtde or 0)
+    except Exception as e:
+        print(f"Erro ao contar contratos SERASA: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return 0
 
 
 def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, periodo_id, empresa_descredenciada_id,
@@ -1355,62 +1405,404 @@ def distribuir_contratos_descredenciada_igualitariamente_especifica(edital_id, p
 def processar_distribuicao_completa(edital_id, periodo_id, usar_distribuicao_igualitaria=False,
                                     empresa_descredenciada_id=None, data_fim_periodo_anterior=None):
     """
-    Executa todo o processo de distribuição em ordem.
-    Implementa a lógica de substituição completa para a distribuição de descredenciadas.
+    Executa todo o processo de distribuição em ordem, com DIAGNÓSTICO e RASTREAMENTO DE ERROS.
+    Cada etapa é isolada: se falhar, o erro real é impresso no console e registrado em
+    resultados['erros'], em vez de ser engolido silenciosamente.
+    A SERASA (223371) é alocada por regra fixa e NÃO participa do rateio das assessorias.
     """
+    import time
+
     resultados = {
         'contratos_distribuiveis': 0,
         'acordos_empresas_permanece': 0,
+        'contratos_serasa': 0,
         'acordos_empresas_descredenciadas': 0,
         'regra_arrasto_acordos': 0,
         'regra_arrasto_sem_acordo': 0,
         'demais_contratos': 0,
         'total_distribuido': 0,
+        'contratos_restantes': 0,
+        'erros': [],
         'usou_distribuicao_igualitaria': usar_distribuicao_igualitaria
     }
 
+    def _etapa(nome, funcao, *args, **kwargs):
+        """Executa uma etapa isolada, medindo tempo e capturando o erro real."""
+        print(f"\n>>> INICIANDO ETAPA: {nome}")
+        inicio = time.time()
+        try:
+            retorno = funcao(*args, **kwargs)
+            decorrido = time.time() - inicio
+            print(f"<<< ETAPA '{nome}' OK: {retorno} em {decorrido:.2f}s")
+            return retorno
+        except Exception as e:
+            decorrido = time.time() - inicio
+            msg = f"ETAPA '{nome}' FALHOU após {decorrido:.2f}s: {e}"
+            print(f"!!! {msg}")
+            import traceback
+            traceback.print_exc()
+            resultados['erros'].append(msg)
+            return 0
+
     try:
-        resultados['contratos_distribuiveis'] = selecionar_contratos_distribuiveis()
+        # ============================================================
+        # DIAGNÓSTICO PRÉVIO - mostra no console tudo que pode faltar
+        # ============================================================
+        problemas = diagnosticar_distribuicao(edital_id, periodo_id)
+        if problemas:
+            resultados['erros'].extend(problemas)
+
+        # ============================================================
+        # SELEÇÃO
+        # ============================================================
+        resultados['contratos_distribuiveis'] = _etapa(
+            'Seleção de distribuíveis', selecionar_contratos_distribuiveis)
+
         if resultados['contratos_distribuiveis'] == 0:
-            print("Nenhum contrato distribuível encontrado. Processo encerrado.")
+            msg = "Nenhum contrato distribuível encontrado. Processo encerrado."
+            print(f"!!! {msg}")
+            resultados['erros'].append(msg)
             return resultados
 
-        resultados['acordos_empresas_permanece'] = distribuir_acordos_vigentes_empresas_permanece(edital_id, periodo_id)
+        # ============================================================
+        # 1) Acordos - empresas que PERMANECEM (limpa a DCA_TB005)
+        # ============================================================
+        resultados['acordos_empresas_permanece'] = _etapa(
+            'Acordos empresas PERMANECE', distribuir_acordos_vigentes_empresas_permanece,
+            edital_id, periodo_id)
 
+        # ============================================================
+        # 2) SERASA (223371) - regra fixa, fora do rateio
+        # ============================================================
+        resultados['contratos_serasa'] = _etapa(
+            'SERASA (223371)', distribuir_contratos_serasa, edital_id, periodo_id)
+
+        # ============================================================
+        # 3) Empresas DESCREDENCIADAS
+        # ============================================================
         if usar_distribuicao_igualitaria and empresa_descredenciada_id and data_fim_periodo_anterior:
-            print(f"MODO ESPECIAL ATIVADO: Substituindo a distribuição de descredenciadas pela regra igualitária.")
-            resultado_igualitaria = distribuir_contratos_descredenciada_igualitariamente_especifica(
-                edital_id, periodo_id, empresa_descredenciada_id, data_fim_periodo_anterior
-            )
-            if resultado_igualitaria['success']:
-                resultados['acordos_empresas_descredenciadas'] = resultado_igualitaria['contratos_distribuidos']
+            print("MODO ESPECIAL: distribuição igualitária para descredenciada.")
+            resultado_igualitaria = _etapa(
+                'Descredenciada igualitária',
+                distribuir_contratos_descredenciada_igualitariamente_especifica,
+                edital_id, periodo_id, empresa_descredenciada_id, data_fim_periodo_anterior)
+            if isinstance(resultado_igualitaria, dict) and resultado_igualitaria.get('success'):
+                resultados['acordos_empresas_descredenciadas'] = resultado_igualitaria.get(
+                    'contratos_distribuidos', 0)
+            elif isinstance(resultado_igualitaria, dict):
+                resultados['erros'].append(
+                    f"Distribuição igualitária falhou: {resultado_igualitaria.get('message')}")
         else:
-            print("MODO PADRÃO ATIVADO: Executando a distribuição normal para empresas descredenciadas.")
-            resultados['acordos_empresas_descredenciadas'] = distribuir_acordos_vigentes_empresas_descredenciadas(
-                edital_id, periodo_id
-            )
+            print("MODO PADRÃO: distribuição normal para descredenciadas.")
+            resultados['acordos_empresas_descredenciadas'] = _etapa(
+                'Acordos descredenciadas', distribuir_acordos_vigentes_empresas_descredenciadas,
+                edital_id, periodo_id)
 
-        resultados['regra_arrasto_acordos'] = aplicar_regra_arrasto_acordos(edital_id, periodo_id)
-        resultados['regra_arrasto_sem_acordo'] = aplicar_regra_arrasto_sem_acordo(edital_id, periodo_id)
-        resultados['demais_contratos'] = distribuir_demais_contratos(edital_id, periodo_id)
+        # ============================================================
+        # 4) Arrasto e demais (somente pool das assessorias)
+        # ============================================================
+        resultados['regra_arrasto_acordos'] = _etapa(
+            'Arrasto COM acordo', aplicar_regra_arrasto_acordos, edital_id, periodo_id)
 
+        resultados['regra_arrasto_sem_acordo'] = _etapa(
+            'Arrasto SEM acordo', aplicar_regra_arrasto_sem_acordo, edital_id, periodo_id)
+
+        resultados['demais_contratos'] = _etapa(
+            'Demais contratos', distribuir_demais_contratos, edital_id, periodo_id)
+
+        # ============================================================
+        # TOTAIS
+        # ============================================================
         resultados['total_distribuido'] = (
                 resultados['acordos_empresas_permanece'] +
+                resultados['contratos_serasa'] +
                 resultados['acordos_empresas_descredenciadas'] +
                 resultados['regra_arrasto_acordos'] +
                 resultados['regra_arrasto_sem_acordo'] +
                 resultados['demais_contratos']
         )
 
-        contratos_restantes = db.session.execute(text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")).scalar()
-        resultados['contratos_restantes'] = contratos_restantes
-        atualizar_limites_distribuicao(edital_id, periodo_id)
-        resultados['resultados_finais'] = obter_resultados_finais_distribuicao(edital_id, periodo_id)
+        try:
+            resultados['contratos_restantes'] = db.session.execute(
+                text("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")).scalar()
+        except Exception as e:
+            print(f"!!! Erro ao contar restantes: {e}")
+
+        _etapa('Atualizar limites', atualizar_limites_distribuicao, edital_id, periodo_id)
+        resultados['resultados_finais'] = _etapa(
+            'Resultados finais', obter_resultados_finais_distribuicao, edital_id, periodo_id)
+
+        # ============================================================
+        # RESUMO NO CONSOLE
+        # ============================================================
+        print("\n" + "=" * 70)
+        print("RESUMO DA DISTRIBUIÇÃO")
+        print("=" * 70)
+        print(f"  Distribuíveis (pool assessorias)..: {resultados['contratos_distribuiveis']}")
+        print(f"  Acordos PERMANECE.................: {resultados['acordos_empresas_permanece']}")
+        print(f"  SERASA (223371)...................: {resultados['contratos_serasa']}")
+        print(f"  Acordos DESCREDENCIADAS...........: {resultados['acordos_empresas_descredenciadas']}")
+        print(f"  Arrasto COM acordo................: {resultados['regra_arrasto_acordos']}")
+        print(f"  Arrasto SEM acordo................: {resultados['regra_arrasto_sem_acordo']}")
+        print(f"  Demais contratos..................: {resultados['demais_contratos']}")
+        print(f"  TOTAL DISTRIBUÍDO.................: {resultados['total_distribuido']}")
+        print(f"  Restantes na fila.................: {resultados['contratos_restantes']}")
+        if resultados['erros']:
+            print(f"\n  ERROS/ALERTAS ({len(resultados['erros'])}):")
+            for i, err in enumerate(resultados['erros'], 1):
+                print(f"    {i}. {err}")
+        print("=" * 70 + "\n")
 
         return resultados
 
     except Exception as e:
-        logging.error(f"Erro CRÍTICO no processo de distribuição completa: {str(e)}")
+        msg = f"Erro CRÍTICO no processo de distribuição completa: {e}"
+        print(f"!!! {msg}")
         import traceback
-        logging.error(traceback.format_exc())
+        traceback.print_exc()
+        resultados['erros'].append(msg)
         return resultados
+
+def distribuir_contratos_serasa(edital_id, periodo_id):
+    """
+    Aloca para a SERASA (empresa 223371) os contratos dos CPFs marcados como SERASA
+    (ONDE='SERASA', base <= 1.000 na COM_TB082), aplicando:
+      - ARRASTO: todos os contratos NÃO judicializados do mesmo CPF vão para a SERASA
+        (inclusive os ACIMA_1000), porque o filtro é por CPF.
+      - EXCEÇÃO JUDICIALIZADO: contratos com JUDICIALIZADOS preenchido NÃO vão para a SERASA
+        (ficam para as assessorias, via pool normal).
+      - PRIORIDADE DO ACORDO: CPF com acordo vigente em empresa que PERMANECE não vai para a
+        SERASA (o acordo prevalece; o CPF é tratado no fluxo de acordos das assessorias).
+
+    A SERASA NÃO participa do rateio por percentual das assessorias: estes contratos são
+    inseridos direto na DCA_TB005 e nunca entram na DCA_TB006.
+
+    Deve ser chamada DEPOIS de distribuir_acordos_vigentes_empresas_permanece(), pois essa
+    função limpa a DCA_TB005 do edital/período no início.
+    """
+    COD_EMPRESA_SERASA = 223371
+    COD_CRITERIO_SERASA = 13  # Cadastrar "Contrato Serasa" em DCA_TB004_CRITERIO_SELECAO
+
+    contratos_serasa = 0
+    try:
+        print(f"Iniciando distribuição SERASA (223371) - Edital: {edital_id}, Período: {periodo_id}")
+
+        sql_script = text("""
+            SET NOCOUNT ON;
+
+            -- CPFs base SERASA (<= 1.000)
+            IF OBJECT_ID('tempdb..#CPFsSerasa') IS NOT NULL DROP TABLE #CPFsSerasa;
+            SELECT DISTINCT NR_CPF_CNPJ
+            INTO #CPFsSerasa
+            FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
+            WHERE ONDE = 'SERASA';
+            CREATE INDEX IX_CPF ON #CPFsSerasa(NR_CPF_CNPJ);
+
+            -- CPFs com acordo vigente em empresa que PERMANECE (o acordo prevalece)
+            IF OBJECT_ID('tempdb..#CPFsAcordoPermanece') IS NOT NULL DROP TABLE #CPFsAcordoPermanece;
+            SELECT DISTINCT CON.NR_CPF_CNPJ
+            INTO #CPFsAcordoPermanece
+            FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+            INNER JOIN [BDG].[COM_TB001_CONTRATO] CON
+                ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB009_ACORDOS_LIQUIDADOS_VIGENTES] ALV
+                ON ECA.fkContratoSISCTR = ALV.fkContratoSISCTR
+            INNER JOIN [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES] EMP
+                ON ECA.COD_EMPRESA_COBRANCA = EMP.ID_EMPRESA
+                AND EMP.ID_EDITAL = :edital_id
+                AND EMP.ID_PERIODO = :periodo_id
+                AND EMP.DS_CONDICAO = 'PERMANECE'
+            WHERE ALV.fkEstadoAcordo = 1;
+            CREATE INDEX IX_CPF2 ON #CPFsAcordoPermanece(NR_CPF_CNPJ);
+
+            -- Inserir na distribuição os contratos NÃO judicializados dos CPFs SERASA
+            -- (exceto CPFs com acordo em empresa que permanece)
+            INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
+            ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
+             [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
+             [VR_SD_DEVEDOR], [CREATED_AT])
+            SELECT
+                GETDATE(), :edital_id, :periodo_id, ECA.fkContratoSISCTR,
+                :cod_empresa_serasa, :cod_criterio_serasa,
+                CON.NR_CPF_CNPJ, SIT.VR_SD_DEVEDOR, GETDATE()
+            FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+            INNER JOIN [BDG].[COM_TB001_CONTRATO] CON
+                ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+            INNER JOIN [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS] T
+                ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
+            INNER JOIN #CPFsSerasa S
+                ON CON.NR_CPF_CNPJ = S.NR_CPF_CNPJ
+            LEFT JOIN #CPFsAcordoPermanece AP
+                ON CON.NR_CPF_CNPJ = AP.NR_CPF_CNPJ
+            WHERE
+                SIT.[fkSituacaoCredito] = 1
+                AND T.SIT_ESPECIAL IS NULL
+                AND T.JUDICIALIZADOS IS NULL        -- judicializado nunca vai para a SERASA
+                AND AP.NR_CPF_CNPJ IS NULL           -- acordo em permanece prevalece
+                AND NOT EXISTS (
+                    SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
+                    WHERE D.fkContratoSISCTR = ECA.fkContratoSISCTR
+                      AND D.ID_EDITAL = :edital_id
+                      AND D.ID_PERIODO = :periodo_id
+                );
+
+            DECLARE @ContratosSerasa INT = @@ROWCOUNT;
+
+            DROP TABLE #CPFsSerasa;
+            DROP TABLE #CPFsAcordoPermanece;
+
+            SELECT @ContratosSerasa AS ContratosSerasa;
+        """)
+
+        with db.engine.begin() as connection:
+            result = connection.execute(sql_script, {
+                "edital_id": edital_id,
+                "periodo_id": periodo_id,
+                "cod_empresa_serasa": COD_EMPRESA_SERASA,
+                "cod_criterio_serasa": COD_CRITERIO_SERASA
+            })
+            contratos_serasa = result.scalar_one_or_none() or 0
+
+        print(f"Distribuição SERASA concluída: {contratos_serasa} contratos alocados à empresa {COD_EMPRESA_SERASA}.")
+        return contratos_serasa
+
+    except Exception as e:
+        print(f"Erro na distribuição SERASA: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return 0
+
+def diagnosticar_distribuicao(edital_id, periodo_id):
+    """
+    DIAGNÓSTICO: verifica TODAS as pré-condições da distribuição e imprime no console.
+    Não altera nada no banco. Use antes de distribuir para descobrir o que está faltando.
+    """
+    print("=" * 70)
+    print(f"DIAGNÓSTICO DA DISTRIBUIÇÃO - Edital: {edital_id} | Período: {periodo_id}")
+    print("=" * 70)
+
+    problemas = []
+
+    def _scalar(sql, params=None):
+        return db.session.execute(text(sql), params or {}).scalar()
+
+    try:
+        # 1) Fonte de dados
+        qtde_082 = _scalar("""
+            SELECT COUNT(*) FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
+            WHERE SIT_ESPECIAL IS NULL
+        """)
+        print(f"[1] COM_TB082 (SIT_ESPECIAL nulo).............: {qtde_082}")
+        if not qtde_082:
+            problemas.append("COM_TB082 está vazia - nada a distribuir.")
+
+        qtde_serasa = _scalar("""
+            SELECT COUNT(DISTINCT NR_CPF_CNPJ) FROM [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS]
+            WHERE ONDE = 'SERASA'
+        """)
+        print(f"    CPFs marcados como SERASA.................: {qtde_serasa}")
+
+        # 2) Fila de distribuíveis
+        qtde_fila = _scalar("SELECT COUNT(*) FROM [BDG].[DCA_TB006_DISTRIBUIVEIS]")
+        print(f"[2] DCA_TB006 (fila atual)...................: {qtde_fila}")
+
+        # 3) Empresas participantes (CAUSA MAIS COMUM DE ZERO)
+        empresas = db.session.execute(text("""
+            SELECT ID_EMPRESA, DS_CONDICAO
+            FROM [BDG].[DCA_TB002_EMPRESAS_PARTICIPANTES]
+            WHERE ID_EDITAL = :e AND ID_PERIODO = :p AND DELETED_AT IS NULL
+            ORDER BY ID_EMPRESA
+        """), {"e": edital_id, "p": periodo_id}).fetchall()
+        print(f"[3] Empresas em DCA_TB002....................: {len(empresas)}")
+        for emp in empresas:
+            marca = "  <-- SERASA (fora do rateio)" if emp[0] == COD_EMPRESA_SERASA else ""
+            print(f"      - {emp[0]} | {emp[1]}{marca}")
+        if not empresas:
+            problemas.append(
+                f"NENHUMA empresa em DCA_TB002 para edital {edital_id}/período {periodo_id}. "
+                "TODAS as etapas das assessorias retornarão 0."
+            )
+
+        receptoras = [e for e in empresas
+                      if e[1] != 'DESCREDENCIADA' and e[0] != COD_EMPRESA_SERASA]
+        print(f"    Empresas receptoras (sem descred./Serasa).: {len(receptoras)}")
+        if empresas and not receptoras:
+            problemas.append("Existem empresas, mas NENHUMA elegível a receber contratos.")
+
+        # 4) Limites
+        limites = db.session.execute(text("""
+            SELECT ID_EMPRESA, PERCENTUAL_FINAL
+            FROM [BDG].[DCA_TB003_LIMITES_DISTRIBUICAO]
+            WHERE ID_EDITAL = :e AND ID_PERIODO = :p AND DELETED_AT IS NULL
+            ORDER BY ID_EMPRESA
+        """), {"e": edital_id, "p": periodo_id}).fetchall()
+        print(f"[4] Limites em DCA_TB003.....................: {len(limites)}")
+        soma_pct = 0.0
+        for lim in limites:
+            pct = float(lim[1] or 0)
+            soma_pct += pct
+            print(f"      - {lim[0]} | PERCENTUAL_FINAL = {pct:.2f}")
+        print(f"    Soma dos percentuais......................: {soma_pct:.2f}%")
+        if not limites:
+            problemas.append(
+                f"NENHUM limite em DCA_TB003 para edital {edital_id}/período {periodo_id}. "
+                "A regra de arrasto sem acordo retornará 0."
+            )
+        elif soma_pct <= 0:
+            problemas.append("Limites existem mas a soma dos percentuais é 0.")
+
+        # 5) Critério 13 (FK obrigatória para a Serasa)
+        crit13 = _scalar("SELECT COUNT(*) FROM [BDG].[DCA_TB004_CRITERIO_SELECAO] WHERE COD = 13")
+        print(f"[5] Critério 13 (Serasa) cadastrado..........: {'SIM' if crit13 else 'NAO'}")
+        if not crit13:
+            problemas.append(
+                "Critério 13 NÃO existe em DCA_TB004. O INSERT da Serasa vai falhar por FK."
+            )
+
+        # 6) Critérios usados pelas demais etapas
+        for cod in (1, 3, 4, 6):
+            existe = _scalar("SELECT COUNT(*) FROM [BDG].[DCA_TB004_CRITERIO_SELECAO] WHERE COD = :c", {"c": cod})
+            if not existe:
+                problemas.append(f"Critério {cod} NÃO existe em DCA_TB004 - INSERT vai falhar por FK.")
+        print(f"[6] Critérios 1/3/4/6 verificados.")
+
+        # 7) Distribuição já existente
+        ja_dist = _scalar("""
+            SELECT COUNT(*) FROM [BDG].[DCA_TB005_DISTRIBUICAO]
+            WHERE ID_EDITAL = :e AND ID_PERIODO = :p
+        """, {"e": edital_id, "p": periodo_id})
+        print(f"[7] Registros já em DCA_TB005................: {ja_dist}")
+
+        # 8) Elegíveis da Serasa (simula o SELECT do INSERT, sem inserir)
+        elegiveis = _scalar("""
+            SELECT COUNT(*)
+            FROM [BDG].[COM_TB011_EMPRESA_COBRANCA_ATUAL] ECA
+            INNER JOIN [BDG].[COM_TB001_CONTRATO] CON ON ECA.fkContratoSISCTR = CON.fkContratoSISCTR
+            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT ON ECA.fkContratoSISCTR = SIT.fkContratoSISCTR
+            INNER JOIN [BDDASHBOARDBI].[BDG].[COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS] T
+                ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
+            WHERE SIT.fkSituacaoCredito = 1
+              AND T.SIT_ESPECIAL IS NULL
+              AND T.JUDICIALIZADOS IS NULL
+              AND T.ONDE = 'SERASA'
+        """)
+        print(f"[8] Contratos elegíveis à SERASA.............: {elegiveis}")
+
+    except Exception as e:
+        print(f"!!! ERRO DURANTE O DIAGNÓSTICO: {e}")
+        import traceback
+        traceback.print_exc()
+        problemas.append(f"Erro no diagnóstico: {e}")
+
+    print("-" * 70)
+    if problemas:
+        print(f"PROBLEMAS ENCONTRADOS ({len(problemas)}):")
+        for i, p in enumerate(problemas, 1):
+            print(f"  {i}. {p}")
+    else:
+        print("Nenhum impedimento encontrado. A distribuição deve funcionar.")
+    print("=" * 70)
+
+    return problemas

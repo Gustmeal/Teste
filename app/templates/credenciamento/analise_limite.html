@@ -42,7 +42,27 @@
         </div>
     </div>
     {% endif %}
-
+<!-- Card informativo da SERASA (fora do rateio das assessorias) -->
+    {% if contratos_serasa and contratos_serasa > 0 %}
+    <div class="card shadow mb-4 border-warning">
+        <div class="card-body d-flex align-items-center justify-content-between">
+            <div>
+                <h5 class="mb-0 fw-bold text-warning">
+                    SERASA <small class="text-muted">(empresa {{ cod_empresa_serasa }})</small>
+                </h5>
+                <small class="text-muted">
+                    Regra própria — não participa do rateio por percentual das assessorias
+                </small>
+            </div>
+            <div class="text-end">
+                <h3 class="mb-0 fw-bold text-warning">{{ contratos_serasa }}</h3>
+                <small class="text-muted">
+                    {{ "%.2f%%"|format(pct_serasa) }} de {{ total_geral_contratos }} contratos
+                </small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
 {% if resultados_calculo %}
 <!-- [1] Participação na Arrecadação -->

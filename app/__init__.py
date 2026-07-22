@@ -15,6 +15,9 @@ def create_app():
     # Adicionar filtros personalizados
     from app.utils.formatters import format_currency, format_number
 
+    from app.utils.log_seguro import configurar_logging
+    configurar_logging()
+
     @app.template_filter('br_currency')
     def br_currency_filter(value):
         return format_currency(value)
