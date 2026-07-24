@@ -14,6 +14,7 @@ from app.models.boletim_financeiro import BoletimFinanceiro
 from app.utils.audit import registrar_log
 from app.models.boletim_financeiro import BoletimFinanceiro
 from app.models.estrutura_boletim import EstruturaBoletim
+import unicodedata
 
 boletim_financeiro_bp = Blueprint(
     'boletim_financeiro', __name__, url_prefix='/boletim-financeiro'
@@ -44,6 +45,29 @@ _TOTAIS_NOME = {
 _MARCADOR_INICIO = 'SALDO FINAL DE CAIXA'
 _MARCADOR_FIM = 'NATUREZAS MOVIMENTADAS'
 
+def _chave_comparacao(nome):
+    """
+    Chave 'à prova de formatação': remove acentos (imune a NFC/NFD), pontos de
+    recuo, espaços e pontuação, e passa para UPPER.
+    Ex.: '....APLICAÇÕES REALIZADAS' -> 'APLICACOESREALIZADAS'
+    """
+    s = unicodedata.normalize('NFKD', str(nome or ''))
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r'[^A-Za-z0-9]', '', s).upper()
+
+
+# Trechos que, se presentes no nome, fazem a linha ser DESCARTADA
+# (movimentação interna dos fundos, não é natureza do Boletim).
+_EXCLUIR_CHAVES = (
+    'APLICACOESREALIZADAS',
+    'RESGATESEFETUADOS',
+)
+
+
+def _deve_excluir(nome):
+    """True se a linha é de movimentação interna dos fundos (não capturar)."""
+    chave = _chave_comparacao(nome)
+    return any(k in chave for k in _EXCLUIR_CHAVES)
 
 # =========================================================================
 # HELPERS DE PARSE
@@ -100,8 +124,13 @@ def _to_decimal_2(valor):
         return Decimal('0.00')
 
 def _chave_natureza(nome):
-    """Normaliza o nome da natureza para comparação (trim + espaços + UPPER)."""
-    return re.sub(r'\s+', ' ', (nome or '').strip()).upper()
+    """
+    Normaliza o nome da natureza para comparação: remove os pontos/espaços de
+    recuo do início (ex.: '....RESGATES EFETUADOS'), colapsa espaços e passa
+    para UPPER. Mesma normalização usada na FIN_TB019.
+    """
+    base = re.sub(r'^[.\s]+', '', (nome or ''))
+    return re.sub(r'\s+', ' ', base).strip().upper()
 
 # =========================================================================
 # PROCESSAMENTO DO EXCEL DO BOLETIM (ETAPA 1)
@@ -110,14 +139,18 @@ def _processar_excel_boletim(caminho_arquivo):
     """
     Lê o Excel do Boletim e grava em BDG.FIN_TB020_BOLETIM_FINANCEIRO.
 
-    NU_LINHA: obtido da FIN_TB019_ESTRUTURA_BOLETIM comparando a NATUREZA.
-    Idempotência: apaga apenas as competências (MES_EXECUCAO) presentes no
-    arquivo e reinsere. Ano diferente => competências diferentes => nada antigo
-    é apagado.
+    NU_LINHA: vem da FIN_TB019_ESTRUTURA_BOLETIM comparando a NATUREZA. Quando
+    a mesma natureza aparece mais de uma vez no Boletim (fundos que constam em
+    APLICAÇÕES FINANCEIRAS e novamente em BLOQUEIOS JUDICIAIS), as ocorrências
+    consomem os NU_LINHA em ordem — assim cada bloco recebe o seu.
 
-    Também reporta: naturezas sem NU_LINHA (não encontradas na FIN_TB019),
-    naturezas com nome repetido no Excel (ambíguas para casamento por nome) e
-    conflitos de chave (NU_LINHA, MES_EXECUCAO).
+    Não são capturadas: linhas verdes (totais), rótulos de total conhecidos e
+    as linhas de movimentação interna dos fundos ('....APLICAÇÕES REALIZADAS'
+    e '....RESGATES EFETUADOS'), descartadas por _deve_excluir() — comparação
+    imune a pontos de recuo, espaços, acentos e forma Unicode.
+
+    Idempotência: apaga apenas as competências (MES_EXECUCAO) presentes no
+    arquivo e reinsere.
     """
     from openpyxl import load_workbook
 
@@ -167,8 +200,8 @@ def _processar_excel_boletim(caminho_arquivo):
         raise Exception("Marcador ' SALDO FINAL DE CAIXA' não encontrado na planilha.")
 
     # 4. Captura das naturezas (guardando o GRUPO = último cabeçalho verde acima)
-    #    grupo_atual será útil quando a FIN_TB019 permitir casar por grupo+natureza.
-    capturadas = []  # (grupo, nome, linha_excel)
+    capturadas = []   # (grupo, nome, linha_excel)
+    excluidas = []    # nomes descartados por _deve_excluir()
     grupo_atual = _texto_limpo(ws.cell(marcador, col_natureza).value)
     for r in range(marcador + 1, ws.max_row + 1):
         celula = ws.cell(r, col_natureza)
@@ -179,6 +212,9 @@ def _processar_excel_boletim(caminho_arquivo):
             break
         if _eh_celula_verde(celula) or nome.upper() in _TOTAIS_NOME:
             grupo_atual = nome  # cabeçalho verde vira o grupo das linhas seguintes
+            continue
+        if _deve_excluir(nome):
+            excluidas.append(nome)
             continue
         capturadas.append((grupo_atual, nome, r))
     if not capturadas:
@@ -196,12 +232,12 @@ def _processar_excel_boletim(caminho_arquivo):
         ultimo_mes = max(mapa_mes.keys())
     meses_do_arquivo = [f"{ano}{m:02d}" for m in range(1, ultimo_mes + 1)]
 
-    # 6. Mapa NATUREZA -> NU_LINHA (FIN_TB019)
+    # 6. Mapa NATUREZA -> [NU_LINHA, ...] (FIN_TB019, em ordem de NU_LINHA)
     mapa_nu_linha = EstruturaBoletim.carregar_mapa_natureza_nu_linha()
     if not mapa_nu_linha:
         raise Exception('FIN_TB019_ESTRUTURA_BOLETIM está vazia — não há NU_LINHA para vincular.')
 
-    # 6b. Naturezas com nome repetido no Excel (casamento por nome não distingue)
+    # 6b. Naturezas repetidas no Excel (informativo)
     contagem = {}
     for (_g, nome, _r) in capturadas:
         k = _chave_natureza(nome)
@@ -209,17 +245,20 @@ def _processar_excel_boletim(caminho_arquivo):
     ambiguas = sorted({nome for (_g, nome, _r) in capturadas
                        if contagem[_chave_natureza(nome)] > 1})
 
-    # 7. Resolve NU_LINHA por nome
-    #    >>> Quando a FIN_TB019 tiver grupo/pai, troque a chave de casamento
-    #        aqui e no carregar_mapa_natureza_nu_linha() para (grupo+natureza).
+    # 7. Resolve NU_LINHA consumindo as ocorrências em ordem
+    #    (1ª ocorrência -> 1º NU_LINHA; 2ª ocorrência -> 2º NU_LINHA; ...)
+    ocorrencia = {}
     nao_encontradas = []
     resolvidas = []  # (nu_linha, nome, linha_excel)
     for (_g, nome, r) in capturadas:
-        nu = mapa_nu_linha.get(_chave_natureza(nome))
-        if nu is None:
+        chave = _chave_natureza(nome)
+        lista = mapa_nu_linha.get(chave, [])
+        idx = ocorrencia.get(chave, 0)
+        if idx >= len(lista):
             nao_encontradas.append(nome)
             continue
-        resolvidas.append((nu, nome, r))
+        ocorrencia[chave] = idx + 1
+        resolvidas.append((lista[idx], nome, r))
 
     # 8. Idempotência: apaga as competências do arquivo antes de reinserir
     apagados = BoletimFinanceiro.query.filter(
@@ -227,7 +266,7 @@ def _processar_excel_boletim(caminho_arquivo):
     ).delete(synchronize_session=False)
     db.session.flush()
 
-    # 9. Monta os registros, evitando colisão de PK (NU_LINHA, MES_EXECUCAO)
+    # 9. Monta os registros, protegendo a PK (NU_LINHA, MES_EXECUCAO)
     registros = []
     vistos = set()
     conflitos = 0
@@ -252,6 +291,7 @@ def _processar_excel_boletim(caminho_arquivo):
         'ano': ano,
         'capturadas': len(capturadas),
         'resolvidas': len(resolvidas),
+        'excluidas': len(excluidas),
         'meses': ultimo_mes,
         'apagados': int(apagados or 0),
         'inseridos': len(registros),

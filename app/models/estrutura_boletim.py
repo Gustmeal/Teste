@@ -30,21 +30,26 @@ class EstruturaBoletim(db.Model):
     @staticmethod
     def carregar_mapa_natureza_nu_linha():
         """
-        Retorna {NATUREZA_normalizada -> NU_LINHA}.
-        Normalização: trim + colapso de espaços + UPPER, para casar com o
-        nome extraído do Excel independentemente de padding (CHAR/NCHAR),
-        maiúsculas/minúsculas ou espaços duplicados.
+        Retorna {NATUREZA_normalizada -> [NU_LINHA, ...]} ordenado por NU_LINHA.
 
-        Se a mesma NATUREZA existir com mais de um NU_LINHA na FIN_TB019,
-        prevalece o último lido (e isso indica que o casamento por nome é
-        insuficiente — precisaria de grupo/pai).
+        A lista (fila) permite que a MESMA natureza apareça mais de uma vez no
+        Boletim — caso dos fundos que constam em APLICAÇÕES FINANCEIRAS e
+        novamente em BLOQUEIOS JUDICIAIS. A 1ª ocorrência no Excel consome o
+        1º NU_LINHA, a 2ª consome o 2º, e assim por diante.
+
+        Normalização: remove pontos/espaços de recuo do início, colapsa espaços
+        e passa para UPPER — aplicada aos DOIS lados da comparação.
         """
         import re
         mapa = {}
-        for r in EstruturaBoletim.query.all():
+        registros = EstruturaBoletim.query.order_by(
+            EstruturaBoletim.NU_LINHA
+        ).all()
+        for r in registros:
             if r.NATUREZA is None or r.NU_LINHA is None:
                 continue
-            chave = re.sub(r'\s+', ' ', str(r.NATUREZA).strip()).upper()
+            chave = re.sub(r'^[.\s]+', '', str(r.NATUREZA))
+            chave = re.sub(r'\s+', ' ', chave).strip().upper()
             if chave:
-                mapa[chave] = int(r.NU_LINHA)
+                mapa.setdefault(chave, []).append(int(r.NU_LINHA))
         return mapa

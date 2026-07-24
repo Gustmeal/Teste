@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cf-container { max-width: 1100px; margin: 0 auto; }
+    .cf-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 1.5rem; }
+    .cf-head { background: #1e3a8a; color: #fff; padding: .8rem 1.2rem;
+               border-radius: 12px 12px 0 0; font-weight: 700;
+               display: flex; justify-content: space-between; align-items: center; }
+    .cf-head small { opacity: .8; font-weight: 400; }
+    .cf-body { padding: 1.4rem; }
+    .cf-info { background: #f1f5f9; border-radius: 8px; padding: .7rem 1rem;
+               font-size: .88rem; color: #334155; margin-bottom: 1rem; }
+    .cf-label { font-size: .8rem; font-weight: 600; color: #475569; }
+    .cf-ind { background: #ecfdf5; border: 1px solid #a7f3d0; }
+</style>
+
+<div class="cf-container fade-in">
+    <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-4">Entrada de Dados — Cotas dos Fundos</h1>
+
+    <div id="cfFeedback" class="mb-3" style="display:none;"></div>
+
+    {% for f in fundos %}
+    <div class="cf-card">
+        <div class="cf-head">
+            <span>{{ f.label }}</span>
+            <small>{{ f.tabela }}</small>
+        </div>
+        <div class="cf-body">
+            {% if f.vazia %}
+                <div class="alert alert-warning mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    A tabela <strong>{{ f.tabela }}</strong> está vazia. Cadastre a
+                    primeira data no banco para que o sistema saiba onde continuar.
+                </div>
+            {% else %}
+                <div class="cf-info">
+                    <i class="fas fa-calendar-day me-1"></i>
+                    Próxima data: <strong>{{ f.proxima_data.strftime('%d/%m/%Y') }}</strong>
+                    {% if f.e_dia_util is none %}
+                        <span class="badge bg-secondary ms-2">Fora do calendário</span>
+                    {% elif f.e_dia_util %}
+                        <span class="badge bg-success ms-2">Dia útil</span>
+                    {% else %}
+                        <span class="badge bg-secondary ms-2">Não útil</span>
+                    {% endif %}
+                    &nbsp;|&nbsp; Último lançamento:
+                    <strong>{{ f.data_anterior.strftime('%d/%m/%Y') }}</strong>
+                    (VR_COTA {{ f.vr_cota_anterior }})
+                </div>
+
+                {% if f.auto %}
+                <div class="alert alert-info">
+                    <i class="fas fa-magic me-2"></i>
+                    Dia de repetição: os valores serão copiados do dia anterior e o
+                    <strong>IND_COTA será gravado como 0</strong>.
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary"
+                            onclick="cfSalvar('{{ f.chave }}')">
+                        <i class="fas fa-save me-2"></i>Gravar {{ f.proxima_data.strftime('%d/%m/%Y') }}
+                    </button>
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="cfAuto('{{ f.chave }}')">
+                        <i class="fas fa-forward me-2"></i>Preencher até o próximo dia útil
+                    </button>
+                </div>
+                {% else %}
+                <form id="form-{{ f.chave }}" onsubmit="return false;">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="cf-label">VR_COTA <span class="text-danger">*</span></label>
+                            <input type="number" step="any" class="form-control"
+                                   name="VR_COTA" id="cota-{{ f.chave }}"
+                                   data-anterior="{{ f.vr_cota_anterior }}"
+                                   data-fundo="{{ f.chave }}"
+                                   oninput="cfCalcIndice('{{ f.chave }}')" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="cf-label">IND_COTA (calculado)</label>
+                            <input type="text" class="form-control cf-ind"
+                                   id="ind-{{ f.chave }}" value="0" readonly>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <small class="text-muted">
+                                IND_COTA = (VR_COTA ÷ {{ f.vr_cota_anterior }}) − 1
+                            </small>
+                        </div>
+
+                        {% for (attr, label) in f.campos %}
+                        <div class="col-md-4">
+                            <label class="cf-label">{{ label }}</label>
+                            <input type="number" step="any" class="form-control"
+                                   name="{{ attr }}"
+                                   placeholder="Anterior: {{ f.dados_anteriores.get(attr) if f.dados_anteriores.get(attr) is not none else '—' }}">
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary"
+                                onclick="cfSalvar('{{ f.chave }}')">
+                            <i class="fas fa-save me-2"></i>Gravar {{ f.proxima_data.strftime('%d/%m/%Y') }}
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+function cfFeedback(tipo, msg) {
+    var el = document.getElementById('cfFeedback');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="alert alert-' + tipo + ' mb-0">' + msg + '</div>';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// IND_COTA = (VR_COTA atual / VR_COTA anterior) - 1
+function cfCalcIndice(chave) {
+    var campo = document.getElementById('cota-' + chave);
+    var alvo = document.getElementById('ind-' + chave);
+    var anterior = parseFloat(campo.dataset.anterior);
+    var atual = parseFloat(campo.value);
+    if (!anterior || isNaN(atual)) { alvo.value = '0'; return; }
+    alvo.value = ((atual / anterior) - 1).toFixed(8);
+}
+
+function cfEnviar(url, body) {
+    return fetch(url, {
+        method: 'POST',
+        headers: { 'X-Silent-Request': 'true' },
+        body: body
+    }).then(function (r) { return r.json(); });
+}
+
+function cfSalvar(chave) {
+    var form = document.getElementById('form-' + chave);
+    var dados = form ? new FormData(form) : new FormData();
+    cfEnviar("{{ url_for('cotas_fundos.index') }}salvar/" + chave, dados)
+        .then(function (d) {
+            if (d.success) {
+                cfFeedback('success', '<i class="fas fa-check-circle me-2"></i>' + d.message);
+                setTimeout(function () { location.reload(); }, 1500);
+            } else {
+                cfFeedback('danger', '<i class="fas fa-times-circle me-2"></i>' + d.message);
+            }
+        })
+        .catch(function (e) { cfFeedback('danger', 'Erro de conexão: ' + e); });
+}
+
+function cfAuto(chave) {
+    cfEnviar("{{ url_for('cotas_fundos.index') }}preencher-automaticos/" + chave, new FormData())
+        .then(function (d) {
+            cfFeedback(d.success ? 'success' : 'danger', d.message);
+            if (d.success) setTimeout(function () { location.reload(); }, 1500);
+        })
+        .catch(function (e) { cfFeedback('danger', 'Erro de conexão: ' + e); });
+}
+</script>
+{% endblock %}
