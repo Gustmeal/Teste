@@ -88,7 +88,7 @@
                         </div>
                         <div class="col-md-4 d-flex align-items-end">
                             <small class="text-muted">
-                                IND_COTA = (VR_COTA ÷ {{ f.vr_cota_anterior }}) − 1
+                                IND_COTA = (VR_COTA ÷ {{ f.vr_cota_anterior }}) − 1 × 100
                             </small>
                         </div>
 
@@ -124,14 +124,14 @@ function cfFeedback(tipo, msg) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// IND_COTA = (VR_COTA atual / VR_COTA anterior) - 1
+// IND_COTA = ((VR_COTA atual / VR_COTA anterior) - 1) * 100
 function cfCalcIndice(chave) {
     var campo = document.getElementById('cota-' + chave);
     var alvo = document.getElementById('ind-' + chave);
     var anterior = parseFloat(campo.dataset.anterior);
     var atual = parseFloat(campo.value);
     if (!anterior || isNaN(atual)) { alvo.value = '0'; return; }
-    alvo.value = ((atual / anterior) - 1).toFixed(8);
+    alvo.value = (((atual / anterior) - 1) * 100).toFixed(8);
 }
 
 function cfEnviar(url, body) {

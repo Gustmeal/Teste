@@ -124,7 +124,8 @@ def e_dia_util(data):
 
 def calcular_ind_cota(vr_cota_atual, vr_cota_anterior):
     """
-    IND_COTA = (VR_COTA do dia / VR_COTA do dia anterior) - 1.
+    IND_COTA = ((VR_COTA do dia / VR_COTA do dia anterior) - 1) * 100.
+    Resultado em percentual (ex.: 1,07 para uma variação de 1,07%).
     Retorna Decimal com 8 casas. 0 se não houver anterior ou se for zero.
     """
     if vr_cota_atual is None or vr_cota_anterior in (None, 0):
@@ -133,4 +134,6 @@ def calcular_ind_cota(vr_cota_atual, vr_cota_anterior):
     anterior = Decimal(str(vr_cota_anterior))
     if anterior == 0:
         return Decimal('0.00000000')
-    return ((atual / anterior) - Decimal('1')).quantize(Decimal('0.00000001'))
+    return (((atual / anterior) - Decimal('1')) * Decimal('100')).quantize(
+        Decimal('0.00000001')
+    )
