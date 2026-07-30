@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .dp-container { max-width: 1050px; margin: 0 auto; }
+    .dp-page { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+               padding:2rem 2.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .dp-title { text-align:center; font-weight:700; color:#1e3a8a; }
+    .dp-sub { text-align:center; color:#64748b; margin-bottom:.3rem; }
+    .dp-unid { text-align:right; font-size:.8rem; color:#64748b; margin-bottom:.5rem; }
+    table.dp-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+    table.dp-table th, table.dp-table td { text-align:center; padding:.45rem .6rem; }
+    table.dp-table thead th { background:#1f4e79; color:#fff; border:1px solid #fff; }
+    table.dp-table tbody td { border:1px solid #e2e8f0; }
+    table.dp-table tbody td:first-child { font-weight:600; background:#f8fafc; }
+    table.dp-table tbody td:last-child { font-weight:700; }
+    table.dp-table tbody tr:nth-child(even) td { background:#f4f7fb; }
+    .dp-chart-wrap { height:360px; margin-top:2rem; }
+    .dp-bloqueios { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;
+                    padding:1rem 1.2rem; margin-top:1.6rem; line-height:1.7; text-align:justify; }
+    .dp-nav { text-align:center; margin-top:1.4rem; }
+    .dp-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; margin:0 .7rem; }
+</style>
+
+<div class="dp-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.consideracoes') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem dados na FIN_VW023 para o período.</div>
+    {% else %}
+    <div class="dp-page">
+        <h3 class="dp-title">Disponibilidades - Saldos</h3>
+        <div class="dp-sub">Saldo Líquido Final do Período</div>
+        <div class="dp-unid">Valores em R$ milhões</div>
+
+        <div class="table-responsive">
+            <table class="dp-table">
+                <thead>
+                    <tr>
+                        <th>Mês</th><th>Contas Correntes</th><th>Banco do Brasil Exclusivo</th>
+                        <th>Caixa Econômica Exclusivo XXI</th><th>Banco do Brasil FAE 2</th><th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in linhas %}
+                    <tr>
+                        <td>{{ l.mes }}</td><td>{{ l.cc }}</td><td>{{ l.bb }}</td>
+                        <td>{{ l.cx }}</td><td>{{ l.fae }}</td><td>{{ l.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dp-chart-wrap"><canvas id="chartDisp"></canvas></div>
+
+        {% if texto_bloqueios %}
+        <div class="dp-bloqueios">{{ texto_bloqueios }}</div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="dp-nav">
+        <a href="{{ url_for('relatorio_gestao.consideracoes') }}" title="Voltar"><i class="fas fa-arrow-up"></i></a>
+        <a href="{{ url_for('relatorio_gestao.rentabilidade_bb_exclusivo') }}" title="Ir para Rentabilidade BB"><i class="fas fa-arrow-down"></i></a>
+    </div>
+</div>
+
+<script id="dadosDisp" type="application/json">{{ grafico | tojson }}</script>
+<script>
+(function () {
+    function fmtBR(v){ try { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); } catch(e){ return v; } }
+    function init() {
+        var el = document.getElementById('chartDisp');
+        if (!el) return;
+        var dados; try { dados = JSON.parse(document.getElementById('dadosDisp').textContent); } catch(e){ return; }
+        if (!dados.datasets || !dados.labels.length) {
+            el.parentElement.innerHTML = '<div class="text-muted text-center">Sem dados para o gráfico.</div>'; return;
+        }
+        var cores = ['#2e75b6', '#548235', '#ed7d31', '#7030a0'];
+        dados.datasets.forEach(function(ds,i){ ds.backgroundColor = cores[i%cores.length]; ds.maxBarThickness = 46; });
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Disponibilidades por conta (R$ milhões)' },
+                    tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + fmtBR(c.parsed.y); } } }
+                },
+                scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: function(v){ return fmtBR(v); } } } }
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        if (typeof Chart === 'undefined') {
+            var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload=init; document.head.appendChild(s);
+        } else { init(); }
+    });
+})();
+</script>
+{% endblock %}

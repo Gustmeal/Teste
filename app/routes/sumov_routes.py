@@ -4103,7 +4103,8 @@ def ans_glosas_salvar_justificativa_prestadora():
         dados = request.get_json()
         dt = dados.get('dt_apuracao')
         nr = dados.get('nr_ocorrencia')
-        retorno = dados.get('retorno_prest', '').strip()
+        retorno = (dados.get('retorno_prest') or '').strip()
+        manifestacao = (dados.get('manifestacao_geadi') or '').strip()
 
         if not dt or nr is None:
             return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
@@ -4111,8 +4112,12 @@ def ans_glosas_salvar_justificativa_prestadora():
             return jsonify({'success': False, 'message': 'O retorno da prestadora não pode ficar vazio.'}), 400
         if len(retorno) > 500:
             return jsonify({'success': False, 'message': 'O retorno excede 500 caracteres.'}), 400
+        if len(manifestacao) > 500:
+            return jsonify({'success': False, 'message': 'A manifestação GEADI excede 500 caracteres.'}), 400
 
-        ok, msg = AnsApuracao.salvar_justificativa_prestadora(dt, int(nr), retorno)
+        ok, msg = AnsApuracao.salvar_justificativa_prestadora(
+            dt, int(nr), retorno, manifestacao if manifestacao else None
+        )
         if ok:
             registrar_log(
                 acao='criar',

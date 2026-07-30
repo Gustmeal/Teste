@@ -11,6 +11,10 @@ from decimal import Decimal
 from app.models.relatorio_resultado_financeiro import RelatorioResultadoFinanceiro
 from app.utils.relatorio_gestao import partes_posicao, renderizar_pagina, montar_consideracoes
 from app.models.relatorio_consideracoes_item import RelatorioConsideracoesItem
+from app.models.quadro_rentabilidade import QuadroRentabilidade
+from app.utils.relatorio_gestao import (
+    partes_posicao, renderizar_pagina, montar_consideracoes, _fmt_br, preencher_fragmento
+)
 
 relatorio_gestao_bp = Blueprint(
     'relatorio_gestao', __name__, url_prefix='/relatorio-gestao'
@@ -28,6 +32,12 @@ _MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
 
 _MESES_NOME = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+FUNDO_BB_EXCLUSIVO = 'BB RF Exclusivo'
+
+FUNDO_CAIXA_XXI = 'CAIXA RF Exclusivo XXI'
+
+FUNDO_FAE2 = 'Extramercado FAE 2'
 
 
 def _hierarquia(nat):
@@ -182,6 +192,34 @@ def _dados_grafico_view(view, mes_limite=12, ano=None):
         valores = [float(r[2 + i]) if r[2 + i] is not None else 0.0 for i in range(n)]
         datasets.append({'label': item or str(r[0]), 'data': valores})
     return {'labels': labels, 'datasets': datasets, 'ano': ano}
+
+def _fmt_pct_rent(v):
+    """Valor já em percentual -> 'x,xx%'. Só formata em BR e adiciona '%'.
+    Ex.: 1.24 -> '1,24%' ; 103.12 -> '103,12%'. '-' se None."""
+    if v is None:
+        return '-'
+    d = Decimal(str(v)).quantize(Decimal('0.01'))
+    return f"{d:.2f}".replace('.', ',') + '%'
+
+
+def _mes_abrev_de_anomes(anomes):
+    """'202605' -> 'Maio' ; '202512' -> 'Dez/2025' (mostra ano se != referência)."""
+    s = str(anomes or '')
+    if len(s) < 6:
+        return s
+    return _MESES_ABREV[int(s[4:6]) - 1] + '/' + s[:4]
+
+def _montar_texto_bloqueios(registros):
+    """Monta o texto dos bloqueios (FIN_VW025) trocando '...' pelo VR em módulo,
+    na ordem do ID. Mesma mecânica das Considerações."""
+    partes = []
+    for r in registros:
+        partes.append(preencher_fragmento(getattr(r, 'TEXTO', None),
+                                           getattr(r, 'VR', None)))
+    texto = ' '.join(p for p in partes if p)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return re.sub(r'\s+([,.;:)%])', r'\1', texto)
+
 
 @relatorio_gestao_bp.route('/sumario-executivo')
 @login_required
@@ -347,3 +385,183 @@ def consideracoes():
                            mes_ref_cap=mes_ref_cap, ano_ref=ano_ref,
                            grafico_ingressos_consid=g_ing,
                            grafico_saidas_consid=g_sai)
+
+
+@relatorio_gestao_bp.route('/rentabilidade-bb-exclusivo')
+@login_required
+def rentabilidade_bb_exclusivo():
+    """Página 'Rentabilidade BB Exc' — tabela + gráfico (FIN_TB031)."""
+    linhas_db = QuadroRentabilidade.carregar_por_fundo(FUNDO_BB_EXCLUSIVO)
+
+    # Colunas da tabela (na ordem do Excel, SEM as acumuladas): (attr)
+    cols = [
+        'PERF_MES', 'IRF_M1', 'TMS',
+        'IRF_M1_COMP_MENSAL', 'TMS_COMP_MENSAL',
+        'IRF_M1_COMP_ANUAL', 'TMS_COMP_ANUAL',
+    ]
+
+    linhas = []
+    graf_labels, graf_irf_anual, graf_tms_anual = [], [], []
+    for r in linhas_db:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r.ANO_MES),
+            'cells': [_fmt_pct_rent(getattr(r, c)) for c in cols],
+        })
+        # Gráfico: Comparativo Rentabilidade Acumulada no Ano (IRF-M 1 e TMS)
+        if r.IRF_M1_COMP_ANUAL is not None or r.TMS_COMP_ANUAL is not None:
+            graf_labels.append(_mes_abrev_de_anomes(r.ANO_MES))
+            graf_irf_anual.append(float(r.IRF_M1_COMP_ANUAL) if r.IRF_M1_COMP_ANUAL is not None else 0.0)
+            graf_tms_anual.append(float(r.TMS_COMP_ANUAL) if r.TMS_COMP_ANUAL is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'IRF-M 1', 'data': graf_irf_anual},
+            {'label': 'TMS', 'data': graf_tms_anual},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/rentabilidade_bb_exclusivo.html',
+        linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )
+
+@relatorio_gestao_bp.route('/disponibilidades')
+@login_required
+def disponibilidades():
+    """Página Disponibilidades — tabela (VW023) + gráfico + texto de bloqueios (VW025)."""
+    # ----- Tabela mensal por conta -----
+    ano = db.session.execute(text(
+        "SELECT MAX(ANO) FROM [BDG].[FIN_VW023_DISPONIBILIDADES_CONTAS_EMGEA]"
+    )).scalar()
+
+    linhas, graf_labels, g_cc, g_bb, g_cx, g_fae, g_total = [], [], [], [], [], [], []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT MES, MES_EXECUCAO, CT_CORRENTES, BB_EXCLUSIVO, CX_EXCLUSIVO, FAE_2, TOTAL
+            FROM [BDG].[FIN_VW023_DISPONIBILIDADES_CONTAS_EMGEA]
+            WHERE ANO = :ano
+            ORDER BY MES_EXECUCAO
+        """), {'ano': ano}).fetchall()
+
+        def _f(v):
+            if v is None:
+                return '-'
+            return _fmt_br(Decimal(str(v)), 2)
+
+        for r in rows:
+            linhas.append({
+                'mes': (r[0] or ''),
+                'cc': _f(r[2]), 'bb': _f(r[3]), 'cx': _f(r[4]),
+                'fae': _f(r[5]), 'total': _f(r[6]),
+            })
+            if r[6] is not None:  # gráfico só meses com Total
+                graf_labels.append(r[0] or '')
+                g_cc.append(float(r[2]) if r[2] is not None else 0.0)
+                g_bb.append(float(r[3]) if r[3] is not None else 0.0)
+                g_cx.append(float(r[4]) if r[4] is not None else 0.0)
+                g_fae.append(float(r[5]) if r[5] is not None else 0.0)
+                g_total.append(float(r[6]) if r[6] is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'Contas Correntes', 'data': g_cc},
+            {'label': 'BB Exclusivo', 'data': g_bb},
+            {'label': 'Caixa Exclusivo XXI', 'data': g_cx},
+            {'label': 'BB FAE 2', 'data': g_fae},
+        ],
+    }
+
+    # ----- Texto dos bloqueios judiciais (VW025) -----
+    reg_texto = db.session.execute(text("""
+        SELECT ID, TEXTO, VR
+        FROM [BDG].[FIN_VW025_DISPONIBILIDADES_BLOQUEIOS_JUDICIAIS_TEXTO]
+        ORDER BY ID
+    """)).fetchall()
+
+    class _Frag:
+        def __init__(self, texto, vr):
+            self.TEXTO = texto
+            self.VR = vr
+    texto_bloqueios = _montar_texto_bloqueios([_Frag(r[1], r[2]) for r in reg_texto])
+
+    return render_template(
+        'relatorio_gestao/disponibilidades.html',
+        linhas=linhas, grafico=grafico, texto_bloqueios=texto_bloqueios,
+        sem_dados=(len(linhas) == 0),
+    )
+
+@relatorio_gestao_bp.route('/rentabilidade-xxi')
+@login_required
+def rentabilidade_xxi():
+    """Página 'Rentabilidade XXI' — mesma estrutura do BB, filtro CAIXA XXI."""
+    linhas_db = QuadroRentabilidade.carregar_por_fundo(FUNDO_CAIXA_XXI)
+
+    cols = [
+        'PERF_MES', 'IRF_M1', 'TMS',
+        'IRF_M1_COMP_MENSAL', 'TMS_COMP_MENSAL',
+        'IRF_M1_COMP_ANUAL', 'TMS_COMP_ANUAL',
+    ]
+
+    linhas = []
+    graf_labels, graf_irf_anual, graf_tms_anual = [], [], []
+    for r in linhas_db:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r.ANO_MES),
+            'cells': [_fmt_pct_rent(getattr(r, c)) for c in cols],
+        })
+        if r.IRF_M1_COMP_ANUAL is not None or r.TMS_COMP_ANUAL is not None:
+            graf_labels.append(_mes_abrev_de_anomes(r.ANO_MES))
+            graf_irf_anual.append(float(r.IRF_M1_COMP_ANUAL) if r.IRF_M1_COMP_ANUAL is not None else 0.0)
+            graf_tms_anual.append(float(r.TMS_COMP_ANUAL) if r.TMS_COMP_ANUAL is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'IRF-M 1', 'data': graf_irf_anual},
+            {'label': 'TMS', 'data': graf_tms_anual},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/rentabilidade_xxi.html',
+        linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )
+
+@relatorio_gestao_bp.route('/rentabilidade-fae2')
+@login_required
+def rentabilidade_fae2():
+    """Página 'Rentabilidade FAE 2' — mesma estrutura, filtro Extramercado FAE 2."""
+    linhas_db = QuadroRentabilidade.carregar_por_fundo(FUNDO_FAE2)
+
+    cols = [
+        'PERF_MES', 'IRF_M1', 'TMS',
+        'IRF_M1_COMP_MENSAL', 'TMS_COMP_MENSAL',
+        'IRF_M1_COMP_ANUAL', 'TMS_COMP_ANUAL',
+    ]
+
+    linhas = []
+    graf_labels, graf_irf_anual, graf_tms_anual = [], [], []
+    for r in linhas_db:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r.ANO_MES),
+            'cells': [_fmt_pct_rent(getattr(r, c)) for c in cols],
+        })
+        if r.IRF_M1_COMP_ANUAL is not None or r.TMS_COMP_ANUAL is not None:
+            graf_labels.append(_mes_abrev_de_anomes(r.ANO_MES))
+            graf_irf_anual.append(float(r.IRF_M1_COMP_ANUAL) if r.IRF_M1_COMP_ANUAL is not None else 0.0)
+            graf_tms_anual.append(float(r.TMS_COMP_ANUAL) if r.TMS_COMP_ANUAL is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'IRF-M 1', 'data': graf_irf_anual},
+            {'label': 'TMS', 'data': graf_tms_anual},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/rentabilidade_fae2.html',
+        linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )

@@ -518,30 +518,32 @@ class AnsApuracao(db.Model):
     # ==================================================================
 
     @staticmethod
-    def salvar_justificativa_prestadora(dt_apuracao, nr_ocorrencia, retorno_prest):
+    def salvar_justificativa_prestadora(dt_apuracao, nr_ocorrencia, retorno_prest, manifestacao_geadi=None):
         """
         Salva o retorno da prestadora na TB048.
         Se já existir registro com a mesma PK (DT_APURACAO + nrOcorrencia),
         retorna erro informando que já foi incluído anteriormente.
+        manifestacao_geadi é opcional (VARCHAR 500) — pode vir None/vazio.
         """
         sql_check = text("""
-            SELECT COUNT(*) AS qtd 
-            FROM BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
-            WHERE DT_APURACAO = :dt AND nrOcorrencia = :nr
-        """)
+                SELECT COUNT(*) AS qtd 
+                FROM BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
+                WHERE DT_APURACAO = :dt AND nrOcorrencia = :nr
+            """)
         row = db.session.execute(sql_check, {'dt': dt_apuracao, 'nr': nr_ocorrencia}).fetchone()
         if row and row.qtd > 0:
             return False, f'Já existe uma justificativa cadastrada para a ocorrência {nr_ocorrencia} nesta apuração.'
 
         sql_insert = text("""
-            INSERT INTO BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
-            (DT_APURACAO, nrOcorrencia, RETORNO_PREST)
-            VALUES (:dt, :nr, :ret)
-        """)
+                INSERT INTO BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
+                (DT_APURACAO, nrOcorrencia, RETORNO_PREST, MANIFESTACAO_GEADI)
+                VALUES (:dt, :nr, :ret, :manif)
+            """)
         db.session.execute(sql_insert, {
             'dt': dt_apuracao,
             'nr': nr_ocorrencia,
-            'ret': retorno_prest
+            'ret': retorno_prest,
+            'manif': manifestacao_geadi
         })
         db.session.commit()
         return True, f'Retorno da prestadora salvo com sucesso para a ocorrência {nr_ocorrencia}.'

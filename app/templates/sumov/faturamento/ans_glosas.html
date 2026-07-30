@@ -272,6 +272,12 @@
                                   maxlength="500" placeholder="Digite aqui o retorno informado pela prestadora..."></textarea>
                         <small class="text-muted"><span id="contadorRetorno">0</span>/500 caracteres</small>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Manifestação GEADI</label>
+                        <textarea id="txtManifestacaoGeadi" class="form-control" rows="6"
+                                  maxlength="500" placeholder="Digite aqui a manifestação da GEADI..."></textarea>
+                        <small class="text-muted"><span id="contadorManifestacao">0</span>/500 caracteres</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <span class="btn btn-secondary" onclick="fecharModalRetorno()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Cancelar</span>
@@ -349,6 +355,8 @@ function editarCampo(nr, campo, novoValor) {
         document.getElementById('modalCampoNome').textContent = campo;
         document.getElementById('txtRetornoPrestadora').value = '';
         document.getElementById('contadorRetorno').textContent = '0';
+        document.getElementById('txtManifestacaoGeadi').value = '';
+        document.getElementById('contadorManifestacao').textContent = '0';
         var m = document.getElementById('modalRetornoPrestadora');
         m.style.display = 'block';
         m.classList.add('show');
@@ -383,6 +391,7 @@ function fecharModalRetorno() {
 function confirmarRetornoPrestadora() {
     if (!editandoCampo) return;
     var retorno = document.getElementById('txtRetornoPrestadora').value.trim();
+    var manifestacao = document.getElementById('txtManifestacaoGeadi').value.trim();
     if (!retorno) { alert('Por favor, digite o retorno da prestadora antes de salvar.'); return; }
 
     fetch(URL_JUST_PRESTADORA, {
@@ -391,7 +400,8 @@ function confirmarRetornoPrestadora() {
         body: JSON.stringify({
             dt_apuracao: DT_APURACAO,
             nr_ocorrencia: editandoCampo.nr,
-            retorno_prest: retorno
+            retorno_prest: retorno,
+            manifestacao_geadi: manifestacao
         })
     })
     .then(function(r){return r.json();})
@@ -420,12 +430,18 @@ function confirmarRetornoPrestadora() {
     .catch(function(e){alert('Erro: ' + e);});
 }
 
-// Contador de caracteres do textarea
+// Contador de caracteres dos textareas
 document.addEventListener('DOMContentLoaded', function() {
     var txt = document.getElementById('txtRetornoPrestadora');
     if (txt) {
         txt.addEventListener('input', function() {
             document.getElementById('contadorRetorno').textContent = txt.value.length;
+        });
+    }
+    var txtM = document.getElementById('txtManifestacaoGeadi');
+    if (txtM) {
+        txtM.addEventListener('input', function() {
+            document.getElementById('contadorManifestacao').textContent = txtM.value.length;
         });
     }
 });

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rf2-container { max-width: 1050px; margin: 0 auto; }
+    .rf2-page { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+                padding:2rem 2.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .rf2-title { text-align:center; font-weight:700; color:#1e3a8a; }
+    .rf2-sub { text-align:center; color:#64748b; margin-bottom:1.5rem; }
+    table.rf2-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+    table.rf2-table th, table.rf2-table td { text-align:center; padding:.4rem .5rem; }
+    table.rf2-table thead th { background:#1f4e79; color:#fff; border:1px solid #fff; }
+    table.rf2-table tbody td { border:1px solid #e2e8f0; }
+    table.rf2-table tbody td:first-child { font-weight:600; background:#f8fafc; }
+    table.rf2-table tbody tr:nth-child(even) td { background:#f4f7fb; }
+    table.rf2-table tbody tr:nth-child(even) td:first-child { background:#eef2f9; }
+    .rf2-gsep { border-left:2px solid #b9c6dd !important; }
+    .rf2-chart-wrap { height:360px; margin-top:2rem; }
+    .rf2-nav { text-align:center; margin-top:1.4rem; }
+    .rf2-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; }
+</style>
+
+<div class="rf2-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.rentabilidade_xxi') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem dados na FIN_TB031 para o fundo <strong>Extramercado FAE 2</strong>.</div>
+    {% else %}
+    <div class="rf2-page">
+        <h3 class="rf2-title">Fundos de Investimento<br>BB Extramercado FAE 2</h3>
+        <div class="rf2-sub">Rentabilidade Mensal e Comparativos</div>
+
+        <div class="table-responsive">
+            <table class="rf2-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Mês</th>
+                        <th colspan="3">Rentabilidade Mensal</th>
+                        <th colspan="2" class="rf2-gsep">Comparativo Rentabilidade Mensal</th>
+                        <th colspan="2" class="rf2-gsep">Comparativo Rentabilidade Acumulada no Ano</th>
+                    </tr>
+                    <tr>
+                        <th>Fundo</th><th>IRF-M 1</th><th>TMS</th>
+                        <th class="rf2-gsep">IRF-M 1</th><th>TMS</th>
+                        <th class="rf2-gsep">IRF-M 1</th><th>TMS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linha in linhas %}
+                    <tr>
+                        <td>{{ linha.mes }}</td>
+                        {% for c in linha.cells %}
+                            <td class="{{ 'rf2-gsep' if loop.index0 in [3, 5] }}">{{ c }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="rf2-chart-wrap"><canvas id="chartRentFAE2"></canvas></div>
+    </div>
+    {% endif %}
+
+    <div class="rf2-nav">
+        <a href="{{ url_for('relatorio_gestao.rentabilidade_xxi') }}" title="Voltar">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+    </div>
+</div>
+
+<script id="dadosRentFAE2" type="application/json">{{ grafico | tojson }}</script>
+<script>
+(function () {
+    function fmtPct(v){ try { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'; } catch(e){ return v; } }
+    function init() {
+        var el = document.getElementById('chartRentFAE2');
+        if (!el) return;
+        var dados; try { dados = JSON.parse(document.getElementById('dadosRentFAE2').textContent); } catch(e){ return; }
+        if (!dados.datasets || !dados.labels.length) {
+            el.parentElement.innerHTML = '<div class="text-muted text-center">Sem dados para o gráfico.</div>'; return;
+        }
+        var cores = ['#2e75b6', '#c00000'];
+        dados.datasets.forEach(function(ds,i){ ds.backgroundColor = cores[i%cores.length]; ds.maxBarThickness = 26; });
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Comparativo Rentabilidade Acumulada no Ano' },
+                    tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + fmtPct(c.parsed.y); } } }
+                },
+                scales: { y: { ticks: { callback: function(v){ return fmtPct(v); } } } }
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        if (typeof Chart === 'undefined') {
+            var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload=init; document.head.appendChild(s);
+        } else { init(); }
+    });
+})();
+</script>
+{% endblock %}
