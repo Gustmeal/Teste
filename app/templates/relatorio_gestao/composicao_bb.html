@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cb-container { max-width: 1080px; margin: 0 auto; }
+    .cb-page { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+               padding:2rem 2.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .cb-title { text-align:center; font-weight:700; color:#1e3a8a; }
+    .cb-sub { text-align:center; color:#64748b; margin-bottom:.3rem; }
+    .cb-unid { text-align:right; font-size:.8rem; color:#64748b; margin-bottom:.5rem; }
+    table.cb-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+    table.cb-table th, table.cb-table td { text-align:center; padding:.4rem .5rem; }
+    table.cb-table thead th { background:#1f4e79; color:#fff; border:1px solid #fff; }
+    table.cb-table tbody td { border:1px solid #e2e8f0; }
+    table.cb-table tbody td:first-child { font-weight:600; background:#f8fafc; }
+    table.cb-table tbody td:last-child { font-weight:700; }
+    table.cb-table tbody tr:nth-child(even) td { background:#f4f7fb; }
+    .cb-gsep { border-left:2px solid #b9c6dd !important; }
+    .cb-chart-wrap { height:360px; margin-top:2rem; }
+    .cb-nav { text-align:center; margin-top:1.4rem; }
+    .cb-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; margin:0 .7rem; }
+</style>
+
+<div class="cb-container fade-in">
+    <a href="{{ url_for(voltar_endpoint) }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem dados na FIN_VW027 para este fundo.</div>
+    {% else %}
+    <div class="cb-page">
+        <h3 class="cb-title">Fundos de Investimento<br>{{ titulo }}</h3>
+        <div class="cb-sub">Composição da Carteira</div>
+        <div class="cb-unid">Volume em R$ milhões</div>
+
+        <div class="table-responsive">
+            <table class="cb-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Mês</th>
+                        <th colspan="2">LFT</th>
+                        <th colspan="2" class="cb-gsep">NTN-F</th>
+                        <th colspan="2" class="cb-gsep">OC</th>
+                        <th colspan="2" class="cb-gsep">LTN</th>
+                        <th rowspan="2" class="cb-gsep">Total</th>
+                    </tr>
+                    <tr>
+                        <th>Volume</th><th>%</th>
+                        <th class="cb-gsep">Volume</th><th>%</th>
+                        <th class="cb-gsep">Volume</th><th>%</th>
+                        <th class="cb-gsep">Volume</th><th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in linhas %}
+                    <tr>
+                        <td>{{ l.mes }}</td>
+                        <td>{{ l.lft }}</td><td>{{ l.pc_lft }}</td>
+                        <td class="cb-gsep">{{ l.ntn }}</td><td>{{ l.pc_ntn }}</td>
+                        <td class="cb-gsep">{{ l.oc }}</td><td>{{ l.pc_oc }}</td>
+                        <td class="cb-gsep">{{ l.ltn }}</td><td>{{ l.pc_ltn }}</td>
+                        <td class="cb-gsep">{{ l.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="cb-chart-wrap"><canvas id="chartCompBB"></canvas></div>
+    </div>
+    {% endif %}
+
+    <div class="cb-nav">
+        <a href="{{ url_for(voltar_endpoint) }}" title="Voltar"><i class="fas fa-arrow-up"></i></a>
+        {% if descer_endpoint %}
+        <a href="{{ url_for(descer_endpoint) }}" title="Próxima"><i class="fas fa-arrow-down"></i></a>
+        {% endif %}
+    </div>
+</div>
+
+<script id="dadosCompBB" type="application/json">{{ grafico | tojson }}</script>
+<script>
+(function () {
+    function fmtBR(v){ try { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); } catch(e){ return v; } }
+    function init() {
+        var el = document.getElementById('chartCompBB');
+        if (!el) return;
+        var dados; try { dados = JSON.parse(document.getElementById('dadosCompBB').textContent); } catch(e){ return; }
+        if (!dados.datasets || !dados.labels.length) {
+            el.parentElement.innerHTML = '<div class="text-muted text-center">Sem dados para o gráfico.</div>'; return;
+        }
+        var cores = ['#2e75b6', '#548235', '#ed7d31', '#7030a0'];
+        dados.datasets.forEach(function(ds,i){ ds.backgroundColor = cores[i%cores.length]; ds.maxBarThickness = 46; });
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Composição da Carteira (R$ milhões)' },
+                    tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + fmtBR(c.parsed.y); } } }
+                },
+                scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: function(v){ return fmtBR(v); } } } }
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        if (typeof Chart === 'undefined') {
+            var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload=init; document.head.appendChild(s);
+        } else { init(); }
+    });
+})();
+</script>
+{% endblock %}

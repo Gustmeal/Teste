@@ -21,7 +21,7 @@
 </style>
 
 <div class="rx-container fade-in">
-    <a href="{{ url_for('relatorio_gestao.rentabilidade_bb_exclusivo') }}" class="btn-back">
+    <a href="{{ url_for('relatorio_gestao.composicao_bb') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
@@ -66,12 +66,11 @@
     {% endif %}
 
     <div class="rx-nav">
-        <a href="{{ url_for('relatorio_gestao.rentabilidade_bb_exclusivo') }}" title="Voltar">
+        <a href="{{ url_for('relatorio_gestao.composicao_bb') }}" title="Voltar">
             <i class="fas fa-arrow-up"></i>
         </a>
-
-        <a href="{{ url_for('relatorio_gestao.rentabilidade_fae2') }}"
-           title="Ir para Rentabilidade FAE 2" style="margin-left:1.5rem;">
+        <a href="{{ url_for('relatorio_gestao.composicao_xxi') }}"
+           title="Ir para Composição XXI" style="margin-left:1.5rem;">
             <i class="fas fa-arrow-down"></i>
         </a>
     </div>

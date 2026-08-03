@@ -39,6 +39,12 @@ FUNDO_CAIXA_XXI = 'CAIXA RF Exclusivo XXI'
 
 FUNDO_FAE2 = 'Extramercado FAE 2'
 
+FUNDO_COMP_BB = 'BB Exclusivo Extramercado Emgea'
+
+FUNDO_COMP_XXI = 'CAIXA Extramercado Exclusivo XXI'
+
+FUNDO_COMP_FAE2 = 'BB Extramercado FAE 2'
+
 
 def _hierarquia(nat):
     """
@@ -564,4 +570,224 @@ def rentabilidade_fae2():
     return render_template(
         'relatorio_gestao/rentabilidade_fae2.html',
         linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )
+
+def _pagina_composicao(dsc_fundo, titulo, voltar_endpoint, descer_endpoint):
+    """Composição de um fundo (FIN_VW027) — tabela (Volume+% por ativo) + gráfico."""
+    ano = db.session.execute(text(
+        "SELECT MAX(LEFT(ANO_MES,4)) FROM [BDG].[FIN_VW027_COMPOSICAO_FI] WHERE DSC_FUNDO = :f"
+    ), {'f': dsc_fundo}).scalar()
+
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT ANO_MES, LFT, PC_LFT, [NTN-F], PC_NTN, OC, PC_OC, LTN, PC_LTN, TOTAL
+            FROM [BDG].[FIN_VW027_COMPOSICAO_FI]
+            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :ano
+            ORDER BY ANO_MES
+        """), {'f': dsc_fundo, 'ano': ano}).fetchall()
+
+    def _vol(v):
+        return _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
+
+    def _pc(v):
+        if v is None:
+            return '-'
+        return _fmt_br(Decimal(str(v)), 2) + '%'
+
+    linhas = []
+    graf_labels, g_lft, g_ntn, g_oc, g_ltn = [], [], [], [], []
+    for r in rows:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r[0]),
+            'lft': _vol(r[1]), 'pc_lft': _pc(r[2]),
+            'ntn': _vol(r[3]), 'pc_ntn': _pc(r[4]),
+            'oc': _vol(r[5]), 'pc_oc': _pc(r[6]),
+            'ltn': _vol(r[7]), 'pc_ltn': _pc(r[8]),
+            'total': _vol(r[9]),
+        })
+        if r[9] is not None:  # gráfico só meses com Total
+            graf_labels.append(_mes_abrev_de_anomes(r[0]))
+            g_lft.append(float(r[1]) if r[1] is not None else 0.0)
+            g_ntn.append(float(r[3]) if r[3] is not None else 0.0)
+            g_oc.append(float(r[5]) if r[5] is not None else 0.0)
+            g_ltn.append(float(r[7]) if r[7] is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'LFT', 'data': g_lft},
+            {'label': 'NTN-F', 'data': g_ntn},
+            {'label': 'OC', 'data': g_oc},
+            {'label': 'LTN', 'data': g_ltn},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/composicao_bb.html',
+        titulo=titulo, linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+        voltar_endpoint=voltar_endpoint, descer_endpoint=descer_endpoint,
+    )
+
+
+@relatorio_gestao_bp.route('/composicao-xxi')
+@login_required
+def composicao_xxi():
+    """Página 'Composição XXI' — tabela (Volume+% por ativo) + gráfico (FIN_VW027)."""
+    dsc_fundo = FUNDO_COMP_XXI
+
+    ano = db.session.execute(text(
+        "SELECT MAX(LEFT(ANO_MES,4)) FROM [BDG].[FIN_VW027_COMPOSICAO_FI] WHERE DSC_FUNDO = :f"
+    ), {'f': dsc_fundo}).scalar()
+
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT ANO_MES, LFT, PC_LFT, [NTN-F], PC_NTN, OC, PC_OC, LTN, PC_LTN, TOTAL
+            FROM [BDG].[FIN_VW027_COMPOSICAO_FI]
+            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :ano
+            ORDER BY ANO_MES
+        """), {'f': dsc_fundo, 'ano': ano}).fetchall()
+
+    def _vol(v):
+        return _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
+
+    def _pc(v):
+        # PC_* já vem em percentual: só formata e coloca o '%'
+        return (_fmt_br(Decimal(str(v)), 2) + '%') if v is not None else '-'
+
+    linhas = []
+    graf_labels, g_lft, g_ntn, g_oc, g_ltn = [], [], [], [], []
+    for r in rows:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r[0]),
+            'lft': _vol(r[1]), 'pc_lft': _pc(r[2]),
+            'ntn': _vol(r[3]), 'pc_ntn': _pc(r[4]),
+            'oc': _vol(r[5]), 'pc_oc': _pc(r[6]),
+            'ltn': _vol(r[7]), 'pc_ltn': _pc(r[8]),
+            'total': _vol(r[9]),
+        })
+        if r[9] is not None:  # gráfico só meses com Total
+            graf_labels.append(_mes_abrev_de_anomes(r[0]))
+            g_lft.append(float(r[1]) if r[1] is not None else 0.0)
+            g_ntn.append(float(r[3]) if r[3] is not None else 0.0)
+            g_oc.append(float(r[5]) if r[5] is not None else 0.0)
+            g_ltn.append(float(r[7]) if r[7] is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'LFT', 'data': g_lft},
+            {'label': 'NTN-F', 'data': g_ntn},
+            {'label': 'OC', 'data': g_oc},
+            {'label': 'LTN', 'data': g_ltn},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/composicao_xxi.html',
+        linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )
+
+@relatorio_gestao_bp.route('/composicao-bb')
+@login_required
+def composicao_bb():
+    return _pagina_composicao(
+        FUNDO_COMP_BB, 'BB Exclusivo Extramercado Emgea',
+        voltar_endpoint='relatorio_gestao.rentabilidade_bb_exclusivo',
+        descer_endpoint='relatorio_gestao.rentabilidade_xxi',
+    )
+
+
+@relatorio_gestao_bp.route('/composicao-fae2')
+@login_required
+def composicao_fae2():
+    """Página 'Composição FAE 2' — tabela (Volume+% por ativo) + gráfico (FIN_VW027)."""
+    dsc_fundo = FUNDO_COMP_FAE2
+
+    ano = db.session.execute(text(
+        "SELECT MAX(LEFT(ANO_MES,4)) FROM [BDG].[FIN_VW027_COMPOSICAO_FI] WHERE DSC_FUNDO = :f"
+    ), {'f': dsc_fundo}).scalar()
+
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT ANO_MES, LFT, PC_LFT, [NTN-F], PC_NTN, OC, PC_OC, LTN, PC_LTN, TOTAL
+            FROM [BDG].[FIN_VW027_COMPOSICAO_FI]
+            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :ano
+            ORDER BY ANO_MES
+        """), {'f': dsc_fundo, 'ano': ano}).fetchall()
+
+    def _vol(v):
+        return _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
+
+    def _pc(v):
+        # PC_* já vem em percentual: só formata e coloca o '%'
+        return (_fmt_br(Decimal(str(v)), 2) + '%') if v is not None else '-'
+
+    linhas = []
+    graf_labels, g_lft, g_ntn, g_oc, g_ltn = [], [], [], [], []
+    for r in rows:
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r[0]),
+            'lft': _vol(r[1]), 'pc_lft': _pc(r[2]),
+            'ntn': _vol(r[3]), 'pc_ntn': _pc(r[4]),
+            'oc': _vol(r[5]), 'pc_oc': _pc(r[6]),
+            'ltn': _vol(r[7]), 'pc_ltn': _pc(r[8]),
+            'total': _vol(r[9]),
+        })
+        if r[9] is not None:  # gráfico só meses com Total
+            graf_labels.append(_mes_abrev_de_anomes(r[0]))
+            g_lft.append(float(r[1]) if r[1] is not None else 0.0)
+            g_ntn.append(float(r[3]) if r[3] is not None else 0.0)
+            g_oc.append(float(r[5]) if r[5] is not None else 0.0)
+            g_ltn.append(float(r[7]) if r[7] is not None else 0.0)
+
+    grafico = {
+        'labels': graf_labels,
+        'datasets': [
+            {'label': 'LFT', 'data': g_lft},
+            {'label': 'NTN-F', 'data': g_ntn},
+            {'label': 'OC', 'data': g_oc},
+            {'label': 'LTN', 'data': g_ltn},
+        ],
+    }
+
+    return render_template(
+        'relatorio_gestao/composicao_fae2.html',
+        linhas=linhas, grafico=grafico, sem_dados=(len(linhas) == 0),
+    )
+
+@relatorio_gestao_bp.route('/titulos-consolidados-bb')
+@login_required
+def titulos_consolidados_bb():
+    """Página 'Títulos Consolidados BB' — estoque de Títulos CVS (FIN_VW026)."""
+    dt_pos = db.session.execute(text(
+        "SELECT MAX(DT_POSICAO) FROM [BDG].[FIN_VW026_TITULOS_CUSTODIADOS_RG]"
+    )).scalar()
+
+    linhas, total = [], Decimal('0')
+    if dt_pos is not None:
+        rows = db.session.execute(text("""
+            SELECT TIPO, QTDE, VR_TOTAL
+            FROM [BDG].[FIN_VW026_TITULOS_CUSTODIADOS_RG]
+            WHERE DT_POSICAO = :dt
+            ORDER BY TIPO
+        """), {'dt': dt_pos}).fetchall()
+
+        for r in rows:
+            vr = Decimal(str(r[2])) if r[2] is not None else Decimal('0')
+            total += vr
+            linhas.append({
+                'tipo': (r[0] or ''),
+                'qtde': _fmt_br(Decimal(str(r[1])), 0) if r[1] is not None else '-',
+                'valor': _fmt_br(vr, 2),
+            })
+
+    return render_template(
+        'relatorio_gestao/titulos_consolidados_bb.html',
+        linhas=linhas,
+        total=_fmt_br(total, 2),
+        data_posicao=dt_pos.strftime('%d/%m/%Y') if dt_pos else '—',
+        sem_dados=(len(linhas) == 0),
     )

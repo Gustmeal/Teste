@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cp-container { max-width: 1150px; margin: 0 auto; }
+    .cp-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 1.5rem; }
+    .cp-head { background: #1e3a8a; color: #fff; padding: .7rem 1.2rem;
+               border-radius: 12px 12px 0 0; font-weight: 700; }
+    .cp-body { padding: 1.3rem; }
+    .cp-label { font-size: .8rem; font-weight: 600; color: #475569; }
+    .cp-aviso { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+                border-radius: 8px; padding: .7rem 1rem; font-size: .9rem; margin-bottom: 1rem; }
+    table.cp-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    table.cp-table thead th { background: #1f4e79; color: #fff; padding: .5rem; white-space: nowrap; }
+    table.cp-table td { padding: .45rem .5rem; border-bottom: 1px solid #eef2f7; }
+    .cp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1050;
+                  display: none; align-items: center; justify-content: center; }
+    .cp-modal { background: #fff; border-radius: 12px; padding: 1.6rem; width: 560px; max-width: 95vw; }
+</style>
+
+<div class="cp-container fade-in">
+    <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-4">Composição dos Fundos</h1>
+
+    <div id="cpFeedback" class="mb-3" style="display:none;"></div>
+
+    <!-- NOVO LANÇAMENTO -->
+    <div class="cp-card">
+        <div class="cp-head"><i class="fas fa-plus me-2"></i>Novo Lançamento</div>
+        <div class="cp-body">
+            <!-- MENSAGEM EM HTML PURO (não é popup/modal) -->
+            <div class="cp-aviso">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>Atenção ao sinal:</strong> ao incluir um valor negativo, digite o
+                sinal de menos antes do número (ex.: <code>-1234,56</code>). O valor é
+                gravado exatamente como digitado.
+            </div>
+
+            <form id="formNovo" onsubmit="return false;">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="cp-label">Competência (Ano/Mês) *</label>
+                        <input type="month" class="form-control" name="ANO_MES" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="cp-label">Fundo *</label>
+                        <select class="form-select" name="ID_FUNDO" required>
+                            <option value="">Selecione...</option>
+                            {% for f in fundos %}<option value="{{ f.id }}">{{ f.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="cp-label">Ativo *</label>
+                        <select class="form-select" name="ID_ATIVO" required>
+                            <option value="">Selecione...</option>
+                            {% for a in ativos %}<option value="{{ a.id }}">{{ a.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="cp-label">Item *</label>
+                        <select class="form-select" name="ID_ITEM" id="selItem" required>
+                            <option value="">Selecione...</option>
+                            {% for i in itens %}<option value="{{ i.id }}">{{ i.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="cp-label">VR Atual *</label>
+                        <input type="number" step="any" class="form-control" name="VR_ATUAL"
+                               placeholder="ex.: -1234,56" required>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" onclick="cpIncluir()">
+                        <i class="fas fa-save me-2"></i>Incluir
+                    </button>
+                </div>
+            </form>
+
+            <hr>
+            <!-- CRIAR NOVO ITEM (gera ID automático) -->
+            <div class="row g-2 align-items-end">
+                <div class="col-md-6">
+                    <label class="cp-label">Criar novo item (só a descrição — o ID é gerado)</label>
+                    <input type="text" class="form-control" id="novoItemDsc" placeholder="Descrição do novo item">
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-outline-primary" onclick="cpNovoItem()">
+                        <i class="fas fa-plus me-1"></i>Criar item
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="cp-card">
+        <div class="cp-head"><i class="fas fa-filter me-2"></i>Filtros</div>
+        <div class="cp-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="cp-label">Competência</label>
+                    <input type="month" class="form-control" name="anomes"
+                           value="{{ (filtros.anomes[0:4] ~ '-' ~ filtros.anomes[4:6]) if filtros.anomes else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="cp-label">Fundo</label>
+                    <select class="form-select" name="fundo">
+                        <option value="">Todos</option>
+                        {% for f in fundos %}
+                        <option value="{{ f.id }}" {{ 'selected' if filtros.fundo == f.id|string }}>{{ f.dsc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="cp-card">
+        <div class="cp-head"><i class="fas fa-table me-2"></i>Lançamentos ({{ lista|length }})</div>
+        <div class="cp-body p-0">
+            <div class="table-responsive">
+                <table class="cp-table">
+                    <thead>
+                        <tr>
+                            <th>Competência</th><th>Fundo</th><th>Ativo</th><th>Item</th>
+                            <th class="text-end">VR Atual</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in lista %}
+                        <tr>
+                            <td>{{ l.anomes_fmt }}</td>
+                            <td>{{ l.dsc_fundo }}</td>
+                            <td>{{ l.dsc_ativo }}</td>
+                            <td>{{ l.dsc_item }}</td>
+                            <td class="text-end">{{ l.vr_fmt }}</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick='cpEditar(this)'
+                                    data-am="{{ l.anomes }}" data-fu="{{ l.id_fundo }}" data-at="{{ l.id_ativo }}"
+                                    data-it="{{ l.id_item }}" data-vr="{{ l.vr_str }}">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted py-3">Nenhum lançamento.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL EDIÇÃO -->
+<div id="cpOverlay" class="cp-overlay">
+    <div class="cp-modal">
+        <h5 class="fw-bold mb-3">Editar Lançamento</h5>
+        <form id="formEditar" onsubmit="return false;">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="cp-label">Competência *</label>
+                    <input type="month" class="form-control" name="ANO_MES" id="e_am" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="cp-label">VR Atual * (mantenha o sinal)</label>
+                    <input type="number" step="any" class="form-control" name="VR_ATUAL" id="e_vr" required>
+                </div>
+                <div class="col-md-12">
+                    <label class="cp-label">Fundo *</label>
+                    <select class="form-select" name="ID_FUNDO" id="e_fu" required>
+                        {% for f in fundos %}<option value="{{ f.id }}">{{ f.dsc }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="cp-label">Ativo *</label>
+                    <select class="form-select" name="ID_ATIVO" id="e_at" required>
+                        {% for a in ativos %}<option value="{{ a.id }}">{{ a.dsc }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="cp-label">Item *</label>
+                    <select class="form-select" name="ID_ITEM" id="e_it" required>
+                        {% for i in itens %}<option value="{{ i.id }}">{{ i.dsc }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <input type="hidden" name="o_ANO_MES" id="o_am">
+            <input type="hidden" name="o_ID_FUNDO" id="o_fu">
+            <input type="hidden" name="o_ID_ATIVO" id="o_at">
+            <input type="hidden" name="o_ID_ITEM" id="o_it">
+        </form>
+        <div class="mt-3 d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" onclick="cpFechar()">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="cpSalvarEdicao()">
+                <i class="fas fa-save me-2"></i>Salvar
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function cpFeedback(t, m) {
+    var el = document.getElementById('cpFeedback');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="alert alert-' + t + ' mb-0">' + m + '</div>';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function cpEnviar(url, form) {
+    return fetch(url, { method: 'POST', headers: { 'X-Silent-Request': 'true' },
+        body: form ? new FormData(form) : new FormData() }).then(function (r) { return r.json(); });
+}
+function cpIncluir() {
+    cpEnviar("{{ url_for('composicao_fundos.incluir') }}", document.getElementById('formNovo'))
+        .then(function (d) {
+            cpFeedback(d.success ? 'success' : 'danger', d.message);
+            if (d.success) setTimeout(function(){ location.reload(); }, 1200);
+        }).catch(function (e) { cpFeedback('danger', 'Erro: ' + e); });
+}
+function cpNovoItem() {
+    var dsc = document.getElementById('novoItemDsc').value.trim();
+    if (!dsc) { cpFeedback('warning', 'Digite a descrição do novo item.'); return; }
+    var fd = new FormData(); fd.append('DSC_ITEM', dsc);
+    fetch("{{ url_for('composicao_fundos.novo_item') }}",
+          { method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            cpFeedback(d.success ? 'success' : 'danger', d.message);
+            if (d.success) setTimeout(function(){ location.reload(); }, 1200);
+        }).catch(function (e) { cpFeedback('danger', 'Erro: ' + e); });
+}
+function cpEditar(btn) {
+    var am = btn.dataset.am;
+    document.getElementById('e_am').value = am.substring(0,4) + '-' + am.substring(4,6);
+    document.getElementById('e_vr').value = btn.dataset.vr;
+    document.getElementById('e_fu').value = btn.dataset.fu;
+    document.getElementById('e_at').value = btn.dataset.at;
+    document.getElementById('e_it').value = btn.dataset.it;
+    document.getElementById('o_am').value = am;
+    document.getElementById('o_fu').value = btn.dataset.fu;
+    document.getElementById('o_at').value = btn.dataset.at;
+    document.getElementById('o_it').value = btn.dataset.it;
+    document.getElementById('cpOverlay').style.display = 'flex';
+}
+function cpFechar() { document.getElementById('cpOverlay').style.display = 'none'; }
+function cpSalvarEdicao() {
+    cpEnviar("{{ url_for('composicao_fundos.editar') }}", document.getElementById('formEditar'))
+        .then(function (d) {
+            cpFeedback(d.success ? 'success' : 'danger', d.message);
+            if (d.success) setTimeout(function(){ location.reload(); }, 1200);
+        }).catch(function (e) { cpFeedback('danger', 'Erro: ' + e); });
+}
+</script>
+{% endblock %}

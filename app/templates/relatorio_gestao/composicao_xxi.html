@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cx-container { max-width: 1080px; margin: 0 auto; }
+    .cx-page { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+               padding:2rem 2.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .cx-title { text-align:center; font-weight:700; color:#1e3a8a; }
+    .cx-sub { text-align:center; color:#64748b; margin-bottom:.3rem; }
+    .cx-unid { text-align:right; font-size:.8rem; color:#64748b; margin-bottom:.5rem; }
+    table.cx-table { width:100%; border-collapse:collapse; font-size:.8rem; }
+    table.cx-table th, table.cx-table td { text-align:center; padding:.4rem .5rem; }
+    table.cx-table thead th { background:#1f4e79; color:#fff; border:1px solid #fff; }
+    table.cx-table tbody td { border:1px solid #e2e8f0; }
+    table.cx-table tbody td:first-child { font-weight:600; background:#f8fafc; }
+    table.cx-table tbody td:last-child { font-weight:700; }
+    table.cx-table tbody tr:nth-child(even) td { background:#f4f7fb; }
+    .cx-gsep { border-left:2px solid #b9c6dd !important; }
+    .cx-chart-wrap { height:360px; margin-top:2rem; }
+    .cx-nav { text-align:center; margin-top:1.4rem; }
+    .cx-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; }
+</style>
+
+<div class="cx-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.rentabilidade_xxi') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem dados na FIN_VW027 para o fundo <strong>CAIXA Extramercado Exclusivo XXI</strong>.</div>
+    {% else %}
+    <div class="cx-page">
+        <h3 class="cx-title">Fundos de Investimento<br>Caixa Econômica Exclusivo XXI</h3>
+        <div class="cx-sub">Composição da Carteira</div>
+        <div class="cx-unid">Volume em R$ milhões</div>
+
+        <div class="table-responsive">
+            <table class="cx-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Mês</th>
+                        <th colspan="2">LFT</th>
+                        <th colspan="2" class="cx-gsep">NTN-F</th>
+                        <th colspan="2" class="cx-gsep">OC</th>
+                        <th colspan="2" class="cx-gsep">LTN</th>
+                        <th rowspan="2" class="cx-gsep">Total</th>
+                    </tr>
+                    <tr>
+                        <th>Volume</th><th>%</th>
+                        <th class="cx-gsep">Volume</th><th>%</th>
+                        <th class="cx-gsep">Volume</th><th>%</th>
+                        <th class="cx-gsep">Volume</th><th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in linhas %}
+                    <tr>
+                        <td>{{ l.mes }}</td>
+                        <td>{{ l.lft }}</td><td>{{ l.pc_lft }}</td>
+                        <td class="cx-gsep">{{ l.ntn }}</td><td>{{ l.pc_ntn }}</td>
+                        <td class="cx-gsep">{{ l.oc }}</td><td>{{ l.pc_oc }}</td>
+                        <td class="cx-gsep">{{ l.ltn }}</td><td>{{ l.pc_ltn }}</td>
+                        <td class="cx-gsep">{{ l.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="cx-chart-wrap"><canvas id="chartCompXXI"></canvas></div>
+    </div>
+    {% endif %}
+
+    <div class="cx-nav">
+        <a href="{{ url_for('relatorio_gestao.rentabilidade_xxi') }}" title="Voltar">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+        <a href="{{ url_for('relatorio_gestao.rentabilidade_fae2') }}"
+           title="Ir para Rentabilidade FAE 2" style="margin-left:1.5rem;">
+            <i class="fas fa-arrow-down"></i>
+        </a>
+    </div>
+</div>
+
+<script id="dadosCompXXI" type="application/json">{{ grafico | tojson }}</script>
+<script>
+(function () {
+    function fmtBR(v){ try { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); } catch(e){ return v; } }
+    function init() {
+        var el = document.getElementById('chartCompXXI');
+        if (!el) return;
+        var dados; try { dados = JSON.parse(document.getElementById('dadosCompXXI').textContent); } catch(e){ return; }
+        if (!dados.datasets || !dados.labels.length) {
+            el.parentElement.innerHTML = '<div class="text-muted text-center">Sem dados para o gráfico.</div>'; return;
+        }
+        var cores = ['#2e75b6', '#548235', '#ed7d31', '#7030a0'];
+        dados.datasets.forEach(function(ds,i){ ds.backgroundColor = cores[i%cores.length]; ds.maxBarThickness = 46; });
+        new Chart(el, {
+            type: 'bar',
+            data: dados,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Composição da Carteira (R$ milhões)' },
+                    tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + fmtBR(c.parsed.y); } } }
+                },
+                scales: { x: { stacked: true }, y: { stacked: true, ticks: { callback: function(v){ return fmtBR(v); } } } }
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        if (typeof Chart === 'undefined') {
+            var s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload=init; document.head.appendChild(s);
+        } else { init(); }
+    });
+})();
+</script>
+{% endblock %}

@@ -66,10 +66,11 @@
     {% endif %}
 
     <div class="rb-nav">
-        <a href="{{ url_for('relatorio_gestao.disponibilidades') }}" title="Voltar"><i class="fas fa-arrow-up"></i></a>
-
-        <a href="{{ url_for('relatorio_gestao.rentabilidade_xxi') }}"
-           title="Ir para Rentabilidade XXI" style="margin-left:1.5rem;">
+        <a href="{{ url_for('relatorio_gestao.disponibilidades') }}" title="Voltar">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+        <a href="{{ url_for('relatorio_gestao.composicao_bb') }}"
+           title="Ir para Composição BB" style="margin-left:1.5rem;">
             <i class="fas fa-arrow-down"></i>
         </a>
     </div>

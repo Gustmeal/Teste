@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .tc-container { max-width: 760px; margin: 0 auto; }
+    .tc-page { background:#fff; border:1px solid #e2e8f0; border-radius:12px;
+               padding:2rem 2.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .tc-title { text-align:center; font-weight:700; color:#1e3a8a; }
+    .tc-sub { text-align:center; color:#64748b; margin-bottom:.3rem; }
+    .tc-estoque { text-align:center; font-weight:600; color:#334155; margin:1.2rem 0 .3rem; }
+    .tc-pos { text-align:center; font-size:.85rem; color:#64748b; margin-bottom:.8rem; }
+    .tc-unid { text-align:right; font-size:.8rem; color:#64748b; margin-bottom:.4rem; }
+    table.tc-table { width:100%; border-collapse:collapse; font-size:.88rem; }
+    table.tc-table th, table.tc-table td { padding:.5rem .7rem; border:1px solid #e2e8f0; }
+    table.tc-table thead th { background:#1f4e79; color:#fff; text-align:center; border-color:#fff; }
+    table.tc-table td.tc-num { text-align:right; }
+    table.tc-table td.tc-tipo { font-weight:600; background:#f8fafc; }
+    table.tc-table tr:nth-child(even) td { background:#f4f7fb; }
+    table.tc-table tfoot td { font-weight:700; background:#eef2f9; }
+    .tc-nav { text-align:center; margin-top:1.4rem; }
+    .tc-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; }
+</style>
+
+<div class="tc-container fade-in">
+    <a href="{{ url_for('relatorio_gestao.composicao_fae2') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem dados na FIN_VW026 para o período.</div>
+    {% else %}
+    <div class="tc-page">
+        <h3 class="tc-title">Títulos Custodiados no Banco do Brasil</h3>
+
+        <div class="tc-estoque">Estoque Títulos CVS EMGEA - BB</div>
+        <div class="tc-pos">Posição em {{ data_posicao }}</div>
+        <div class="tc-unid">Valores em R$</div>
+
+        <table class="tc-table">
+            <thead>
+                <tr>
+                    <th>Título</th>
+                    <th>Quantidade</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for l in linhas %}
+                <tr>
+                    <td class="tc-tipo">{{ l.tipo }}</td>
+                    <td class="tc-num">{{ l.qtde }}</td>
+                    <td class="tc-num">{{ l.valor }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="2">TOTAL EM ESTOQUE</td>
+                    <td class="tc-num">{{ total }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="tc-nav">
+        <a href="{{ url_for('relatorio_gestao.composicao_fae2') }}" title="Voltar">
+            <i class="fas fa-arrow-up"></i>
+        </a>
+    </div>
+</div>
+{% endblock %}
