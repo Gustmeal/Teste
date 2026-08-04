@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Relatório de Gestão Financeira - EMGEA</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: #e9edf3; font-family: 'Segoe UI', Arial, sans-serif; margin: 0; }
+
+    .barra { position: sticky; top: 0; z-index: 10; background: #1e3a8a; color: #fff;
+             padding: .6rem 1.2rem; display: flex; justify-content: space-between; align-items: center; }
+    .barra .btn { font-weight: 600; }
+
+    .folha { width: 210mm; min-height: 297mm; background: #fff; margin: 12px auto;
+             padding: 14mm 14mm 10mm; box-shadow: 0 2px 10px rgba(0,0,0,.15);
+             box-sizing: border-box; position: relative; }
+    .cab { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1e3a8a;
+           padding-bottom: 8px; margin-bottom: 14px; }
+    .cab img { height: 34px; }
+    .cab .cab-tit { font-size: .78rem; color: #1e3a8a; font-weight: 700; line-height: 1.1; }
+    .cab .cab-sub { font-size: .7rem; color: #64748b; }
+
+    h2.sec-title { text-align: center; color: #1e3a8a; font-weight: 700; margin: .2rem 0; }
+    .sec-sub { text-align: center; color: #64748b; margin-bottom: 1rem; }
+    .paragrafo { text-align: justify; line-height: 1.65; margin-bottom: .8rem; color: #1f2937; font-size: .86rem; }
+    .paragrafo .sub { font-weight: 700; }
+    .secao-h { font-weight: 700; color: #1e3a8a; font-size: 1.05rem; margin: 1.1rem 0 .5rem;
+               border-bottom: 2px solid #e2e8f0; padding-bottom: .2rem; }
+    .unid { text-align: right; font-size: .72rem; color: #64748b; margin-bottom: .3rem; }
+    .fonte { text-align: center; font-size: .72rem; color: #94a3b8; margin-top: .2rem; }
+    .chart-box { height: 300px; margin: .8rem 0; }
+    .chart-box.horiz { height: 360px; }
+
+    table.t { width: 100%; border-collapse: collapse; font-size: .74rem; }
+    table.t th, table.t td { border: 1px solid #dfe6ef; padding: .28rem .4rem; text-align: center; }
+    table.t thead th { background: #1f4e79; color: #fff; border-color: #fff; }
+    table.t td.l { text-align: left; }
+    table.t td.r { text-align: right; }
+    table.t tbody tr:nth-child(even) td { background: #f4f7fb; }
+    .gsep { border-left: 2px solid #b9c6dd !important; }
+    .neg { color: #c00000; }
+    .destaque td { font-weight: 700; background: #d9e1f2 !important; }
+    .num { color: #64748b; font-weight: 600; margin-right: .2rem; }
+
+    /* Tabela larga do Resultado Financeiro (compacta p/ caber em 1 página) */
+    table.rf { font-size: .60rem; }
+    table.rf th, table.rf td { padding: .16rem .26rem; line-height: 1.12; }
+    table.rf td.l { line-height: 1.08; }
+
+    /* CAPA */
+    .capa { display: flex; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; min-height: 270mm; }
+    .capa img { height: 90px; margin-bottom: 26px; }
+    .capa .faixa { width: 70%; border-top: 3px solid #1e3a8a; border-bottom: 3px solid #1e3a8a;
+                   padding: 22px 0; margin: 10px 0 28px; }
+    .capa h1 { color: #1e3a8a; font-weight: 800; font-size: 2.1rem; margin: 0; }
+    .capa .comp { font-size: 1.3rem; color: #334155; margin-top: 8px; }
+    .capa .orgs { margin-top: 40px; color: #475569; line-height: 1.9; font-size: 1rem; }
+    .capa .orgs strong { color: #1e3a8a; }
+
+    @page { size: A4; margin: 0; }
+    @media print {
+        body { background: #fff; }
+        .no-print { display: none !important; }
+        .folha { margin: 0; box-shadow: none; width: 210mm; min-height: 297mm;
+                 page-break-after: always; }
+        .folha:last-child { page-break-after: auto; }
+        .chart-box { height: 280px; }
+        table.t tr { page-break-inside: avoid; }
+        table.t thead { display: table-header-group; }
+    }
+</style>
+</head>
+<body>
+
+<div class="barra no-print">
+    <span><i class="fas fa-file-pdf me-2"></i>Relatório de Gestão Financeira — {{ mes_ref_cap }}/{{ ano_ref }}</span>
+    <div>
+        <button class="btn btn-light btn-sm" onclick="window.print()">🖨️ Gerar PDF</button>
+    </div>
+</div>
+
+{% set LOGO = url_for('static', filename='img/logo_emgea.png') %}
+
+{% macro cabecalho(titulo) %}
+<div class="cab">
+    <img src="{{ LOGO }}" alt="EMGEA">
+    <div>
+        <div class="cab-tit">EMGEA — Relatório de Gestão Financeira</div>
+        <div class="cab-sub">{{ titulo }} • {{ mes_ref_cap }} - {{ ano_ref }}</div>
+    </div>
+</div>
+{% endmacro %}
+
+{% macro tabela_resultado(grupos, linhas) %}
+<table class="t rf">
+    <thead>
+        <tr>
+            <th rowspan="2" class="l">Item</th>
+            {% for g in grupos %}<th colspan="{{ g.cols|length }}" class="gsep">{{ g.titulo }}</th>{% endfor %}
+        </tr>
+        <tr>
+            {% for g in grupos %}{% for c in g.cols %}<th class="{{ 'gsep' if loop.first }}">{{ c.sub }}</th>{% endfor %}{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for l in linhas %}
+        <tr class="{{ 'destaque' if l.nivel == 0 }}">
+            <td class="l" style="padding-left: {{ 0.3 + l.nivel * 0.9 }}rem;">
+                {% if l.numero %}<span class="num">{{ l.numero }}</span>{% endif %}{{ l.nome }}
+            </td>
+            {% for c in l.cells %}<td class="r {{ 'neg' if c.neg }} {{ 'gsep' if c.sep }}">{{ c.txt }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endmacro %}
+
+{% macro tabela_rentab(dados, cid) %}
+<div class="unid">Valores em %</div>
+<table class="t">
+    <thead>
+        <tr>
+            <th rowspan="2">Mês</th>
+            <th colspan="3">Rentabilidade Mensal</th>
+            <th colspan="2" class="gsep">Comparativo Mensal</th>
+            <th colspan="2" class="gsep">Comparativo Acum. no Ano</th>
+        </tr>
+        <tr>
+            <th>Fundo</th><th>IRF-M 1</th><th>TMS</th>
+            <th class="gsep">IRF-M 1</th><th>TMS</th>
+            <th class="gsep">IRF-M 1</th><th>TMS</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for l in dados.linhas %}
+        <tr>
+            <td>{{ l.mes }}</td>
+            {% for c in l.cells %}<td class="{{ 'gsep' if loop.index0 in [3,5] }}">{{ c }}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div class="chart-box"><canvas id="{{ cid }}"></canvas></div>
+{% endmacro %}
+
+{% macro tabela_comp(dados, cid) %}
+<div class="unid">Volume em R$ milhões</div>
+<table class="t">
+    <thead>
+        <tr>
+            <th rowspan="2">Mês</th>
+            <th colspan="2">LFT</th><th colspan="2" class="gsep">NTN-F</th>
+            <th colspan="2" class="gsep">OC</th><th colspan="2" class="gsep">LTN</th>
+            <th rowspan="2" class="gsep">Total</th>
+        </tr>
+        <tr>
+            <th>Volume</th><th>%</th><th class="gsep">Volume</th><th>%</th>
+            <th class="gsep">Volume</th><th>%</th><th class="gsep">Volume</th><th>%</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for l in dados.linhas %}
+        <tr>
+            <td>{{ l.mes }}</td>
+            <td class="r">{{ l.lft }}</td><td class="r">{{ l.pc_lft }}</td>
+            <td class="r gsep">{{ l.ntn }}</td><td class="r">{{ l.pc_ntn }}</td>
+            <td class="r gsep">{{ l.oc }}</td><td class="r">{{ l.pc_oc }}</td>
+            <td class="r gsep">{{ l.ltn }}</td><td class="r">{{ l.pc_ltn }}</td>
+            <td class="r gsep">{{ l.total }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<div class="chart-box"><canvas id="{{ cid }}"></canvas></div>
+{% endmacro %}
+
+<!-- ===================== CAPA ===================== -->
+<div class="folha capa">
+    <img src="{{ LOGO }}" alt="EMGEA">
+    <div class="faixa">
+        <h1>Relatório de Gestão Financeira</h1>
+        <div class="comp">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+    </div>
+    <div class="orgs">
+        <strong>Diretoria Contábil e Financeira</strong> - Difin<br>
+        <strong>Superintendência Financeira</strong> - Sufin<br>
+        <strong>Gerência de Finanças</strong> - Gefin
+    </div>
+</div>
+
+<!-- ===================== SUMÁRIO EXECUTIVO ===================== -->
+<div class="folha">
+    {{ cabecalho('Sumário Executivo') }}
+    <h2 class="sec-title">Sumário Executivo</h2>
+    <div class="sec-sub">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+    {% for item in sumario_itens %}
+        {% if item.tipo == 'texto' %}
+            <p class="paragrafo">{{ item.conteudo }}</p>
+        {% elif item.tipo == 'grafico' and item.chave == 'ingressos' %}
+            <div class="chart-box horiz"><canvas id="g_sum_ing"></canvas></div>
+            <div class="fonte">Fonte: Sistema RM Fluxus</div>
+        {% elif item.tipo == 'grafico' and item.chave == 'saidas' %}
+            <div class="chart-box horiz"><canvas id="g_sum_sai"></canvas></div>
+            <div class="fonte">Fonte: Sistema RM Fluxus</div>
+        {% elif item.tipo == 'tabela' %}
+            <table class="t" style="max-width:640px;margin:.7rem auto;">
+                <thead><tr>
+                    <th class="l">Fundo</th><th>Rentabilidade</th>
+                    <th>% do IRF-M 1</th><th>% da TMS</th>
+                </tr></thead>
+                <tbody>
+                    {% for l in quadro.linhas %}
+                    <tr>
+                        <td class="l">{{ l.fundo }}</td>
+                        <td class="r">{{ l.perc }}</td><td class="r">{{ l.irf }}</td><td class="r">{{ l.tms }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    {% endfor %}
+</div>
+
+<!-- ===================== RESULTADO FINANCEIRO (Ingressos) ===================== -->
+<div class="folha">
+    {{ cabecalho('Resultado Financeiro — Ingressos') }}
+    <h2 class="sec-title">Resultado Financeiro</h2>
+    <div class="sec-sub">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+    <div class="unid">Valores em R$ milhões</div>
+    {% if resultado %}
+        {{ tabela_resultado(resultado.grupos, resultado.bloco1) }}
+    {% else %}
+        <p class="paragrafo">Sem dados para a competência.</p>
+    {% endif %}
+</div>
+
+<!-- ===================== RESULTADO FINANCEIRO (Saídas) ===================== -->
+{% if resultado and resultado.bloco2 %}
+<div class="folha">
+    {{ cabecalho('Resultado Financeiro — Saídas') }}
+    <h2 class="sec-title">Resultado Financeiro</h2>
+    <div class="sec-sub">{{ mes_ref_cap }} - {{ ano_ref }} (continuação)</div>
+    <div class="unid">Valores em R$ milhões</div>
+    {{ tabela_resultado(resultado.grupos, resultado.bloco2) }}
+</div>
+{% endif %}
+
+<!-- ===================== CONSIDERAÇÕES ===================== -->
+<div class="folha">
+    {{ cabecalho('Considerações') }}
+    <h2 class="sec-title">Considerações</h2>
+    <div class="sec-sub">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+    {% for secao in consideracoes %}
+        <div class="secao-h">{{ secao.item_label }}</div>
+        {% for bloco in secao.blocos %}
+            <p class="paragrafo"><span class="sub">{{ bloco.subitem }}</span> {{ bloco.texto }}</p>
+            {% if bloco.grafico == 'ingressos' %}
+                <div class="chart-box"><canvas id="g_con_ing"></canvas></div><div class="fonte">Fonte: Sistema RM Fluxus</div>
+            {% elif bloco.grafico == 'saidas' %}
+                <div class="chart-box"><canvas id="g_con_sai"></canvas></div><div class="fonte">Fonte: Sistema RM Fluxus</div>
+            {% endif %}
+        {% endfor %}
+    {% endfor %}
+</div>
+
+<!-- ===================== DISPONIBILIDADES ===================== -->
+<div class="folha">
+    {{ cabecalho('Disponibilidades') }}
+    <h2 class="sec-title">Disponibilidades - Saldos</h2>
+    <div class="sec-sub">Saldo Líquido Final do Período</div>
+    <div class="unid">Valores em R$ milhões</div>
+    <table class="t">
+        <thead><tr>
+            <th>Mês</th><th>Contas Correntes</th><th>BB Exclusivo</th>
+            <th>Caixa Exclusivo XXI</th><th>BB FAE 2</th><th>Total</th>
+        </tr></thead>
+        <tbody>
+            {% for l in disp.linhas %}
+            <tr><td>{{ l.mes }}</td><td class="r">{{ l.cc }}</td><td class="r">{{ l.bb }}</td>
+                <td class="r">{{ l.cx }}</td><td class="r">{{ l.fae }}</td><td class="r">{{ l.total }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="chart-box"><canvas id="g_disp"></canvas></div>
+    {% if disp.texto %}<p class="paragrafo" style="margin-top:1rem;">{{ disp.texto }}</p>{% endif %}
+</div>
+
+<!-- ===================== RENTABILIDADE / COMPOSIÇÃO (BB, XXI, FAE2) ===================== -->
+<div class="folha">
+    {{ cabecalho('Rentabilidade — BB Exclusivo Extramercado Emgea') }}
+    <h2 class="sec-title">BB Exclusivo Extramercado Emgea</h2>
+    <div class="sec-sub">Rentabilidade Mensal e Comparativos</div>
+    {{ tabela_rentab(rent_bb, 'g_rent_bb') }}
+</div>
+<div class="folha">
+    {{ cabecalho('Composição — BB Exclusivo Extramercado Emgea') }}
+    <h2 class="sec-title">BB Exclusivo Extramercado Emgea</h2>
+    <div class="sec-sub">Composição da Carteira</div>
+    {{ tabela_comp(comp_bb, 'g_comp_bb') }}
+</div>
+
+<div class="folha">
+    {{ cabecalho('Rentabilidade — Caixa Econômica Exclusivo XXI') }}
+    <h2 class="sec-title">Caixa Econômica Exclusivo XXI</h2>
+    <div class="sec-sub">Rentabilidade Mensal e Comparativos</div>
+    {{ tabela_rentab(rent_xxi, 'g_rent_xxi') }}
+</div>
+<div class="folha">
+    {{ cabecalho('Composição — Caixa Econômica Exclusivo XXI') }}
+    <h2 class="sec-title">Caixa Econômica Exclusivo XXI</h2>
+    <div class="sec-sub">Composição da Carteira</div>
+    {{ tabela_comp(comp_xxi, 'g_comp_xxi') }}
+</div>
+
+<div class="folha">
+    {{ cabecalho('Rentabilidade — BB Extramercado FAE 2') }}
+    <h2 class="sec-title">BB Extramercado FAE 2</h2>
+    <div class="sec-sub">Rentabilidade Mensal e Comparativos</div>
+    {{ tabela_rentab(rent_fae2, 'g_rent_fae2') }}
+</div>
+<div class="folha">
+    {{ cabecalho('Composição — BB Extramercado FAE 2') }}
+    <h2 class="sec-title">BB Extramercado FAE 2</h2>
+    <div class="sec-sub">Composição da Carteira</div>
+    {{ tabela_comp(comp_fae2, 'g_comp_fae2') }}
+</div>
+
+<!-- ===================== TÍTULOS CONSOLIDADOS BB ===================== -->
+<div class="folha">
+    {{ cabecalho('Títulos Consolidados BB') }}
+    <h2 class="sec-title">Títulos Custodiados no Banco do Brasil</h2>
+    <div class="sec-sub">Estoque Títulos CVS EMGEA - BB • Posição em {{ titulos.data }}</div>
+    <div class="unid">Valores em R$</div>
+    <table class="t" style="max-width:620px;margin:0 auto;">
+        <thead><tr><th>Título</th><th>Quantidade</th><th>Valor</th></tr></thead>
+        <tbody>
+            {% for l in titulos.linhas %}
+            <tr><td class="l">{{ l.tipo }}</td><td class="r">{{ l.qtde }}</td><td class="r">{{ l.valor }}</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot><tr class="destaque"><td class="l" colspan="2">TOTAL EM ESTOQUE</td><td class="r">{{ titulos.total }}</td></tr></tfoot>
+    </table>
+</div>
+
+<script id="graficosData" type="application/json">{{ graficos | tojson }}</script>
+<script>
+(function () {
+    var CORES = ['#2e75b6', '#548235', '#ed7d31', '#7030a0', '#c00000', '#ffc000', '#4472c4', '#00b0f0'];
+    function fmt(v){ try { return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); } catch(e){ return v; } }
+
+    var CHARTS = [];
+    function render() {
+        var specs = JSON.parse(document.getElementById('graficosData').textContent);
+        Object.keys(specs).forEach(function (id) {
+            var el = document.getElementById(id); if (!el) return;
+            var s = specs[id];
+            if (!s.dados || !s.dados.datasets || !s.dados.datasets.length) {
+                el.parentElement.innerHTML = '<div class="fonte">Sem dados para o gráfico.</div>'; return;
+            }
+            s.dados.datasets.forEach(function (ds, i) {
+                var c = CORES[i % CORES.length];
+                ds.backgroundColor = c; ds.borderColor = c;
+                ds.borderWidth = s.stacked ? 0 : 1; ds.maxBarThickness = s.horizontal ? 34 : 46;
+            });
+            var valueAxis = { beginAtZero: !s.percent, stacked: !!s.stacked,
+                ticks: { callback: function (v) { return fmt(v) + (s.percent ? '%' : ''); } } };
+            var catAxis = { stacked: !!s.stacked };
+            var chart = new Chart(el, {
+                type: 'bar', data: s.dados,
+                options: {
+                    responsive: true, maintainAspectRatio: false, animation: false,
+                    devicePixelRatio: 3,
+                    indexAxis: s.horizontal ? 'y' : 'x',
+                    plugins: { legend: { position: 'top' },
+                        tooltip: { callbacks: { label: function (ctx) {
+                            var val = s.horizontal ? ctx.parsed.x : ctx.parsed.y;
+                            return ctx.dataset.label + ': ' + fmt(val) + (s.percent ? '%' : ''); } } } },
+                    scales: s.horizontal ? { x: valueAxis, y: catAxis } : { x: catAxis, y: valueAxis }
+                }
+            });
+            CHARTS.push(chart);
+        });
+    }
+    window.addEventListener('beforeprint', function () { CHARTS.forEach(function (c) { c.resize(); }); });
+
+    if (typeof Chart !== 'undefined') { render(); }
+    else {
+        var t = setInterval(function(){ if (typeof Chart !== 'undefined'){ clearInterval(t); render(); } }, 200);
+        setTimeout(function(){ clearInterval(t); }, 6000);
+    }
+})();
+</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</body>
+</html>

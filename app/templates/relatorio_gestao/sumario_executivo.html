@@ -17,11 +17,22 @@
         text-align: center; color: #94a3b8; margin: 1.3rem 0; background: #f8fafc;
     }
     .rg-reservado i { font-size: 1.6rem; display: block; margin-bottom: .4rem; }
+    .rg-quadro { width: 100%; max-width: 680px; margin: 1rem auto; border-collapse: collapse; font-size: .85rem; }
+    .rg-quadro thead th { background: #1f4e79; color: #fff; padding: .5rem; border: 1px solid #fff; text-align: center; }
+    .rg-quadro td { border: 1px solid #e2e8f0; padding: .45rem .6rem; text-align: center; }
+    .rg-quadro td.l { text-align: left; font-weight: 600; }
+    .rg-quadro tbody tr:nth-child(even) td { background: #f4f7fb; }
+
 </style>
 
 <div class="rg-container fade-in">
     <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <a href="{{ url_for('relatorio_gestao.relatorio_completo') }}" target="_blank"
+       class="btn btn-danger btn-sm" style="float:right;">
+        <i class="fas fa-file-pdf me-1"></i>Gerar PDF
     </a>
 
     {% if sem_dados %}
@@ -60,10 +71,24 @@
                 </div>
 
             {% elif item.tipo == 'tabela' %}
-                <div class="rg-reservado">
-                    <i class="fas fa-table"></i>
-                    Espaço reservado para tabela{% if item.titulo %} — {{ item.titulo }}{% endif %}
-                </div>
+                <table class="rg-quadro">
+                    <thead>
+                        <tr>
+                            <th>Fundo</th><th>Rentabilidade</th>
+                            <th>% do IRF-M 1</th><th>% da TMS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in quadro.linhas %}
+                        <tr>
+                            <td class="l">{{ l.fundo }}</td>
+                            <td>{{ l.perc }}</td><td>{{ l.irf }}</td><td>{{ l.tms }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-muted">Sem dados na FIN_VW030.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             {% endif %}
         {% endfor %}
     </div>

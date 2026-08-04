@@ -45,6 +45,12 @@ FUNDO_COMP_XXI = 'CAIXA Extramercado Exclusivo XXI'
 
 FUNDO_COMP_FAE2 = 'BB Extramercado FAE 2'
 
+# Nomes amigáveis dos fundos para o quadro comparativo do Sumário
+_FUNDO_DISPLAY = {
+    'BB RF Exclusivo': 'BB Exclusivo Extramercado Emgea',
+    'CAIXA RF Exclusivo XXI': 'Caixa Econômica Exclusivo XXI',
+    'Extramercado FAE 2': 'BB Extramercado FAE 2',
+}
 
 def _hierarquia(nat):
     """
@@ -226,6 +232,186 @@ def _montar_texto_bloqueios(registros):
     texto = re.sub(r'\s+', ' ', texto).strip()
     return re.sub(r'\s+([,.;:)%])', r'\1', texto)
 
+def _dados_view_itens(view, mes_limite=12):
+    """Leitor genérico (ANO, ITEM, JAN..DEZ) do maior ANO -> {labels, datasets}."""
+    ano = db.session.execute(text(f"SELECT MAX(ANO) FROM [BDG].[{view}]")).scalar()
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text(f"""
+            SELECT ITEM, [JAN] M1,[FEV] M2,[MAR] M3,[ABR] M4,[MAI] M5,[JUN] M6,
+                   [JUL] M7,[AGO] M8,[SET] M9,[OUT] M10,[NOV] M11,[DEZ] M12
+            FROM [BDG].[{view}] WHERE ANO = :a ORDER BY ITEM
+        """), {'a': ano}).fetchall()
+    n = max(1, min(12, int(mes_limite or 12)))
+    labels = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][:n]
+    datasets = []
+    for r in rows:
+        datasets.append({'label': (r[0] or '').strip(),
+                         'data': [float(r[1+i]) if r[1+i] is not None else 0.0 for i in range(n)]})
+    return {'labels': labels, 'datasets': datasets}
+
+
+def _dados_rentabilidade(fundo):
+    cols = ['PERF_MES', 'IRF_M1', 'TMS', 'IRF_M1_COMP_MENSAL', 'TMS_COMP_MENSAL',
+            'IRF_M1_COMP_ANUAL', 'TMS_COMP_ANUAL']
+    linhas, labels, irf, tms = [], [], [], []
+    for r in QuadroRentabilidade.carregar_por_fundo(fundo):
+        linhas.append({'mes': _mes_abrev_de_anomes(r.ANO_MES),
+                       'cells': [_fmt_pct_rent(getattr(r, c)) for c in cols]})
+        if r.IRF_M1_COMP_ANUAL is not None or r.TMS_COMP_ANUAL is not None:
+            labels.append(_mes_abrev_de_anomes(r.ANO_MES))
+            irf.append(float(r.IRF_M1_COMP_ANUAL) if r.IRF_M1_COMP_ANUAL is not None else 0.0)
+            tms.append(float(r.TMS_COMP_ANUAL) if r.TMS_COMP_ANUAL is not None else 0.0)
+    return {'linhas': linhas, 'grafico': {'labels': labels,
+            'datasets': [{'label': 'IRF-M 1', 'data': irf}, {'label': 'TMS', 'data': tms}]}}
+
+
+def _dados_composicao(dsc_fundo):
+    ano = db.session.execute(text(
+        "SELECT MAX(LEFT(ANO_MES,4)) FROM [BDG].[FIN_VW027_COMPOSICAO_FI] WHERE DSC_FUNDO = :f"
+    ), {'f': dsc_fundo}).scalar()
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT ANO_MES, LFT, PC_LFT, [NTN-F], PC_NTN, OC, PC_OC, LTN, PC_LTN, TOTAL
+            FROM [BDG].[FIN_VW027_COMPOSICAO_FI]
+            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :a ORDER BY ANO_MES
+        """), {'f': dsc_fundo, 'a': ano}).fetchall()
+    vol = lambda v: _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
+    pc = lambda v: (_fmt_br(Decimal(str(v)), 2) + '%') if v is not None else '-'
+    linhas, labels, g = [], [], {'lft': [], 'ntn': [], 'oc': [], 'ltn': []}
+    for r in rows:
+        linhas.append({'mes': _mes_abrev_de_anomes(r[0]),
+                       'lft': vol(r[1]), 'pc_lft': pc(r[2]), 'ntn': vol(r[3]), 'pc_ntn': pc(r[4]),
+                       'oc': vol(r[5]), 'pc_oc': pc(r[6]), 'ltn': vol(r[7]), 'pc_ltn': pc(r[8]),
+                       'total': vol(r[9])})
+        if r[9] is not None:
+            labels.append(_mes_abrev_de_anomes(r[0]))
+            g['lft'].append(float(r[1] or 0)); g['ntn'].append(float(r[3] or 0))
+            g['oc'].append(float(r[5] or 0)); g['ltn'].append(float(r[7] or 0))
+    return {'linhas': linhas, 'grafico': {'labels': labels, 'datasets': [
+        {'label': 'LFT', 'data': g['lft']}, {'label': 'NTN-F', 'data': g['ntn']},
+        {'label': 'OC', 'data': g['oc']}, {'label': 'LTN', 'data': g['ltn']}]}}
+
+
+def _dados_disponibilidades():
+    ano = db.session.execute(text(
+        "SELECT MAX(ANO) FROM [BDG].[FIN_VW023_DISPONIBILIDADES_CONTAS_EMGEA]")).scalar()
+    rows = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT MES, CT_CORRENTES, BB_EXCLUSIVO, CX_EXCLUSIVO, FAE_2, TOTAL
+            FROM [BDG].[FIN_VW023_DISPONIBILIDADES_CONTAS_EMGEA]
+            WHERE ANO = :a ORDER BY MES_EXECUCAO
+        """), {'a': ano}).fetchall()
+    f = lambda v: _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
+    linhas, labels, g = [], [], {'cc': [], 'bb': [], 'cx': [], 'fae': []}
+    for r in rows:
+        linhas.append({'mes': r[0] or '', 'cc': f(r[1]), 'bb': f(r[2]),
+                       'cx': f(r[3]), 'fae': f(r[4]), 'total': f(r[5])})
+        if r[5] is not None:
+            labels.append(r[0] or '')
+            g['cc'].append(float(r[1] or 0)); g['bb'].append(float(r[2] or 0))
+            g['cx'].append(float(r[3] or 0)); g['fae'].append(float(r[4] or 0))
+    reg = db.session.execute(text("""
+        SELECT ID, TEXTO, VR FROM [BDG].[FIN_VW025_DISPONIBILIDADES_BLOQUEIOS_JUDICIAIS_TEXTO]
+        ORDER BY ID""")).fetchall()
+
+    class _F:
+        def __init__(self, t, v): self.TEXTO = t; self.VR = v
+    texto = _montar_texto_bloqueios([_F(r[1], r[2]) for r in reg])
+    grafico = {'labels': labels, 'datasets': [
+        {'label': 'Contas Correntes', 'data': g['cc']}, {'label': 'BB Exclusivo', 'data': g['bb']},
+        {'label': 'Caixa Exclusivo XXI', 'data': g['cx']}, {'label': 'BB FAE 2', 'data': g['fae']}]}
+    return {'linhas': linhas, 'texto': texto, 'grafico': grafico}
+
+
+def _dados_titulos():
+    dt = db.session.execute(text("SELECT MAX(DT_POSICAO) FROM [BDG].[FIN_VW026_TITULOS_CUSTODIADOS_RG]")).scalar()
+    linhas, total = [], Decimal('0')
+    if dt is not None:
+        for r in db.session.execute(text("""
+                SELECT TIPO, QTDE, VR_TOTAL FROM [BDG].[FIN_VW026_TITULOS_CUSTODIADOS_RG]
+                WHERE DT_POSICAO = :d ORDER BY TIPO"""), {'d': dt}).fetchall():
+            vr = Decimal(str(r[2])) if r[2] is not None else Decimal('0')
+            total += vr
+            linhas.append({'tipo': r[0] or '',
+                           'qtde': _fmt_br(Decimal(str(r[1])), 0) if r[1] is not None else '-',
+                           'valor': _fmt_br(vr, 2)})
+    return {'linhas': linhas, 'total': _fmt_br(total, 2),
+            'data': dt.strftime('%d/%m/%Y') if dt else '—'}
+
+
+def _dados_resultado_financeiro(ano_int, mes_num):
+    if not ano_int:
+        return None
+    ano_ant = ano_int - 1
+    a_ano, a_mes = _mes_anterior(ano_int, mes_num)
+    _, _, mes_ref_cap = partes_posicao(f"{ano_int}{mes_num:02d}")
+    mrn, man = _MESES_NOME[mes_num - 1], _MESES_NOME[a_mes - 1]
+    grupos = [
+        {'titulo': str(ano_int), 'cols': [
+            {'sub': man, 'attr': 'VR_MES_ANTERIOR', 'tipo': 'moeda'},
+            {'sub': mrn, 'attr': 'VR_MES_ATUAL', 'tipo': 'moeda'},
+            {'sub': 'Acumulado', 'attr': 'VR_ACUMUL_ATE_MES', 'tipo': 'moeda'}]},
+        {'titulo': str(ano_ant), 'cols': [
+            {'sub': mrn, 'attr': 'VR_ANO_ANTERIOR', 'tipo': 'moeda'},
+            {'sub': 'Acumulado', 'attr': 'VR_ACUMUL_ATE_MES_ANO_ANT', 'tipo': 'moeda'}]},
+        {'titulo': f'∆ {ano_int} x {ano_ant}', 'cols': [
+            {'sub': '∆ % Mês', 'attr': 'VARIACAO_ANUAL_PERC', 'tipo': 'perc'},
+            {'sub': '∆ % Acum.', 'attr': 'VARIACAO_ANUAL_ACUML_PERC', 'tipo': 'perc'}]},
+        {'titulo': f'∆ {ano_int} x {ano_ant}', 'cols': [
+            {'sub': 'Mês', 'attr': 'VARIACAO_ANUAL', 'tipo': 'moeda'},
+            {'sub': 'Acumulado', 'attr': 'VARIACAO_ANUAL_ACUML', 'tipo': 'moeda'}]},
+        {'titulo': f'{mrn} x {man}', 'cols': [
+            {'sub': '∆ %', 'attr': 'VARIACAO_MENSAL_PERC', 'tipo': 'perc'},
+            {'sub': 'atual X anterior', 'attr': 'VARIACAO_MENSAL', 'tipo': 'moeda'}]},
+    ]
+    flat = []
+    for gr in grupos:
+        for i, c in enumerate(gr['cols']):
+            flat.append({'attr': c['attr'], 'tipo': c['tipo'], 'sep': (i == 0)})
+    linhas = []
+    for row in RelatorioResultadoFinanceiro.query.filter_by(ANO=ano_int, MES=mes_num)\
+            .order_by(RelatorioResultadoFinanceiro.NU_LINHA).all():
+        h = _hierarquia((row.NATUREZA or '').strip())
+        cells = []
+        for col in flat:
+            cell = _fmt_cell(getattr(row, col['attr']), col['tipo']); cell['sep'] = col['sep']
+            cells.append(cell)
+        linhas.append({'nivel': h['nivel'], 'numero': h['numero'], 'nome': h['nome'], 'cells': cells})
+
+    # Split em Ingressos / Saídas para paginar sem cortar no PDF
+    idx = None
+    for i, l in enumerate(linhas):
+        nome_up = l['nome'].strip().upper()
+        if l['nivel'] == 0 and (nome_up.startswith('SAÍDA') or nome_up.startswith('SAIDA')):
+            idx = i
+            break
+    bloco1 = linhas[:idx] if idx is not None else linhas
+    bloco2 = linhas[idx:] if idx is not None else []
+
+    return {'grupos': grupos, 'linhas': linhas, 'mes_ref_cap': mes_ref_cap,
+            'bloco1': bloco1, 'bloco2': bloco2}
+
+def _dados_quadro_comparativo():
+    """Quadro Rentabilidade Acumulada dos Fundos (FIN_VW030) — já vem em %."""
+    ano = db.session.execute(text(
+        "SELECT MAX(ANO) FROM [BDG].[FIN_VW030_QUADRO_COMPARATIVO_SUMARIO]")).scalar()
+    linhas = []
+    if ano is not None:
+        rows = db.session.execute(text("""
+            SELECT FUNDO, PERC, IRF_M1, TMS
+            FROM [BDG].[FIN_VW030_QUADRO_COMPARATIVO_SUMARIO]
+            WHERE ANO = :a ORDER BY FUNDO
+        """), {'a': ano}).fetchall()
+        pc = lambda v: (_fmt_br(Decimal(str(v)), 2) + '%') if v is not None else '-'
+        for r in rows:
+            raw = (r[0] or '').strip()
+            linhas.append({'fundo': _FUNDO_DISPLAY.get(raw, raw),
+                           'perc': pc(r[1]), 'irf': pc(r[2]), 'tms': pc(r[3])})
+    return {'ano': ano, 'linhas': linhas}
+
 
 @relatorio_gestao_bp.route('/sumario-executivo')
 @login_required
@@ -267,6 +453,7 @@ def sumario_executivo():
         sem_dados=sem_dados,
         grafico_ingressos=grafico_ingressos,
         grafico_saidas=grafico_saidas,
+        quadro=_dados_quadro_comparativo(),
     )
 
 @relatorio_gestao_bp.route('/resultado-financeiro')
@@ -791,3 +978,51 @@ def titulos_consolidados_bb():
         data_posicao=dt_pos.strftime('%d/%m/%Y') if dt_pos else '—',
         sem_dados=(len(linhas) == 0),
     )
+
+@relatorio_gestao_bp.route('/completo')
+@login_required
+def relatorio_completo():
+    """Relatório inteiro em uma página, otimizado para impressão em PDF."""
+    posicao = RelatorioGestaoItem.obter_posicao_referencia(PAGINA_SUMARIO)
+    if posicao and str(posicao)[:6].isdigit():
+        ano_ref, mes_ref, mes_ref_cap = partes_posicao(posicao)
+        mapa = RelatorioGestaoItem.carregar_mapa_id_vr(PAGINA_SUMARIO, posicao)
+        ano_int, mes_num = int(str(posicao)[:4]), int(str(posicao)[4:6])
+    else:
+        ano_ref, mes_ref, mes_ref_cap = '—', '—', '—'
+        mapa, ano_int, mes_num = {}, None, 12
+
+    sumario_itens = renderizar_pagina(SUMARIO_EXECUTIVO, mapa, mes_ref, mes_ref_cap, ano_ref)
+    resultado = _dados_resultado_financeiro(ano_int, mes_num)
+    pos_c = RelatorioConsideracoesItem.obter_posicao_referencia()
+    consideracoes = montar_consideracoes(RelatorioConsideracoesItem.carregar(pos_c)) if pos_c else []
+    disp = _dados_disponibilidades()
+    rent_bb, rent_xxi, rent_fae2 = (_dados_rentabilidade(FUNDO_BB_EXCLUSIVO),
+                                    _dados_rentabilidade(FUNDO_CAIXA_XXI),
+                                    _dados_rentabilidade(FUNDO_FAE2))
+    comp_bb, comp_xxi, comp_fae2 = (_dados_composicao(FUNDO_COMP_BB),
+                                    _dados_composicao(FUNDO_COMP_XXI),
+                                    _dados_composicao(FUNDO_COMP_FAE2))
+    titulos = _dados_titulos()
+
+    graficos = {
+        'g_sum_ing':  {'horizontal': True,  'stacked': False, 'percent': False, 'dados': _dados_grafico_ingressos(mes_limite=mes_num)},
+        'g_sum_sai':  {'horizontal': True,  'stacked': False, 'percent': False, 'dados': _dados_grafico_saidas(mes_limite=mes_num)},
+        'g_con_ing':  {'horizontal': False, 'stacked': True,  'percent': False, 'dados': _dados_view_itens('FIN_VW015_GRAFICO_INGRESSOS_CONSIDERACOES_RG', mes_num)},
+        'g_con_sai':  {'horizontal': False, 'stacked': True,  'percent': False, 'dados': _dados_view_itens('FIN_VW016_GRAFICO_SAIDAS_CONSIDERACOES_RG', mes_num)},
+        'g_disp':     {'horizontal': False, 'stacked': True,  'percent': False, 'dados': disp['grafico']},
+        'g_rent_bb':  {'horizontal': False, 'stacked': False, 'percent': True,  'dados': rent_bb['grafico']},
+        'g_comp_bb':  {'horizontal': False, 'stacked': True,  'percent': False, 'dados': comp_bb['grafico']},
+        'g_rent_xxi': {'horizontal': False, 'stacked': False, 'percent': True,  'dados': rent_xxi['grafico']},
+        'g_comp_xxi': {'horizontal': False, 'stacked': True,  'percent': False, 'dados': comp_xxi['grafico']},
+        'g_rent_fae2':{'horizontal': False, 'stacked': False, 'percent': True,  'dados': rent_fae2['grafico']},
+        'g_comp_fae2':{'horizontal': False, 'stacked': True,  'percent': False, 'dados': comp_fae2['grafico']},
+    }
+
+    return render_template(
+        'relatorio_gestao/relatorio_completo.html',
+        mes_ref_cap=mes_ref_cap, ano_ref=ano_ref,
+        sumario_itens=sumario_itens, resultado=resultado, consideracoes=consideracoes,
+        disp=disp, rent_bb=rent_bb, rent_xxi=rent_xxi, rent_fae2=rent_fae2,
+        comp_bb=comp_bb, comp_xxi=comp_xxi, comp_fae2=comp_fae2,
+        titulos=titulos, graficos=graficos, quadro=_dados_quadro_comparativo())
