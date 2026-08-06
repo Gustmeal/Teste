@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, jsonify
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -15,6 +15,7 @@ from app.models.quadro_rentabilidade import QuadroRentabilidade
 from app.utils.relatorio_gestao import (
     partes_posicao, renderizar_pagina, montar_consideracoes, _fmt_br, preencher_fragmento
 )
+from flask_login import current_user
 
 relatorio_gestao_bp = Blueprint(
     'relatorio_gestao', __name__, url_prefix='/relatorio-gestao'
@@ -1026,3 +1027,50 @@ def relatorio_completo():
         disp=disp, rent_bb=rent_bb, rent_xxi=rent_xxi, rent_fae2=rent_fae2,
         comp_bb=comp_bb, comp_xxi=comp_xxi, comp_fae2=comp_fae2,
         titulos=titulos, graficos=graficos, quadro=_dados_quadro_comparativo())
+
+
+@relatorio_gestao_bp.route('/teste-conferencia-saldo')
+@login_required
+def teste_conferencia_saldo():
+    """[TEMPORÁRIO - TESTE] Confere Boletim (NU_LINHA=61) x soma FIN_TB021,
+    no mês mais recente. Visível só para admin/moderador."""
+    if current_user.perfil not in ['admin', 'moderador']:
+        return jsonify({'success': False, 'message': 'Acesso restrito.'}), 403
+
+    try:
+        row = db.session.execute(text("""
+            SELECT TOP 1
+                   BF.MES_EXECUCAO,
+                   BF.VR_EXECUTADO,
+                   SD.SD_CONTAS,
+                   BF.VR_EXECUTADO - SD.SD_CONTAS AS DIFERENCA
+            FROM [BDG].[FIN_TB020_BOLETIM_FINANCEIRO] BF
+            INNER JOIN (
+                SELECT [MES_EXECUCAO], SUM(VR_EXECUTADO) AS SD_CONTAS
+                FROM [BDG].[FIN_TB021_SALDO_CONTAS_BF]
+                GROUP BY [MES_EXECUCAO]
+            ) SD ON BF.[MES_EXECUCAO] = SD.[MES_EXECUCAO]
+            WHERE BF.NU_LINHA = 61
+            ORDER BY BF.MES_EXECUCAO DESC
+        """)).fetchone()
+
+        if not row:
+            return jsonify({'success': True, 'encontrado': False,
+                            'message': 'Nenhuma competência com dados nas duas tabelas.'})
+
+        mes = str(row[0] or '')
+        mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
+        vr = Decimal(str(row[1] or 0))
+        sd = Decimal(str(row[2] or 0))
+        dif = Decimal(str(row[3] or 0))
+
+        return jsonify({
+            'success': True, 'encontrado': True,
+            'mes': mes_fmt,
+            'vr_executado': _fmt_br(vr, 2),
+            'sd_contas': _fmt_br(sd, 2),
+            'diferenca': _fmt_br(dif, 2),
+            'bate': (abs(dif) < Decimal('0.005')),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500

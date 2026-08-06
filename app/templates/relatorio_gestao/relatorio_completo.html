@@ -49,6 +49,14 @@
     table.rf th, table.rf td { padding: .16rem .26rem; line-height: 1.12; }
     table.rf td.l { line-height: 1.08; }
 
+    /* ÍNDICE */
+    .indice { max-width: 620px; margin: 2rem auto 0; }
+    .idx-item { display: flex; align-items: baseline; font-size: 1.05rem; color: #1f2937;
+                padding: .7rem .2rem; border-bottom: 1px dashed #cbd5e1; }
+    .idx-nome { font-weight: 600; color: #1e3a8a; }
+    .idx-pag { margin-left: auto; font-weight: 700; color: #334155;
+               background: #eef2f9; border-radius: 6px; padding: .1rem .6rem; }
+
     /* CAPA */
     .capa { display: flex; flex-direction: column; align-items: center; justify-content: center;
             text-align: center; min-height: 270mm; }
@@ -188,6 +196,22 @@
         <strong>Diretoria Contábil e Financeira</strong> - Difin<br>
         <strong>Superintendência Financeira</strong> - Sufin<br>
         <strong>Gerência de Finanças</strong> - Gefin
+    </div>
+</div>
+
+<!-- ===================== ÍNDICE ===================== -->
+<div class="folha">
+    {{ cabecalho('Índice') }}
+    <h2 class="sec-title" style="margin-top:1.5rem;">Índice</h2>
+    <div class="sec-sub">{{ mes_ref_cap }} - {{ ano_ref }}</div>
+
+    <div class="indice">
+        <div class="idx-item"><span class="idx-nome">Sumário Executivo</span><span class="idx-pag">03</span></div>
+        <div class="idx-item"><span class="idx-nome">Resultado Financeiro</span><span class="idx-pag">04</span></div>
+        <div class="idx-item"><span class="idx-nome">Considerações</span><span class="idx-pag">06</span></div>
+        <div class="idx-item"><span class="idx-nome">Disponibilidades</span><span class="idx-pag">07</span></div>
+        <div class="idx-item"><span class="idx-nome">Fundos de Investimento</span><span class="idx-pag">08</span></div>
+        <div class="idx-item"><span class="idx-nome">Títulos Custodiados no Banco do Brasil</span><span class="idx-pag">14</span></div>
     </div>
 </div>
 

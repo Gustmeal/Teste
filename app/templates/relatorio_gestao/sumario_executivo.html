@@ -161,9 +161,10 @@
                     }
                 },
                 scales: {
-                    // eixo X agora é o numérico (valores)
+                    // eixo X = valores, começando em 0 (sem negativo)
                     x: {
                         beginAtZero: true,
+                        min: 0,
                         ticks: { callback: function (v) { return fmtBR(v); } }
                     },
                     // eixo Y é categórico (rótulos)
@@ -201,32 +202,38 @@
             ds.backgroundColor = cor;
             ds.borderColor = cor;
             ds.borderWidth = 1;
-            ds.maxBarThickness = 36; // menos espessura vertical quando horizontal
+            ds.maxBarThickness = 36; // mesma espessura do gráfico de Ingressos
+        });
+
+        // Desenha para a direita (valor absoluto), mas exibe como negativo (saída)
+        dados.datasets.forEach(function (ds) {
+            ds.data = ds.data.map(function (v) { return Math.abs(Number(v)); });
         });
 
         new Chart(el, {
             type: 'bar',
             data: dados,
             options: {
-                indexAxis: 'y', // <-- torna as barras horizontais
+                indexAxis: 'y', // <-- horizontal, igual ao gráfico de Ingressos
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: { position: 'top' },
                     tooltip: {
                         callbacks: {
-                            // em gráfico horizontal os valores ficam em parsed.x
+                            // mostra o valor como negativo (saída)
                             label: function (context) {
-                                return context.dataset.label + ': ' + fmtBR(context.parsed.x);
+                                return context.dataset.label + ': -' + fmtBR(Math.abs(context.parsed.x));
                             }
                         }
                     }
                 },
                 scales: {
-                    // eixo X agora é o numérico (valores)
+                    // eixo X = valores; barra cresce p/ direita, mas rotula como negativo
                     x: {
                         beginAtZero: true,
-                        ticks: { callback: function (v) { return fmtBR(v); } }
+                        min: 0,
+                        ticks: { callback: function (v) { return v === 0 ? '0' : '-' + fmtBR(v); } }
                     },
                     // eixo Y é categórico (rótulos)
                     y: {
