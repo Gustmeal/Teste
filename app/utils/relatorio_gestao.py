@@ -31,6 +31,7 @@ _MESES_PT = {
     9: 'setembro', 10: 'outubro', 11: 'novembro', 12: 'dezembro',
 }
 
+_PLACEHOLDER_VALOR = re.compile(r'\.{3,}|-{3,}')
 
 def partes_posicao(posicao):
     """'AAAAMM' -> (ano, mes_nome, mes_nome_cap). Ex.: '202605' -> ('2026','maio','Maio')."""
@@ -129,17 +130,17 @@ def _fmt_valor_consideracoes(vr, tipo):
     return _fmt_br(d, 2)
 
 def preencher_fragmento(texto, vr):
-    """Troca o '...' do TEXTO pelo VR (módulo). '' se vazio/NULL; devolve o
-    próprio texto se não houver '...'."""
+    """Troca o placeholder do TEXTO ('...' ou '---') pelo VR (módulo).
+    '' se vazio/NULL; devolve o próprio texto se não houver placeholder."""
     if texto is None:
         return ''
     t = str(texto).strip()
     if t == '' or t.upper() == 'NULL':
         return ''
-    if '...' not in t:
+    if not _PLACEHOLDER_VALOR.search(t):
         return t
     tipo = 'perc' if '%' in t else 'moeda'
-    return t.replace('...', _fmt_valor_consideracoes(vr, tipo), 1)
+    return _PLACEHOLDER_VALOR.sub(_fmt_valor_consideracoes(vr, tipo), t, count=1)
 
 
 def montar_consideracoes(registros):
@@ -189,3 +190,38 @@ def montar_consideracoes(registros):
             'blocos': blocos,
         })
     return resultado
+
+
+def montar_sumario(registros):
+    """
+    Monta os parágrafos do Sumário a partir da FIN_TB023_RG_SUMARIO, agrupando
+    por SUBITEM (na ordem do ID) e trocando '...'/'---' pelo VR (em módulo).
+    As palavras (aumento/queda) vêm do próprio TEXTO, então se adaptam ao mês.
+    Marca 'grafico' = 'ingressos'/'saidas' no subitem correspondente, para o
+    gráfico entrar logo depois do bloco.
+    Retorna: [{'subitem','texto','grafico'}]
+    """
+    from collections import OrderedDict
+    grupos = OrderedDict()
+    for r in registros:
+        sub = (getattr(r, 'SUBITEM', '') or '').strip()
+        grupos.setdefault(sub, []).append(r)
+
+    blocos = []
+    for sub, linhas in grupos.items():
+        partes = [preencher_fragmento(getattr(l, 'TEXTO', None),
+                                      getattr(l, 'VR', None)) for l in linhas]
+        texto = ' '.join(p for p in partes if p)
+        texto = re.sub(r'\s+', ' ', texto).strip()
+        texto = re.sub(r'\s+([,.;:)%])', r'\1', texto)
+
+        sub_l = sub.lower()
+        if sub_l.startswith('ingress'):
+            grafico = 'ingressos'
+        elif sub_l.startswith('saíd') or sub_l.startswith('said'):
+            grafico = 'saidas'
+        else:
+            grafico = ''
+
+        blocos.append({'subitem': sub, 'texto': texto, 'grafico': grafico})
+    return blocos

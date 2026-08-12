@@ -361,8 +361,17 @@ def edicao():
 
             cor_marcacao = None
 
+            # 1) Em andamento -> vermelho (maior prioridade)
             if deposito_obj.STATUS == 'Em andamento':
                 cor_marcacao = 'vermelho'
+
+            # 2) Mês do Lançamento == Mês do Ajuste RM -> verde (concluído)
+            #    As duas datas precisam existir para comparar.
+            elif (deposito_obj.DT_LANCAMENTO_DJ and deposito_obj.DT_AJUSTE_RM
+                  and deposito_obj.DT_LANCAMENTO_DJ.month == deposito_obj.DT_AJUSTE_RM.month):
+                cor_marcacao = 'verde'
+
+            # 3) Mês/Ano do Lançamento diferente do da Identificação -> laranja
             elif (deposito_obj.DT_IDENTIFICACAO and deposito_obj.DT_LANCAMENTO_DJ):
                 mes_ident = deposito_obj.DT_IDENTIFICACAO.month
                 ano_ident = deposito_obj.DT_IDENTIFICACAO.year
@@ -371,6 +380,7 @@ def edicao():
                 if mes_ident != mes_lanc or ano_ident != ano_lanc:
                     cor_marcacao = 'laranja'
 
+            # 4) Memo SUFIN preenchido, sem ajuste e sem identificação -> amarelo
             if cor_marcacao is None:
                 if (deposito_obj.MEMO_SUFIN and
                         deposito_obj.DT_AJUSTE_RM is None and

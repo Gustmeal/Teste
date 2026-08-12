@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .td-wrap { max-width: 1050px; margin: 0 auto; }
+    .td-sec { border: 1px solid #e2e8f0; border-radius: 14px; background: #fff;
+              box-shadow: 0 1px 3px rgba(0,0,0,.05); margin-bottom: 1.3rem; overflow: hidden; }
+    .td-sec-h { padding: .8rem 1.2rem; font-weight: 700; color: #fff; }
+    .h-entrada { background: #0f5132; } .h-param { background: #334155; } .h-consulta { background: #1e3a8a; }
+    .td-tab { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .td-tab th, .td-tab td { padding: .55rem .8rem; border-bottom: 1px solid #eef2f7; text-align: left; vertical-align: top; }
+    .td-tab th { background: #f8fafc; color: #475569; font-size: .78rem; text-transform: uppercase; }
+    .td-tab code { background: #f1f5f9; padding: .1rem .4rem; border-radius: 5px; color: #1e3a8a; font-weight: 600; }
+    .td-badge { font-size: .72rem; padding: .1rem .5rem; border-radius: 20px; color: #fff; white-space: nowrap; }
+    .b-in { background: #16a34a; } .b-par { background: #64748b; } .b-con { background: #2563eb; }
+    .td-nota { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+               border-radius: 10px; padding: .7rem 1rem; font-size: .85rem; margin-bottom: 1.2rem; }
+</style>
+
+<div class="td-wrap fade-in">
+    <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao Boletim
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-3">Tabelas e Dados do Aplicativo</h1>
+
+    <div class="td-nota">
+        <i class="fas fa-info-circle me-2"></i>
+        <strong>Legenda:</strong>
+        <span class="td-badge b-in">Entrada</span> o usuário preenche &nbsp;·&nbsp;
+        <span class="td-badge b-par">Parâmetro</span> apoio para seleções &nbsp;·&nbsp;
+        <span class="td-badge b-con">Consulta</span> leitura para o Relatório/PDF.
+    </div>
+
+    <!-- ENTRADA DE DADOS -->
+    <div class="td-sec">
+        <div class="td-sec-h h-entrada"><i class="fas fa-keyboard me-2"></i>Entrada de Dados</div>
+        <table class="td-tab">
+            <thead><tr><th>Tabela</th><th>Onde é alimentada</th><th>Serve para</th></tr></thead>
+            <tbody>
+                <tr><td><code>FIN_TB020_BOLETIM_FINANCEIRO</code></td><td>Boletim → Importar (Excel)</td>
+                    <td>Base do Boletim: valores executados por natureza e competência.</td></tr>
+                <tr><td><code>FIN_TB026 / FIN_TB027 / FIN_TB028</code></td><td>Botão “Entrada de Cotas”</td>
+                    <td>Cotas diárias dos fundos (BB FAE 2, BB Exclusivo, Caixa XXI).</td></tr>
+                <tr><td><code>FIN_TB030_INDICES_AMBIMA</code></td><td>Botão “Índices ANBIMA”</td>
+                    <td>Variações do índice IRF-M 1 importadas da ANBIMA.</td></tr>
+                <tr><td><code>FIN_TB022_BLOQUEIOS_JUDICIAIS</code></td><td>Botão “Bloqueios Judiciais”</td>
+                    <td>Valores bloqueados/desbloqueados judicialmente por conta.</td></tr>
+                <tr><td><code>FIN_TB032_COMPOSICAO_FUNDOS_INVESTIMENTOS</code></td><td>Botão “Composição dos Fundos”</td>
+                    <td>Composição (ativo/item/valor) de cada fundo por competência.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- PARÂMETRO -->
+    <div class="td-sec">
+        <div class="td-sec-h h-param"><i class="fas fa-sliders-h me-2"></i>Tabelas de Parâmetro / Apoio</div>
+        <table class="td-tab">
+            <thead><tr><th>Tabela</th><th>Usada em</th><th>Serve para</th></tr></thead>
+            <tbody>
+                <tr><td><code>FIN_TB019_ESTRUTURA_BOLETIM</code></td><td>Importação do Boletim</td>
+                    <td>Define o NU_LINHA de cada natureza (encaixe das linhas do Excel).</td></tr>
+                <tr><td><code>PAR_TB027_CONTAS_EMGEA</code></td><td>Bloqueios Judiciais</td>
+                    <td>Lista de contas (select de conta).</td></tr>
+                <tr><td><code>PAR_TB028 / PAR_TB029 / PAR_TB030</code></td><td>Composição dos Fundos</td>
+                    <td>Fundos, ativos e itens para os selects (o item gera ID automático).</td></tr>
+                <tr><td><code>AUX_TB004_CALENDARIO</code></td><td>Entrada de Cotas</td>
+                    <td>Define dia útil/não útil (auto-preenchimento das cotas).</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- CONSULTA -->
+    <div class="td-sec">
+        <div class="td-sec-h h-consulta"><i class="fas fa-magnifying-glass-chart me-2"></i>Consulta (alimentam o Relatório de Gestão / PDF)</div>
+        <table class="td-tab">
+            <thead><tr><th>Tabela / View</th><th>Página do Relatório</th><th>Serve para</th></tr></thead>
+            <tbody>
+                <tr><td><code>FIN_TB023_RG_SUMARIO</code></td><td>Sumário Executivo</td><td>Frases do sumário (texto + valor por subitem).</td></tr>
+                <tr><td><code>FIN_VW013 / FIN_VW014</code></td><td>Sumário (gráficos)</td><td>Gráficos de Ingressos e Saídas do sumário.</td></tr>
+                <tr><td><code>FIN_VW030_QUADRO_COMPARATIVO_SUMARIO</code></td><td>Sumário (quadro)</td><td>Rentabilidade acumulada dos fundos.</td></tr>
+                <tr><td><code>FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO</code></td><td>Resultado Financeiro</td><td>Tabela completa do resultado (Ingressos/Saídas).</td></tr>
+                <tr><td><code>FIN_TB025</code></td><td>Considerações</td><td>Frases das considerações (texto + valor).</td></tr>
+                <tr><td><code>FIN_VW015 / FIN_VW016</code></td><td>Considerações (gráficos)</td><td>Gráficos de Ingressos e Saídas das considerações.</td></tr>
+                <tr><td><code>FIN_VW023_DISPONIBILIDADES_CONTAS_EMGEA</code></td><td>Disponibilidades</td><td>Saldos por conta e total.</td></tr>
+                <tr><td><code>FIN_VW025_DISPONIBILIDADES_BLOQUEIOS_JUDICIAIS_TEXTO</code></td><td>Disponibilidades</td><td>Texto dos bloqueios judiciais.</td></tr>
+                <tr><td><code>FIN_TB031_QUADROS_RETABILIDADE</code></td><td>Rentabilidades (BB / XXI / FAE 2)</td><td>Tabela e gráfico de rentabilidade por fundo.</td></tr>
+                <tr><td><code>FIN_VW027_COMPOSICAO_FI</code></td><td>Composições (BB / XXI / FAE 2)</td><td>Volume e % por ativo de cada fundo.</td></tr>
+                <tr><td><code>FIN_VW026_TITULOS_CUSTODIADOS_RG</code></td><td>Títulos Consolidados BB</td><td>Estoque de Títulos CVS custodiados.</td></tr>
+                <tr><td><code>FIN_TB021_SALDO_CONTAS_BF</code></td><td>Auditoria (teste)</td><td>Conferência do saldo do Boletim x contas.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -2,367 +2,224 @@
 
 {% block content %}
 <style>
-    .bf-dropzone {
-        border: 2px dashed #b8c2cc;
-        border-radius: 14px;
-        padding: 2.2rem 1rem;
-        text-align: center;
-        cursor: pointer;
-        transition: all .2s ease;
-        background: #f8fafc;
-    }
-    .bf-dropzone:hover,
-    .bf-dropzone.dragover {
-        border-color: #4e73df;
-        background: #eef2ff;
-    }
-    .bf-dropzone i {
-        font-size: 2.6rem;
-        color: #1c7c54;
-        margin-bottom: .6rem;
-    }
-    .bf-dropzone-text { font-size: 1.05rem; color: #4a5568; }
-    .bf-dropzone-hint { font-size: .85rem; color: #94a3b8; margin-top: .35rem; }
+    .bf-wrap { max-width: 1100px; margin: 0 auto; }
 
-    .bf-file-preview {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: .75rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: .75rem 1rem;
-        margin-top: 1rem;
-        background: #fff;
+    .bf-hero {
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+        border-radius: 18px; padding: 1.6rem 1.8rem; color: #fff;
+        display: flex; justify-content: space-between; align-items: center;
+        box-shadow: 0 8px 24px rgba(30,58,138,.25); margin-bottom: 1.4rem; flex-wrap: wrap; gap: 1rem;
     }
-    .bf-file-preview .file-info {
-        display: flex;
-        align-items: center;
-        gap: .75rem;
-        min-width: 0;
+    .bf-hero h1 { font-weight: 800; margin: 0; font-size: 1.6rem; }
+    .bf-hero p { margin: .2rem 0 0; opacity: .85; font-size: .9rem; }
+
+    .bf-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1.4rem; }
+    .bf-action {
+        flex: 1 1 210px; display: flex; align-items: center; gap: .8rem;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
+        padding: .9rem 1.1rem; text-decoration: none; color: #1e293b;
+        transition: all .18s ease; box-shadow: 0 1px 3px rgba(0,0,0,.05);
     }
+    .bf-action:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(30,58,138,.14);
+                       border-color: #bfdbfe; color: #1e3a8a; }
+    .bf-action .ic { width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center; font-size: 1.15rem; color: #fff; }
+    .bf-action .tt { font-weight: 700; font-size: .95rem; line-height: 1.1; }
+    .bf-action .ds { font-size: .76rem; color: #94a3b8; }
+    .ic-cotas { background: #0ea5e9; } .ic-anbima { background: #8b5cf6; }
+    .ic-bloq { background: #ef4444; } .ic-comp { background: #14b8a6; }
+    .ic-audit { background: #f59e0b; } .ic-tab { background: #64748b; }
+
+    .bf-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff;
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+    .bf-card-head { background: #f8fafc; border-bottom: 1px solid #eef2f7;
+                    padding: .9rem 1.3rem; font-weight: 700; color: #1e3a8a;
+                    display: flex; justify-content: space-between; align-items: center; }
+
+    .bf-dropzone { border: 2px dashed #b8c2cc; border-radius: 14px; padding: 1.6rem 1rem;
+        text-align: center; cursor: pointer; transition: all .2s ease; background: #f8fafc; }
+    .bf-dropzone:hover, .bf-dropzone.dragover { border-color: #4e73df; background: #eef2ff; }
+    .bf-dropzone i { font-size: 2.1rem; color: #1c7c54; margin-bottom: .4rem; }
+    .bf-dropzone-text { font-size: 1rem; color: #4a5568; }
+    .bf-dropzone-hint { font-size: .82rem; color: #94a3b8; margin-top: .3rem; }
+
+    .bf-aviso { display: flex; align-items: center; gap: .7rem; margin-top: .9rem;
+        background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px;
+        padding: .6rem .9rem; font-size: .84rem; color: #065f46; }
+    .bf-aviso .n { font-weight: 800; font-size: 1.05rem; }
+
+    .bf-file-preview { display: flex; align-items: center; justify-content: space-between;
+        gap: .75rem; border: 1px solid #e2e8f0; border-radius: 12px; padding: .7rem 1rem;
+        margin-top: .9rem; background: #fff; }
+    .bf-file-preview .file-info { display: flex; align-items: center; gap: .75rem; min-width: 0; }
     .bf-file-preview .file-icon { color: #1c7c54; }
-    .bf-file-preview .file-name {
-        font-weight: 600;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+    .bf-file-preview .file-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .bf-file-preview .file-size { font-size: .8rem; color: #94a3b8; }
-
-    .bf-stat {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 1rem 1.25rem;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #1c7c54, #0f5132);
-        color: #fff;
-    }
-    .bf-stat .bf-stat-num { font-size: 1.8rem; font-weight: 700; line-height: 1; }
-    .bf-stat .bf-stat-label { font-size: .85rem; opacity: .9; }
 </style>
 
-<div class="editais-container fade-in">
+<div class="bf-wrap fade-in">
     <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <a href="{{ url_for('cotas_fundos.index') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-keyboard me-2"></i>Entrada de Cotas
-    </a>
-
-    <a href="{{ url_for('indices_anbima.index') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-chart-line me-2"></i>Índices ANBIMA
-    </a>
-
-    <a href="{{ url_for('bloqueios_judiciais.index') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-gavel me-2"></i>Bloqueios Judiciais
-    </a>
-
-    <a href="{{ url_for('composicao_fundos.index') }}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-layer-group me-2"></i>Composição dos Fundos
-    </a>
-
-    {% if current_user.perfil in ['admin', 'moderador'] %}
-    <button type="button" class="btn btn-warning me-2" id="btnTesteSaldo"
-            onclick="testarConferenciaSaldo()">
-        <i class="fas fa-flask me-2"></i>Teste: Conferir Saldo
-    </button>
-    {% endif %}
-
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back">Boletim Financeiro</h1>
-        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="btn btn-success">
+    <!-- HERO -->
+    <div class="bf-hero">
+        <div>
+            <h1><i class="fas fa-file-invoice-dollar me-2"></i>Boletim Financeiro</h1>
+            <p>Importe o Boletim, alimente os dados de apoio e gere o Relatório de Gestão.</p>
+        </div>
+        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="btn btn-light btn-lg fw-bold">
             <i class="fas fa-file-lines me-2"></i>Gerar Relatório
         </a>
     </div>
 
-    <div class="row g-4">
-        <!-- ============================================================ -->
-        <!-- UPLOAD DO BOLETIM (ETAPA 1)                                   -->
-        <!-- ============================================================ -->
-        <div class="col-lg-8">
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-file-excel me-2"></i>Importar Boletim Financeiro
-                    </h5>
-                </div>
-                <div class="card-body p-4">
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Selecione o Excel do Boletim Financeiro. O sistema captura as
-                        naturezas <strong>abaixo de "SALDO FINAL DE CAIXA"</strong>,
-                        ignorando as linhas de total, e grava os valores por mês
-                        (competência no formato <code>AAAAMM</code>).
-                    </div>
+    <!-- BOTÕES DE AÇÃO -->
+    <div class="bf-actions">
+        <a href="{{ url_for('cotas_fundos.index') }}" class="bf-action">
+            <span class="ic ic-cotas"><i class="fas fa-keyboard"></i></span>
+            <span><span class="tt">Entrada de Cotas</span><br><span class="ds">Cotas dos fundos</span></span>
+        </a>
+        <a href="{{ url_for('indices_anbima.index') }}" class="bf-action">
+            <span class="ic ic-anbima"><i class="fas fa-chart-line"></i></span>
+            <span><span class="tt">Índices ANBIMA</span><br><span class="ds">Importação automática</span></span>
+        </a>
+        <a href="{{ url_for('bloqueios_judiciais.index') }}" class="bf-action">
+            <span class="ic ic-bloq"><i class="fas fa-gavel"></i></span>
+            <span><span class="tt">Bloqueios Judiciais</span><br><span class="ds">Entrada e edição</span></span>
+        </a>
+        <a href="{{ url_for('composicao_fundos.index') }}" class="bf-action">
+            <span class="ic ic-comp"><i class="fas fa-layer-group"></i></span>
+            <span><span class="tt">Composição dos Fundos</span><br><span class="ds">Ativos por fundo</span></span>
+        </a>
+        <a href="{{ url_for('relatorio_gestao.auditoria') }}" class="bf-action">
+            <span class="ic ic-audit"><i class="fas fa-clipboard-check"></i></span>
+            <span><span class="tt">Auditoria</span><br><span class="ds">Testes e verificações</span></span>
+        </a>
+        {% if current_user.perfil in ['admin', 'moderador'] %}
+        <a href="{{ url_for('relatorio_gestao.tabelas_dados') }}" class="bf-action">
+            <span class="ic ic-tab"><i class="fas fa-database"></i></span>
+            <span><span class="tt">Tabelas e Dados</span><br><span class="ds">Fontes do aplicativo</span></span>
+        </a>
+        {% endif %}
+    </div>
 
-                    <div id="bfDropzone" class="bf-dropzone">
-                        <i class="fas fa-file-excel"></i>
-                        <div class="bf-dropzone-text">
-                            Arraste o arquivo Excel aqui ou
-                            <strong>clique para selecionar</strong>
-                        </div>
-                        <div class="bf-dropzone-hint">Formatos aceitos: .xlsx, .xlsm</div>
-                        <input type="file" id="bfInputArquivo"
-                               accept=".xlsx,.xlsm" style="display: none;">
-                    </div>
-
-                    <div id="bfFilePreview" class="bf-file-preview" style="display: none;">
-                        <div class="file-info">
-                            <div class="file-icon">
-                                <i class="fas fa-file-excel fa-lg"></i>
-                            </div>
-                            <div style="min-width: 0; flex-grow: 1;">
-                                <div class="file-name" id="bfFileNome">—</div>
-                                <div class="file-size" id="bfFileTamanho">—</div>
-                            </div>
-                        </div>
-                        <button type="button" class="btn btn-sm btn-outline-secondary"
-                                id="bfBtnRemover">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-
-                    <div class="d-grid mt-3">
-                        <button type="button" class="btn btn-primary"
-                                id="bfBtnEnviar" disabled>
-                            <i class="fas fa-upload me-2"></i>Enviar arquivo
-                        </button>
-                    </div>
-
-                    <div id="bfFeedback" class="mt-3" style="display: none;"></div>
-                </div>
-            </div>
+    <!-- UPLOAD (compacto) -->
+    <div class="bf-card">
+        <div class="bf-card-head">
+            <span><i class="fas fa-file-excel me-2"></i>Importar Boletim Financeiro</span>
         </div>
+        <div class="p-3">
+            <div id="bfDropzone" class="bf-dropzone">
+                <i class="fas fa-file-excel"></i>
+                <div class="bf-dropzone-text">Arraste o Excel aqui ou <strong>clique para selecionar</strong></div>
+                <div class="bf-dropzone-hint">Formatos aceitos: .xlsx, .xlsm</div>
+                <input type="file" id="bfInputArquivo" accept=".xlsx,.xlsm" style="display:none;">
+            </div>
 
-        <!-- ============================================================ -->
-        <!-- RESUMO (dados vindos do backend)                             -->
-        <!-- ============================================================ -->
-        <div class="col-lg-4">
-            <div class="card shadow mb-4">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-database me-2"></i>Situação atual
-                    </h5>
-                </div>
-                <div class="card-body p-4">
-                    <div class="bf-stat">
-                        <i class="fas fa-list-ol fa-2x"></i>
-                        <div>
-                            <div class="bf-stat-num">{{ total_registros }}</div>
-                            <div class="bf-stat-label">registro(s) em FIN_TB020</div>
-                        </div>
+            <div id="bfFilePreview" class="bf-file-preview" style="display:none;">
+                <div class="file-info">
+                    <div class="file-icon"><i class="fas fa-file-excel fa-lg"></i></div>
+                    <div style="min-width:0; flex-grow:1;">
+                        <div class="file-name" id="bfFileNome">—</div>
+                        <div class="file-size" id="bfFileTamanho">—</div>
                     </div>
-                    <p class="text-muted mt-3 mb-0" style="font-size: .85rem;">
-                        Reenviar o Boletim de um ano substitui apenas os meses
-                        contidos no arquivo, sem duplicar registros.
-                    </p>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="bfBtnRemover">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- aviso pequeno (substitui o card verde grande) -->
+            <div class="bf-aviso">
+                <i class="fas fa-database fa-lg"></i>
+                <div>
+                    <span class="n">{{ total_registros }}</span> registro(s) em FIN_TB020.
+                    Reenviar o Boletim de um ano substitui apenas os meses do arquivo, sem duplicar.
                 </div>
             </div>
+
+            <div class="d-grid mt-3">
+                <button type="button" class="btn btn-primary" id="bfBtnEnviar" disabled>
+                    <i class="fas fa-upload me-2"></i>Enviar arquivo
+                </button>
+            </div>
+
+            <div id="bfFeedback" class="mt-3" style="display:none;"></div>
         </div>
     </div>
 </div>
 
 <script>
-// =====================================================================
-// BOLETIM FINANCEIRO — Upload (dropzone + AJAX)
-// =====================================================================
 (function () {
-    const dropzone   = document.getElementById('bfDropzone');
-    const inputFile  = document.getElementById('bfInputArquivo');
-    const preview    = document.getElementById('bfFilePreview');
-    const nomeEl     = document.getElementById('bfFileNome');
-    const tamanhoEl  = document.getElementById('bfFileTamanho');
+    const dropzone = document.getElementById('bfDropzone');
+    const inputFile = document.getElementById('bfInputArquivo');
+    const preview = document.getElementById('bfFilePreview');
+    const nomeEl = document.getElementById('bfFileNome');
+    const tamanhoEl = document.getElementById('bfFileTamanho');
     const btnRemover = document.getElementById('bfBtnRemover');
-    const btnEnviar  = document.getElementById('bfBtnEnviar');
-    const feedback   = document.getElementById('bfFeedback');
-
+    const btnEnviar = document.getElementById('bfBtnEnviar');
+    const feedback = document.getElementById('bfFeedback');
     if (!dropzone || !inputFile || !btnEnviar) return;
 
-    function formatarTamanho(bytes) {
-        if (!bytes && bytes !== 0) return '—';
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / 1048576).toFixed(1) + ' MB';
+    function fmtTam(b) {
+        if (!b && b !== 0) return '—';
+        if (b < 1024) return b + ' B';
+        if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+        return (b / 1048576).toFixed(1) + ' MB';
     }
+    function extOk(n) { n = (n || '').toLowerCase(); return n.endsWith('.xlsx') || n.endsWith('.xlsm'); }
+    function showPreview(f) { nomeEl.textContent = f.name; tamanhoEl.textContent = fmtTam(f.size);
+        preview.style.display = 'flex'; btnEnviar.disabled = false; }
+    function limpar() { inputFile.value = ''; preview.style.display = 'none'; btnEnviar.disabled = true; }
+    function avisoExt() { feedback.style.display = 'block';
+        feedback.innerHTML = '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Selecione um arquivo .xlsx ou .xlsm.</div>'; }
 
-    function extensaoValida(nome) {
-        const n = (nome || '').toLowerCase();
-        return n.endsWith('.xlsx') || n.endsWith('.xlsm');
-    }
-
-    function mostrarPreview(file) {
-        nomeEl.textContent = file.name;
-        tamanhoEl.textContent = formatarTamanho(file.size);
-        preview.style.display = 'flex';
-        btnEnviar.disabled = false;
-    }
-
-    function limparArquivo() {
-        inputFile.value = '';
-        preview.style.display = 'none';
-        btnEnviar.disabled = true;
-    }
-
-    // --- Clique na dropzone abre o seletor de arquivo ---
     dropzone.addEventListener('click', () => inputFile.click());
-
-    // --- Seleção via input ---
     inputFile.addEventListener('change', () => {
-        const file = inputFile.files && inputFile.files[0];
-        if (!file) { limparArquivo(); return; }
-        if (!extensaoValida(file.name)) {
-            feedback.style.display = 'block';
-            feedback.innerHTML =
-                '<div class="alert alert-warning mb-0">' +
-                '<i class="fas fa-exclamation-triangle me-2"></i>' +
-                'Selecione um arquivo .xlsx ou .xlsm.</div>';
-            limparArquivo();
-            return;
-        }
-        feedback.style.display = 'none';
-        mostrarPreview(file);
+        const f = inputFile.files && inputFile.files[0];
+        if (!f) { limpar(); return; }
+        if (!extOk(f.name)) { avisoExt(); limpar(); return; }
+        feedback.style.display = 'none'; showPreview(f);
     });
-
-    // --- Drag & drop ---
-    ['dragenter', 'dragover'].forEach(ev => {
-        dropzone.addEventListener(ev, e => {
-            e.preventDefault(); e.stopPropagation();
-            dropzone.classList.add('dragover');
-        });
-    });
-    ['dragleave', 'drop'].forEach(ev => {
-        dropzone.addEventListener(ev, e => {
-            e.preventDefault(); e.stopPropagation();
-            dropzone.classList.remove('dragover');
-        });
-    });
+    ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation(); dropzone.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, e => {
+        e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('dragover'); }));
     dropzone.addEventListener('drop', e => {
-        const file = e.dataTransfer.files && e.dataTransfer.files[0];
-        if (!file) return;
-        if (!extensaoValida(file.name)) {
-            feedback.style.display = 'block';
-            feedback.innerHTML =
-                '<div class="alert alert-warning mb-0">' +
-                '<i class="fas fa-exclamation-triangle me-2"></i>' +
-                'Selecione um arquivo .xlsx ou .xlsm.</div>';
-            return;
-        }
-        inputFile.files = e.dataTransfer.files;
-        feedback.style.display = 'none';
-        mostrarPreview(file);
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        if (!extOk(f.name)) { avisoExt(); return; }
+        inputFile.files = e.dataTransfer.files; feedback.style.display = 'none'; showPreview(f);
     });
+    btnRemover.addEventListener('click', limpar);
 
-    // --- Remover arquivo selecionado ---
-    btnRemover.addEventListener('click', limparArquivo);
-
-    // --- Enviar ---
     btnEnviar.addEventListener('click', () => {
-        const file = inputFile.files && inputFile.files[0];
-        if (!file) return;
-
-        const formData = new FormData();
-        formData.append('arquivo', file);
-
-        const htmlOriginal = btnEnviar.innerHTML;
-        btnEnviar.disabled = true;
-        btnEnviar.innerHTML =
-            '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
-
+        const f = inputFile.files && inputFile.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append('arquivo', f);
+        const orig = btnEnviar.innerHTML;
+        btnEnviar.disabled = true; btnEnviar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
         feedback.style.display = 'block';
-        feedback.innerHTML =
-            '<div class="alert alert-info mb-0">' +
-            '<i class="fas fa-file-upload me-2"></i>' +
-            'Enviando e processando o Boletim...</div>';
-
+        feedback.innerHTML = '<div class="alert alert-info mb-0"><i class="fas fa-file-upload me-2"></i>Enviando e processando o Boletim...</div>';
         fetch("{{ url_for('boletim_financeiro.upload') }}", {
-            method: 'POST',
-            headers: { 'X-Silent-Request': 'true' },
-            body: formData
+            method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: fd
         })
         .then(r => r.json())
-        .then(data => {
-            btnEnviar.innerHTML = htmlOriginal;
-            if (data.success) {
-                feedback.innerHTML =
-                    '<div class="alert alert-success mb-0">' +
-                    '<i class="fas fa-check-circle me-2"></i>' +
-                    '<strong>Sucesso!</strong> ' + data.message + '</div>';
+        .then(d => {
+            btnEnviar.innerHTML = orig;
+            if (d.success) {
+                feedback.innerHTML = '<div class="alert alert-success mb-0"><i class="fas fa-check-circle me-2"></i><strong>Sucesso!</strong> ' + d.message + '</div>';
                 setTimeout(() => location.reload(), 2200);
             } else {
                 btnEnviar.disabled = false;
-                feedback.innerHTML =
-                    '<div class="alert alert-danger mb-0">' +
-                    '<i class="fas fa-times-circle me-2"></i>' +
-                    '<strong>Erro!</strong> ' + data.message + '</div>';
+                feedback.innerHTML = '<div class="alert alert-danger mb-0"><i class="fas fa-times-circle me-2"></i><strong>Erro!</strong> ' + d.message + '</div>';
             }
         })
         .catch(err => {
-            btnEnviar.disabled = false;
-            btnEnviar.innerHTML = htmlOriginal;
-            feedback.innerHTML =
-                '<div class="alert alert-danger mb-0">' +
-                '<i class="fas fa-times-circle me-2"></i>' +
-                '<strong>Erro de conexão:</strong> ' + err + '</div>';
+            btnEnviar.disabled = false; btnEnviar.innerHTML = orig;
+            feedback.innerHTML = '<div class="alert alert-danger mb-0"><i class="fas fa-times-circle me-2"></i><strong>Erro de conexão:</strong> ' + err + '</div>';
         });
     });
 })();
 </script>
-
-{% if current_user.perfil in ['admin', 'moderador'] %}
-<script>
-// =====================================================================
-// [TEMPORÁRIO - TESTE] Conferência de Saldo (Boletim NU_LINHA 61 x FIN_TB021)
-// =====================================================================
-function testarConferenciaSaldo() {
-    var btn = document.getElementById('btnTesteSaldo');
-    var original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Conferindo...';
-
-    fetch("{{ url_for('relatorio_gestao.teste_conferencia_saldo') }}",
-          { headers: { 'X-Silent-Request': 'true' } })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-        btn.disabled = false; btn.innerHTML = original;
-        if (!d.success) { alert('❌ ' + d.message); return; }
-        if (!d.encontrado) { alert('⚠️ ' + d.message); return; }
-        var status = d.bate ? '✅ BATE (diferença zero)' : '⚠️ DIVERGE';
-        alert(
-            'Conferência de Saldo — ' + d.mes + '\n\n' +
-            'Boletim (NU_LINHA 61): R$ ' + d.vr_executado + '\n' +
-            'Soma FIN_TB021:        R$ ' + d.sd_contas + '\n' +
-            'Diferença:             R$ ' + d.diferenca + '\n\n' +
-            status
-        );
-    })
-    .catch(function (e) {
-        btn.disabled = false; btn.innerHTML = original;
-        alert('Erro de conexão: ' + e);
-    });
-}
-</script>
-{% endif %}
 {% endblock %}

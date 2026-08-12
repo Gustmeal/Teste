@@ -1,3 +1,5 @@
+from os import abort
+
 from flask import Blueprint, render_template, jsonify
 from flask_login import login_required
 from sqlalchemy import text
@@ -16,6 +18,13 @@ from app.utils.relatorio_gestao import (
     partes_posicao, renderizar_pagina, montar_consideracoes, _fmt_br, preencher_fragmento
 )
 from flask_login import current_user
+
+
+from app.utils.relatorio_gestao import (
+    partes_posicao, renderizar_pagina, montar_consideracoes, montar_sumario,
+    _fmt_br, preencher_fragmento
+)
+
 
 relatorio_gestao_bp = Blueprint(
     'relatorio_gestao', __name__, url_prefix='/relatorio-gestao'
@@ -56,15 +65,25 @@ _FUNDO_DISPLAY = {
 def _hierarquia(nat):
     """
     Extrai nível/numero/nome a partir do código no início da NATUREZA.
-    Ex.: '02.06.01.Monetização CVS' -> nivel=2, numero='6.1', nome='Monetização CVS'.
-    Sem código (Saldo Inicial, Ingressos, Saídas) -> nivel=0.
+    Aceita o separador do nome como espaço OU ponto:
+      '02.01 Carteira de Créditos Comerciais' -> nivel=1, numero='01', nome='...'
+      '03.02 Tributos/Encargos'               -> nivel=1, numero='02', nome='...'
+      '02.06.01 Monetização CVS'              -> nivel=2, numero='6.1', nome='...'
+    Sem código (Saldo Inicial, Ingressos, Saídas, Saldo Final,
+    Resultado Financeiro...) -> nivel=0.
     """
-    m = re.match(r'^(\d{1,2}(?:\.\d{1,2})+)\.\s*(.*)$', nat or '')
+    nat = (nat or '').strip()
+    m = re.match(r'^(\d{1,2}(?:\.\d{1,2})+)[.\s]+(.*)$', nat)
     if not m:
-        return {'nivel': 0, 'numero': '', 'nome': (nat or '').strip()}
+        return {'nivel': 0, 'numero': '', 'nome': nat}
     segs = m.group(1).split('.')
-    numero = '.'.join(str(int(s)) for s in segs[1:])  # remove 1º segmento e zeros
-    return {'nivel': len(segs) - 1, 'numero': numero, 'nome': m.group(2).strip()}
+    # nível 1 = "NN.NN" (2 segmentos); nível 2 = "NN.NN.NN" (3 segmentos)...
+    nivel = len(segs) - 1
+    if nivel == 1:
+        numero = segs[1]                     # mantém o "01", "02" como no relatório
+    else:
+        numero = '.'.join(str(int(s)) for s in segs[1:])  # 6.1, 6.2...
+    return {'nivel': nivel, 'numero': numero, 'nome': m.group(2).strip()}
 
 def _rotulo_mes_ano(ano, mes):
     return f"{_MESES_ABREV[mes - 1]}/{ano}" if 1 <= mes <= 12 else str(ano)
@@ -372,9 +391,22 @@ def _dados_resultado_financeiro(ano_int, mes_num):
     for gr in grupos:
         for i, c in enumerate(gr['cols']):
             flat.append({'attr': c['attr'], 'tipo': c['tipo'], 'sep': (i == 0)})
+
+    # Fonte: FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO (mesmas colunas da FIN_TB024)
+    registros = db.session.execute(text("""
+        SELECT NU_LINHA, NATUREZA,
+               VR_MES_ANTERIOR, VR_MES_ATUAL, VR_ACUMUL_ATE_MES,
+               VR_ANO_ANTERIOR, VR_ACUMUL_ATE_MES_ANO_ANT,
+               VARIACAO_ANUAL_PERC, VARIACAO_ANUAL_ACUML_PERC,
+               VARIACAO_ANUAL, VARIACAO_ANUAL_ACUML,
+               VARIACAO_MENSAL_PERC, VARIACAO_MENSAL
+        FROM [BDG].[FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO]
+        WHERE ANO = :ano AND MES = :mes
+        ORDER BY NU_LINHA
+    """), {'ano': ano_int, 'mes': mes_num}).fetchall()
+
     linhas = []
-    for row in RelatorioResultadoFinanceiro.query.filter_by(ANO=ano_int, MES=mes_num)\
-            .order_by(RelatorioResultadoFinanceiro.NU_LINHA).all():
+    for row in registros:
         h = _hierarquia((row.NATUREZA or '').strip())
         cells = []
         for col in flat:
@@ -417,24 +449,31 @@ def _dados_quadro_comparativo():
 @relatorio_gestao_bp.route('/sumario-executivo')
 @login_required
 def sumario_executivo():
-    """Sumário Executivo com valores, mês de referência e gráfico automáticos."""
-    posicao = RelatorioGestaoItem.obter_posicao_referencia(PAGINA_SUMARIO)
+    """Sumário Executivo — frases vindas da FIN_TB023_RG_SUMARIO (mesma
+    mecânica das Considerações), com os gráficos e o quadro mantidos."""
+    posicao = db.session.execute(text(
+        "SELECT MAX(POSICAO) FROM [BDG].[FIN_TB023_RG_SUMARIO]"
+    )).scalar()
 
     if posicao:
-        ano_ref, mes_ref, mes_ref_cap = partes_posicao(posicao)
-        mapa = RelatorioGestaoItem.carregar_mapa_id_vr(PAGINA_SUMARIO, posicao)
+        ano_ref, _mes, mes_ref_cap = partes_posicao(posicao)
         sem_dados = False
         try:
             mes_num = int(str(posicao)[4:6])
         except (ValueError, TypeError):
             mes_num = 12
+        registros = db.session.execute(text("""
+            SELECT ID, SUBITEM, VR, TEXTO
+            FROM [BDG].[FIN_TB023_RG_SUMARIO]
+            WHERE POSICAO = :p AND ID <> 34
+            ORDER BY ID
+        """), {'p': posicao}).fetchall()
+        blocos = montar_sumario(registros)
     else:
-        ano_ref, mes_ref, mes_ref_cap = '—', '—', '—'
-        mapa = {}
+        ano_ref, mes_ref_cap = '—', '—'
         sem_dados = True
         mes_num = 12
-
-    itens = renderizar_pagina(SUMARIO_EXECUTIVO, mapa, mes_ref, mes_ref_cap, ano_ref)
+        blocos = []
 
     try:
         grafico_ingressos = _dados_grafico_ingressos(mes_limite=mes_num)
@@ -448,7 +487,7 @@ def sumario_executivo():
 
     return render_template(
         'relatorio_gestao/sumario_executivo.html',
-        itens=itens,
+        blocos=blocos,
         mes_ref_cap=mes_ref_cap,
         ano_ref=ano_ref,
         sem_dados=sem_dados,
@@ -457,88 +496,41 @@ def sumario_executivo():
         quadro=_dados_quadro_comparativo(),
     )
 
+
 @relatorio_gestao_bp.route('/resultado-financeiro')
 @login_required
 def resultado_financeiro():
-    """Página 2 do relatório — tabela Resultado Financeiro (FIN_TB024)."""
-    posicao = RelatorioGestaoItem.obter_posicao_referencia(PAGINA_SUMARIO)
-    ano_ref = mes_num = None
-    if posicao and str(posicao)[:6].isdigit():
-        ano_ref = int(str(posicao)[:4])
-        mes_num = int(str(posicao)[4:6])
-    else:
-        comp = RelatorioResultadoFinanceiro.obter_ano_mes_referencia()
-        if comp:
-            ano_ref, mes_num = int(comp[0]), int(comp[1])
+    """Página 2 do relatório — tabela Resultado Financeiro (FIN_VW031)."""
+    # Mês de referência: o mais recente que EXISTE na própria view.
+    ref = db.session.execute(text("""
+        SELECT TOP 1 ANO, MES
+        FROM [BDG].[FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO]
+        ORDER BY ANO DESC, MES DESC
+    """)).fetchone()
 
-    if not ano_ref:
+    ano_ref = mes_num = None
+    if ref:
+        ano_ref, mes_num = int(ref[0]), int(ref[1])
+    else:
+        # Plano B: competência do Sumário
+        posicao = RelatorioGestaoItem.obter_posicao_referencia(PAGINA_SUMARIO)
+        if posicao and str(posicao)[:6].isdigit():
+            ano_ref = int(str(posicao)[:4])
+            mes_num = int(str(posicao)[4:6])
+
+    dados = _dados_resultado_financeiro(ano_ref, mes_num)
+
+    if not dados:
         return render_template('relatorio_gestao/resultado_financeiro.html',
                                sem_dados=True, grupos=[], linhas=[],
                                mes_ref_cap='—', ano_ref='—')
 
-    ano_ant = ano_ref - 1
-    a_ano, a_mes = _mes_anterior(ano_ref, mes_num)
-    _, _, mes_ref_cap = partes_posicao(f"{ano_ref}{mes_num:02d}")
-
-    mes_ref_nome = _MESES_NOME[mes_num - 1]
-    mes_ant_nome = _MESES_NOME[a_mes - 1]
-
-    # Cabeçalho em 2 níveis (grupo -> colunas), igual ao Excel.
-    grupos = [
-        {'titulo': str(ano_ref), 'cols': [
-            {'sub': mes_ant_nome, 'attr': 'VR_MES_ANTERIOR', 'tipo': 'moeda'},
-            {'sub': mes_ref_nome, 'attr': 'VR_MES_ATUAL', 'tipo': 'moeda'},
-            {'sub': 'Acumulado', 'attr': 'VR_ACUMUL_ATE_MES', 'tipo': 'moeda'},
-        ]},
-        {'titulo': str(ano_ant), 'cols': [
-            {'sub': mes_ref_nome, 'attr': 'VR_ANO_ANTERIOR', 'tipo': 'moeda'},
-            {'sub': 'Acumulado', 'attr': 'VR_ACUMUL_ATE_MES_ANO_ANT', 'tipo': 'moeda'},
-        ]},
-        {'titulo': f'∆ {ano_ref} x {ano_ant}', 'cols': [
-            {'sub': '∆ % Mês', 'attr': 'VARIACAO_ANUAL_PERC', 'tipo': 'perc'},
-            {'sub': '∆ % Acumulada', 'attr': 'VARIACAO_ANUAL_ACUML_PERC', 'tipo': 'perc'},
-        ]},
-        {'titulo': f'∆ {ano_ref} x {ano_ant}', 'cols': [
-            {'sub': 'Mês', 'attr': 'VARIACAO_ANUAL', 'tipo': 'moeda'},
-            {'sub': 'Acumulado', 'attr': 'VARIACAO_ANUAL_ACUML', 'tipo': 'moeda'},
-        ]},
-        {'titulo': f'{mes_ref_nome} {ano_ref} x {_MESES_ABREV[a_mes-1]} {a_ano}', 'cols': [
-            {'sub': '∆ %', 'attr': 'VARIACAO_MENSAL_PERC', 'tipo': 'perc'},
-            {'sub': 'atual X anterior', 'attr': 'VARIACAO_MENSAL', 'tipo': 'moeda'},
-        ]},
-    ]
-
-    # Ordem plana das colunas + marca de início de grupo (para o separador).
-    colunas_flat = []
-    for g in grupos:
-        for i, c in enumerate(g['cols']):
-            colunas_flat.append({'attr': c['attr'], 'tipo': c['tipo'], 'sep': (i == 0)})
-
-    registros = RelatorioResultadoFinanceiro.query.filter_by(
-        ANO=ano_ref, MES=mes_num
-    ).order_by(RelatorioResultadoFinanceiro.NU_LINHA).all()
-
-    linhas = []
-    for row in registros:
-        h = _hierarquia((row.NATUREZA or '').strip())
-        cells = []
-        for col in colunas_flat:
-            cell = _fmt_cell(getattr(row, col['attr']), col['tipo'])
-            cell['sep'] = col['sep']
-            cells.append(cell)
-        linhas.append({
-            'nivel': h['nivel'],
-            'numero': h['numero'],
-            'nome': h['nome'],
-            'cells': cells,
-        })
-
     return render_template(
         'relatorio_gestao/resultado_financeiro.html',
-        sem_dados=False,
-        grupos=grupos,
-        linhas=linhas,
-        mes_ref_cap=mes_ref_cap,
+        sem_dados=(len(dados['linhas']) == 0),
+        grupos=dados['grupos'],
+        linhas=dados['linhas'],
+        mes_ref_cap=dados['mes_ref_cap'],
         ano_ref=ano_ref,
     )
 
@@ -984,17 +976,35 @@ def titulos_consolidados_bb():
 @login_required
 def relatorio_completo():
     """Relatório inteiro em uma página, otimizado para impressão em PDF."""
+    # Referência do relatório = mês mais recente da FIN_VW031 (mesma da tela).
+    # Fallback: competência do Sumário.
+    ref_rf = db.session.execute(text("""
+        SELECT TOP 1 ANO, MES
+        FROM [BDG].[FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO]
+        ORDER BY ANO DESC, MES DESC
+    """)).fetchone()
+
     posicao = RelatorioGestaoItem.obter_posicao_referencia(PAGINA_SUMARIO)
-    if posicao and str(posicao)[:6].isdigit():
+
+    if ref_rf:
+        ano_int, mes_num = int(ref_rf[0]), int(ref_rf[1])
+        ano_ref, mes_ref, mes_ref_cap = partes_posicao(f"{ano_int}{mes_num:02d}")
+    elif posicao and str(posicao)[:6].isdigit():
         ano_ref, mes_ref, mes_ref_cap = partes_posicao(posicao)
-        mapa = RelatorioGestaoItem.carregar_mapa_id_vr(PAGINA_SUMARIO, posicao)
         ano_int, mes_num = int(str(posicao)[:4]), int(str(posicao)[4:6])
     else:
         ano_ref, mes_ref, mes_ref_cap = '—', '—', '—'
-        mapa, ano_int, mes_num = {}, None, 12
+        ano_int, mes_num = None, 12
+
+    # Mapa do Sumário (frases) continua vindo da competência do Sumário
+    mapa = (RelatorioGestaoItem.carregar_mapa_id_vr(PAGINA_SUMARIO, posicao)
+            if posicao and str(posicao)[:6].isdigit() else {})
 
     sumario_itens = renderizar_pagina(SUMARIO_EXECUTIVO, mapa, mes_ref, mes_ref_cap, ano_ref)
+
+    # Resultado Financeiro: mesmo mês da referência (FIN_VW031)
     resultado = _dados_resultado_financeiro(ano_int, mes_num)
+
     pos_c = RelatorioConsideracoesItem.obter_posicao_referencia()
     consideracoes = montar_consideracoes(RelatorioConsideracoesItem.carregar(pos_c)) if pos_c else []
     disp = _dados_disponibilidades()
@@ -1007,8 +1017,8 @@ def relatorio_completo():
     titulos = _dados_titulos()
 
     graficos = {
-        'g_sum_ing':  {'horizontal': True,  'stacked': False, 'percent': False, 'dados': _dados_grafico_ingressos(mes_limite=mes_num)},
-        'g_sum_sai':  {'horizontal': True,  'stacked': False, 'percent': False, 'dados': _dados_grafico_saidas(mes_limite=mes_num)},
+        'g_sum_ing':  {'horizontal': True,  'stacked': False, 'percent': False, 'zero_min': True,     'dados': _dados_grafico_ingressos(mes_limite=mes_num)},
+        'g_sum_sai':  {'horizontal': True,  'stacked': False, 'percent': False, 'abs_negativo': True, 'dados': _dados_grafico_saidas(mes_limite=mes_num)},
         'g_con_ing':  {'horizontal': False, 'stacked': True,  'percent': False, 'dados': _dados_view_itens('FIN_VW015_GRAFICO_INGRESSOS_CONSIDERACOES_RG', mes_num)},
         'g_con_sai':  {'horizontal': False, 'stacked': True,  'percent': False, 'dados': _dados_view_itens('FIN_VW016_GRAFICO_SAIDAS_CONSIDERACOES_RG', mes_num)},
         'g_disp':     {'horizontal': False, 'stacked': True,  'percent': False, 'dados': disp['grafico']},
@@ -1034,8 +1044,6 @@ def relatorio_completo():
 def teste_conferencia_saldo():
     """[TEMPORÁRIO - TESTE] Confere Boletim (NU_LINHA=61) x soma FIN_TB021,
     no mês mais recente. Visível só para admin/moderador."""
-    if current_user.perfil not in ['admin', 'moderador']:
-        return jsonify({'success': False, 'message': 'Acesso restrito.'}), 403
 
     try:
         row = db.session.execute(text("""
@@ -1074,3 +1082,63 @@ def teste_conferencia_saldo():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@relatorio_gestao_bp.route('/teste-siscor-boletim')
+@login_required
+def teste_siscor_boletim():
+    """[AUDITORIA] Boletim (NU_LINHA 2 e 21) x Execução Orçamentária SISCOR, por competência."""
+    try:
+        rows = db.session.execute(text("""
+            SELECT BOL.[MES_EXECUCAO],
+                   VR_BOLETIM,
+                   VR_SISCOR,
+                   VR_BOLETIM - VR_SISCOR AS DIFERENCA
+            FROM (
+                SELECT [MES_EXECUCAO], SUM(VR_EXECUTADO) AS VR_BOLETIM
+                FROM [BDG].[FIN_TB020_BOLETIM_FINANCEIRO]
+                WHERE NU_LINHA IN (2, 21)
+                GROUP BY [MES_EXECUCAO]
+            ) BOL
+            INNER JOIN (
+                SELECT [DT_EXECUCAO_ORCAMENTO], SUM(VR_EXECUCAO_ORCAMENTO) AS VR_SISCOR
+                FROM [BDG].[COR_TB001_EXECUCAO_ORCAMENTARIA_SISCOR]
+                GROUP BY [DT_EXECUCAO_ORCAMENTO]
+            ) SIS ON BOL.[MES_EXECUCAO] = SIS.[DT_EXECUCAO_ORCAMENTO]
+            ORDER BY BOL.[MES_EXECUCAO] DESC
+        """)).fetchall()
+
+        if not rows:
+            return jsonify({'success': True, 'encontrado': False,
+                            'message': 'Nenhuma competência com dados nas duas fontes.'})
+
+        linhas = []
+        for r in rows:
+            mes = str(r[0] or '')
+            mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
+            dif = Decimal(str(r[3] or 0))
+            linhas.append({
+                'mes': mes_fmt,
+                'boletim': _fmt_br(Decimal(str(r[1] or 0)), 2),
+                'siscor': _fmt_br(Decimal(str(r[2] or 0)), 2),
+                'diferenca': _fmt_br(dif, 2),
+                'bate': (abs(dif) < Decimal('0.005')),
+            })
+        return jsonify({'success': True, 'encontrado': True, 'linhas': linhas})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@relatorio_gestao_bp.route('/tabelas-dados')
+@login_required
+def tabelas_dados():
+    """Documentação das tabelas/views (restrita a admin/moderador)."""
+    if current_user.perfil not in ['admin', 'moderador']:
+        abort(403)
+    return render_template('relatorio_gestao/tabelas_dados.html')
+
+@relatorio_gestao_bp.route('/auditoria')
+@login_required
+def auditoria():
+    """Página com os testes/verificações do Boletim (liberada para todos)."""
+    return render_template('relatorio_gestao/auditoria.html')

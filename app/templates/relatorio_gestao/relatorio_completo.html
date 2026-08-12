@@ -384,14 +384,35 @@
             if (!s.dados || !s.dados.datasets || !s.dados.datasets.length) {
                 el.parentElement.innerHTML = '<div class="fonte">Sem dados para o gráfico.</div>'; return;
             }
+
+            // Saídas do Sumário: desenha em módulo (barras p/ direita) e rotula negativo
+            if (s.abs_negativo) {
+                s.dados.datasets.forEach(function (ds) {
+                    ds.data = ds.data.map(function (v) { return Math.abs(Number(v)); });
+                });
+            }
+
             s.dados.datasets.forEach(function (ds, i) {
                 var c = CORES[i % CORES.length];
                 ds.backgroundColor = c; ds.borderColor = c;
                 ds.borderWidth = s.stacked ? 0 : 1; ds.maxBarThickness = s.horizontal ? 34 : 46;
             });
-            var valueAxis = { beginAtZero: !s.percent, stacked: !!s.stacked,
-                ticks: { callback: function (v) { return fmt(v) + (s.percent ? '%' : ''); } } };
+
+            // Formatação dos valores no eixo e no tooltip
+            function fmtVal(v) {
+                if (s.abs_negativo) { return v === 0 ? '0' : '-' + fmt(Math.abs(v)); }
+                return fmt(v) + (s.percent ? '%' : '');
+            }
+
+            var valueAxis = {
+                beginAtZero: (!s.percent || s.zero_min || s.abs_negativo),
+                stacked: !!s.stacked,
+                ticks: { callback: function (v) { return fmtVal(v); } }
+            };
+            if (s.zero_min || s.abs_negativo) { valueAxis.min = 0; }
+
             var catAxis = { stacked: !!s.stacked };
+
             var chart = new Chart(el, {
                 type: 'bar', data: s.dados,
                 options: {
@@ -401,7 +422,7 @@
                     plugins: { legend: { position: 'top' },
                         tooltip: { callbacks: { label: function (ctx) {
                             var val = s.horizontal ? ctx.parsed.x : ctx.parsed.y;
-                            return ctx.dataset.label + ': ' + fmt(val) + (s.percent ? '%' : ''); } } } },
+                            return ctx.dataset.label + ': ' + fmtVal(val); } } } },
                     scales: s.horizontal ? { x: valueAxis, y: catAxis } : { x: catAxis, y: valueAxis }
                 }
             });

@@ -190,6 +190,7 @@
             <div class="d-flex align-items-center gap-4 flex-wrap">
                 <span class="fw-bold me-2">Legenda:</span>
                 <span><span class="marcacao-cor bg-vermelho"></span> Em andamento</span>
+                <span><span class="marcacao-cor bg-verde"></span> Lançamento e Ajuste no mesmo mês</span>
                 <span><span class="marcacao-cor bg-laranja"></span> Mês/Ano diferentes (Lançamento vs Identificação)</span>
                 <span><span class="marcacao-cor bg-amarelo"></span> Memo SUFIN preenchido (sem ajuste/identificação)</span>
                 <span><span class="marcacao-cor bg-sem-cor"></span> Normal</span>
@@ -271,6 +272,8 @@
                             <td class="text-center p-0">
                                 {% if cor_marcacao == 'vermelho' %}
                                 <div class="marcacao-linha bg-vermelho" title="Em andamento"></div>
+                                {% elif cor_marcacao == 'verde' %}
+                                <div class="marcacao-linha bg-verde" title="Lançamento e Ajuste no mesmo mês"></div>
                                 {% elif cor_marcacao == 'laranja' %}
                                 <div class="marcacao-linha bg-laranja" title="Mês/Ano diferentes"></div>
                                 {% elif cor_marcacao == 'amarelo' %}
@@ -356,6 +359,7 @@
     .marcacao-linha { width: 20px; height: 100%; min-height: 30px; display: inline-block; border-radius: 3px; }
     .marcacao-cor { display: inline-block; width: 20px; height: 20px; border-radius: 3px; margin-right: 5px; vertical-align: middle; border: 1px solid #ddd; }
     .bg-vermelho { background-color: #dc3545 !important; }
+    .bg-verde { background-color: #28a745 !important; }
     .bg-laranja { background-color: #fd7e14 !important; }
     .bg-amarelo { background-color: #ffc107 !important; }
     .bg-sem-cor { background-color: transparent !important; border: 1px solid #e9ecef; }

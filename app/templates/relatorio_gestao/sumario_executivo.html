@@ -38,9 +38,8 @@
     {% if sem_dados %}
     <div class="alert alert-warning">
         <i class="fas fa-exclamation-triangle me-2"></i>
-        Ainda não há dados na <strong>FIN_TB023</strong> para a página
-        <code>SUMARIO</code>. Os textos aparecem com os valores do modelo até
-        que a competência (POSICAO) seja preenchida.
+        Ainda não há dados na <strong>FIN_TB023_RG_SUMARIO</strong> para a
+        competência mais recente.
     </div>
     {% endif %}
 
@@ -48,49 +47,53 @@
         <h2 class="rg-title">Sumário Executivo</h2>
         <div class="rg-subtitle">{{ mes_ref_cap }} - {{ ano_ref }}</div>
 
-        {% for item in itens %}
-            {% if item.tipo == 'texto' %}
-                <p class="rg-paragrafo">{{ item.conteudo }}</p>
+        {% for bloco in blocos %}
+            <p class="rg-paragrafo">{{ bloco.texto }}</p>
 
-            {% elif item.tipo == 'grafico' and item.chave == 'ingressos' %}
+            {% if bloco.grafico == 'ingressos' %}
                 <div class="rg-chart-wrap">
                     <canvas id="chartIngressos"></canvas>
                 </div>
-                {% if item.titulo %}<div class="rg-chart-fonte">{{ item.titulo }}</div>{% endif %}
+                <div class="rg-chart-fonte">Ingressos (Fonte: Sistema RM Fluxus)</div>
 
-            {% elif item.tipo == 'grafico' and item.chave == 'saidas' %}
+            {% elif bloco.grafico == 'saidas' %}
                 <div class="rg-chart-wrap" style="height: 420px;">
                     <canvas id="chartSaidas"></canvas>
                 </div>
-                {% if item.titulo %}<div class="rg-chart-fonte">{{ item.titulo }}</div>{% endif %}
-
-            {% elif item.tipo == 'grafico' %}
-                <div class="rg-reservado">
-                    <i class="fas fa-chart-column"></i>
-                    Espaço reservado para gráfico{% if item.titulo %} — {{ item.titulo }}{% endif %}
-                </div>
-
-            {% elif item.tipo == 'tabela' %}
-                <table class="rg-quadro">
-                    <thead>
-                        <tr>
-                            <th>Fundo</th><th>Rentabilidade</th>
-                            <th>% do IRF-M 1</th><th>% da TMS</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for l in quadro.linhas %}
-                        <tr>
-                            <td class="l">{{ l.fundo }}</td>
-                            <td>{{ l.perc }}</td><td>{{ l.irf }}</td><td>{{ l.tms }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-muted">Sem dados na FIN_VW030.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="rg-chart-fonte">Saídas (Fonte: Sistema RM Fluxus)</div>
             {% endif %}
         {% endfor %}
+
+        <p class="rg-paragrafo">
+            Quanto à aplicação das Disponibilidades, segue o quadro com a
+            Rentabilidade Acumulada dos Fundos de Investimentos em {{ ano_ref }}:
+        </p>
+        <table class="rg-quadro">
+            <thead>
+                <tr>
+                    <th>Fundo</th><th>Rentabilidade</th>
+                    <th>% do IRF-M 1</th><th>% da TMS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for l in quadro.linhas %}
+                <tr>
+                    <td class="l">{{ l.fundo }}</td>
+                    <td>{{ l.perc }}</td><td>{{ l.irf }}</td><td>{{ l.tms }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted">Sem dados na FIN_VW030.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <p class="rg-paragrafo">
+            Com base nas projeções de fluxo de caixa de curto e médio prazos, no
+            tocante ao risco de liquidez, a Emgea permanecerá no Cenário de
+            Normalidade, levando em conta a disponibilidade de recursos financeiros
+            suficientes para o cumprimento integral das obrigações previstas até
+            dezembro de 2027.
+        </p>
     </div>
     <div style="text-align:center; margin-top:1.4rem;">
             <a href="{{ url_for('relatorio_gestao.resultado_financeiro') }}"
