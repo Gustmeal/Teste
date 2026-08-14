@@ -8,6 +8,7 @@ from flask import (
     Blueprint, render_template, request, jsonify
 )
 from flask_login import login_required
+from sqlalchemy import func
 
 from app import db
 from app.models.boletim_financeiro import BoletimFinanceiro
@@ -15,6 +16,8 @@ from app.utils.audit import registrar_log
 from app.models.boletim_financeiro import BoletimFinanceiro
 from app.models.estrutura_boletim import EstruturaBoletim
 import unicodedata
+from flask import Blueprint, render_template, jsonify, request, abort
+from app.utils.audit import registrar_log
 
 boletim_financeiro_bp = Blueprint(
     'boletim_financeiro', __name__, url_prefix='/boletim-financeiro'
@@ -389,3 +392,14 @@ def upload():
                 os.remove(caminho_tmp)
         except Exception:
             pass
+
+
+@boletim_financeiro_bp.route('/importar')
+@login_required
+def importar():
+    """Página dedicada ao upload do Boletim."""
+    total_registros = db.session.query(
+        func.count(BoletimFinanceiro.NU_LINHA)
+    ).scalar() or 0
+    return render_template('boletim_financeiro/importar.html',
+                           total_registros=total_registros)

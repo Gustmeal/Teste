@@ -56,6 +56,179 @@ def inject_current_year():
 
 
 # =========================================================================
+# GRÁFICO "DI FUTURO SUAVIZADA" (FIN_TB004)
+# =========================================================================
+def _montar_grafico_di_futuro(dt_atualizacao):
+    """
+    Monta o dicionário do gráfico "DI Futuro Suavizada" a partir de
+    BDG.FIN_TB004_GRAFICO_CUSTO_OPORT_TX_JUROS, para o pregão informado.
+
+    Retorna dict pronto pra serializar via tojson:
+      - labels    : ['09/2026', '10/2026', ...] em ordem cronológica (ASC)
+      - dt_12sem  : rótulo da 12ª semana (= data do pregão)
+      - dt_1sem   : rótulo da 1ª semana  (= pregão - 11 semanas)
+      - series    : as 5 curvas (1:1 com as colunas numéricas da tabela)
+
+    A origem vem DESC por ANO_MES; ordeno ASC pra montar o eixo X cronológico.
+    Retorna None quando não há dados (o card do gráfico some no template).
+    Compatível com Python 3.9 e 3.12.
+    """
+    if not dt_atualizacao:
+        return None
+
+    sql = text("""
+        SELECT
+            [ANO_MES],
+            [PRE_MEDIO_ATU],
+            [TX_MEDIA_ATU],
+            [TX_MEDIA_DIREX],
+            [PRE_MEDIO_PRIM_SEM],
+            [TX_SELIC]
+        FROM [BDG].[FIN_TB004_GRAFICO_CUSTO_OPORT_TX_JUROS]
+        WHERE [DT_ATUALIZACAO] = :dt
+        ORDER BY [ANO_MES] ASC;
+    """)
+    linhas = db.session.execute(sql, {'dt': dt_atualizacao}).fetchall()
+
+    if not linhas:
+        return None
+
+    def _rotulo_ano_mes(ano_mes):
+        # '202609' (ou 202609) -> '09/2026'
+        s = str(ano_mes or '').strip()
+        if len(s) != 6 or not s.isdigit():
+            return s
+        return f'{s[4:]}/{s[:4]}'
+
+    def _num(v):
+        # Decimal/None -> float/None (JSON não serializa Decimal)
+        return float(v) if v is not None else None
+
+    labels = [_rotulo_ano_mes(l.ANO_MES) for l in linhas]
+
+    # Rótulos de data da legenda (regra: 1ª semana = pregão - 11 semanas)
+    dt_12sem = dt_atualizacao.strftime('%d/%m/%Y')
+    dt_1sem = (dt_atualizacao - timedelta(weeks=11)).strftime('%d/%m/%Y')
+
+    return {
+        'labels': labels,
+        'dt_12sem': dt_12sem,
+        'dt_1sem': dt_1sem,
+        'series': {
+            'media_direx':  [_num(l.TX_MEDIA_DIREX)     for l in linhas],
+            'di_12sem':     [_num(l.PRE_MEDIO_ATU)      for l in linhas],
+            'media_di_fut': [_num(l.TX_MEDIA_ATU)       for l in linhas],
+            'di_1sem':      [_num(l.PRE_MEDIO_PRIM_SEM) for l in linhas],
+            'selic':        [_num(l.TX_SELIC)           for l in linhas],
+        },
+    }
+
+
+# =========================================================================
+# GRÁFICO "DI FUTURO 12 SEMANAS" (view FIN_VW0001 + Selic FIN_TB005)
+# =========================================================================
+def _montar_grafico_di_12_semanas():
+    """
+    Monta o gráfico "DI Futuro 12 semanas".
+
+    Fontes:
+      - BDG.FIN_VW0001_CUSTO_OPORTUNIDADE_12_RECENTES
+          (DT_ATUALIZACAO, SEMANA, ANO_MES, VR_PRECO_MEDIA) -> as 12 curvas
+      - BDG.FIN_TB005_SELIC
+          COPOM = meta Selic do cenário STN (função em degraus), por mês (COGEP)
+
+    Retorna dict pronto pra tojson:
+      - labels : eixo X 'MM/YYYY' (união dos ANO_MES da view, ordem ASC)
+      - ordem  : ['27/05/2026', ..., '12/08/2026'] na ordem da SEMANA (legenda)
+      - series : { '27/05/2026': [...], ... } valores alinhados ao eixo X
+      - selic  : [...] Selic (COPOM) alinhada ao eixo X
+    Retorna None se a view não tiver dados.
+    Compatível com Python 3.9 e 3.12.
+    """
+    # 1. Lê as 12 curvas da view
+    sql_view = text("""
+        SELECT
+            [DT_ATUALIZACAO],
+            [SEMANA],
+            [ANO_MES],
+            [VR_PRECO_MEDIA]
+        FROM [BDG].[FIN_VW0001_CUSTO_OPORTUNIDADE_12_RECENTES]
+        ORDER BY [SEMANA] ASC, [ANO_MES] ASC;
+    """)
+    linhas = db.session.execute(sql_view).fetchall()
+    if not linhas:
+        return None
+
+    def _am(v):
+        # normaliza ANO_MES -> 'YYYYMM'
+        s = str(v or '').strip()
+        return s.zfill(6) if s.isdigit() else s
+
+    # Conjunto de meses (eixo X) em ordem cronológica
+    meses = sorted({_am(l.ANO_MES) for l in linhas if l.ANO_MES is not None})
+
+    # semana -> {ano_mes: valor}  e  semana -> data do pregão
+    semanas = {}
+    data_por_semana = {}
+    for l in linhas:
+        sem = int(l.SEMANA)
+        semanas.setdefault(sem, {})[_am(l.ANO_MES)] = (
+            float(l.VR_PRECO_MEDIA) if l.VR_PRECO_MEDIA is not None else None
+        )
+        if l.DT_ATUALIZACAO is not None:
+            data_por_semana[sem] = l.DT_ATUALIZACAO
+
+    # 2. Lê a Selic (COPOM) só na faixa de meses do gráfico
+    ano_ini, mes_ini = int(meses[0][:4]), int(meses[0][4:])
+    ano_fim, mes_fim = int(meses[-1][:4]), int(meses[-1][4:])
+    dt_ini = date(ano_ini, mes_ini, 1)
+    dt_fim = date(ano_fim, mes_fim, 1)
+
+    sql_selic = text("""
+        SELECT [COGEP], [COPOM]
+        FROM [BDG].[FIN_TB005_SELIC]
+        WHERE [COGEP] >= :dt_ini AND [COGEP] <= :dt_fim
+        ORDER BY [COGEP] ASC;
+    """)
+    selic_rows = db.session.execute(
+        sql_selic, {'dt_ini': dt_ini, 'dt_fim': dt_fim}
+    ).fetchall()
+
+    selic_por_mes = {}
+    for r in selic_rows:
+        cogep = r.COGEP
+        if cogep is None:
+            continue
+        chave = f'{cogep.year}{cogep.month:02d}'
+        selic_por_mes[chave] = (
+            float(r.COPOM) if r.COPOM is not None else None
+        )
+
+    # 3. Monta labels e séries alinhadas ao eixo X
+    def _rotulo(am_str):
+        return f'{am_str[4:]}/{am_str[:4]}' if len(am_str) == 6 else am_str
+
+    labels = [_rotulo(m) for m in meses]
+
+    ordem = []
+    series = {}
+    for sem in sorted(semanas.keys()):
+        dt = data_por_semana.get(sem)
+        rotulo_dt = dt.strftime('%d/%m/%Y') if dt else f'Semana {sem}'
+        ordem.append(rotulo_dt)
+        mapa = semanas[sem]
+        series[rotulo_dt] = [mapa.get(m) for m in meses]
+
+    selic = [selic_por_mes.get(m) for m in meses]
+
+    return {
+        'labels': labels,
+        'ordem': ordem,
+        'series': series,
+        'selic': selic,
+    }
+
+# =========================================================================
 # PÁGINA PRINCIPAL
 # =========================================================================
 @custo_oportunidade_bp.route('/')
@@ -111,9 +284,7 @@ def index():
         )
         media_pregao = CustoOportunidadeMedia.obter_por_data(dt_exibida)
 
-    # 6. NOVO: buscar a ÚLTIMA TX_SELIC conhecida em pregões anteriores
-    # (qualquer pregão com TX_SELIC IS NOT NULL, mais recente primeiro,
-    # excluindo o pregão exibido pra não confundir com o valor atual)
+    # 6. Última TX_SELIC conhecida em pregões anteriores
     ultima_tx_selic_conhecida = None
     if dt_exibida:
         ultimo_reg = CustoOportunidadeMedia.query.filter(
@@ -138,6 +309,13 @@ def index():
     # 9. Data limite configurada (FIN_TB006)
     ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
 
+    # 10. NOVO: dados do gráfico "DI Futuro Suavizada" (FIN_TB004)
+    #     Sempre do pregão exibido; None se não houver dados na tabela.
+    grafico_di_futuro = _montar_grafico_di_futuro(dt_exibida)
+
+    # 11. NOVO: gráfico "DI Futuro 12 semanas" (view FIN_VW0001 + FIN_TB005)
+    grafico_di_12sem = _montar_grafico_di_12_semanas()
+
     response = make_response(render_template(
         'custo_oportunidade/index.html',
         registros=registros,
@@ -150,7 +328,9 @@ def index():
         media_pregao=media_pregao,
         historico_medias=historico_medias,
         ano_mes_limite=ano_mes_limite_int,
-        ultima_tx_selic_conhecida=ultima_tx_selic_conhecida,   # NOVO
+        ultima_tx_selic_conhecida=ultima_tx_selic_conhecida,
+        grafico_di_futuro=grafico_di_futuro,
+        grafico_di_12sem=grafico_di_12sem,
     ))
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     response.headers['Pragma'] = 'no-cache'

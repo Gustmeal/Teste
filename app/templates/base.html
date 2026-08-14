@@ -19,6 +19,26 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
 
     <style>
+
+        /* ===== Barra de navegacao do Relatorio de Gestao (so nas paginas do RG) ===== */
+        .rgnav { position: sticky; top: 0; z-index: 40; background: #1e3a8a; color: #fff;
+                 display: flex; align-items: center; gap: .55rem; flex-wrap: wrap;
+                 padding: .55rem .9rem; border-radius: 12px; margin-bottom: 1.1rem;
+                 box-shadow: 0 4px 14px rgba(30,58,138,.22); }
+        .rgnav .rgbtn { background: rgba(255,255,255,.14); color: #fff; border: 0; border-radius: 9px;
+                        padding: .42rem .75rem; font-size: .85rem; font-weight: 600; cursor: pointer;
+                        text-decoration: none; display: inline-flex; align-items: center; gap: .4rem;
+                        white-space: nowrap; transition: background .15s; }
+        .rgnav .rgbtn:hover { background: rgba(255,255,255,.3); color: #fff; }
+        .rgnav .rgbtn.disabled { opacity: .35; pointer-events: none; }
+        .rgnav .rghome { background: #16a34a; } .rgnav .rghome:hover { background: #15803d; }
+        .rgnav .rgpdf { background: #dc2626; }  .rgnav .rgpdf:hover { background: #b91c1c; }
+        .rgnav select { background: #fff; color: #1e3a8a; border: 0; border-radius: 9px;
+                        padding: .42rem .6rem; font-size: .85rem; font-weight: 700; max-width: 240px; }
+        .rgnav .rgspacer { flex: 1 1 auto; }
+        .rgnav .rgcount { font-size: .82rem; opacity: .9; white-space: nowrap;
+                          background: rgba(255,255,255,.12); padding: .3rem .6rem; border-radius: 20px; }
+
         /* Estilo para links na barra de navegação superior */
         .navbar-dark .navbar-nav .nav-link {
             color: #0d47a1 !important;
@@ -207,6 +227,37 @@
     </nav>
 
     <div class="container main-content">
+
+        {% if rg_nav %}
+        <div class="rgnav">
+            <a class="rgbtn rghome" href="{{ rg_nav.home_url }}"><i class="fas fa-home"></i> Inicio</a>
+
+            {% if rg_nav.prev %}
+            <a class="rgbtn" href="{{ rg_nav.prev.url }}"><i class="fas fa-chevron-left"></i> {{ rg_nav.prev.label }}</a>
+            {% else %}
+            <span class="rgbtn disabled"><i class="fas fa-chevron-left"></i> Anterior</span>
+            {% endif %}
+
+            <select onchange="if(this.value){window.location.href=this.value;}">
+                {% for it in rg_nav.itens %}
+                <option value="{{ it.url }}" {{ 'selected' if it.current }}>{{ loop.index }}. {{ it.label }}</option>
+                {% endfor %}
+            </select>
+
+            {% if rg_nav.next %}
+            <a class="rgbtn" href="{{ rg_nav.next.url }}">{{ rg_nav.next.label }} <i class="fas fa-chevron-right"></i></a>
+            {% else %}
+            <span class="rgbtn disabled">Proximo <i class="fas fa-chevron-right"></i></span>
+            {% endif %}
+
+            <span class="rgspacer"></span>
+            <span class="rgcount">{{ rg_nav.atual }} / {{ rg_nav.total }}</span>
+            {% if rg_nav.pdf_url %}
+            <a class="rgbtn rgpdf" href="{{ rg_nav.pdf_url }}" target="_blank"><i class="fas fa-file-pdf"></i> PDF</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}

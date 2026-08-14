@@ -17,15 +17,17 @@
     table.dp-table tbody tr:nth-child(even) td { background:#f4f7fb; }
     .dp-chart-wrap { height:360px; margin-top:2rem; }
     .dp-bloqueios { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;
-                    padding:1rem 1.2rem; margin-top:1.6rem; line-height:1.7; text-align:justify; }
+                    padding:1rem 1.2rem; margin-top:1.6rem; line-height:1.7; text-align:justify;
+                    color:#1f2937; }
+    .dp-bloqueios .dp-par { margin-bottom:.6rem; }
+    .dp-bloqueios .dp-par:last-child { margin-bottom:0; }
+    .dp-bloqueios .dp-item { margin:.15rem 0 .15rem 1.4rem; text-indent:-1rem; }
+    .dp-bloqueios .dp-traco { font-weight:700; }
     .dp-nav { text-align:center; margin-top:1.4rem; }
     .dp-nav a { color:#1e3a8a; font-size:1.9rem; text-decoration:none; margin:0 .7rem; }
 </style>
 
 <div class="dp-container fade-in">
-    <a href="{{ url_for('relatorio_gestao.consideracoes') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
 
     {% if sem_dados %}
     <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
@@ -57,8 +59,16 @@
 
         <div class="dp-chart-wrap"><canvas id="chartDisp"></canvas></div>
 
-        {% if texto_bloqueios %}
-        <div class="dp-bloqueios">{{ texto_bloqueios }}</div>
+        {% if blocos_bloqueios %}
+        <div class="dp-bloqueios">
+            {% for b in blocos_bloqueios %}
+                {% if b.tipo == 'item' %}
+                    <div class="dp-item"><span class="dp-traco">–</span> {{ b.texto }}</div>
+                {% else %}
+                    <p class="dp-par">{{ b.texto }}</p>
+                {% endif %}
+            {% endfor %}
+        </div>
         {% endif %}
     </div>
     {% endif %}

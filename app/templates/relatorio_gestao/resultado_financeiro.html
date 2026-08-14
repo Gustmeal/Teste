@@ -49,12 +49,13 @@
 
     .rf-nav { text-align: center; margin-top: 1.4rem; }
     .rf-nav a { color: #1e3a8a; font-size: 1.9rem; text-decoration: none; }
+    .rf-legenda { margin-top: 1.2rem; font-size: .82rem; color: #475569; line-height: 1.5; text-align: justify; }
+    .rf-legenda p { margin-bottom: .5rem; }
+    .rf-fonte { font-weight: 600; color: #334155; }
+    .rf-obs { border-top: 1px solid #e2e8f0; padding-top: .6rem; }
 </style>
 
 <div class="rf-container fade-in">
-    <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar ao Sumário
-    </a>
 
     {% if sem_dados %}
     <div class="alert alert-warning">
@@ -98,6 +99,13 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <div class="rf-legenda">
+                <p class="rf-fonte">Fonte: Sistema RM Fluxus</p>
+                <p><strong>(1)</strong> O Saldo Inicial do valor Acumulado de 2025 e 2026 corresponde ao saldo final do mês de dezembro do ano anterior.</p>
+                <p><strong>(2)</strong> Outros - Ingressos: Compõem essa rubrica os recebimentos com: Avaliação de Imóveis, Honorários e Remuneração de Cobrança a repassar, Créditos a Identificar e Depósitos Judiciais.</p>
+                <p><strong>(3)</strong> Outros - Saídas: Compõem essa rubrica os desembolsos com: Bloqueios Judiciais nas Contas Correntes e Fundo de Investimento, Débitos a Identificar e Transferências Judiciais.</p>
+                <p class="rf-obs"><strong>Obs:</strong> Informamos que, após a classificação, principalmente, dos valores anteriormente alocados em Outros Ingressos (à classificar) e Outras Saídas (à classificar), registra-se apropriação desses valores em suas respectivas rubricas.</p>
+            </div>
         </div>
     </div>
     {% endif %}

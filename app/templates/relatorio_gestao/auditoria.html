@@ -15,6 +15,8 @@
     .au-tab th:first-child, .au-tab td:first-child { text-align: left; }
     .au-tab thead th { background: #1f4e79; color: #fff; }
     .ok { color: #16a34a; font-weight: 700; } .diverge { color: #c00000; font-weight: 700; }
+    .vinc-sel { min-width: 240px; }
+    .au-tab td.tleft, .au-tab th.tleft { text-align: left; }
 </style>
 
 <div class="au-wrap fade-in">
@@ -36,6 +38,7 @@
             </button>
         </div>
         <div class="au-body" id="res1" style="display:none;"></div>
+        <div class="au-body" id="orfaos1" style="display:none; border-top:1px solid #eef2f7;"></div>
     </div>
 
     <!-- TESTE 2 -->
@@ -60,6 +63,7 @@ function _loading(btn) { var o = btn.innerHTML; btn.disabled = true;
 
 function rodarBoletimSaldo() {
     var btn = document.getElementById('btn1'); var o = _loading(btn);
+    document.getElementById('orfaos1').style.display = 'none';
     fetch("{{ url_for('relatorio_gestao.teste_conferencia_saldo') }}", { headers: { 'X-Silent-Request': 'true' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
@@ -73,9 +77,85 @@ function rodarBoletimSaldo() {
             '<tr><td>' + d.mes + '</td><td>R$ ' + d.vr_executado + '</td><td>R$ ' + d.sd_contas +
             '</td><td>R$ ' + d.diferenca + '</td><td class="' + (d.bate ? 'ok' : 'diverge') + '">' +
             (d.bate ? '✅ Bate' : '⚠️ Diverge') + '</td></tr></tbody></table>';
+
+        // Só quando DIVERGE, busca os itens órfãos do mês (converte MM/AAAA -> AAAAMM)
+        if (!d.bate) {
+            var ym = d.ano_mes;
+            if (!ym) {
+                var p = (d.mes || '').split('/');
+                ym = (p.length === 2) ? (p[1] + p[0]) : (d.mes || '').replace(/\D/g, '');
+            }
+            carregarOrfaos(ym);
+        }
     })
     .catch(function (e) { btn.disabled = false; btn.innerHTML = o;
         _box('res1').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
+}
+
+var _naturezas = [];
+function carregarOrfaos(anoMes) {
+    var box = _box('orfaos1');
+    box.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Buscando itens sem vínculo...</div>';
+    fetch("{{ url_for('relatorio_gestao.vinculo_orfaos') }}?ano_mes=" + encodeURIComponent(anoMes),
+          { headers: { 'X-Silent-Request': 'true' } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (!d.success) { box.innerHTML = '<div class="alert alert-danger mb-0">' + d.message + '</div>'; return; }
+        if (!d.itens.length) { box.innerHTML = '<div class="alert alert-success mb-0">Nenhum item pendente de vínculo neste mês.</div>'; return; }
+        _naturezas = d.naturezas;
+        var opts = '<option value="">— selecione a natureza —</option>' +
+            d.naturezas.map(function (n) { return '<option value="' + n.nu_linha + '">' + n.natureza + '</option>'; }).join('');
+        var linhas = d.itens.map(function (it, i) {
+            return '<tr data-idx="' + i + '" data-am="' + it.ano_mes + '" data-id="' + it.id_item +
+                   '" data-dsc="' + (it.descricao || '').replace(/"/g, '&quot;') + '">' +
+                   '<td>' + it.id_item + '</td>' +
+                   '<td class="tleft">' + it.descricao + '</td>' +
+                   '<td>' + it.unidade + '</td>' +
+                   '<td>R$ ' + it.valor + '</td>' +
+                   '<td><select class="form-select form-select-sm vinc-sel">' + opts + '</select></td></tr>';
+        }).join('');
+        box.innerHTML =
+            '<div class="mb-2"><strong>Itens do SISCOR sem vínculo (' + d.ano_mes + ')</strong> — ' +
+            'selecione a natureza de cada um e salve:</div>' +
+            '<table class="au-tab"><thead><tr><th>ID</th><th class="tleft">Descrição</th>' +
+            '<th>Unid.</th><th>Valor</th><th>Natureza (NU_LINHA)</th></tr></thead><tbody>' + linhas +
+            '</tbody></table>' +
+            '<div class="mt-3"><button class="btn btn-success" onclick="salvarVinculos()">' +
+            '<i class="fas fa-save me-2"></i>Salvar vínculos</button></div>' +
+            '<div id="vincMsg" class="mt-2"></div>';
+    })
+    .catch(function (e) { box.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
+}
+
+function salvarVinculos() {
+    var linhas = document.querySelectorAll('#orfaos1 tbody tr');
+    var vinculos = [];
+    linhas.forEach(function (tr) {
+        var sel = tr.querySelector('.vinc-sel');
+        if (sel && sel.value) {
+            vinculos.push({
+                ano_mes: tr.getAttribute('data-am'),
+                id_item: parseInt(tr.getAttribute('data-id'), 10),
+                descricao: tr.getAttribute('data-dsc'),
+                nu_linha: parseInt(sel.value, 10)
+            });
+        }
+    });
+    var msg = document.getElementById('vincMsg');
+    if (!vinculos.length) { msg.innerHTML = '<div class="alert alert-warning mb-0">Selecione ao menos uma natureza.</div>'; return; }
+
+    msg.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Salvando...</div>';
+    fetch("{{ url_for('relatorio_gestao.vinculo_salvar') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true' },
+        body: JSON.stringify({ vinculos: vinculos })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (!d.success) { msg.innerHTML = '<div class="alert alert-danger mb-0">' + d.message + '</div>'; return; }
+        msg.innerHTML = '<div class="alert alert-success mb-0">' + d.message + ' Rode o teste de novo para conferir.</div>';
+    })
+    .catch(function (e) { msg.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
 }
 
 function rodarSiscorBoletim() {

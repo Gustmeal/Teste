@@ -684,6 +684,410 @@
             </div>
         </div>
     </div>
+
+    {# =================================================================== #}
+    {#  HELPER COMPARTILHADO: exportação de gráfico -> PDF (jsPDF)          #}
+    {#  Renderiza o gráfico off-screen em 3x e baixa o PDF num clique.     #}
+    {#  Definido só uma vez (idempotente) via window.__graficoPDF.         #}
+    {# =================================================================== #}
+    {% if grafico_di_futuro or grafico_di_12sem %}
+    <script>
+    if (!window.__graficoPDF) {
+        window.__graficoPDF = (function () {
+            function carregarScript(src, cb, errcb) {
+                var s = document.createElement('script');
+                s.src = src;
+                s.onload = cb;
+                s.onerror = errcb || function () {};
+                document.head.appendChild(s);
+            }
+            function garantirLibs(cb) {
+                function temChart() { return typeof Chart !== 'undefined'; }
+                function temPdf()   { return window.jspdf && window.jspdf.jsPDF; }
+                function etapaPdf() {
+                    if (temPdf()) { cb(); }
+                    else carregarScript(
+                        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+                        cb,
+                        function () { alert('Não foi possível carregar o gerador de PDF.'); }
+                    );
+                }
+                if (temChart()) { etapaPdf(); }
+                else carregarScript(
+                    'https://cdn.jsdelivr.net/npm/chart.js@4',
+                    etapaPdf,
+                    function () { alert('Não foi possível carregar o Chart.js.'); }
+                );
+            }
+            // montarConfig: função que devolve a config do Chart.js
+            // larguraPx/alturaPx: tamanho lógico usado na exportação
+            function exportar(montarConfig, dados, larguraPx, alturaPx, arquivo, orientacao, btn) {
+                var textoOrig = null;
+                if (btn) {
+                    btn.disabled = true;
+                    textoOrig = btn.innerHTML;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Gerando...';
+                }
+                garantirLibs(function () {
+                    // Container off-screen com fundo branco
+                    var box = document.createElement('div');
+                    box.style.cssText =
+                        'position:fixed;left:-99999px;top:0;background:#ffffff;width:'
+                        + larguraPx + 'px;height:' + alturaPx + 'px;';
+                    var cv = document.createElement('canvas');
+                    box.appendChild(cv);
+                    document.body.appendChild(box);
+
+                    var cfg = montarConfig(dados);
+                    cfg.options = cfg.options || {};
+                    cfg.options.responsive = true;
+                    cfg.options.maintainAspectRatio = false;
+                    cfg.options.animation = false;
+                    cfg.options.devicePixelRatio = 3;   // nitidez (sem serrilhado)
+
+                    var chartExp = new Chart(cv, cfg);
+
+                    // Pequeno atraso garante o render completo antes de capturar
+                    setTimeout(function () {
+                        try {
+                            var img = chartExp.toBase64Image('image/png', 1.0);
+                            var jsPDF = window.jspdf.jsPDF;
+                            var pdf = new jsPDF({
+                                orientation: orientacao || 'landscape',
+                                unit: 'pt',
+                                format: 'a4'
+                            });
+                            var pw = pdf.internal.pageSize.getWidth();
+                            var ph = pdf.internal.pageSize.getHeight();
+                            var margem = 28;
+                            var ratio = Math.min(
+                                (pw - margem * 2) / larguraPx,
+                                (ph - margem * 2) / alturaPx
+                            );
+                            var wI = larguraPx * ratio, hI = alturaPx * ratio;
+                            pdf.addImage(img, 'PNG', (pw - wI) / 2, (ph - hI) / 2, wI, hI);
+                            pdf.save(arquivo);
+                        } catch (e) {
+                            alert('Falha ao gerar o PDF: ' + e.message);
+                        } finally {
+                            chartExp.destroy();
+                            document.body.removeChild(box);
+                            if (btn) { btn.disabled = false; btn.innerHTML = textoOrig; }
+                        }
+                    }, 120);
+                });
+            }
+            return { exportar: exportar };
+        })();
+    }
+    </script>
+    {% endif %}
+
+    {# =================================================================== #}
+    {#  GRÁFICO 1: DI Futuro Suavizada — Estrutura das Taxas de juros      #}
+    {#  Dados 100% vindos do back-end (FIN_TB004).                         #}
+    {# =================================================================== #}
+    {% if grafico_di_futuro %}
+    <div class="card co-section-card mb-4">
+        <div class="co-section-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-chart-line me-2"></i>
+                Curva de Juros — DI Futuro Suavizada
+            </h5>
+            <button type="button" id="btnPdfDiFuturo" class="btn btn-sm btn-light">
+                <i class="fas fa-file-pdf text-danger me-1"></i>Baixar PDF
+            </button>
+        </div>
+        <div class="card-body">
+            <div style="position: relative; width: 100%; height: 460px;">
+                <canvas id="chartDiFuturo"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script id="dadosDiFuturo" type="application/json">{{ grafico_di_futuro | tojson }}</script>
+
+    <script>
+    (function () {
+        function fmtBR(v) {
+            try {
+                return Number(v).toLocaleString('pt-BR',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } catch (e) { return v; }
+        }
+
+        // Devolve a config do Chart.js (reusada na tela e na exportação PDF)
+        function montarConfig(dados) {
+            var SERIES = [
+                { key: 'media_direx',  cor: '#17375E', dash: [],
+                  label: 'Curva de Juros - Média das Últimas 12 Semanas - Aprovada na Direx' },
+                { key: 'di_12sem',     cor: '#2E9E9E', dash: [],
+                  label: 'Curva de Juros - Taxa Futuro DI - 12ª semana - ' + dados.dt_12sem },
+                { key: 'media_di_fut', cor: '#C4C400', dash: [],
+                  label: 'Curva de Juros - Média DI Futuro das Últimas 12 semanas' },
+                { key: 'di_1sem',      cor: '#E97DA0', dash: [],
+                  label: 'Curva de Juros - Taxa Futuro DI - 1ª semana - ' + dados.dt_1sem },
+                { key: 'selic',        cor: '#2E75B6', dash: [8, 4],
+                  label: 'Selic Meta - Copom' }
+            ];
+            var datasets = SERIES.map(function (s) {
+                return {
+                    label: s.label,
+                    data: dados.series[s.key],
+                    borderColor: s.cor,
+                    backgroundColor: s.cor,
+                    borderWidth: 2,
+                    borderDash: s.dash,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.4,
+                    spanGaps: true
+                };
+            });
+            return {
+                type: 'line',
+                data: { labels: dados.labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: {
+                            display: true, text: 'DI Futuro Suavizada',
+                            font: { size: 18, weight: 'bold' }
+                        },
+                        subtitle: {
+                            display: true, text: 'Estrutura das Taxas de juros',
+                            font: { size: 13, weight: 'bold' },
+                            padding: { bottom: 12 }
+                        },
+                        legend: {
+                            position: 'right',
+                            labels: { boxWidth: 28, font: { size: 10 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (c) {
+                                    var nome = c.dataset.label.split(' - ')[0];
+                                    return nome + ': ' + fmtBR(c.parsed.y) + '% a.a.';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { maxRotation: 90, minRotation: 45, font: { size: 9 } },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { callback: function (v) { return fmtBR(v); } },
+                            grid: { color: 'rgba(0,0,0,0.08)', borderDash: [3, 3] }
+                        }
+                    }
+                }
+            };
+        }
+
+        function init() {
+            var el = document.getElementById('chartDiFuturo');
+            if (!el) return;
+
+            var dados;
+            try {
+                dados = JSON.parse(document.getElementById('dadosDiFuturo').textContent);
+            } catch (e) { dados = null; }
+
+            if (!dados || !dados.labels || dados.labels.length === 0) {
+                el.parentElement.innerHTML =
+                    '<div class="text-muted text-center py-4">Sem dados para o gráfico.</div>';
+                return;
+            }
+
+            new Chart(el, montarConfig(dados));
+
+            var btn = document.getElementById('btnPdfDiFuturo');
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    window.__graficoPDF.exportar(
+                        montarConfig, dados, 1000, 460,
+                        'DI_Futuro_Suavizada.pdf', 'landscape', btn
+                    );
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof Chart === 'undefined') {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+                s.onload = init;
+                s.onerror = function () {
+                    var el = document.getElementById('chartDiFuturo');
+                    if (el) el.parentElement.innerHTML =
+                        '<div class="text-muted text-center py-4">Chart.js não pôde ser carregado.</div>';
+                };
+                document.head.appendChild(s);
+            } else {
+                init();
+            }
+        });
+    })();
+    </script>
+    {% endif %}
+
+    {# =================================================================== #}
+    {#  GRÁFICO 2: DI Futuro 12 semanas — Estrutura das Taxas de juros     #}
+    {#  12 curvas da view FIN_VW0001 + Selic (COPOM/STN) da FIN_TB005.     #}
+    {# =================================================================== #}
+    {% if grafico_di_12sem %}
+    <div class="card co-section-card mb-4">
+        <div class="co-section-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-layer-group me-2"></i>
+                DI Futuro — 12 semanas
+            </h5>
+            <button type="button" id="btnPdfDi12Sem" class="btn btn-sm btn-light">
+                <i class="fas fa-file-pdf text-danger me-1"></i>Baixar PDF
+            </button>
+        </div>
+        <div class="card-body">
+            <div style="position: relative; width: 100%; height: 520px;">
+                <canvas id="chartDi12Sem"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script id="dadosDi12Sem" type="application/json">{{ grafico_di_12sem | tojson }}</script>
+
+    <script>
+    (function () {
+        function fmtBR(v) {
+            try {
+                return Number(v).toLocaleString('pt-BR',
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            } catch (e) { return v; }
+        }
+
+        function montarConfig(dados) {
+            var PALETA = [
+                '#1F3864', '#2E8B7F', '#7030A0', '#C00000',
+                '#5B9BD5', '#FFC000', '#548235', '#E97DBE',
+                '#4472C4', '#17A2A2', '#B01CB0', '#E03C31'
+            ];
+            var datasets = dados.ordem.map(function (rot, i) {
+                return {
+                    label: 'Taxa Futuro DI – Indicador em ' + rot,
+                    data: dados.series[rot],
+                    borderColor: PALETA[i % PALETA.length],
+                    backgroundColor: PALETA[i % PALETA.length],
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    tension: 0.1,
+                    spanGaps: true
+                };
+            });
+            datasets.push({
+                label: 'SELIC - Cenário STN',
+                data: dados.selic,
+                borderColor: '#1F3864',
+                backgroundColor: '#1F3864',
+                borderWidth: 2,
+                borderDash: [8, 4],
+                pointRadius: 0,
+                pointHoverRadius: 3,
+                tension: 0,
+                spanGaps: true
+            });
+            return {
+                type: 'line',
+                data: { labels: dados.labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: {
+                            display: true, text: 'DI Futuro 12 semanas',
+                            font: { size: 18, weight: 'bold' }
+                        },
+                        subtitle: {
+                            display: true, text: 'Estrutura das Taxas de juros',
+                            font: { size: 13, weight: 'bold' },
+                            padding: { bottom: 12 }
+                        },
+                        legend: {
+                            position: 'right',
+                            labels: { boxWidth: 24, font: { size: 9 } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (c) {
+                                    return c.dataset.label + ': ' + fmtBR(c.parsed.y) + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { maxRotation: 90, minRotation: 60, font: { size: 8 } },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { callback: function (v) { return fmtBR(v); } },
+                            grid: { color: 'rgba(0,0,0,0.08)', borderDash: [3, 3] }
+                        }
+                    }
+                }
+            };
+        }
+
+        function init() {
+            var el = document.getElementById('chartDi12Sem');
+            if (!el) return;
+
+            var dados;
+            try {
+                dados = JSON.parse(document.getElementById('dadosDi12Sem').textContent);
+            } catch (e) { dados = null; }
+
+            if (!dados || !dados.labels || dados.labels.length === 0) {
+                el.parentElement.innerHTML =
+                    '<div class="text-muted text-center py-4">Sem dados para o gráfico.</div>';
+                return;
+            }
+
+            new Chart(el, montarConfig(dados));
+
+            var btn = document.getElementById('btnPdfDi12Sem');
+            if (btn) {
+                btn.addEventListener('click', function () {
+                    window.__graficoPDF.exportar(
+                        montarConfig, dados, 1100, 560,
+                        'DI_Futuro_12_semanas.pdf', 'landscape', btn
+                    );
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof Chart === 'undefined') {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+                s.onload = init;
+                s.onerror = function () {
+                    var el = document.getElementById('chartDi12Sem');
+                    if (el) el.parentElement.innerHTML =
+                        '<div class="text-muted text-center py-4">Chart.js não pôde ser carregado.</div>';
+                };
+                document.head.appendChild(s);
+            } else {
+                init();
+            }
+        });
+    })();
+    </script>
+    {% endif %}
     {% endif %}
 
     {% if registros %}

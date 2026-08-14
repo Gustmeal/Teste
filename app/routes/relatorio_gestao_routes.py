@@ -1,4 +1,5 @@
 from os import abort
+from urllib import request
 
 from flask import Blueprint, render_template, jsonify
 from flask_login import login_required
@@ -6,6 +7,7 @@ from sqlalchemy import text
 
 from app import db
 from app.models.relatorio_gestao_item import RelatorioGestaoItem
+from app.utils.audit import registrar_log
 from app.utils.relatorio_gestao import partes_posicao, renderizar_pagina
 from app.utils.relatorio_gestao_textos import SUMARIO_EXECUTIVO
 import re
@@ -242,15 +244,39 @@ def _mes_abrev_de_anomes(anomes):
     return _MESES_ABREV[int(s[4:6]) - 1] + '/' + s[:4]
 
 def _montar_texto_bloqueios(registros):
-    """Monta o texto dos bloqueios (FIN_VW025) trocando '...' pelo VR em módulo,
-    na ordem do ID. Mesma mecânica das Considerações."""
-    partes = []
+    """
+    Monta os blocos do texto de bloqueios (FIN_VW025), preenchendo '...' com o VR.
+    Linhas cujo TEXTO começa com '-' viram itens de lista; as demais, parágrafos.
+    Parágrafos consecutivos (sem tracinho) são unidos num só.
+    Retorna: [{'tipo': 'paragrafo'|'item', 'texto': str}]
+    """
+    blocos = []
+    buffer_par = []
+
+    def _fecha_paragrafo():
+        if buffer_par:
+            txt = ' '.join(p for p in buffer_par if p)
+            txt = re.sub(r'\s+', ' ', txt).strip()
+            txt = re.sub(r'\s+([,.;:)%])', r'\1', txt)
+            if txt:
+                blocos.append({'tipo': 'paragrafo', 'texto': txt})
+            buffer_par.clear()
+
     for r in registros:
-        partes.append(preencher_fragmento(getattr(r, 'TEXTO', None),
-                                           getattr(r, 'VR', None)))
-    texto = ' '.join(p for p in partes if p)
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    return re.sub(r'\s+([,.;:)%])', r'\1', texto)
+        texto = preencher_fragmento(getattr(r, 'TEXTO', None), getattr(r, 'VR', None))
+        if not texto:
+            continue
+        if texto.lstrip().startswith('-'):
+            # fecha o parágrafo acumulado e adiciona o item (sem o '-' inicial)
+            _fecha_paragrafo()
+            item = texto.lstrip()[1:].strip()
+            item = re.sub(r'\s+([,.;:)%])', r'\1', item)
+            blocos.append({'tipo': 'item', 'texto': item})
+        else:
+            buffer_par.append(texto)
+
+    _fecha_paragrafo()
+    return blocos
 
 def _dados_view_itens(view, mes_limite=12):
     """Leitor genérico (ANO, ITEM, JAN..DEZ) do maior ANO -> {labels, datasets}."""
@@ -333,17 +359,29 @@ def _dados_disponibilidades():
             labels.append(r[0] or '')
             g['cc'].append(float(r[1] or 0)); g['bb'].append(float(r[2] or 0))
             g['cx'].append(float(r[3] or 0)); g['fae'].append(float(r[4] or 0))
+
     reg = db.session.execute(text("""
         SELECT ID, TEXTO, VR FROM [BDG].[FIN_VW025_DISPONIBILIDADES_BLOQUEIOS_JUDICIAIS_TEXTO]
         ORDER BY ID""")).fetchall()
 
     class _F:
         def __init__(self, t, v): self.TEXTO = t; self.VR = v
-    texto = _montar_texto_bloqueios([_F(r[1], r[2]) for r in reg])
+
+    _registros_bloq = [_F(r[1], r[2]) for r in reg]
+
+    # Blocos (parágrafo/item) — linhas iniciadas por '-' viram itens de lista
+    blocos_bloqueios = _montar_texto_bloqueios(_registros_bloq)
+
+    # Texto corrido (compatibilidade com quem ainda usa 'texto')
+    texto = ' '.join(b['texto'] for b in blocos_bloqueios if b.get('texto'))
+    texto = re.sub(r'\s+', ' ', texto).strip()
+
     grafico = {'labels': labels, 'datasets': [
         {'label': 'Contas Correntes', 'data': g['cc']}, {'label': 'BB Exclusivo', 'data': g['bb']},
         {'label': 'Caixa Exclusivo XXI', 'data': g['cx']}, {'label': 'BB FAE 2', 'data': g['fae']}]}
-    return {'linhas': linhas, 'texto': texto, 'grafico': grafico}
+
+    return {'linhas': linhas, 'texto': texto,
+            'blocos_bloqueios': blocos_bloqueios, 'grafico': grafico}
 
 
 def _dados_titulos():
@@ -672,10 +710,13 @@ def disponibilidades():
             self.VR = vr
     texto_bloqueios = _montar_texto_bloqueios([_Frag(r[1], r[2]) for r in reg_texto])
 
+    dados = _dados_disponibilidades()
     return render_template(
         'relatorio_gestao/disponibilidades.html',
-        linhas=linhas, grafico=grafico, texto_bloqueios=texto_bloqueios,
-        sem_dados=(len(linhas) == 0),
+        sem_dados=(len(dados['linhas']) == 0),
+        linhas=dados['linhas'],
+        grafico=dados['grafico'],
+        blocos_bloqueios=dados['blocos_bloqueios'],
     )
 
 @relatorio_gestao_bp.route('/rentabilidade-xxi')
@@ -1142,3 +1183,162 @@ def tabelas_dados():
 def auditoria():
     """Página com os testes/verificações do Boletim (liberada para todos)."""
     return render_template('relatorio_gestao/auditoria.html')
+
+
+# Ordem das páginas do Relatório de Gestão (a barra de navegação usa isto)
+_RG_SECOES = [
+    ('relatorio_gestao.sumario_executivo',        'Sumário Executivo'),
+    ('relatorio_gestao.resultado_financeiro',     'Resultado Financeiro'),
+    ('relatorio_gestao.consideracoes',            'Considerações'),
+    ('relatorio_gestao.disponibilidades',         'Disponibilidades'),
+    ('relatorio_gestao.rentabilidade_bb_exclusivo','Rentabilidade BB'),
+    ('relatorio_gestao.composicao_bb',            'Composição BB'),
+    ('relatorio_gestao.rentabilidade_xxi',        'Rentabilidade XXI'),
+    ('relatorio_gestao.composicao_xxi',           'Composição XXI'),
+    ('relatorio_gestao.rentabilidade_fae2',       'Rentabilidade FAE 2'),
+    ('relatorio_gestao.composicao_fae2',          'Composição FAE 2'),
+    ('relatorio_gestao.titulos_consolidados_bb',  'Títulos Consolidados BB'),
+]
+
+
+@relatorio_gestao_bp.app_context_processor
+def _injetar_rg_nav():
+    """Disponibiliza 'rg_nav' nos templates SOMENTE nas páginas do relatório.
+    Assim a barra aparece em todas elas sem precisar editar cada página."""
+    from flask import request, url_for
+    ep = request.endpoint or ''
+    nomes = [e for e, _ in _RG_SECOES]
+    if ep not in nomes:
+        return {}  # em qualquer outra página, não injeta nada
+
+    itens = []
+    for e, lbl in _RG_SECOES:
+        try:
+            itens.append({'endpoint': e, 'url': url_for(e), 'label': lbl})
+        except Exception:
+            continue  # ignora endpoint inexistente (não quebra a página)
+
+    idx = next((i for i, it in enumerate(itens) if it['endpoint'] == ep), 0)
+    for i, it in enumerate(itens):
+        it['current'] = (i == idx)
+
+    try:
+        home_url = url_for('boletim_financeiro.index')
+    except Exception:
+        home_url = '/'
+    try:
+        pdf_url = url_for('relatorio_gestao.relatorio_completo')
+    except Exception:
+        pdf_url = None
+
+    return {'rg_nav': {
+        'itens': itens,
+        'atual': idx + 1,
+        'total': len(itens),
+        'prev': itens[idx - 1] if idx > 0 else None,
+        'next': itens[idx + 1] if idx < len(itens) - 1 else None,
+        'home_url': home_url,
+        'pdf_url': pdf_url,
+    }}
+
+@relatorio_gestao_bp.route('/vinculo-orfaos')
+@login_required
+def vinculo_orfaos():
+    """Itens do SISCOR sem vínculo no Boletim (NU_LINHA IS NULL) no mês filtrado."""
+    ano_mes = request.args.get('ano_mes', '').strip()
+    if not ano_mes.isdigit():
+        return jsonify({'success': False, 'message': 'Competência inválida.'}), 400
+    try:
+        orfaos = db.session.execute(text("""
+            SELECT SIS.DT_EXECUCAO_ORCAMENTO, SIS.ID_ITEM,
+                   SUM(SIS.VR_EXECUCAO_ORCAMENTO) AS VR_EXECUCAO,
+                   SIS.DSC_ITEM_ORCAMENTO, SIS.UNIDADE
+            FROM BDG.COR_TB001_EXECUCAO_ORCAMENTARIA_SISCOR SIS
+            LEFT JOIN [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO] VINC
+                   ON SIS.DT_EXECUCAO_ORCAMENTO = VINC.ANO_MES
+                  AND VINC.ID_ITEM = SIS.ID_ITEM
+            WHERE SIS.DT_EXECUCAO_ORCAMENTO = :am
+              AND SIS.VR_EXECUCAO_ORCAMENTO <> 0
+              AND VINC.NU_LINHA IS NULL
+            GROUP BY SIS.DT_EXECUCAO_ORCAMENTO, SIS.ID_ITEM,
+                     SIS.DSC_ITEM_ORCAMENTO, SIS.UNIDADE
+            ORDER BY SIS.DSC_ITEM_ORCAMENTO
+        """), {'am': ano_mes}).fetchall()
+
+        naturezas = db.session.execute(text("""
+            SELECT NU_LINHA, NATUREZA FROM [BDG].[FIN_TB019_ESTRUTURA_BOLETIM]
+            ORDER BY NU_LINHA
+        """)).fetchall()
+
+        return jsonify({
+            'success': True,
+            'ano_mes': ano_mes,
+            'itens': [{
+                'ano_mes': str(o[0] or ''),
+                'id_item': o[1],
+                'valor': _fmt_br(Decimal(str(o[2] or 0)), 2),
+                'descricao': (o[3] or '').strip(),
+                'unidade': (o[4] or '').strip(),
+            } for o in orfaos],
+            'naturezas': [{'nu_linha': n[0], 'natureza': (n[1] or '').strip()} for n in naturezas],
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@relatorio_gestao_bp.route('/vinculo-salvar', methods=['POST'])
+@login_required
+def vinculo_salvar():
+    """Grava os vínculos em FIN_TB018, sem violar a PK (ANO_MES + ID_ITEM)."""
+    dados = request.get_json(silent=True) or {}
+    vinculos = dados.get('vinculos', [])
+    if not vinculos:
+        return jsonify({'success': False, 'message': 'Nenhum vínculo enviado.'}), 400
+
+    inseridos, ignorados, erros = 0, 0, []
+    try:
+        for v in vinculos:
+            ano_mes = str(v.get('ano_mes', '')).strip()
+            id_item = v.get('id_item')
+            nu_linha = v.get('nu_linha')
+            descricao = (v.get('descricao') or '').strip()
+            if not (ano_mes and id_item is not None and nu_linha not in (None, '', 'null')):
+                continue
+
+            # NATUREZA (NO_LINHA) correspondente ao NU_LINHA escolhido
+            nat = db.session.execute(text("""
+                SELECT TOP 1 NATUREZA FROM [BDG].[FIN_TB019_ESTRUTURA_BOLETIM]
+                WHERE NU_LINHA = :nu
+            """), {'nu': nu_linha}).scalar()
+
+            # Insere só se ainda não existir (protege a PK)
+            res = db.session.execute(text("""
+                INSERT INTO [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO]
+                    (ANO_MES, ID_ITEM, DSC_ITEM_ORCAMENTO, NU_LINHA, NO_LINHA)
+                SELECT :am, :id, :dsc, :nu, :no
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO]
+                    WHERE ANO_MES = :am AND ID_ITEM = :id
+                )
+            """), {'am': ano_mes, 'id': id_item, 'dsc': descricao,
+                   'nu': nu_linha, 'no': (nat or '').strip()})
+
+            if res.rowcount and res.rowcount > 0:
+                inseridos += 1
+            else:
+                ignorados += 1
+
+        db.session.commit()
+        registrar_log(acao='vinculo', entidade='FIN_TB018',
+                      entidade_id=None,
+                      descricao=f'Vínculo de itens SISCOR ({inseridos} inserido(s), {ignorados} já existentes)',
+                      dados_novos={'inseridos': inseridos, 'ignorados': ignorados})
+
+        msg = f'{inseridos} vínculo(s) salvo(s).'
+        if ignorados:
+            msg += f' {ignorados} já existiam (ignorados).'
+        return jsonify({'success': True, 'message': msg,
+                        'inseridos': inseridos, 'ignorados': ignorados})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Erro ao salvar: {str(e)}'}), 500

@@ -6,55 +6,31 @@
 
     .bf-hero {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-        border-radius: 18px; padding: 1.6rem 1.8rem; color: #fff;
-        display: flex; justify-content: space-between; align-items: center;
-        box-shadow: 0 8px 24px rgba(30,58,138,.25); margin-bottom: 1.4rem; flex-wrap: wrap; gap: 1rem;
+        border-radius: 18px; padding: 1.8rem 1.9rem; color: #fff;
+        box-shadow: 0 8px 24px rgba(30,58,138,.25); margin-bottom: 1.4rem;
     }
-    .bf-hero h1 { font-weight: 800; margin: 0; font-size: 1.6rem; }
-    .bf-hero p { margin: .2rem 0 0; opacity: .85; font-size: .9rem; }
+    .bf-hero, .bf-hero * { color: #ffffff !important; }
+    .bf-hero h1 { font-weight: 800; margin: 0; font-size: 1.7rem; }
+    .bf-hero p { margin: .3rem 0 0; font-size: .95rem; opacity: .92; }
+    .bf-hero i { color: #ffffff !important; }
 
-    .bf-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1.4rem; }
+    .bf-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
     .bf-action {
-        flex: 1 1 210px; display: flex; align-items: center; gap: .8rem;
+        flex: 1 1 230px; display: flex; align-items: center; gap: .85rem;
         background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
-        padding: .9rem 1.1rem; text-decoration: none; color: #1e293b;
+        padding: 1rem 1.15rem; text-decoration: none; color: #1e293b;
         transition: all .18s ease; box-shadow: 0 1px 3px rgba(0,0,0,.05);
     }
     .bf-action:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(30,58,138,.14);
                        border-color: #bfdbfe; color: #1e3a8a; }
-    .bf-action .ic { width: 42px; height: 42px; border-radius: 11px; flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center; font-size: 1.15rem; color: #fff; }
-    .bf-action .tt { font-weight: 700; font-size: .95rem; line-height: 1.1; }
-    .bf-action .ds { font-size: .76rem; color: #94a3b8; }
+    .bf-action .ic { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: #fff; }
+    .bf-action .tt { font-weight: 700; font-size: .98rem; line-height: 1.1; }
+    .bf-action .ds { font-size: .77rem; color: #94a3b8; }
+    .ic-rel { background: #16a34a; } .ic-import { background: #1c7c54; }
     .ic-cotas { background: #0ea5e9; } .ic-anbima { background: #8b5cf6; }
     .ic-bloq { background: #ef4444; } .ic-comp { background: #14b8a6; }
     .ic-audit { background: #f59e0b; } .ic-tab { background: #64748b; }
-
-    .bf-card { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff;
-               box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
-    .bf-card-head { background: #f8fafc; border-bottom: 1px solid #eef2f7;
-                    padding: .9rem 1.3rem; font-weight: 700; color: #1e3a8a;
-                    display: flex; justify-content: space-between; align-items: center; }
-
-    .bf-dropzone { border: 2px dashed #b8c2cc; border-radius: 14px; padding: 1.6rem 1rem;
-        text-align: center; cursor: pointer; transition: all .2s ease; background: #f8fafc; }
-    .bf-dropzone:hover, .bf-dropzone.dragover { border-color: #4e73df; background: #eef2ff; }
-    .bf-dropzone i { font-size: 2.1rem; color: #1c7c54; margin-bottom: .4rem; }
-    .bf-dropzone-text { font-size: 1rem; color: #4a5568; }
-    .bf-dropzone-hint { font-size: .82rem; color: #94a3b8; margin-top: .3rem; }
-
-    .bf-aviso { display: flex; align-items: center; gap: .7rem; margin-top: .9rem;
-        background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px;
-        padding: .6rem .9rem; font-size: .84rem; color: #065f46; }
-    .bf-aviso .n { font-weight: 800; font-size: 1.05rem; }
-
-    .bf-file-preview { display: flex; align-items: center; justify-content: space-between;
-        gap: .75rem; border: 1px solid #e2e8f0; border-radius: 12px; padding: .7rem 1rem;
-        margin-top: .9rem; background: #fff; }
-    .bf-file-preview .file-info { display: flex; align-items: center; gap: .75rem; min-width: 0; }
-    .bf-file-preview .file-icon { color: #1c7c54; }
-    .bf-file-preview .file-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .bf-file-preview .file-size { font-size: .8rem; color: #94a3b8; }
 </style>
 
 <div class="bf-wrap fade-in">
@@ -62,19 +38,22 @@
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
 
-    <!-- HERO -->
+    <!-- HERO (título e subtítulo brancos) -->
     <div class="bf-hero">
-        <div>
-            <h1><i class="fas fa-file-invoice-dollar me-2"></i>Boletim Financeiro</h1>
-            <p>Importe o Boletim, alimente os dados de apoio e gere o Relatório de Gestão.</p>
-        </div>
-        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="btn btn-light btn-lg fw-bold">
-            <i class="fas fa-file-lines me-2"></i>Gerar Relatório
-        </a>
+        <h1><i class="fas fa-file-invoice-dollar me-2"></i>Boletim Financeiro</h1>
+        <p>Importe o Boletim, alimente os dados de apoio e gere o Relatório de Gestão.</p>
     </div>
 
     <!-- BOTÕES DE AÇÃO -->
     <div class="bf-actions">
+        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="bf-action">
+            <span class="ic ic-rel"><i class="fas fa-file-lines"></i></span>
+            <span><span class="tt">Gerar Relatório</span><br><span class="ds">Relatório de Gestão</span></span>
+        </a>
+        <a href="{{ url_for('boletim_financeiro.importar') }}" class="bf-action">
+            <span class="ic ic-import"><i class="fas fa-file-excel"></i></span>
+            <span><span class="tt">Importar Boletim</span><br><span class="ds">Enviar o Excel</span></span>
+        </a>
         <a href="{{ url_for('cotas_fundos.index') }}" class="bf-action">
             <span class="ic ic-cotas"><i class="fas fa-keyboard"></i></span>
             <span><span class="tt">Entrada de Cotas</span><br><span class="ds">Cotas dos fundos</span></span>
@@ -102,124 +81,5 @@
         </a>
         {% endif %}
     </div>
-
-    <!-- UPLOAD (compacto) -->
-    <div class="bf-card">
-        <div class="bf-card-head">
-            <span><i class="fas fa-file-excel me-2"></i>Importar Boletim Financeiro</span>
-        </div>
-        <div class="p-3">
-            <div id="bfDropzone" class="bf-dropzone">
-                <i class="fas fa-file-excel"></i>
-                <div class="bf-dropzone-text">Arraste o Excel aqui ou <strong>clique para selecionar</strong></div>
-                <div class="bf-dropzone-hint">Formatos aceitos: .xlsx, .xlsm</div>
-                <input type="file" id="bfInputArquivo" accept=".xlsx,.xlsm" style="display:none;">
-            </div>
-
-            <div id="bfFilePreview" class="bf-file-preview" style="display:none;">
-                <div class="file-info">
-                    <div class="file-icon"><i class="fas fa-file-excel fa-lg"></i></div>
-                    <div style="min-width:0; flex-grow:1;">
-                        <div class="file-name" id="bfFileNome">—</div>
-                        <div class="file-size" id="bfFileTamanho">—</div>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="bfBtnRemover">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <!-- aviso pequeno (substitui o card verde grande) -->
-            <div class="bf-aviso">
-                <i class="fas fa-database fa-lg"></i>
-                <div>
-                    <span class="n">{{ total_registros }}</span> registro(s) em FIN_TB020.
-                    Reenviar o Boletim de um ano substitui apenas os meses do arquivo, sem duplicar.
-                </div>
-            </div>
-
-            <div class="d-grid mt-3">
-                <button type="button" class="btn btn-primary" id="bfBtnEnviar" disabled>
-                    <i class="fas fa-upload me-2"></i>Enviar arquivo
-                </button>
-            </div>
-
-            <div id="bfFeedback" class="mt-3" style="display:none;"></div>
-        </div>
-    </div>
 </div>
-
-<script>
-(function () {
-    const dropzone = document.getElementById('bfDropzone');
-    const inputFile = document.getElementById('bfInputArquivo');
-    const preview = document.getElementById('bfFilePreview');
-    const nomeEl = document.getElementById('bfFileNome');
-    const tamanhoEl = document.getElementById('bfFileTamanho');
-    const btnRemover = document.getElementById('bfBtnRemover');
-    const btnEnviar = document.getElementById('bfBtnEnviar');
-    const feedback = document.getElementById('bfFeedback');
-    if (!dropzone || !inputFile || !btnEnviar) return;
-
-    function fmtTam(b) {
-        if (!b && b !== 0) return '—';
-        if (b < 1024) return b + ' B';
-        if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-        return (b / 1048576).toFixed(1) + ' MB';
-    }
-    function extOk(n) { n = (n || '').toLowerCase(); return n.endsWith('.xlsx') || n.endsWith('.xlsm'); }
-    function showPreview(f) { nomeEl.textContent = f.name; tamanhoEl.textContent = fmtTam(f.size);
-        preview.style.display = 'flex'; btnEnviar.disabled = false; }
-    function limpar() { inputFile.value = ''; preview.style.display = 'none'; btnEnviar.disabled = true; }
-    function avisoExt() { feedback.style.display = 'block';
-        feedback.innerHTML = '<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Selecione um arquivo .xlsx ou .xlsm.</div>'; }
-
-    dropzone.addEventListener('click', () => inputFile.click());
-    inputFile.addEventListener('change', () => {
-        const f = inputFile.files && inputFile.files[0];
-        if (!f) { limpar(); return; }
-        if (!extOk(f.name)) { avisoExt(); limpar(); return; }
-        feedback.style.display = 'none'; showPreview(f);
-    });
-    ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, e => {
-        e.preventDefault(); e.stopPropagation(); dropzone.classList.add('dragover'); }));
-    ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, e => {
-        e.preventDefault(); e.stopPropagation(); dropzone.classList.remove('dragover'); }));
-    dropzone.addEventListener('drop', e => {
-        const f = e.dataTransfer.files && e.dataTransfer.files[0];
-        if (!f) return;
-        if (!extOk(f.name)) { avisoExt(); return; }
-        inputFile.files = e.dataTransfer.files; feedback.style.display = 'none'; showPreview(f);
-    });
-    btnRemover.addEventListener('click', limpar);
-
-    btnEnviar.addEventListener('click', () => {
-        const f = inputFile.files && inputFile.files[0];
-        if (!f) return;
-        const fd = new FormData(); fd.append('arquivo', f);
-        const orig = btnEnviar.innerHTML;
-        btnEnviar.disabled = true; btnEnviar.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processando...';
-        feedback.style.display = 'block';
-        feedback.innerHTML = '<div class="alert alert-info mb-0"><i class="fas fa-file-upload me-2"></i>Enviando e processando o Boletim...</div>';
-        fetch("{{ url_for('boletim_financeiro.upload') }}", {
-            method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: fd
-        })
-        .then(r => r.json())
-        .then(d => {
-            btnEnviar.innerHTML = orig;
-            if (d.success) {
-                feedback.innerHTML = '<div class="alert alert-success mb-0"><i class="fas fa-check-circle me-2"></i><strong>Sucesso!</strong> ' + d.message + '</div>';
-                setTimeout(() => location.reload(), 2200);
-            } else {
-                btnEnviar.disabled = false;
-                feedback.innerHTML = '<div class="alert alert-danger mb-0"><i class="fas fa-times-circle me-2"></i><strong>Erro!</strong> ' + d.message + '</div>';
-            }
-        })
-        .catch(err => {
-            btnEnviar.disabled = false; btnEnviar.innerHTML = orig;
-            feedback.innerHTML = '<div class="alert alert-danger mb-0"><i class="fas fa-times-circle me-2"></i><strong>Erro de conexão:</strong> ' + err + '</div>';
-        });
-    });
-})();
-</script>
 {% endblock %}
