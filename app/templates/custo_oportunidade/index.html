@@ -799,7 +799,7 @@
             </button>
         </div>
         <div class="card-body">
-            <div style="position: relative; width: 100%; height: 460px;">
+            <div style="position: relative; width: 100%; height: 560px;">
                 <canvas id="chartDiFuturo"></canvas>
             </div>
         </div>
@@ -862,8 +862,8 @@
                             padding: { bottom: 12 }
                         },
                         legend: {
-                            position: 'right',
-                            labels: { boxWidth: 28, font: { size: 10 } }
+                            position: 'bottom',
+                            labels: { boxWidth: 28, font: { size: 10 }, padding: 12 }
                         },
                         tooltip: {
                             callbacks: {
@@ -909,7 +909,7 @@
             if (btn) {
                 btn.addEventListener('click', function () {
                     window.__graficoPDF.exportar(
-                        montarConfig, dados, 1000, 460,
+                        montarConfig, dados, 1000, 560,
                         'DI_Futuro_Suavizada.pdf', 'landscape', btn
                     );
                 });
@@ -951,7 +951,7 @@
             </button>
         </div>
         <div class="card-body">
-            <div style="position: relative; width: 100%; height: 520px;">
+            <div style="position: relative; width: 100%; height: 640px;">
                 <canvas id="chartDi12Sem"></canvas>
             </div>
         </div>
@@ -1017,8 +1017,8 @@
                             padding: { bottom: 12 }
                         },
                         legend: {
-                            position: 'right',
-                            labels: { boxWidth: 24, font: { size: 9 } }
+                            position: 'bottom',
+                            labels: { boxWidth: 22, font: { size: 9 }, padding: 10 }
                         },
                         tooltip: {
                             callbacks: {
@@ -1063,7 +1063,7 @@
             if (btn) {
                 btn.addEventListener('click', function () {
                     window.__graficoPDF.exportar(
-                        montarConfig, dados, 1100, 560,
+                        montarConfig, dados, 1100, 680,
                         'DI_Futuro_12_semanas.pdf', 'landscape', btn
                     );
                 });
