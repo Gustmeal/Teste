@@ -205,6 +205,7 @@ def edicao():
         filtros = {
             'nu_contrato': request.args.get('nu_contrato', '').strip(),
             'nr_processo': request.args.get('nr_processo', '').strip(),
+            'lancamento_rm': request.args.get('lancamento_rm', '').strip(),
             'id_centro': request.args.get('id_centro', ''),
             'vr_rateio': request.args.get('vr_rateio', ''),
             'dt_identificacao': request.args.get('dt_identificacao', ''),
@@ -247,6 +248,10 @@ def edicao():
 
         if filtros['nr_processo']:
             query = query.filter(ProcessosJudiciais.NR_PROCESSO.like(f"%{filtros['nr_processo']}%"))
+
+        # NOVO: Filtro por Lançamento RM (String(15)) - busca por "contém"
+        if filtros['lancamento_rm']:
+            query = query.filter(DepositosSufin.LANCAMENTO_RM.like(f"%{filtros['lancamento_rm']}%"))
 
         if filtros['id_centro']:
             query = query.filter(DepositosSufin.ID_CENTRO == filtros['id_centro'])

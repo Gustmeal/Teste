@@ -503,13 +503,60 @@ class AnsApuracao(db.Model):
 
     @staticmethod
     def editar_campo_individual(dt_apuracao, nr_ocorrencia, campo, valor):
-        campos_validos = {'ADVERTENCIA': 'DT_ADVERTENCIA', 'REINCIDENCIA': 'DT_REINCIDENCIA', 'REITERACAO': 'DT_REITERACAO'}
+        campos_validos = {'ADVERTENCIA': 'DT_ADVERTENCIA', 'REINCIDENCIA': 'DT_REINCIDENCIA',
+                          'REITERACAO': 'DT_REITERACAO'}
         if campo not in campos_validos:
             return False, f'Campo inválido: {campo}'
+
+        # Mapeia o campo para o código de penalidade da TB049
+        # 1 = Advertência | 2 = Reincidência | 3 = Reiteração
+        penalidade_por_campo = {'ADVERTENCIA': 1, 'REINCIDENCIA': 2, 'REITERACAO': 3}
+
         dt_campo = campos_validos[campo]
         dt_valor = dt_apuracao if valor == 1 else None
-        sql = text(f"UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET [{campo}]=:valor, [{dt_campo}]=:dt_valor WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr")
+
+        # 1) Atualiza a ocorrência na TB045 (fonte de verdade das ocorrências)
+        sql = text(
+            f"UPDATE BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO SET [{campo}]=:valor, [{dt_campo}]=:dt_valor WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr")
         db.session.execute(sql, {'valor': valor, 'dt_valor': dt_valor, 'dt': dt_apuracao, 'nr': nr_ocorrencia})
+
+        # 2) Descobre o GRUPO da ocorrência (a TB049 é por grupo, e a edição só manda nrOcorrencia)
+        sql_grupo = text("""
+                SELECT TOP 1 GRUPO
+                FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
+                WHERE DT_APURACAO=:dt AND nrOcorrencia=:nr
+            """)
+        row_grupo = db.session.execute(sql_grupo, {'dt': dt_apuracao, 'nr': nr_ocorrencia}).fetchone()
+
+        if row_grupo:
+            grupo = row_grupo.GRUPO
+            penalidade = penalidade_por_campo[campo]
+
+            # 3) Só sincroniza o badge se a penalidade JÁ foi processada para esse grupo
+            #    (ou seja, já existe linha na TB049). Edição manual não deve criar badge do nada.
+            sql_existe = text("""
+                    SELECT COUNT(*) AS qtd
+                    FROM BDDASHBOARDBI.BDG.MOV_TB049_ANS_PENALIDADES_CONCLUIDAS
+                    WHERE DT_APURACAO=:dt AND PENALIDADE=:p AND GRUPO=:g
+                """)
+            ja_processada = db.session.execute(
+                sql_existe, {'dt': dt_apuracao, 'p': penalidade, 'g': grupo}
+            ).fetchone().qtd > 0
+
+            if ja_processada:
+                # 4) Reconta quantas ocorrências do grupo ainda estão com o campo = 1
+                sql_conta = text(f"""
+                        SELECT COUNT(*) AS qtd
+                        FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
+                        WHERE DT_APURACAO=:dt AND GRUPO=:g AND [{campo}]=1
+                    """)
+                nova_qtde = db.session.execute(
+                    sql_conta, {'dt': dt_apuracao, 'g': grupo}
+                ).fetchone().qtd or 0
+
+                # 5) Regrava o total na TB049 (DELETE + INSERT na PK) — badge passa a refletir a realidade
+                AnsApuracao._registrar_penalidade_tb049(dt_apuracao, grupo, penalidade, nova_qtde)
+
         db.session.commit()
         return True, f'{campo} da ocorrência {nr_ocorrencia} alterada para {"Sim" if valor == 1 else "Não"}.'
 
