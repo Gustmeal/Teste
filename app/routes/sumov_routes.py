@@ -3852,6 +3852,11 @@ def ans_glosas():
     verificacao = AnsApuracao.verificar_apuracao_completa(dt_apuracao, todos_grupos)
     conclusao_existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
 
+    # Data de Aplicação da Glosa (TB053) — só existe após a apuração ser concluída.
+    # Busca pela PK DT_APURACAO; se ainda não houver registro, fica None e o
+    # template exibe o botão para informar a data.
+    dt_aplicacao_glosa = AnsApuracao.obter_dt_aplicacao(dt_apuracao)
+
     return render_template('sumov/faturamento/ans_glosas.html',
                            pendentes_por_grupo=pendentes_por_grupo,
                            analisadas_por_grupo=analisadas_por_grupo,
@@ -3861,7 +3866,8 @@ def ans_glosas():
                            datas_disponiveis=datas_disponiveis,
                            dt_apuracao=dt_apuracao,
                            verificacao=verificacao,
-                           conclusao_existente=conclusao_existente)
+                           conclusao_existente=conclusao_existente,
+                           dt_aplicacao_glosa=dt_aplicacao_glosa)
 
 
 @sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
@@ -4132,3 +4138,30 @@ def ans_glosas_salvar_justificativa_prestadora():
         db.session.rollback()
         import traceback; traceback.print_exc()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/salvar-dt-aplicacao', methods=['POST'])
+@login_required
+def ans_glosas_salvar_dt_aplicacao():
+    """Upsert da Data de Aplicação da Glosa na TB053 (PK: DT_APURACAO)."""
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+    try:
+        dados = request.get_json()
+        dt_apuracao = dados.get('dt_apuracao')
+        dt_aplicacao = dados.get('dt_aplicacao')
+        if not dt_apuracao or not dt_aplicacao:
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        ok, msg = AnsApuracao.salvar_dt_aplicacao(dt_apuracao, dt_aplicacao)
+        if ok:
+            registrar_log(acao='editar', entidade='ans_dt_aplicacao', entidade_id=str(dt_apuracao),
+                          descricao=f'ANS Data Aplicação: apuração {dt_apuracao} → aplicação {dt_aplicacao}')
+            return jsonify({'success': True, 'message': msg})
+        return jsonify({'success': False, 'message': msg}), 400
+    except Exception as e:
+        db.session.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+

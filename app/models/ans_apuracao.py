@@ -682,6 +682,47 @@ class AnsApuracao(db.Model):
         db.session.commit()
         return True, 'Apuração concluída com sucesso!'
 
+    @staticmethod
+    def salvar_dt_aplicacao(dt_apuracao, dt_aplicacao):
+        """
+        Upsert na TB053_DT_APLICACAO_GLOSA.
+        PK: DT_APURACAO. O usuário informa só a DT_APLICACAO;
+        a DT_APURACAO vem automática (mesma data do filtro da apuração).
+        """
+        sql = text("""
+                MERGE BDDASHBOARDBI.BDG.MOV_TB053_DT_APLICACAO_GLOSA AS dest
+                USING (SELECT :dt AS DT_APURACAO, :dt_aplic AS DT_APLICACAO) AS src
+                    ON dest.DT_APURACAO = src.DT_APURACAO
+                WHEN MATCHED THEN
+                    UPDATE SET dest.DT_APLICACAO = src.DT_APLICACAO
+                WHEN NOT MATCHED THEN
+                    INSERT (DT_APURACAO, DT_APLICACAO)
+                    VALUES (src.DT_APURACAO, src.DT_APLICACAO);
+            """)
+        db.session.execute(sql, {'dt': dt_apuracao, 'dt_aplic': dt_aplicacao})
+        db.session.commit()
+        return True, f'Data de aplicação salva com sucesso ({dt_aplicacao}).'
+    @staticmethod
+    def obter_dt_aplicacao(dt_apuracao):
+        """
+        Lê a Data de Aplicação da Glosa da TB053 (PK: DT_APURACAO).
+        Retorna a data ou None se ainda não foi informada.
+        Blindado: qualquer falha na leitura não derruba a página.
+        """
+        try:
+            sql = text("""
+                SELECT DT_APLICACAO
+                FROM BDDASHBOARDBI.BDG.MOV_TB053_DT_APLICACAO_GLOSA
+                WHERE DT_APURACAO = :dt
+            """)
+            row = db.session.execute(sql, {'dt': dt_apuracao}).fetchone()
+            return row.DT_APLICACAO if row else None
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            db.session.rollback()
+            return None
+
 
 class AnsItensFaturamento(db.Model):
     __tablename__ = 'MOV_TB043_ANS_ITENS_FATURAMENTO'

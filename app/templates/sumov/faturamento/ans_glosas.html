@@ -25,30 +25,51 @@
     </div></div></div>
 
     <!-- Painel de Conclusão -->
-    <div class="card shadow-sm mb-4 {% if conclusao_existente %}border-success{% endif %}">
-        <div class="card-header {% if conclusao_existente %}bg-success text-white{% else %}bg-light{% endif %} py-2" onclick="toggleSecao('painel-conclusao', this)" style="cursor:pointer;">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 fw-bold">
-                    {% if conclusao_existente %}
-                    <i class="fas fa-check-circle me-2"></i>Apuração Concluída
-                    {% else %}
-                    <i class="fas fa-tasks me-2"></i>Conclusão
-                    {% endif %}
-                </h6>
-                <i class="fas fa-chevron-down secao-chevron {% if not conclusao_existente %}rotated{% endif %}"></i>
+    {% if conclusao_existente %}
+    <!-- ================= APURAÇÃO CONCLUÍDA (bloco FIXO, fora do acordeão) ================= -->
+    <div class="card shadow-sm mb-4 border-success">
+        <div class="card-header bg-success text-white py-2">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-check-circle me-2"></i>Apuração Concluída</h6>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-success mb-3">
+                <i class="fas fa-lock me-2"></i>
+                Esta apuração foi concluída por <strong>{{ conclusao_existente.USUARIO_NOME }}</strong>
+                em <strong>{{ conclusao_existente.DT_CONCLUSAO.strftime('%d/%m/%Y às %H:%M') if conclusao_existente.DT_CONCLUSAO else '-' }}</strong>.
+                <br>
+                <small>{{ conclusao_existente.TOTAL_OCORRENCIAS }} ocorrências | {{ conclusao_existente.TOTAL_GRUPOS }} grupos | {{ conclusao_existente.TOTAL_ADVERTENCIAS }} advert. | {{ conclusao_existente.TOTAL_REINCIDENCIAS }} reinc. | {{ conclusao_existente.TOTAL_REITERACOES }} reiter.</small>
+            </div>
+
+            <!-- Botão / status da Data de Aplicação da Glosa (TB053) -->
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                {% if dt_aplicacao_glosa %}
+                <span class="badge bg-info text-dark fs-6 px-3 py-2">
+                    <i class="fas fa-calendar-check me-1"></i>Data de Aplicação: {{ dt_aplicacao_glosa.strftime('%d/%m/%Y') if dt_aplicacao_glosa.strftime is defined else dt_aplicacao_glosa }}
+                </span>
+                <span class="btn btn-outline-primary" onclick="abrirModalDtAplicacao()" style="cursor:pointer;">
+                    <i class="fas fa-pen me-1"></i>Alterar Data de Aplicação
+                </span>
+                {% else %}
+                <span class="btn btn-primary" onclick="abrirModalDtAplicacao()" style="cursor:pointer;">
+                    <i class="fas fa-calendar-plus me-1"></i>Informar Data de Aplicação da Glosa
+                </span>
+                {% endif %}
             </div>
         </div>
-        <div id="painel-conclusao" class="secao-corpo" {% if not conclusao_existente %}style="display:none;"{% endif %}>
+    </div>
+    {% else %}
+    <!-- ================= PENDENTE DE CONCLUSÃO (acordeão original) ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light py-2" onclick="toggleSecao('painel-conclusao', this)" style="cursor:pointer;">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold">
+                    <i class="fas fa-tasks me-2"></i>Conclusão
+                </h6>
+                <i class="fas fa-chevron-down secao-chevron rotated"></i>
+            </div>
+        </div>
+        <div id="painel-conclusao" class="secao-corpo" style="display:none;">
             <div class="card-body">
-                {% if conclusao_existente %}
-                <div class="alert alert-success mb-3">
-                    <i class="fas fa-lock me-2"></i>
-                    Esta apuração foi concluída por <strong>{{ conclusao_existente.USUARIO_NOME }}</strong>
-                    em <strong>{{ conclusao_existente.DT_CONCLUSAO.strftime('%d/%m/%Y às %H:%M') if conclusao_existente.DT_CONCLUSAO else '-' }}</strong>.
-                    <br>
-                    <small>{{ conclusao_existente.TOTAL_OCORRENCIAS }} ocorrências | {{ conclusao_existente.TOTAL_GRUPOS }} grupos | {{ conclusao_existente.TOTAL_ADVERTENCIAS }} advert. | {{ conclusao_existente.TOTAL_REINCIDENCIAS }} reinc. | {{ conclusao_existente.TOTAL_REITERACOES }} reiter.</small>
-                </div>
-                {% else %}
                 <div class="table-responsive mb-3">
                     <table class="table table-sm table-bordered mb-0">
                         <thead class="table-light"><tr>
@@ -79,10 +100,10 @@
                     <br><small class="text-warning mt-2 d-inline-block"><i class="fas fa-exclamation-triangle me-1"></i>Atenção: ainda existem grupos com etapas pendentes.</small>
                     {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- Estatísticas -->
     <div class="row mb-4">
@@ -286,6 +307,37 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal: Data de Aplicação da Glosa (TB053) -->
+    <div class="modal fade" id="modalDtAplicacao" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fas fa-calendar-check me-2"></i>Data de Aplicação da Glosa</h5>
+                    <button type="button" class="btn-close btn-close-white" onclick="fecharModalDtAplicacao()" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-2"></i>
+                        A <strong>Data de Apuração</strong> é preenchida automaticamente com a data do filtro atual.
+                        Informe apenas a <strong>Data de Aplicação</strong>.
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Data de Apuração</label>
+                        <input type="text" class="form-control" id="dtApuracaoAplicacao" value="{{ dt_apuracao }}" readonly disabled>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label fw-bold">Data de Aplicação <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="dtAplicacaoGlosa" value="{{ dt_aplicacao_glosa.strftime('%Y-%m-%d') if dt_aplicacao_glosa and dt_aplicacao_glosa.strftime is defined else (dt_aplicacao_glosa or '') }}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="btn btn-secondary" onclick="fecharModalDtAplicacao()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Cancelar</span>
+                    <span class="btn btn-primary" onclick="salvarDtAplicacao()" style="cursor:pointer;"><i class="fas fa-save me-1"></i>Salvar</span>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -324,6 +376,7 @@ var URL_REITERACAO="{{ url_for('sumov.ans_glosas_aplicar_reiteracao') }}";
 var URL_EDITAR_CAMPO="{{ url_for('sumov.ans_glosas_editar_campo') }}";
 var URL_CONCLUIR="{{ url_for('sumov.ans_glosas_concluir') }}";
 var URL_JUST_PRESTADORA="{{ url_for('sumov.ans_glosas_salvar_justificativa_prestadora') }}";
+var URL_DT_APLICACAO="{{ url_for('sumov.ans_glosas_salvar_dt_aplicacao') }}";
 var DT_APURACAO="{{ dt_apuracao }}";
 
 function trocarDataApuracao(dt){window.location.href="{{ url_for('sumov.ans_glosas') }}?dt_apuracao="+dt;}
@@ -452,6 +505,43 @@ function concluirApuracao() {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
         body: JSON.stringify({dt_apuracao: DT_APURACAO})
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: ' + d.message);})
+    .catch(function(e){alert('Erro: ' + e);});
+}
+
+// =========================================================================
+// DATA DE APLICAÇÃO DA GLOSA (TB053)
+// DT_APURACAO vai automático (= DT_APURACAO do filtro); usuário só informa a Data de Aplicação
+// =========================================================================
+function abrirModalDtAplicacao() {
+    var m = document.getElementById('modalDtAplicacao');
+    m.style.display = 'block';
+    m.classList.add('show');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    bd.id = 'modalBackdropDtAplicacao';
+    document.body.appendChild(bd);
+}
+
+function fecharModalDtAplicacao() {
+    var m = document.getElementById('modalDtAplicacao');
+    m.style.display = 'none';
+    m.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('modalBackdropDtAplicacao');
+    if (bd) bd.remove();
+}
+
+function salvarDtAplicacao() {
+    var dtAplicacao = document.getElementById('dtAplicacaoGlosa').value;
+    if (!dtAplicacao) { alert('Informe a Data de Aplicação da Glosa.'); return; }
+    fetch(URL_DT_APLICACAO, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({dt_apuracao: DT_APURACAO, dt_aplicacao: dtAplicacao})
     })
     .then(function(r){return r.json();})
     .then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: ' + d.message);})
