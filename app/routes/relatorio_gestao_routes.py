@@ -1,6 +1,6 @@
 from os import abort
-from urllib import request
-
+import urllib.request as urllib_request
+from flask import request as flask_request
 from flask import Blueprint, render_template, jsonify
 from flask_login import login_required
 from sqlalchemy import text
@@ -1128,10 +1128,11 @@ def teste_conferencia_saldo():
 @relatorio_gestao_bp.route('/teste-siscor-boletim')
 @login_required
 def teste_siscor_boletim():
-    """[AUDITORIA] Boletim (NU_LINHA 2 e 21) x Execução Orçamentária SISCOR, por competência."""
+    """[AUDITORIA] Boletim (NU_LINHA 2 e 21) x SISCOR — apenas o mês mais recente."""
     try:
-        rows = db.session.execute(text("""
-            SELECT BOL.[MES_EXECUCAO],
+        row = db.session.execute(text("""
+            SELECT TOP 1
+                   BOL.[MES_EXECUCAO],
                    VR_BOLETIM,
                    VR_SISCOR,
                    VR_BOLETIM - VR_SISCOR AS DIFERENCA
@@ -1147,28 +1148,27 @@ def teste_siscor_boletim():
                 GROUP BY [DT_EXECUCAO_ORCAMENTO]
             ) SIS ON BOL.[MES_EXECUCAO] = SIS.[DT_EXECUCAO_ORCAMENTO]
             ORDER BY BOL.[MES_EXECUCAO] DESC
-        """)).fetchall()
+        """)).fetchone()
 
-        if not rows:
+        if not row:
             return jsonify({'success': True, 'encontrado': False,
                             'message': 'Nenhuma competência com dados nas duas fontes.'})
 
-        linhas = []
-        for r in rows:
-            mes = str(r[0] or '')
-            mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
-            dif = Decimal(str(r[3] or 0))
-            linhas.append({
-                'mes': mes_fmt,
-                'boletim': _fmt_br(Decimal(str(r[1] or 0)), 2),
-                'siscor': _fmt_br(Decimal(str(r[2] or 0)), 2),
-                'diferenca': _fmt_br(dif, 2),
-                'bate': (abs(dif) < Decimal('0.005')),
-            })
-        return jsonify({'success': True, 'encontrado': True, 'linhas': linhas})
+        mes = str(row[0] or '')
+        mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
+        dif = Decimal(str(row[3] or 0))
+
+        return jsonify({
+            'success': True, 'encontrado': True,
+            'ano_mes': mes,                 # AAAAMM cru (pra buscar os órfãos)
+            'mes': mes_fmt,
+            'boletim': _fmt_br(Decimal(str(row[1] or 0)), 2),
+            'siscor': _fmt_br(Decimal(str(row[2] or 0)), 2),
+            'diferenca': _fmt_br(dif, 2),
+            'bate': (abs(dif) < Decimal('0.005')),
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
-
 
 @relatorio_gestao_bp.route('/tabelas-dados')
 @login_required
@@ -1245,7 +1245,7 @@ def _injetar_rg_nav():
 @login_required
 def vinculo_orfaos():
     """Itens do SISCOR sem vínculo no Boletim (NU_LINHA IS NULL) no mês filtrado."""
-    ano_mes = request.args.get('ano_mes', '').strip()
+    ano_mes = flask_request.args.get('ano_mes', '').strip()
     if not ano_mes.isdigit():
         return jsonify({'success': False, 'message': 'Competência inválida.'}), 400
     try:
@@ -1290,7 +1290,7 @@ def vinculo_orfaos():
 @login_required
 def vinculo_salvar():
     """Grava os vínculos em FIN_TB018, sem violar a PK (ANO_MES + ID_ITEM)."""
-    dados = request.get_json(silent=True) or {}
+    dados = flask_request.get_json(silent=True) or {}
     vinculos = dados.get('vinculos', [])
     if not vinculos:
         return jsonify({'success': False, 'message': 'Nenhum vínculo enviado.'}), 400

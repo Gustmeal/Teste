@@ -26,44 +26,46 @@
 
     <h1 class="fw-bold header-with-back mb-4">Auditoria</h1>
 
-    <!-- TESTE 1 -->
+    <!-- TESTE 1 (simples) -->
     <div class="au-card">
         <div class="au-head">
             <div>
                 <div class="tt">Teste Boletim x Saldo Contas</div>
                 <div class="ds">Compara o Saldo Final do Boletim com a soma das contas (FIN_TB021), no mês mais recente.</div>
             </div>
-            <button class="btn btn-primary" id="btn1" onclick="rodarBoletimSaldo()">
+            <button type="button" class="btn btn-primary js-ignore-loading" id="btn1" onclick="rodarBoletimSaldo(event)">
                 <i class="fas fa-play me-2"></i>Rodar
             </button>
         </div>
         <div class="au-body" id="res1" style="display:none;"></div>
-        <div class="au-body" id="orfaos1" style="display:none; border-top:1px solid #eef2f7;"></div>
     </div>
 
-    <!-- TESTE 2 -->
+    <!-- TESTE 2 (com vínculo de órfãos quando diverge) -->
     <div class="au-card">
         <div class="au-head">
             <div>
                 <div class="tt">Teste Siscor x Boletim</div>
-                <div class="ds">Compara a execução do Boletim (Ingressos + Saídas) com a Execução Orçamentária do SISCOR, por competência.</div>
+                <div class="ds">Compara a execução do Boletim (Ingressos + Saídas) com a Execução Orçamentária do SISCOR, no mês mais recente.</div>
             </div>
-            <button class="btn btn-primary" id="btn2" onclick="rodarSiscorBoletim()">
+            <button type="button" class="btn btn-primary js-ignore-loading" id="btn2" onclick="rodarSiscorBoletim(event)">
                 <i class="fas fa-play me-2"></i>Rodar
             </button>
         </div>
         <div class="au-body" id="res2" style="display:none;"></div>
+        <div class="au-body" id="orfaos2" style="display:none; border-top:1px solid #eef2f7;"></div>
     </div>
 </div>
 
 <script>
+function _stop(ev) { if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); } }
 function _box(id) { var el = document.getElementById(id); el.style.display = 'block'; return el; }
 function _loading(btn) { var o = btn.innerHTML; btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Rodando...'; return o; }
 
-function rodarBoletimSaldo() {
+/* ============ TESTE 1: Boletim x Saldo Contas (simples) ============ */
+function rodarBoletimSaldo(ev) {
+    _stop(ev);
     var btn = document.getElementById('btn1'); var o = _loading(btn);
-    document.getElementById('orfaos1').style.display = 'none';
     fetch("{{ url_for('relatorio_gestao.teste_conferencia_saldo') }}", { headers: { 'X-Silent-Request': 'true' } })
     .then(function (r) { return r.json(); })
     .then(function (d) {
@@ -77,8 +79,30 @@ function rodarBoletimSaldo() {
             '<tr><td>' + d.mes + '</td><td>R$ ' + d.vr_executado + '</td><td>R$ ' + d.sd_contas +
             '</td><td>R$ ' + d.diferenca + '</td><td class="' + (d.bate ? 'ok' : 'diverge') + '">' +
             (d.bate ? '✅ Bate' : '⚠️ Diverge') + '</td></tr></tbody></table>';
+    })
+    .catch(function (e) { btn.disabled = false; btn.innerHTML = o;
+        _box('res1').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
+}
 
-        // Só quando DIVERGE, busca os itens órfãos do mês (converte MM/AAAA -> AAAAMM)
+/* ============ TESTE 2: Siscor x Boletim (+ vínculo de órfãos) ============ */
+function rodarSiscorBoletim(ev) {
+    _stop(ev);
+    var btn = document.getElementById('btn2'); var o = _loading(btn);
+    document.getElementById('orfaos2').style.display = 'none';
+    fetch("{{ url_for('relatorio_gestao.teste_siscor_boletim') }}", { headers: { 'X-Silent-Request': 'true' } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        btn.disabled = false; btn.innerHTML = o;
+        var box = _box('res2');
+        if (!d.success) { box.innerHTML = '<div class="alert alert-danger mb-0">' + d.message + '</div>'; return; }
+        if (!d.encontrado) { box.innerHTML = '<div class="alert alert-warning mb-0">' + d.message + '</div>'; return; }
+        box.innerHTML =
+            '<table class="au-tab"><thead><tr><th>Competência</th><th>Boletim</th>' +
+            '<th>SISCOR</th><th>Diferença</th><th>Status</th></tr></thead><tbody>' +
+            '<tr><td>' + d.mes + '</td><td>R$ ' + d.boletim + '</td><td>R$ ' + d.siscor +
+            '</td><td>R$ ' + d.diferenca + '</td><td class="' + (d.bate ? 'ok' : 'diverge') + '">' +
+            (d.bate ? '✅ Bate' : '⚠️ Diverge') + '</td></tr></tbody></table>';
+
         if (!d.bate) {
             var ym = d.ano_mes;
             if (!ym) {
@@ -89,12 +113,12 @@ function rodarBoletimSaldo() {
         }
     })
     .catch(function (e) { btn.disabled = false; btn.innerHTML = o;
-        _box('res1').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
+        _box('res2').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
 }
 
 var _naturezas = [];
 function carregarOrfaos(anoMes) {
-    var box = _box('orfaos1');
+    var box = _box('orfaos2');
     box.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Buscando itens sem vínculo...</div>';
     fetch("{{ url_for('relatorio_gestao.vinculo_orfaos') }}?ano_mes=" + encodeURIComponent(anoMes),
           { headers: { 'X-Silent-Request': 'true' } })
@@ -120,15 +144,16 @@ function carregarOrfaos(anoMes) {
             '<table class="au-tab"><thead><tr><th>ID</th><th class="tleft">Descrição</th>' +
             '<th>Unid.</th><th>Valor</th><th>Natureza (NU_LINHA)</th></tr></thead><tbody>' + linhas +
             '</tbody></table>' +
-            '<div class="mt-3"><button class="btn btn-success" onclick="salvarVinculos()">' +
+            '<div class="mt-3"><button type="button" class="btn btn-success js-ignore-loading" onclick="salvarVinculos(event)">' +
             '<i class="fas fa-save me-2"></i>Salvar vínculos</button></div>' +
             '<div id="vincMsg" class="mt-2"></div>';
     })
     .catch(function (e) { box.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
 }
 
-function salvarVinculos() {
-    var linhas = document.querySelectorAll('#orfaos1 tbody tr');
+function salvarVinculos(ev) {
+    _stop(ev);
+    var linhas = document.querySelectorAll('#orfaos2 tbody tr');
     var vinculos = [];
     linhas.forEach(function (tr) {
         var sel = tr.querySelector('.vinc-sel');
@@ -156,28 +181,6 @@ function salvarVinculos() {
         msg.innerHTML = '<div class="alert alert-success mb-0">' + d.message + ' Rode o teste de novo para conferir.</div>';
     })
     .catch(function (e) { msg.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
-}
-
-function rodarSiscorBoletim() {
-    var btn = document.getElementById('btn2'); var o = _loading(btn);
-    fetch("{{ url_for('relatorio_gestao.teste_siscor_boletim') }}", { headers: { 'X-Silent-Request': 'true' } })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-        btn.disabled = false; btn.innerHTML = o;
-        var box = _box('res2');
-        if (!d.success) { box.innerHTML = '<div class="alert alert-danger mb-0">' + d.message + '</div>'; return; }
-        if (!d.encontrado) { box.innerHTML = '<div class="alert alert-warning mb-0">' + d.message + '</div>'; return; }
-        var linhas = d.linhas.map(function (l) {
-            return '<tr><td>' + l.mes + '</td><td>R$ ' + l.boletim + '</td><td>R$ ' + l.siscor +
-                   '</td><td>R$ ' + l.diferenca + '</td><td class="' + (l.bate ? 'ok' : 'diverge') + '">' +
-                   (l.bate ? '✅ Bate' : '⚠️ Diverge') + '</td></tr>';
-        }).join('');
-        box.innerHTML =
-            '<table class="au-tab"><thead><tr><th>Competência</th><th>Boletim</th>' +
-            '<th>SISCOR</th><th>Diferença</th><th>Status</th></tr></thead><tbody>' + linhas + '</tbody></table>';
-    })
-    .catch(function (e) { btn.disabled = false; btn.innerHTML = o;
-        _box('res2').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
 }
 </script>
 {% endblock %}
