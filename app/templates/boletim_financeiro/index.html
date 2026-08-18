@@ -46,10 +46,6 @@
 
     <!-- BOTÕES DE AÇÃO -->
     <div class="bf-actions">
-        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="bf-action">
-            <span class="ic ic-rel"><i class="fas fa-file-lines"></i></span>
-            <span><span class="tt">Gerar Relatório</span><br><span class="ds">Relatório de Gestão</span></span>
-        </a>
         <a href="{{ url_for('boletim_financeiro.importar') }}" class="bf-action">
             <span class="ic ic-import"><i class="fas fa-file-excel"></i></span>
             <span><span class="tt">Importar Boletim</span><br><span class="ds">Enviar o Excel</span></span>
@@ -69,6 +65,10 @@
         <a href="{{ url_for('composicao_fundos.index') }}" class="bf-action">
             <span class="ic ic-comp"><i class="fas fa-layer-group"></i></span>
             <span><span class="tt">Composição dos Fundos</span><br><span class="ds">Ativos por fundo</span></span>
+        </a>
+        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="bf-action">
+            <span class="ic ic-rel"><i class="fas fa-file-lines"></i></span>
+            <span><span class="tt">Gerar Relatório</span><br><span class="ds">Relatório de Gestão</span></span>
         </a>
         <a href="{{ url_for('relatorio_gestao.auditoria') }}" class="bf-action">
             <span class="ic ic-audit"><i class="fas fa-clipboard-check"></i></span>
