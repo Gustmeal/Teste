@@ -16,8 +16,10 @@ from app.utils.audit import registrar_log
 from app.models.boletim_financeiro import BoletimFinanceiro
 from app.models.estrutura_boletim import EstruturaBoletim
 import unicodedata
-from flask import Blueprint, render_template, jsonify, request, abort
+from flask import Blueprint, render_template, request, jsonify, session
 from app.utils.audit import registrar_log
+from flask import session
+from flask_login import current_user
 
 boletim_financeiro_bp = Blueprint(
     'boletim_financeiro', __name__, url_prefix='/boletim-financeiro'
@@ -312,9 +314,13 @@ def _processar_excel_boletim(caminho_arquivo):
 def index():
     """Página principal do Boletim Financeiro (upload da ETAPA 1)."""
     total_registros = BoletimFinanceiro.query.count()
+    eh_admin = current_user.perfil in ['admin', 'moderador']
+    relatorio_liberado = bool(session.get('siscor_liberado'))
     return render_template(
         'boletim_financeiro/index.html',
         total_registros=total_registros,
+        relatorio_liberado=relatorio_liberado,
+        eh_admin=eh_admin,
     )
 
 

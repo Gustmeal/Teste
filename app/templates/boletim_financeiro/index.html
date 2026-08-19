@@ -12,7 +12,6 @@
     .bf-hero, .bf-hero * { color: #ffffff !important; }
     .bf-hero h1 { font-weight: 800; margin: 0; font-size: 1.7rem; }
     .bf-hero p { margin: .3rem 0 0; font-size: .95rem; opacity: .92; }
-    .bf-hero i { color: #ffffff !important; }
 
     .bf-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
     .bf-action {
@@ -31,6 +30,9 @@
     .ic-cotas { background: #0ea5e9; } .ic-anbima { background: #8b5cf6; }
     .ic-bloq { background: #ef4444; } .ic-comp { background: #14b8a6; }
     .ic-audit { background: #f59e0b; } .ic-tab { background: #64748b; }
+
+    .bf-action.bloqueado { opacity: .55; cursor: not-allowed; pointer-events: none; filter: grayscale(.4); }
+    .bf-action .lock { font-size: .72rem; color: #b45309; font-weight: 600; }
 </style>
 
 <div class="bf-wrap fade-in">
@@ -46,6 +48,25 @@
 
     <!-- BOTÕES DE AÇÃO -->
     <div class="bf-actions">
+
+        {% if relatorio_liberado or eh_admin %}
+        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="bf-action">
+            <span class="ic ic-rel"><i class="fas fa-file-lines"></i></span>
+            <span>
+                <span class="tt">Gerar Relatório</span><br>
+                <span class="ds">Relatório de Gestão{% if eh_admin and not relatorio_liberado %} · acesso admin{% endif %}</span>
+            </span>
+        </a>
+        {% else %}
+        <span class="bf-action bloqueado" title="Rode o Teste Siscor x Boletim na Auditoria (sem diferença) para liberar.">
+            <span class="ic ic-rel"><i class="fas fa-lock"></i></span>
+            <span>
+                <span class="tt">Gerar Relatório</span><br>
+                <span class="lock">Bloqueado — verifique na Auditoria</span>
+            </span>
+        </span>
+        {% endif %}
+
         <a href="{{ url_for('boletim_financeiro.importar') }}" class="bf-action">
             <span class="ic ic-import"><i class="fas fa-file-excel"></i></span>
             <span><span class="tt">Importar Boletim</span><br><span class="ds">Enviar o Excel</span></span>
@@ -69,10 +90,6 @@
         <a href="{{ url_for('relatorio_gestao.auditoria') }}" class="bf-action">
             <span class="ic ic-audit"><i class="fas fa-clipboard-check"></i></span>
             <span><span class="tt">Auditoria</span><br><span class="ds">Testes e verificações</span></span>
-        </a>
-        <a href="{{ url_for('relatorio_gestao.sumario_executivo') }}" class="bf-action">
-            <span class="ic ic-rel"><i class="fas fa-file-lines"></i></span>
-            <span><span class="tt">Gerar Relatório</span><br><span class="ds">Relatório de Gestão</span></span>
         </a>
         {% if current_user.perfil in ['admin', 'moderador'] %}
         <a href="{{ url_for('relatorio_gestao.tabelas_dados') }}" class="bf-action">

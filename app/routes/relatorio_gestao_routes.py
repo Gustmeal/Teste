@@ -21,6 +21,8 @@ from app.utils.relatorio_gestao import (
 )
 from flask_login import current_user
 
+from flask import session, flash, redirect, url_for   # + o que já tinha (render_template, jsonify, request, etc.)
+from flask_login import login_required, current_user
 
 from app.utils.relatorio_gestao import (
     partes_posicao, renderizar_pagina, montar_consideracoes, montar_sumario,
@@ -489,6 +491,11 @@ def _dados_quadro_comparativo():
 def sumario_executivo():
     """Sumário Executivo — frases vindas da FIN_TB023_RG_SUMARIO (mesma
     mecânica das Considerações), com os gráficos e o quadro mantidos."""
+    # Trava: só libera se o Teste Siscor x Boletim passou (sessão) ou se for admin/moderador
+    if not (session.get('siscor_liberado') or current_user.perfil in ['admin', 'moderador']):
+        flash('Relatório bloqueado: rode o Teste Siscor x Boletim na Auditoria (sem diferença) para liberar.', 'warning')
+        return redirect(url_for('boletim_financeiro.index'))
+
     posicao = db.session.execute(text(
         "SELECT MAX(POSICAO) FROM [BDG].[FIN_TB023_RG_SUMARIO]"
     )).scalar()
@@ -1017,6 +1024,11 @@ def titulos_consolidados_bb():
 @login_required
 def relatorio_completo():
     """Relatório inteiro em uma página, otimizado para impressão em PDF."""
+    # Trava: só libera se o Teste Siscor x Boletim passou (sessão) ou se for admin/moderador
+    if not (session.get('siscor_liberado') or current_user.perfil in ['admin', 'moderador']):
+        flash('Relatório bloqueado: rode o Teste Siscor x Boletim na Auditoria (sem diferença) para liberar.', 'warning')
+        return redirect(url_for('boletim_financeiro.index'))
+
     # Referência do relatório = mês mais recente da FIN_VW031 (mesma da tela).
     # Fallback: competência do Sumário.
     ref_rf = db.session.execute(text("""
@@ -1151,12 +1163,19 @@ def teste_siscor_boletim():
         """)).fetchone()
 
         if not row:
+            # Sem base de comparação: por segurança, bloqueia o relatório
+            session['siscor_liberado'] = False
             return jsonify({'success': True, 'encontrado': False,
                             'message': 'Nenhuma competência com dados nas duas fontes.'})
 
         mes = str(row[0] or '')
         mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
         dif = Decimal(str(row[3] or 0))
+        bate = (abs(dif) < Decimal('0.005'))
+
+        # (B) Manual: libera o relatório na sessão somente quando NÃO há diferença
+        session['siscor_liberado'] = bool(bate)
+        session['siscor_liberado_mes'] = mes_fmt
 
         return jsonify({
             'success': True, 'encontrado': True,
@@ -1165,7 +1184,7 @@ def teste_siscor_boletim():
             'boletim': _fmt_br(Decimal(str(row[1] or 0)), 2),
             'siscor': _fmt_br(Decimal(str(row[2] or 0)), 2),
             'diferenca': _fmt_br(dif, 2),
-            'bate': (abs(dif) < Decimal('0.005')),
+            'bate': bate,
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
