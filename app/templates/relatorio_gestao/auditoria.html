@@ -26,6 +26,20 @@
 
     <h1 class="fw-bold header-with-back mb-4">Auditoria</h1>
 
+    <!-- CHECKLIST DE ATUALIZAÇÕES (sempre visível) -->
+    <div class="au-card">
+        <div class="au-head">
+            <div>
+                <div class="tt">Atualizações necessárias</div>
+                <div class="ds">Cada item deve estar na mesma competência do Boletim para liberar o relatório.</div>
+            </div>
+            <button type="button" class="btn btn-outline-primary js-ignore-loading" id="btnAtu" onclick="carregarAtualizacoes(event)">
+                <i class="fas fa-rotate me-2"></i>Atualizar
+            </button>
+        </div>
+        <div class="au-body" id="resAtu"></div>
+    </div>
+
     <!-- TESTE 1 (simples) -->
     <div class="au-card">
         <div class="au-head">
@@ -62,7 +76,35 @@ function _box(id) { var el = document.getElementById(id); el.style.display = 'bl
 function _loading(btn) { var o = btn.innerHTML; btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Rodando...'; return o; }
 
-/* ============ TESTE 1: Boletim x Saldo Contas (simples) ============ */
+/* ============ CHECKLIST DE ATUALIZAÇÕES ============ */
+function carregarAtualizacoes(ev) {
+    _stop(ev);
+    var box = document.getElementById('resAtu'); box.style.display = 'block';
+    box.innerHTML = '<div class="text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Verificando...</div>';
+    fetch("{{ url_for('relatorio_gestao.auditoria_atualizacoes') }}", { headers: { 'X-Silent-Request': 'true' } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (!d.success) { box.innerHTML = '<div class="alert alert-danger mb-0">' + d.message + '</div>'; return; }
+        var resumo = d.tudo_ok
+            ? '<div class="alert alert-success mb-2"><i class="fas fa-check-circle me-2"></i>' +
+              'Tudo atualizado para <strong>' + d.mes_ref + '</strong>. Pré-requisito de atualizações OK.</div>'
+            : '<div class="alert alert-warning mb-2"><i class="fas fa-triangle-exclamation me-2"></i>' +
+              'Faltam <strong>' + d.pendentes + '</strong> atualização(ões) para <strong>' + d.mes_ref +
+              '</strong>. Atualize os itens pendentes para poder gerar o relatório.</div>';
+        var linhas = d.itens.map(function (it) {
+            return '<tr><td class="tleft">' + it.obs + '</td>' +
+                   '<td>' + it.atualizacao + '</td>' +
+                   '<td class="' + (it.feito ? 'ok' : 'diverge') + '">' +
+                   (it.feito ? '✅ Feito' : '⚠️ Pendente') + '</td></tr>';
+        }).join('');
+        box.innerHTML = resumo +
+            '<table class="au-tab"><thead><tr><th class="tleft">Atualização</th>' +
+            '<th>Competência</th><th>Status</th></tr></thead><tbody>' + linhas + '</tbody></table>';
+    })
+    .catch(function (e) { box.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
+}
+
+/* ============ TESTE 1: Boletim x Saldo Contas ============ */
 function rodarBoletimSaldo(ev) {
     _stop(ev);
     var btn = document.getElementById('btn1'); var o = _loading(btn);
@@ -103,6 +145,13 @@ function rodarSiscorBoletim(ev) {
             '</td><td>R$ ' + d.diferenca + '</td><td class="' + (d.bate ? 'ok' : 'diverge') + '">' +
             (d.bate ? '✅ Bate' : '⚠️ Diverge') + '</td></tr></tbody></table>';
 
+        // Aviso se o checklist de atualizações ainda não está completo
+        if (d.bate && d.atualizacoes_ok === false) {
+            box.innerHTML += '<div class="alert alert-warning mb-0 mt-2">' +
+                'O teste bateu, mas ainda faltam <strong>atualizações</strong> (veja o quadro acima). ' +
+                'O relatório só libera quando tudo estiver atualizado.</div>';
+        }
+
         if (!d.bate) {
             var ym = d.ano_mes;
             if (!ym) {
@@ -111,6 +160,8 @@ function rodarSiscorBoletim(ev) {
             }
             carregarOrfaos(ym);
         }
+        // Reflete no checklist qualquer mudança
+        carregarAtualizacoes();
     })
     .catch(function (e) { btn.disabled = false; btn.innerHTML = o;
         _box('res2').innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
@@ -182,5 +233,8 @@ function salvarVinculos(ev) {
     })
     .catch(function (e) { msg.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + e + '</div>'; });
 }
+
+// Carrega o checklist assim que a página abre
+document.addEventListener('DOMContentLoaded', function () { carregarAtualizacoes(); });
 </script>
 {% endblock %}

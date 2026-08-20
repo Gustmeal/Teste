@@ -1095,18 +1095,17 @@ def relatorio_completo():
 @relatorio_gestao_bp.route('/teste-conferencia-saldo')
 @login_required
 def teste_conferencia_saldo():
-    """[TEMPORÁRIO - TESTE] Confere Boletim (NU_LINHA=61) x soma FIN_TB021,
-    no mês mais recente. Visível só para admin/moderador."""
-
+    """[AUDITORIA] Confere Boletim (NU_LINHA=61) x soma FIN_TB021, no mês mais recente.
+    LEFT JOIN + ISNULL: traz o mês do Boletim mesmo sem correspondência em FIN_TB021."""
     try:
         row = db.session.execute(text("""
             SELECT TOP 1
                    BF.MES_EXECUCAO,
                    BF.VR_EXECUTADO,
-                   SD.SD_CONTAS,
-                   BF.VR_EXECUTADO - SD.SD_CONTAS AS DIFERENCA
+                   ISNULL(SD.SD_CONTAS, 0) AS SD_CONTAS,
+                   BF.VR_EXECUTADO - ISNULL(SD.SD_CONTAS, 0) AS DIFERENCA
             FROM [BDG].[FIN_TB020_BOLETIM_FINANCEIRO] BF
-            INNER JOIN (
+            LEFT JOIN (
                 SELECT [MES_EXECUCAO], SUM(VR_EXECUTADO) AS SD_CONTAS
                 FROM [BDG].[FIN_TB021_SALDO_CONTAS_BF]
                 GROUP BY [MES_EXECUCAO]
@@ -1117,7 +1116,7 @@ def teste_conferencia_saldo():
 
         if not row:
             return jsonify({'success': True, 'encontrado': False,
-                            'message': 'Nenhuma competência com dados nas duas tabelas.'})
+                            'message': 'Nenhuma competência encontrada no Boletim (NU_LINHA 61).'})
 
         mes = str(row[0] or '')
         mes_fmt = f"{mes[4:6]}/{mes[:4]}" if len(mes) >= 6 else mes
@@ -1127,6 +1126,7 @@ def teste_conferencia_saldo():
 
         return jsonify({
             'success': True, 'encontrado': True,
+            'ano_mes': mes,
             'mes': mes_fmt,
             'vr_executado': _fmt_br(vr, 2),
             'sd_contas': _fmt_br(sd, 2),
@@ -1173,8 +1173,11 @@ def teste_siscor_boletim():
         dif = Decimal(str(row[3] or 0))
         bate = (abs(dif) < Decimal('0.005'))
 
-        # (B) Manual: libera o relatório na sessão somente quando NÃO há diferença
-        session['siscor_liberado'] = bool(bate)
+        # Checklist de atualizações (FIN_VW032) também precisa estar completo
+        _, _, atualizacoes_ok = _status_atualizacoes()
+
+        # Libera o relatório só quando NÃO há diferença E o checklist está completo
+        session['siscor_liberado'] = bool(bate and atualizacoes_ok)
         session['siscor_liberado_mes'] = mes_fmt
 
         return jsonify({
@@ -1185,6 +1188,7 @@ def teste_siscor_boletim():
             'siscor': _fmt_br(Decimal(str(row[2] or 0)), 2),
             'diferenca': _fmt_br(dif, 2),
             'bate': bate,
+            'atualizacoes_ok': atualizacoes_ok,
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
@@ -1361,3 +1365,64 @@ def vinculo_salvar():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro ao salvar: {str(e)}'}), 500
+
+def _mes_referencia_boletim():
+    """Máximo MES_EXECUCAO do Boletim (mesma referência do Siscor x Boletim)."""
+    return db.session.execute(text(
+        "SELECT MAX(MES_EXECUCAO) FROM [BDG].[FIN_TB020_BOLETIM_FINANCEIRO]"
+    )).scalar()
+
+
+def _status_atualizacoes():
+    """Lê FIN_VW032 e compara cada ATUALIZACAO com o mês de referência do Boletim.
+    Retorna (mes_ref, itens[], tudo_ok)."""
+    mes_ref = _mes_referencia_boletim()
+    mes_ref = str(mes_ref) if mes_ref is not None else ''
+
+    rows = db.session.execute(text("""
+        SELECT OBS, ATUALIZACAO
+        FROM [BDG].[FIN_VW032_RELATORIO_GESTAO_AUDITORIA_ATUALIZACOES]
+        ORDER BY OBS
+    """)).fetchall()
+
+    def _fmt(m):
+        m = str(m or '')
+        return f"{m[4:6]}/{m[:4]}" if len(m) >= 6 else (m or '—')
+
+    itens, tudo_ok = [], True
+    for r in rows:
+        atu = str(r[1] or '')
+        feito = (atu == mes_ref and mes_ref != '')
+        if not feito:
+            tudo_ok = False
+        itens.append({
+            'obs': (r[0] or '').strip(),
+            'atualizacao': _fmt(atu),
+            'atualizacao_raw': atu,
+            'feito': feito,
+        })
+    # se não há itens, não trava por aqui (nada a atualizar)
+    if not rows:
+        tudo_ok = True
+    return mes_ref, itens, tudo_ok
+
+
+@relatorio_gestao_bp.route('/auditoria-atualizacoes')
+@login_required
+def auditoria_atualizacoes():
+    """Checklist de atualizações (FIN_VW032) x mês de referência do Boletim."""
+    try:
+        mes_ref, itens, tudo_ok = _status_atualizacoes()
+        mr = str(mes_ref or '')
+        mes_ref_fmt = f"{mr[4:6]}/{mr[:4]}" if len(mr) >= 6 else '—'
+        pendentes = sum(1 for i in itens if not i['feito'])
+        return jsonify({
+            'success': True,
+            'mes_ref': mes_ref_fmt,
+            'itens': itens,
+            'tudo_ok': tudo_ok,
+            'pendentes': pendentes,
+            'total': len(itens),
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
