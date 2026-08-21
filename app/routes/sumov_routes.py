@@ -4165,3 +4165,135 @@ def ans_glosas_salvar_dt_aplicacao():
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
+
+
+# =====================================================
+# CONSULTAR VENDAS DE IMÓVEIS (RM/TOTVS)
+# =====================================================
+
+@sumov_bp.route('/consultar-vendas')
+@login_required
+def consultar_vendas():
+    """
+    Consulta de vendas de imóveis (MOV_TB023_VENDA_IMOVEIS_RM_TOTVS).
+    Todos os filtros são aplicados no banco (SQL Server) via query
+    parametrizada. O template apenas renderiza o que vem do backend.
+    """
+    from sqlalchemy import text
+
+    # ---- Captura dos filtros enviados via GET ----
+    nu_imovel = (request.args.get('nu_imovel') or '').strip()
+    situacao = (request.args.get('situacao') or '').strip()
+    dt_ini = (request.args.get('dt_ini') or '').strip()
+    dt_fim = (request.args.get('dt_fim') or '').strip()
+    vr_min_raw = (request.args.get('vr_min') or '').strip()
+    vr_max_raw = (request.args.get('vr_max') or '').strip()
+
+    # Conversão segura de valor (aceita "1234.56" e "1234,56")
+    def _to_float(valor):
+        if not valor:
+            return None
+        try:
+            return float(valor.replace(',', '.'))
+        except (ValueError, AttributeError):
+            return None
+
+    vr_min = _to_float(vr_min_raw)
+    vr_max = _to_float(vr_max_raw)
+
+    # Formatação de moeda no padrão brasileiro (feita no backend)
+    def _fmt_moeda(valor):
+        if valor is None:
+            return '0,00'
+        return ('{:,.2f}'.format(float(valor))
+                .replace(',', 'X').replace('.', ',').replace('X', '.'))
+
+    # ---- Query base + filtros dinâmicos (parametrizados) ----
+    sql = """
+        SELECT
+            VEN.DT_REFERENCIA,
+            VEN.NU_IMOVEL,
+            VEN.VR_VENDA,
+            VEN.DT_VENDA,
+            COD.DSC_SIT_VENDA
+        FROM [BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS] VEN
+        INNER JOIN [BDG].[PAR_TB018_SITUACAO_VENDA_IMOVEIS] COD
+            ON VEN.CO_SITUACAO_VENDA = COD.CO_SIT_VENDA
+        WHERE 1 = 1
+    """
+    params = {}
+
+    if nu_imovel:
+        sql += " AND CAST(VEN.NU_IMOVEL AS VARCHAR(50)) LIKE :nu_imovel"
+        params['nu_imovel'] = '%' + nu_imovel + '%'
+    if situacao:
+        sql += " AND COD.DSC_SIT_VENDA = :situacao"
+        params['situacao'] = situacao
+    if dt_ini:
+        sql += " AND VEN.DT_VENDA >= :dt_ini"
+        params['dt_ini'] = dt_ini
+    if dt_fim:
+        sql += " AND VEN.DT_VENDA <= :dt_fim"
+        params['dt_fim'] = dt_fim
+    if vr_min is not None:
+        sql += " AND VEN.VR_VENDA >= :vr_min"
+        params['vr_min'] = vr_min
+    if vr_max is not None:
+        sql += " AND VEN.VR_VENDA <= :vr_max"
+        params['vr_max'] = vr_max
+
+    sql += " ORDER BY VEN.NU_IMOVEL, VEN.DT_VENDA"
+
+    # ---- Execução da consulta principal ----
+    vendas = []
+    valor_total = 0.0
+    try:
+        resultado = db.session.execute(text(sql), params).fetchall()
+        for row in resultado:
+            vr = float(row.VR_VENDA) if row.VR_VENDA is not None else 0.0
+            valor_total += vr
+            vendas.append({
+                'dt_referencia': row.DT_REFERENCIA,
+                'nu_imovel': row.NU_IMOVEL,
+                'vr_venda': vr,
+                'vr_venda_fmt': _fmt_moeda(vr),
+                'dt_venda': row.DT_VENDA,
+                'dsc_sit_venda': row.DSC_SIT_VENDA,
+            })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash('Erro ao consultar as vendas: {}'.format(str(e)), 'danger')
+        vendas = []
+        valor_total = 0.0
+
+    # ---- Situações para o filtro (DISTINCT direto do banco) ----
+    situacoes = []
+    try:
+        sql_sit = text("""
+            SELECT DISTINCT DSC_SIT_VENDA
+            FROM [BDG].[PAR_TB018_SITUACAO_VENDA_IMOVEIS]
+            WHERE DSC_SIT_VENDA IS NOT NULL
+            ORDER BY DSC_SIT_VENDA
+        """)
+        situacoes = [r[0] for r in db.session.execute(sql_sit).fetchall()]
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        situacoes = []
+
+    return render_template(
+        'sumov/consultar_vendas/index.html',
+        vendas=vendas,
+        situacoes=situacoes,
+        total_registros=len(vendas),
+        valor_total=_fmt_moeda(valor_total),
+        filtros={
+            'nu_imovel': nu_imovel,
+            'situacao': situacao,
+            'dt_ini': dt_ini,
+            'dt_fim': dt_fim,
+            'vr_min': vr_min_raw,
+            'vr_max': vr_max_raw,
+        }
+    )
