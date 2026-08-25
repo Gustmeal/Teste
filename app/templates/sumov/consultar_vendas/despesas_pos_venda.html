@@ -230,7 +230,7 @@
                         </td>
                         <td>
                             <div class="dpv-classificar">
-                                <select class="form-select form-select-sm sel-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}">
+                                <select class="form-select form-select-sm sel-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}" data-obs="{{ r.obs | default('', true) }}">
                                     <option value="">— Selecione —</option>
                                     {% for s in situacoes_acerto %}
                                         <option value="{{ s.id }}" {% if r.id_situacao_acerto == s.id %}selected{% endif %}>{{ s.dsc }}</option>
@@ -266,6 +266,34 @@
         <button type="button" id="btnCarregarMais" class="btn btn-outline-primary js-ignore-loading">
             <i class="fas fa-plus-circle me-1"></i> Carregar mais {{ page_size }}
         </button>
+    </div>
+
+    <!-- Modal de Observação (aberto quando a situação exige OBS - ID 5) -->
+    <div class="modal fade" id="modalObs" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border:none;border-radius:12px;">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-comment-dots me-2 text-primary"></i>Observação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-2">Esta situação exige o preenchimento de uma observação.</p>
+                    <input type="hidden" id="obsNrOcorrencia">
+                    <input type="hidden" id="obsIdSituacao">
+                    <textarea id="obsTexto" class="form-control" rows="4" maxlength="500"
+                              placeholder="Digite a observação (até 500 caracteres)"></textarea>
+                    <div class="text-end mt-1">
+                        <small class="text-muted"><span id="obsContador">0</span>/500</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="btnSalvarObs" class="btn btn-success js-ignore-loading">
+                        <i class="fas fa-save me-1"></i> Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -385,8 +413,11 @@
         cell.textContent = formatarDataCurta(cell.textContent);
     });
 
+    // ID da situação que exige observação (regra de negócio)
+    const ID_SITUACAO_OBS = 5;
+
     // -------------------- Salvar / editar situação --------------------
-    function atualizarLinhas(nr, idSituacao, dscSituacao) {
+    function atualizarLinhas(nr, idSituacao, dscSituacao, obs) {
         document.querySelectorAll('.badge-situacao[data-ocorrencia="' + nr + '"]').forEach(function (cell) {
             if (idSituacao) {
                 cell.innerHTML = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>' + escapeHtml(dscSituacao) + '</span>';
@@ -396,6 +427,7 @@
         });
         document.querySelectorAll('select.sel-situacao[data-ocorrencia="' + nr + '"]').forEach(function (sel) {
             sel.value = idSituacao ? String(idSituacao) : '';
+            sel.setAttribute('data-obs', obs || '');
         });
     }
 
@@ -408,9 +440,21 @@
         const select = row.querySelector('select.sel-situacao');
         const idSit = select.value;
 
-        const original = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        // Se a situação exige observação, abre o modal em vez de salvar direto
+        if (String(idSit) === String(ID_SITUACAO_OBS)) {
+            abrirModalObs(nr, idSit, select.getAttribute('data-obs') || '');
+            return;
+        }
+
+        // Demais situações: salva direto (obs vazia)
+        enviarSalvar(nr, idSit, '', btn);
+    }
+
+    // Envia o salvamento ao backend. "botao" é o elemento a ser animado
+    // (o botão da linha ou o botão do modal).
+    function enviarSalvar(nr, idSit, obs, botao) {
+        const original = botao ? botao.innerHTML : '';
+        if (botao) { botao.disabled = true; botao.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
 
         const controller = new AbortController();
         const timeoutId = setTimeout(function () { controller.abort(); }, 30000);
@@ -418,7 +462,7 @@
         fetch(URL_SALVAR, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true', 'Accept': 'application/json' },
-            body: JSON.stringify({ nr_ocorrencia: nr, id_situacao: idSit }),
+            body: JSON.stringify({ nr_ocorrencia: nr, id_situacao: idSit, obs: obs }),
             signal: controller.signal
         })
         .then(function (resp) {
@@ -427,8 +471,9 @@
         })
         .then(function (data) {
             if (data.success) {
-                atualizarLinhas(nr, data.id_situacao, data.dsc_situacao);
+                atualizarLinhas(nr, data.id_situacao, data.dsc_situacao, data.obs);
                 mostrarToast(data.message, 'success');
+                fecharModalObs();
             } else {
                 mostrarToast(data.message || 'Erro ao salvar.', 'danger');
             }
@@ -442,10 +487,51 @@
         })
         .finally(function () {
             clearTimeout(timeoutId);
-            btn.disabled = false;
-            btn.innerHTML = original;
+            if (botao) { botao.disabled = false; botao.innerHTML = original; }
         });
     }
+
+    // -------------------- Modal de observação --------------------
+    function abrirModalObs(nr, idSit, obsAtual) {
+        document.getElementById('obsNrOcorrencia').value = nr;
+        document.getElementById('obsIdSituacao').value = idSit;
+        const ta = document.getElementById('obsTexto');
+        ta.value = obsAtual || '';
+        document.getElementById('obsContador').textContent = ta.value.length;
+        const modalEl = document.getElementById('modalObs');
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        setTimeout(function () { ta.focus(); }, 300);
+    }
+
+    function fecharModalObs() {
+        const modalEl = document.getElementById('modalObs');
+        const inst = bootstrap.Modal.getInstance(modalEl);
+        if (inst) { inst.hide(); }
+    }
+
+    // Contador de caracteres
+    (function () {
+        const ta = document.getElementById('obsTexto');
+        if (ta) {
+            ta.addEventListener('input', function () {
+                document.getElementById('obsContador').textContent = ta.value.length;
+            });
+        }
+        const btnObs = document.getElementById('btnSalvarObs');
+        if (btnObs) {
+            btnObs.addEventListener('click', function (ev) {
+                if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+                const nr = document.getElementById('obsNrOcorrencia').value;
+                const idSit = document.getElementById('obsIdSituacao').value;
+                const obs = document.getElementById('obsTexto').value.trim();
+                if (!obs) {
+                    mostrarToast('Preencha a observação para salvar.', 'danger');
+                    return;
+                }
+                enviarSalvar(nr, idSit, obs, btnObs);
+            });
+        }
+    })();
 
     // -------------------- Carregar mais (30 em 30, sem travar) --------------------
     function criarLinha(r) {
@@ -474,7 +560,7 @@
             '<td class="badge-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '">' + badge + '</td>' +
             '<td>' +
                 '<div class="dpv-classificar">' +
-                    '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '">' + opts + '</select>' +
+                    '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" data-obs="' + escapeHtml(r.obs || '') + '">' + opts + '</select>' +
                     '<button type="button" class="btn btn-sm btn-success js-ignore-loading" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" onclick="salvarSituacao(this, event)"><i class="fas fa-save"></i></button>' +
                 '</div>' +
             '</td>';

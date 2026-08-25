@@ -4408,7 +4408,7 @@ def _where_despesas_pos_venda(filtros):
 
 
 def _buscar_pagina_despesas_pos_venda(filtros, offset, limit):
-    """Busca uma página (OFFSET/FETCH) da view + situação salva."""
+    """Busca uma página (OFFSET/FETCH) da view + situação salva (inclui OBS)."""
     from sqlalchemy import text
     where, params = _where_despesas_pos_venda(filtros)
     offset = int(offset)
@@ -4418,7 +4418,9 @@ def _buscar_pagina_despesas_pos_venda(filtros, offset, limit):
             VW.DT_REFERENCIA, VW.NR_CONTRATO, VW.NR_OCORRENCIA, VW.DSC_ITEM_SERVICO,
             VW.DT_LANCAMENTO_PAGAMENTO, VW.VR_DESPESA, VW.NU_IMOVEL, VW.VR_VENDA,
             VW.DT_VENDA, VW.DSC_SIT_VENDA,
-            SIT.ID_SITUACAO AS ID_SITUACAO_ACERTO, SIT.DSC_SITUACAO AS DSC_SITUACAO_ACERTO
+            SIT.ID_SITUACAO AS ID_SITUACAO_ACERTO,
+            SIT.DSC_SITUACAO AS DSC_SITUACAO_ACERTO,
+            SIT.OBS AS OBS
         FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA] VW
         LEFT JOIN [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA] SIT
             ON SIT.nrOcorrencia = VW.NR_OCORRENCIA
@@ -4466,6 +4468,7 @@ def _linha_despesa_para_dict(row):
         'dsc_sit_venda': row.DSC_SIT_VENDA or '-',
         'id_situacao_acerto': row.ID_SITUACAO_ACERTO,
         'dsc_situacao_acerto': row.DSC_SITUACAO_ACERTO,
+        'obs': row.OBS,  # NOVO
     }
 
 
@@ -4629,17 +4632,21 @@ def despesas_pos_venda_pagina():
 @login_required
 def despesas_pos_venda_salvar():
     """
-    Salva/edita/remove a situação de acerto de uma ocorrência na
-    tabela MOV_TB054. Recebe JSON: nr_ocorrencia e id_situacao.
-    id_situacao vazio => remove a classificação (DELETE).
+    Salva/edita/remove a situação de acerto de uma ocorrência na MOV_TB054.
+    Quando a situação for a que exige observação (ID 5), grava também a OBS
+    no mesmo registro. OBS vazia é aceita para as demais situações.
     """
     from sqlalchemy import text
     from app.utils.audit import registrar_log
+
+    ID_SITUACAO_OBS = 5          # situação que exige observação
+    OBS_MAX = 500                # limite da coluna OBS varchar(500)
 
     try:
         data = request.get_json(silent=True) or {}
         nr_raw = data.get('nr_ocorrencia')
         id_raw = data.get('id_situacao')
+        obs = (data.get('obs') or '').strip()[:OBS_MAX]
 
         try:
             nr_ocorrencia = int(nr_raw)
@@ -4662,14 +4669,22 @@ def despesas_pos_venda_salvar():
                 descricao='Classificação removida da ocorrência {}'.format(nr_ocorrencia)
             )
             return jsonify({'success': True, 'message': 'Classificação removida.',
-                            'id_situacao': None, 'dsc_situacao': None})
+                            'id_situacao': None, 'dsc_situacao': None, 'obs': None})
 
         try:
             id_situacao = int(id_raw)
         except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'Situação inválida.'}), 400
 
-        # Busca a descrição no parâmetro pelo ID (fonte confiável)
+        # Observação obrigatória para a situação que exige OBS
+        if id_situacao == ID_SITUACAO_OBS and not obs:
+            return jsonify({'success': False, 'message': 'Observação obrigatória para esta situação.'}), 400
+
+        # Para as demais situações, não guardamos observação
+        if id_situacao != ID_SITUACAO_OBS:
+            obs = ''
+
+        # Descrição confiável (vem do parâmetro pelo ID)
         dsc_row = db.session.execute(text("""
             SELECT DSC_SITUACAO
             FROM [BDG].[PAR_TB032_SITUACAO_ACERTO_PGTO_POSVENDA]
@@ -4681,7 +4696,7 @@ def despesas_pos_venda_salvar():
 
         dsc_situacao = dsc_row[0]
 
-        # Upsert por ocorrência
+        # Upsert por ocorrência (grava também a OBS)
         existe = db.session.execute(text("""
             SELECT COUNT(1)
             FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
@@ -4691,16 +4706,16 @@ def despesas_pos_venda_salvar():
         if existe:
             db.session.execute(text("""
                 UPDATE [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
-                SET ID_SITUACAO = :id, DSC_SITUACAO = :dsc
+                SET ID_SITUACAO = :id, DSC_SITUACAO = :dsc, OBS = :obs
                 WHERE nrOcorrencia = :nr
-            """), {'id': id_situacao, 'dsc': dsc_situacao, 'nr': nr_ocorrencia})
+            """), {'id': id_situacao, 'dsc': dsc_situacao, 'obs': obs, 'nr': nr_ocorrencia})
             acao = 'editar'
         else:
             db.session.execute(text("""
                 INSERT INTO [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
-                    (nrOcorrencia, ID_SITUACAO, DSC_SITUACAO)
-                VALUES (:nr, :id, :dsc)
-            """), {'nr': nr_ocorrencia, 'id': id_situacao, 'dsc': dsc_situacao})
+                    (nrOcorrencia, ID_SITUACAO, DSC_SITUACAO, OBS)
+                VALUES (:nr, :id, :dsc, :obs)
+            """), {'nr': nr_ocorrencia, 'id': id_situacao, 'dsc': dsc_situacao, 'obs': obs})
             acao = 'criar'
 
         db.session.commit()
@@ -4713,7 +4728,7 @@ def despesas_pos_venda_salvar():
         )
 
         return jsonify({'success': True, 'message': 'Situação registrada com sucesso.',
-                        'id_situacao': id_situacao, 'dsc_situacao': dsc_situacao})
+                        'id_situacao': id_situacao, 'dsc_situacao': dsc_situacao, 'obs': obs})
 
     except Exception as e:
         db.session.rollback()
