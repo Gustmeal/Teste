@@ -4297,3 +4297,371 @@ def consultar_vendas():
             'vr_max': vr_max_raw,
         }
     )
+# =====================================================
+# DESPESAS PAGAS PÓS VENDA  (com paginação 30 em 30)
+# =====================================================
+
+PAGE_SIZE_DPV = 30
+
+
+def _fmt_moeda_br(valor):
+    if valor is None:
+        return '0,00'
+    return ('{:,.2f}'.format(float(valor))
+            .replace(',', 'X').replace('.', ',').replace('X', '.'))
+
+
+def _filtros_despesas_pos_venda():
+    return {
+        'nr_contrato': (request.args.get('nr_contrato') or '').strip(),
+        'nr_ocorrencia': (request.args.get('nr_ocorrencia') or '').strip(),
+        'nu_imovel': (request.args.get('nu_imovel') or '').strip(),
+        'situacao_venda': (request.args.get('situacao_venda') or '').strip(),
+        'situacao_acerto': (request.args.get('situacao_acerto') or '').strip(),
+        'dt_ini': (request.args.get('dt_ini') or '').strip(),
+        'dt_fim': (request.args.get('dt_fim') or '').strip(),
+    }
+
+
+def _where_despesas_pos_venda(filtros):
+    """Monta o WHERE e os parâmetros a partir dos filtros."""
+    where = " WHERE 1 = 1"
+    params = {}
+    if filtros.get('nr_contrato'):
+        where += " AND CAST(VW.NR_CONTRATO AS VARCHAR(50)) LIKE :nr_contrato"
+        params['nr_contrato'] = '%' + filtros['nr_contrato'] + '%'
+    if filtros.get('nr_ocorrencia'):
+        where += " AND CAST(VW.NR_OCORRENCIA AS VARCHAR(50)) LIKE :nr_ocorrencia"
+        params['nr_ocorrencia'] = '%' + filtros['nr_ocorrencia'] + '%'
+    if filtros.get('nu_imovel'):
+        where += " AND CAST(VW.NU_IMOVEL AS VARCHAR(50)) LIKE :nu_imovel"
+        params['nu_imovel'] = '%' + filtros['nu_imovel'] + '%'
+    if filtros.get('situacao_venda'):
+        where += " AND VW.DSC_SIT_VENDA = :situacao_venda"
+        params['situacao_venda'] = filtros['situacao_venda']
+    sa = filtros.get('situacao_acerto')
+    if sa == '__NAO__':
+        where += " AND SIT.ID_SITUACAO IS NULL"
+    elif sa:
+        where += " AND SIT.ID_SITUACAO = :situacao_acerto"
+        params['situacao_acerto'] = sa
+    if filtros.get('dt_ini'):
+        where += " AND VW.DT_LANCAMENTO_PAGAMENTO >= :dt_ini"
+        params['dt_ini'] = filtros['dt_ini']
+    if filtros.get('dt_fim'):
+        where += " AND VW.DT_LANCAMENTO_PAGAMENTO <= :dt_fim"
+        params['dt_fim'] = filtros['dt_fim']
+    return where, params
+
+
+def _buscar_pagina_despesas_pos_venda(filtros, offset, limit):
+    """Busca uma página (OFFSET/FETCH) da view + situação salva."""
+    from sqlalchemy import text
+    where, params = _where_despesas_pos_venda(filtros)
+    offset = int(offset)
+    limit = int(limit)
+    sql = ("""
+        SELECT
+            VW.DT_REFERENCIA, VW.NR_CONTRATO, VW.NR_OCORRENCIA, VW.DSC_ITEM_SERVICO,
+            VW.DT_LANCAMENTO_PAGAMENTO, VW.VR_DESPESA, VW.NU_IMOVEL, VW.VR_VENDA,
+            VW.DT_VENDA, VW.DSC_SIT_VENDA,
+            SIT.ID_SITUACAO AS ID_SITUACAO_ACERTO, SIT.DSC_SITUACAO AS DSC_SITUACAO_ACERTO
+        FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA] VW
+        LEFT JOIN [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA] SIT
+            ON SIT.nrOcorrencia = VW.NR_OCORRENCIA
+    """ + where + """
+        ORDER BY VW.NR_CONTRATO, VW.NR_OCORRENCIA
+        OFFSET """ + str(offset) + """ ROWS FETCH NEXT """ + str(limit) + """ ROWS ONLY
+    """)
+    return db.session.execute(text(sql), params).fetchall()
+
+
+def _totais_despesas_pos_venda(filtros):
+    """Totais (contagem, classificados e valor) do conjunto filtrado."""
+    from sqlalchemy import text
+    where, params = _where_despesas_pos_venda(filtros)
+    sql = ("""
+        SELECT
+            COUNT(1) AS TOTAL,
+            SUM(CASE WHEN SIT.ID_SITUACAO IS NOT NULL THEN 1 ELSE 0 END) AS CLASSIF,
+            SUM(VW.VR_DESPESA) AS VALOR
+        FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA] VW
+        LEFT JOIN [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA] SIT
+            ON SIT.nrOcorrencia = VW.NR_OCORRENCIA
+    """ + where)
+    row = db.session.execute(text(sql), params).fetchone()
+    total = row.TOTAL or 0
+    classif = row.CLASSIF or 0
+    valor = float(row.VALOR) if row.VALOR is not None else 0.0
+    return total, classif, valor
+
+
+def _linha_despesa_para_dict(row):
+    """Converte uma linha do banco em dict (datas/valores já formatados)."""
+    vr_desp = float(row.VR_DESPESA) if row.VR_DESPESA is not None else 0.0
+    vr_vnd = float(row.VR_VENDA) if row.VR_VENDA is not None else 0.0
+    return {
+        'dt_referencia': row.DT_REFERENCIA.strftime('%d/%m/%Y') if row.DT_REFERENCIA else '-',
+        'nr_contrato': row.NR_CONTRATO,
+        'nr_ocorrencia': row.NR_OCORRENCIA,
+        'dsc_item_servico': row.DSC_ITEM_SERVICO or '-',
+        'dt_lancamento_pagamento': row.DT_LANCAMENTO_PAGAMENTO.strftime('%d/%m/%Y') if row.DT_LANCAMENTO_PAGAMENTO else '-',
+        'vr_despesa_fmt': _fmt_moeda_br(vr_desp),
+        'nu_imovel': row.NU_IMOVEL,
+        'vr_venda_fmt': _fmt_moeda_br(vr_vnd),
+        'dt_venda': row.DT_VENDA.strftime('%d/%m/%Y') if row.DT_VENDA else '-',
+        'dsc_sit_venda': row.DSC_SIT_VENDA or '-',
+        'id_situacao_acerto': row.ID_SITUACAO_ACERTO,
+        'dsc_situacao_acerto': row.DSC_SITUACAO_ACERTO,
+    }
+
+
+def _situacoes_acerto_lista():
+    from sqlalchemy import text
+    try:
+        rows = db.session.execute(text("""
+            SELECT ID_SITUACAO, DSC_SITUACAO
+            FROM [BDG].[PAR_TB032_SITUACAO_ACERTO_PGTO_POSVENDA]
+            WHERE DSC_SITUACAO IS NOT NULL
+            ORDER BY DSC_SITUACAO
+        """)).fetchall()
+        return [{'id': r[0], 'dsc': r[1]} for r in rows]
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def _situacoes_venda_lista():
+    from sqlalchemy import text
+    try:
+        rows = db.session.execute(text("""
+            SELECT DISTINCT DSC_SIT_VENDA
+            FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA]
+            WHERE DSC_SIT_VENDA IS NOT NULL
+            ORDER BY DSC_SIT_VENDA
+        """)).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
+
+def _resumo_situacoes_despesas_pos_venda(filtros):
+    """
+    Resumo por situação de acerto (respeita os filtros ativos):
+    quantidade, soma de VR_DESPESA e soma de VR_VENDA.
+    NULL (sem classificação) vira a linha 'Não classificadas'.
+    """
+    from sqlalchemy import text
+    where, params = _where_despesas_pos_venda(filtros)
+    sql = ("""
+        SELECT
+            SIT.ID_SITUACAO AS ID_SITUACAO,
+            SIT.DSC_SITUACAO AS DSC_SITUACAO,
+            COUNT(1) AS QTD,
+            SUM(VW.VR_DESPESA) AS VR_DESPESA,
+            SUM(VW.VR_VENDA) AS VR_VENDA
+        FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA] VW
+        LEFT JOIN [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA] SIT
+            ON SIT.nrOcorrencia = VW.NR_OCORRENCIA
+    """ + where + """
+        GROUP BY SIT.ID_SITUACAO, SIT.DSC_SITUACAO
+        ORDER BY CASE WHEN SIT.ID_SITUACAO IS NULL THEN 1 ELSE 0 END,
+                 SIT.DSC_SITUACAO
+    """)
+
+    linhas = db.session.execute(text(sql), params).fetchall()
+
+    resumo = []
+    total_qtd = 0
+    total_despesa = 0.0
+    total_venda = 0.0
+    for l in linhas:
+        classificada = l.ID_SITUACAO is not None
+        qtd = l.QTD or 0
+        vr_desp = float(l.VR_DESPESA) if l.VR_DESPESA is not None else 0.0
+        vr_vnd = float(l.VR_VENDA) if l.VR_VENDA is not None else 0.0
+
+        total_qtd += qtd
+        total_despesa += vr_desp
+        total_venda += vr_vnd
+
+        resumo.append({
+            'classificada': classificada,
+            'dsc': l.DSC_SITUACAO if classificada else 'Não classificadas',
+            'qtd': qtd,
+            'vr_despesa_fmt': _fmt_moeda_br(vr_desp),
+            'vr_venda_fmt': _fmt_moeda_br(vr_vnd),
+        })
+
+    return resumo, total_qtd, _fmt_moeda_br(total_despesa), _fmt_moeda_br(total_venda)
+
+
+@sumov_bp.route('/consultar-vendas/despesas-pos-venda')
+@login_required
+def despesas_pos_venda():
+    """Página de Despesas Pagas Pós Venda (primeira página: 30 registros)."""
+    filtros = _filtros_despesas_pos_venda()
+
+    registros = []
+    total_registros = 0
+    total_classificadas = 0
+    valor_total_num = 0.0
+    resumo_situacoes = []  # NOVO
+    resumo_total_qtd = 0  # NOVO
+    resumo_total_despesa = '0,00'  # NOVO
+    resumo_total_venda = '0,00'  # NOVO
+    try:
+        total_registros, total_classificadas, valor_total_num = _totais_despesas_pos_venda(filtros)
+        linhas = _buscar_pagina_despesas_pos_venda(filtros, 0, PAGE_SIZE_DPV)
+        registros = [_linha_despesa_para_dict(l) for l in linhas]
+        # NOVO: resumo por situação (respeita filtros)
+        resumo_situacoes, resumo_total_qtd, resumo_total_despesa, resumo_total_venda = \
+            _resumo_situacoes_despesas_pos_venda(filtros)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash('Erro ao consultar as despesas pós-venda: {}'.format(str(e)), 'danger')
+        registros = []
+
+    total_pendentes = total_registros - total_classificadas
+
+    return render_template(
+        'sumov/consultar_vendas/despesas_pos_venda.html',
+        registros=registros,
+        situacoes_acerto=_situacoes_acerto_lista(),
+        situacoes_venda=_situacoes_venda_lista(),
+        total_registros=total_registros,
+        total_classificadas=total_classificadas,
+        total_pendentes=total_pendentes,
+        valor_total=_fmt_moeda_br(valor_total_num),
+        page_size=PAGE_SIZE_DPV,
+        tem_mais=(total_registros > PAGE_SIZE_DPV),
+        filtros=filtros,
+        resumo_situacoes=resumo_situacoes,  # NOVO
+        resumo_total_qtd=resumo_total_qtd,  # NOVO
+        resumo_total_despesa=resumo_total_despesa,  # NOVO
+        resumo_total_venda=resumo_total_venda,  # NOVO
+    )
+
+
+@sumov_bp.route('/consultar-vendas/despesas-pos-venda/pagina')
+@login_required
+def despesas_pos_venda_pagina():
+    """Retorna em JSON a próxima página (30 registros) a partir do offset."""
+    filtros = _filtros_despesas_pos_venda()
+
+    try:
+        offset = int(request.args.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+    if offset < 0:
+        offset = 0
+
+    try:
+        linhas = _buscar_pagina_despesas_pos_venda(filtros, offset, PAGE_SIZE_DPV)
+        registros = [_linha_despesa_para_dict(l) for l in linhas]
+        tem_mais = (len(registros) == PAGE_SIZE_DPV)
+        return jsonify({'success': True, 'registros': registros, 'tem_mais': tem_mais})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao carregar: {}'.format(str(e))}), 500
+
+
+@sumov_bp.route('/consultar-vendas/despesas-pos-venda/salvar', methods=['POST'])
+@login_required
+def despesas_pos_venda_salvar():
+    """
+    Salva/edita/remove a situação de acerto de uma ocorrência na
+    tabela MOV_TB054. Recebe JSON: nr_ocorrencia e id_situacao.
+    id_situacao vazio => remove a classificação (DELETE).
+    """
+    from sqlalchemy import text
+    from app.utils.audit import registrar_log
+
+    try:
+        data = request.get_json(silent=True) or {}
+        nr_raw = data.get('nr_ocorrencia')
+        id_raw = data.get('id_situacao')
+
+        try:
+            nr_ocorrencia = int(nr_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Número da ocorrência inválido.'}), 400
+
+        # Situação vazia => remover classificação
+        limpar = (id_raw is None or str(id_raw).strip() == '')
+
+        if limpar:
+            db.session.execute(text("""
+                DELETE FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                WHERE nrOcorrencia = :nr
+            """), {'nr': nr_ocorrencia})
+            db.session.commit()
+            registrar_log(
+                acao='excluir',
+                entidade='despesas_pos_venda_situacao',
+                entidade_id=nr_ocorrencia,
+                descricao='Classificação removida da ocorrência {}'.format(nr_ocorrencia)
+            )
+            return jsonify({'success': True, 'message': 'Classificação removida.',
+                            'id_situacao': None, 'dsc_situacao': None})
+
+        try:
+            id_situacao = int(id_raw)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Situação inválida.'}), 400
+
+        # Busca a descrição no parâmetro pelo ID (fonte confiável)
+        dsc_row = db.session.execute(text("""
+            SELECT DSC_SITUACAO
+            FROM [BDG].[PAR_TB032_SITUACAO_ACERTO_PGTO_POSVENDA]
+            WHERE ID_SITUACAO = :id
+        """), {'id': id_situacao}).fetchone()
+
+        if not dsc_row:
+            return jsonify({'success': False, 'message': 'Situação não encontrada nos parâmetros.'}), 404
+
+        dsc_situacao = dsc_row[0]
+
+        # Upsert por ocorrência
+        existe = db.session.execute(text("""
+            SELECT COUNT(1)
+            FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+            WHERE nrOcorrencia = :nr
+        """), {'nr': nr_ocorrencia}).scalar()
+
+        if existe:
+            db.session.execute(text("""
+                UPDATE [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                SET ID_SITUACAO = :id, DSC_SITUACAO = :dsc
+                WHERE nrOcorrencia = :nr
+            """), {'id': id_situacao, 'dsc': dsc_situacao, 'nr': nr_ocorrencia})
+            acao = 'editar'
+        else:
+            db.session.execute(text("""
+                INSERT INTO [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                    (nrOcorrencia, ID_SITUACAO, DSC_SITUACAO)
+                VALUES (:nr, :id, :dsc)
+            """), {'nr': nr_ocorrencia, 'id': id_situacao, 'dsc': dsc_situacao})
+            acao = 'criar'
+
+        db.session.commit()
+
+        registrar_log(
+            acao=acao,
+            entidade='despesas_pos_venda_situacao',
+            entidade_id=nr_ocorrencia,
+            descricao='Situação "{}" registrada para a ocorrência {}'.format(dsc_situacao, nr_ocorrencia)
+        )
+
+        return jsonify({'success': True, 'message': 'Situação registrada com sucesso.',
+                        'id_situacao': id_situacao, 'dsc_situacao': dsc_situacao})
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao salvar: {}'.format(str(e))}), 500

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .bj-wrap { max-width: 1150px; margin: 0 auto; }
+    .bj-tools { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; gap: .6rem; flex-wrap: wrap; }
+    .bj-title { font-weight: 800; color: #1e293b; font-size: 1.15rem; }
+    .bj-title .dt { font-weight: 700; margin-left: .4rem; }
+
+    .bj-wrap { max-width: 1150px; margin: 0 auto; background: #ffffff; padding: 1rem 1.2rem;
+               border: 1px solid #e2e8f0; border-radius: 10px; }
+    table.bj { width: 100%; border-collapse: collapse; font-size: .8rem; background: #ffffff; }
+    table.bj td, table.bj th { border: 1px solid #c9d3e0; padding: .32rem .55rem;
+                               vertical-align: top; text-align: left; background: #ffffff; }
+    table.bj tr.cab td { font-weight: 700; background: #eaf0f7; }
+    table.bj tr.total td { font-weight: 700; background: #f3f6fb; }
+    table.bj { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    table.bj td, table.bj th { border: 1px solid #c9d3e0; padding: .32rem .55rem; vertical-align: top; text-align: left; }
+
+    /* Linha de cabeçalho do bloco: conta (A:B) + PROCESSO/VARA/AUTOR */
+    table.bj tr.cab td { font-weight: 700; background: #eaf0f7; }
+    table.bj tr.cab td.conta { }             /* ocupa as 2 primeiras colunas (colspan=2) */
+
+    table.bj td.val { text-align: right; white-space: nowrap; }
+    table.bj td.dt { white-space: nowrap; }
+
+    /* Linha TOTAL: "TOTAL" nas 2 primeiras não — é TOTAL em A e valor em B */
+    table.bj tr.total td { font-weight: 700; background: #f3f6fb; }
+    table.bj tr.total td.rot { text-align: right; }
+
+    .bj-sep { height: 10px; border: 0 !important; background: transparent !important; }
+
+    .bj-geral { text-align: right; font-weight: 800; color: #1e3a8a; font-size: 1rem;
+                border-top: 2px solid #1e3a8a; padding-top: .5rem; margin-top: .8rem; }
+
+    @media print {
+        .no-print { display: none !important; }
+        table.bj tr { break-inside: avoid; }
+
+    }
+</style>
+
+<div class="bj-wrap fade-in">
+    <div class="bj-tools no-print">
+        <a href="{{ url_for('bloqueios_judiciais.index') }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+        <a href="{{ url_for('bloqueios_judiciais.planilha_excel') }}" class="btn btn-success">
+            <i class="fas fa-file-excel me-2"></i>Exportar Excel
+        </a>
+    </div>
+
+    <div class="bj-title mb-2">
+        Bloqueios Judiciais em Vigor <span class="dt">{{ data_posicao }}</span>
+    </div>
+
+    {% if sem_dados %}
+    <div class="alert alert-warning"><i class="fas fa-exclamation-triangle me-2"></i>
+        Sem registros na FIN_VW033.</div>
+    {% else %}
+
+    <div style="overflow-x:auto;">
+        <table class="bj">
+            {% for g in grupos %}
+                {% if not loop.first %}
+                <tr><td class="bj-sep" colspan="5"></td></tr>
+                {% endif %}
+
+                <!-- Cabeçalho do bloco: conta mesclada em A:B + PROCESSO/VARA/AUTOR -->
+                <tr class="cab">
+                    <td class="conta" colspan="2">{{ g.conta }}</td>
+                    <td>PROCESSO</td>
+                    <td>VARA</td>
+                    <td>AUTOR</td>
+                </tr>
+
+                {% for l in g.linhas %}
+                <tr>
+                    <td class="dt">{{ l.data }}</td>
+                    <td class="val">{{ l.valor }}</td>
+                    <td>{{ l.processo }}</td>
+                    <td>{{ l.vara }}</td>
+                    <td>{{ l.autor }}</td>
+                </tr>
+                {% endfor %}
+
+                <!-- TOTAL do bloco: "TOTAL" em A, valor em B -->
+                <tr class="total">
+                    <td class="rot">TOTAL</td>
+                    <td class="val">{{ g.total_fmt }}</td>
+                    <td colspan="3"></td>
+                </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="bj-geral">Total Geral: {{ total_geral }}</div>
+    {% endif %}
+</div>
+{% endblock %}

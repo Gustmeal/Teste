@@ -7,6 +7,20 @@ from sqlalchemy import text
 
 from app import db
 from app.utils.audit import registrar_log
+from decimal import Decimal
+from datetime import datetime
+from sqlalchemy import text
+from app import db  # ajuste se o import do db for diferente no seu arquivo
+import csv
+import io
+from flask import Response
+
+from datetime import datetime
+from decimal import Decimal
+from flask import Response
+from sqlalchemy import text
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
 
 bloqueios_judiciais_bp = Blueprint(
     'bloqueios_judiciais', __name__, url_prefix='/bloqueios-judiciais'
@@ -210,3 +224,240 @@ def editar():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro ao editar: {str(e)}'}), 500
+
+def _bj_moeda(v):
+    if v is None:
+        return '-'
+    s = f"{Decimal(str(v)):,.2f}"           # 1,234.56
+    return s.replace(',', 'X').replace('.', ',').replace('X', '.')  # 1.234,56
+
+
+def _bj_data(d):
+    if d is None:
+        return ''
+    if hasattr(d, 'strftime'):
+        return d.strftime('%d/%m/%Y')
+    s = str(d)[:10]
+    try:
+        y, m, dd = s.split('-')
+        return f"{dd}/{m}/{y}"
+    except Exception:
+        return s
+
+
+@bloqueios_judiciais_bp.route('/planilha')
+@login_required
+def planilha():
+    """Planilha de Bloqueios Judiciais em Vigor (FIN_VW033), agrupada por conta."""
+    rows = db.session.execute(text("""
+        SELECT ORDEM, CONTA, DT_DEPOSITO, VR_BLOQUEADO, PROCESSO, VARA, AUTOR
+        FROM [BDG].[FIN_VW033_BLOQUEIOS_JUDICIAIS_PLANILHA]
+        ORDER BY ORDEM, DT_DEPOSITO DESC
+    """)).fetchall()
+
+    grupos = []            # [{conta, linhas[], total}]
+    idx_por_conta = {}
+    total_geral = Decimal('0')
+
+    for r in rows:
+        conta = (r[1] or '').strip()
+        vr = Decimal(str(r[3])) if r[3] is not None else Decimal('0')
+        total_geral += vr
+
+        if conta not in idx_por_conta:
+            idx_por_conta[conta] = len(grupos)
+            grupos.append({'conta': conta, 'linhas': [], 'total': Decimal('0')})
+
+        g = grupos[idx_por_conta[conta]]
+        g['linhas'].append({
+            'data': _bj_data(r[2]),
+            'valor': _bj_moeda(vr),
+            'processo': (r[4] or '').strip(),
+            'vara': (r[5] or '').strip(),
+            'autor': (r[6] or '').strip(),
+        })
+        g['total'] += vr
+
+    # formata os totais por grupo
+    for g in grupos:
+        g['total_fmt'] = _bj_moeda(g['total'])
+
+    return render_template(
+        'bloqueios_judiciais/planilha.html',
+        grupos=grupos,
+        total_geral=_bj_moeda(total_geral),
+        qtd_contas=len(grupos),
+        data_posicao=datetime.now().strftime('%d/%m/%Y'),
+        sem_dados=(len(grupos) == 0),
+    )
+
+
+@bloqueios_judiciais_bp.route('/planilha/excel')
+@login_required
+def planilha_excel():
+    """Exporta Bloqueios Judiciais em Vigor (FIN_VW033) em .xlsx, no layout do modelo."""
+    rows = db.session.execute(text("""
+        SELECT ORDEM, CONTA, DT_DEPOSITO, VR_BLOQUEADO, PROCESSO, VARA, AUTOR
+        FROM [BDG].[FIN_VW033_BLOQUEIOS_JUDICIAIS_PLANILHA]
+        ORDER BY ORDEM, DT_DEPOSITO DESC
+    """)).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'BLOQ VIGOR'
+
+    # Larguras (iguais ao modelo)
+    larguras = {'A': 25.7, 'B': 20.7, 'C': 29.3, 'D': 101.3, 'E': 70.7}
+    for col, w in larguras.items():
+        ws.column_dimensions[col].width = w
+
+    thin = Side(style='thin')
+    borda = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal='center', vertical='center')
+    right = Alignment(horizontal='right')
+    FMT_DATA = 'mm-dd-yy'
+    FMT_MOEDA = '"R$"\\ #,##0.00'
+
+    # --- Título (A1:B1 mesclado, tam.14, centralizado) + data (B2, d.m.yyyy) ---
+    ws.merge_cells('A1:B1')
+    ws['A1'] = 'Bloqueios Judiciais em Vigor'
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A1'].alignment = center
+    ws['B2'] = datetime.now()
+    ws['B2'].font = Font(bold=True, size=11)
+    ws['B2'].alignment = right
+    ws['B2'].number_format = 'd\\.m\\.yyyy'
+
+    linha = 3
+    conta_atual = None
+    ini_dados = None       # primeira linha de dados do bloco (p/ o SUM)
+    ultima_dado = None
+    total_geral = 0.0
+
+    def escreve_total(l_total, l_ini, l_fim):
+        ws.cell(l_total, 1, 'TOTAL').font = Font(bold=True, size=12)
+        ws.cell(l_total, 1).alignment = center
+        c = ws.cell(l_total, 2, f'=SUM(B{l_ini}:B{l_fim})')
+        c.font = Font(bold=True, size=12)
+        c.alignment = right
+        c.number_format = FMT_MOEDA
+
+    for r in rows:
+        conta = (r[1] or '').strip()
+
+        if conta != conta_atual:
+            # fecha total do bloco anterior
+            if conta_atual is not None:
+                escreve_total(linha, ini_dados, ultima_dado)
+                linha += 2  # total + linha em branco
+
+            # cabeçalho do novo bloco (conta em A:B + PROCESSO/VARA/AUTOR), negrito, borda
+            ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=2)
+            ca = ws.cell(linha, 1, conta)
+            ca.font = Font(bold=True, size=12); ca.alignment = center; ca.border = borda
+            ws.cell(linha, 2).border = borda
+            for col, txt in [(3, 'PROCESSO'), (4, 'VARA'), (5, 'AUTOR')]:
+                cc = ws.cell(linha, col, txt)
+                cc.font = Font(bold=True, size=12); cc.alignment = center; cc.border = borda
+            conta_atual = conta
+            linha += 1
+            ini_dados = linha
+
+        # linha de dados
+        cA = ws.cell(linha, 1, r[2])                     # data (datetime)
+        cA.alignment = center; cA.font = Font(size=12); cA.number_format = FMT_DATA
+        vr = float(r[3]) if r[3] is not None else 0.0
+        total_geral += vr
+        cB = ws.cell(linha, 2, vr)                       # valor
+        cB.alignment = right; cB.font = Font(size=12); cB.number_format = FMT_MOEDA
+        ws.cell(linha, 3, (r[4] or '').strip()).font = Font(size=10)
+        ws.cell(linha, 3).alignment = center
+        ws.cell(linha, 4, (r[5] or '').strip()).font = Font(size=12)
+        ws.cell(linha, 4).alignment = center
+        ws.cell(linha, 5, (r[6] or '').strip()).font = Font(size=12)
+        ws.cell(linha, 5).alignment = center
+
+        ultima_dado = linha
+        linha += 1
+
+    # total do último bloco + TOTAL GERAL na última linha
+    if conta_atual is not None:
+        escreve_total(linha, ini_dados, ultima_dado)
+        linha += 2  # pula o total + 1 linha em branco
+
+        cg = ws.cell(linha, 1, 'TOTAL GERAL')
+        cg.font = Font(bold=True, size=12); cg.alignment = center
+        cgv = ws.cell(linha, 2, total_geral)
+        cgv.font = Font(bold=True, size=12); cgv.alignment = right
+        cgv.number_format = FMT_MOEDA
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    nome = f"BLOQUEIOS_JUDICIAIS_EM_VIGOR_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return Response(
+        bio.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{nome}"'}
+    )
+
+    def escreve_total(l_total, l_ini, l_fim):
+        ws.cell(l_total, 1, 'TOTAL').font = Font(bold=True, size=12)
+        ws.cell(l_total, 1).alignment = center
+        c = ws.cell(l_total, 2, f'=SUM(B{l_ini}:B{l_fim})')
+        c.font = Font(bold=True, size=12)
+        c.alignment = right
+        c.number_format = FMT_MOEDA
+
+    ultima_dado = None
+    for r in rows:
+        conta = (r[1] or '').strip()
+
+        if conta != conta_atual:
+            # fecha total do bloco anterior
+            if conta_atual is not None:
+                l_total = linha
+                escreve_total(l_total, ini_dados, ultima_dado)
+                linha += 2  # total + linha em branco
+
+            # cabeçalho do novo bloco (conta em A:B + PROCESSO/VARA/AUTOR), negrito, borda
+            ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=2)
+            ca = ws.cell(linha, 1, conta)
+            ca.font = Font(bold=True, size=12); ca.alignment = center; ca.border = borda
+            ws.cell(linha, 2).border = borda
+            for col, txt in [(3, 'PROCESSO'), (4, 'VARA'), (5, 'AUTOR')]:
+                cc = ws.cell(linha, col, txt)
+                cc.font = Font(bold=True, size=12); cc.alignment = center; cc.border = borda
+            conta_atual = conta
+            linha += 1
+            ini_dados = linha
+
+        # linha de dados
+        cA = ws.cell(linha, 1, r[2])                    # data (datetime)
+        cA.alignment = center; cA.font = Font(size=12); cA.number_format = FMT_DATA
+        vr = float(r[3]) if r[3] is not None else 0.0
+        cB = ws.cell(linha, 2, vr)                       # valor
+        cB.alignment = right; cB.font = Font(size=12); cB.number_format = FMT_MOEDA
+        ws.cell(linha, 3, (r[4] or '').strip()).font = Font(size=10)
+        ws.cell(linha, 3).alignment = center
+        ws.cell(linha, 4, (r[5] or '').strip()).font = Font(size=12)
+        ws.cell(linha, 4).alignment = center
+        ws.cell(linha, 5, (r[6] or '').strip()).font = Font(size=12)
+        ws.cell(linha, 5).alignment = center
+
+        ultima_dado = linha
+        linha += 1
+
+    # total do último bloco
+    if conta_atual is not None:
+        escreve_total(linha, ini_dados, ultima_dado)
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    nome = f"BLOQUEIOS_JUDICIAIS_EM_VIGOR_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    return Response(
+        bio.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{nome}"'}
+    )

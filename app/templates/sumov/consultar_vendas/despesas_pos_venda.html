@@ -1,0 +1,472 @@
+{% extends "base.html" %}
+
+{% block title %}Despesas Pagas Pós Venda - SUMOV{% endblock %}
+
+{% block content %}
+<div class="container-fluid fade-in" style="min-width:0; max-width:100%;">
+
+    <div id="toastContainer" style="position:fixed;top:20px;right:20px;z-index:1080;"></div>
+
+    <a href="{{ url_for('sumov.consultar_vendas') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar para Consultar Vendas
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-money-check-alt text-primary me-2"></i> Despesas Pagas Pós Venda
+        </h1>
+    </div>
+
+    <!-- Resumo -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card dpv-stat-card">
+                <div class="card-body d-flex align-items-center">
+                    <div class="dpv-stat-icon dpv-bg-blue me-3"><i class="fas fa-list-ol"></i></div>
+                    <div>
+                        <h6 class="text-muted mb-1">Registros</h6>
+                        <h4 class="mb-0 fw-bold">{{ total_registros }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dpv-stat-card">
+                <div class="card-body d-flex align-items-center">
+                    <div class="dpv-stat-icon dpv-bg-green me-3"><i class="fas fa-check-circle"></i></div>
+                    <div>
+                        <h6 class="text-muted mb-1">Classificados</h6>
+                        <h4 class="mb-0 fw-bold">{{ total_classificadas }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dpv-stat-card">
+                <div class="card-body d-flex align-items-center">
+                    <div class="dpv-stat-icon dpv-bg-orange me-3"><i class="fas fa-hourglass-half"></i></div>
+                    <div>
+                        <h6 class="text-muted mb-1">Pendentes</h6>
+                        <h4 class="mb-0 fw-bold">{{ total_pendentes }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card dpv-stat-card">
+                <div class="card-body d-flex align-items-center">
+                    <div class="dpv-stat-icon dpv-bg-blue me-3"><i class="fas fa-dollar-sign"></i></div>
+                    <div>
+                        <h6 class="text-muted mb-1">Total Despesas</h6>
+                        <h4 class="mb-0 fw-bold">R$ {{ valor_total }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo por Situação do Acerto (respeita os filtros ativos) -->
+    <div class="card mb-4" style="border:none;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <div class="card-header bg-white" style="border:none;border-radius:12px 12px 0 0;padding:0.9rem 1.25rem;">
+            <h6 class="mb-0 fw-bold text-secondary">
+                <i class="fas fa-table me-2"></i>Resumo por Situação do Acerto
+            </h6>
+        </div>
+        <div style="width:100%;max-width:100%;overflow-x:auto;">
+            <table class="dpv-resumo" style="width:100%;margin-bottom:0;border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th style="min-width:220px;">Situação</th>
+                        <th class="text-center">Quantidade</th>
+                        <th class="text-end">Valor Despesa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in resumo_situacoes %}
+                    <tr>
+                        <td>
+                            {% if item.classificada %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>{{ item.dsc }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ item.dsc }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">{{ item.qtd }}</td>
+                        <td class="text-end">R$ {{ item.vr_despesa_fmt }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-3">Sem dados para os filtros informados.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if resumo_situacoes %}
+                <tfoot>
+                    <tr style="background:#eef2ff;font-weight:700;">
+                        <td>TOTAL GERAL</td>
+                        <td class="text-center">{{ resumo_total_qtd }}</td>
+                        <td class="text-end">R$ {{ resumo_total_despesa }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4" style="border:none;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('sumov.despesas_pos_venda') }}" class="row g-3 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">Nº Contrato</label>
+                    <input type="text" name="nr_contrato" class="form-control" value="{{ filtros.nr_contrato }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Nº Ocorrência</label>
+                    <input type="text" name="nr_ocorrencia" class="form-control" value="{{ filtros.nr_ocorrencia }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Nº Imóvel</label>
+                    <input type="text" name="nu_imovel" class="form-control" value="{{ filtros.nu_imovel }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Situação da Venda</label>
+                    <select name="situacao_venda" class="form-select">
+                        <option value="">Todas</option>
+                        {% for sv in situacoes_venda %}
+                            <option value="{{ sv }}" {% if filtros.situacao_venda == sv %}selected{% endif %}>{{ sv }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Situação do Acerto</label>
+                    <select name="situacao_acerto" class="form-select">
+                        <option value="">Todas</option>
+                        <option value="__NAO__" {% if filtros.situacao_acerto == '__NAO__' %}selected{% endif %}>Não classificadas</option>
+                        {% for s in situacoes_acerto %}
+                            <option value="{{ s.id }}" {% if filtros.situacao_acerto == s.id|string %}selected{% endif %}>{{ s.dsc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Pagamento (De)</label>
+                    <input type="date" name="dt_ini" class="form-control" value="{{ filtros.dt_ini }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Pagamento (Até)</label>
+                    <input type="date" name="dt_fim" class="form-control" value="{{ filtros.dt_fim }}">
+                </div>
+                <div class="col-12 d-flex gap-2 mt-2">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-filter me-1"></i> Filtrar</button>
+                    <a href="{{ url_for('sumov.despesas_pos_venda') }}" class="btn btn-outline-secondary"><i class="fas fa-eraser me-1"></i> Limpar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela com scroll lateral (overflow inline, à prova de CSS global) -->
+    <div style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:0;min-width:0;overflow:hidden;">
+        <div class="dpv-scroll"
+             style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;border-radius:12px;">
+            <table class="dpv-table" style="min-width:1600px;width:100%;margin-bottom:0;border-collapse:collapse;">
+                <thead>
+                    <tr>
+                        <th>Data Ref.</th>
+                        <th>Nº Imóvel</th>
+                        <th>Nº Ocorr.</th>
+                        <th>Item Serviço</th>
+                        <th>Dt. Pagamento</th>
+                        <th class="text-end">Vr. Despesa</th>
+                        <th class="text-end">Vr. Venda</th>
+                        <th>Dt. Venda</th>
+                        <th>Sit. Venda</th>
+                        <th>Situação Registrada</th>
+                        <th style="min-width:300px;">Classificar</th>
+                    </tr>
+                </thead>
+                <tbody id="corpoTabela">
+                    {% for r in registros %}
+                    <tr>
+                        <td>{{ r.dt_referencia }}</td>
+                        <td>{{ r.nr_contrato }}</td>
+                        <td>{{ r.nr_ocorrencia }}</td>
+                        <td>{{ r.dsc_item_servico }}</td>
+                        <td>{{ r.dt_lancamento_pagamento }}</td>
+                        <td class="text-end">R$ {{ r.vr_despesa_fmt }}</td>
+                        <td class="text-end">R$ {{ r.vr_venda_fmt }}</td>
+                        <td>{{ r.dt_venda }}</td>
+                        <td>{{ r.dsc_sit_venda }}</td>
+                        <td class="badge-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}">
+                            {% if r.id_situacao_acerto is not none %}
+                                <span class="badge bg-success"><i class="fas fa-check me-1"></i>{{ r.dsc_situacao_acerto }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Não classificada</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm sel-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}" style="min-width:210px;">
+                                    <option value="">— Selecione —</option>
+                                    {% for s in situacoes_acerto %}
+                                        <option value="{{ s.id }}" {% if r.id_situacao_acerto == s.id %}selected{% endif %}>{{ s.dsc }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-sm btn-success js-ignore-loading"
+                                        data-ocorrencia="{{ r.nr_ocorrencia }}"
+                                        onclick="salvarSituacao(this, event)">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr id="linhaVazia">
+                        <td colspan="12" class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-2x d-block mb-2"></i>
+                            Nenhuma despesa encontrada para os filtros informados.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="text-center mt-2">
+        <small class="text-muted"><i class="fas fa-arrows-alt-h"></i> Arraste a barra para ver todas as colunas</small>
+    </div>
+
+        <!-- Botão Carregar mais -->
+    <div id="areaCarregarMais" class="text-center mt-3" {% if not tem_mais %}style="display:none;"{% endif %}>
+        <button type="button" id="btnCarregarMais" class="btn btn-outline-primary js-ignore-loading">
+            <i class="fas fa-plus-circle me-1"></i> Carregar mais {{ page_size }}
+        </button>
+    </div>
+</div>
+
+<style>
+    .dpv-stat-card {
+        border: none; border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06); height: 100%;
+    }
+    .dpv-stat-icon {
+        width: 44px; height: 44px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.15rem; color: #fff;
+    }
+    .dpv-bg-blue   { background: linear-gradient(135deg, #4e73df, #224abe); }
+    .dpv-bg-green  { background: linear-gradient(135deg, #1cc88a, #13855c); }
+    .dpv-bg-orange { background: linear-gradient(135deg, #f6c23e, #dda20a); }
+
+    .dpv-table thead th {
+        background: #f8f9fc; font-weight: 600; font-size: 0.8rem;
+        color: #5a5c69; border-bottom: 2px solid #e3e6f0;
+        text-transform: uppercase; letter-spacing: 0.3px;
+        white-space: nowrap; padding: 0.7rem 0.85rem;
+    }
+    .dpv-table tbody td {
+        font-size: 0.85rem; vertical-align: middle;
+        white-space: nowrap; padding: 0.6rem 0.85rem;
+        border-bottom: 1px solid #edf0f5;
+    }
+    .dpv-table tbody tr:hover { background: #f8fbff; }
+
+    /* Tabela de resumo por situação */
+    .dpv-resumo thead th {
+        background: #f8f9fc; font-weight: 600; font-size: 0.78rem;
+        color: #5a5c69; border-bottom: 2px solid #e3e6f0;
+        text-transform: uppercase; letter-spacing: 0.3px;
+        white-space: nowrap; padding: 0.6rem 1.25rem;
+    }
+    .dpv-resumo tbody td {
+        font-size: 0.88rem; vertical-align: middle;
+        padding: 0.55rem 1.25rem; border-bottom: 1px solid #edf0f5;
+    }
+    .dpv-resumo tbody tr:hover { background: #f8fbff; }
+    .dpv-resumo tfoot td { padding: 0.65rem 1.25rem; border-top: 2px solid #e3e6f0; }
+
+    .dpv-scroll::-webkit-scrollbar { height: 12px; }
+    .dpv-scroll::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+    .dpv-scroll::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+    .dpv-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+    .dpv-scroll { scrollbar-width: thin; scrollbar-color: #888 #f1f1f1; }
+</style>
+
+<script>
+    const URL_SALVAR = "{{ url_for('sumov.despesas_pos_venda_salvar') }}";
+    const URL_PAGINA = "{{ url_for('sumov.despesas_pos_venda_pagina') }}";
+    const SITUACOES = {{ situacoes_acerto | tojson }};
+    let offsetAtual = {{ registros|length }};
+
+    function escapeHtml(v) {
+        if (v === null || v === undefined) return '';
+        return String(v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function mostrarToast(msg, tipo) {
+        const cont = document.getElementById('toastContainer');
+        const div = document.createElement('div');
+        div.className = 'alert alert-' + (tipo === 'success' ? 'success' : 'danger') + ' shadow-sm';
+        div.style.cssText = 'margin-bottom:10px;min-width:260px;';
+        div.innerHTML = msg;
+        cont.appendChild(div);
+        setTimeout(function () { div.remove(); }, 3000);
+    }
+
+    // -------------------- Salvar / editar situação --------------------
+    function atualizarLinhas(nr, idSituacao, dscSituacao) {
+        document.querySelectorAll('.badge-situacao[data-ocorrencia="' + nr + '"]').forEach(function (cell) {
+            if (idSituacao) {
+                cell.innerHTML = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>' + escapeHtml(dscSituacao) + '</span>';
+            } else {
+                cell.innerHTML = '<span class="badge bg-secondary">Não classificada</span>';
+            }
+        });
+        document.querySelectorAll('select.sel-situacao[data-ocorrencia="' + nr + '"]').forEach(function (sel) {
+            sel.value = idSituacao ? String(idSituacao) : '';
+        });
+    }
+
+    function salvarSituacao(btn, ev) {
+        // Impede o auto-loading.js de "adotar" o clique e prender o botão
+        if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+
+        const nr = btn.getAttribute('data-ocorrencia');
+        const row = btn.closest('tr');
+        const select = row.querySelector('select.sel-situacao');
+        const idSit = select.value;
+
+        const original = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(function () { controller.abort(); }, 30000);
+
+        fetch(URL_SALVAR, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true', 'Accept': 'application/json' },
+            body: JSON.stringify({ nr_ocorrencia: nr, id_situacao: idSit }),
+            signal: controller.signal
+        })
+        .then(function (resp) {
+            if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
+            return resp.json();
+        })
+        .then(function (data) {
+            if (data.success) {
+                atualizarLinhas(nr, data.id_situacao, data.dsc_situacao);
+                mostrarToast(data.message, 'success');
+            } else {
+                mostrarToast(data.message || 'Erro ao salvar.', 'danger');
+            }
+        })
+        .catch(function (err) {
+            if (err.name === 'AbortError') {
+                mostrarToast('Tempo esgotado ao salvar. Tente novamente.', 'danger');
+            } else {
+                mostrarToast('Erro ao salvar: ' + err.message, 'danger');
+            }
+        })
+        .finally(function () {
+            clearTimeout(timeoutId);
+            btn.disabled = false;
+            btn.innerHTML = original;
+        });
+    }
+
+    // -------------------- Carregar mais (30 em 30, sem travar) --------------------
+    function criarLinha(r) {
+        let opts = '<option value="">— Selecione —</option>';
+        SITUACOES.forEach(function (s) {
+            const sel = (r.id_situacao_acerto !== null && r.id_situacao_acerto === s.id) ? ' selected' : '';
+            opts += '<option value="' + s.id + '"' + sel + '>' + escapeHtml(s.dsc) + '</option>';
+        });
+
+        let badge;
+        if (r.id_situacao_acerto !== null && r.id_situacao_acerto !== undefined) {
+            badge = '<span class="badge bg-success"><i class="fas fa-check me-1"></i>' + escapeHtml(r.dsc_situacao_acerto) + '</span>';
+        } else {
+            badge = '<span class="badge bg-secondary">Não classificada</span>';
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+            '<td>' + escapeHtml(r.dt_referencia) + '</td>' +
+            '<td>' + escapeHtml(r.nr_contrato) + '</td>' +
+            '<td>' + escapeHtml(r.nr_ocorrencia) + '</td>' +
+            '<td>' + escapeHtml(r.dsc_item_servico) + '</td>' +
+            '<td>' + escapeHtml(r.dt_lancamento_pagamento) + '</td>' +
+            '<td class="text-end">R$ ' + escapeHtml(r.vr_despesa_fmt) + '</td>' +
+            '<td>' + escapeHtml(r.nu_imovel) + '</td>' +
+            '<td class="text-end">R$ ' + escapeHtml(r.vr_venda_fmt) + '</td>' +
+            '<td>' + escapeHtml(r.dt_venda) + '</td>' +
+            '<td>' + escapeHtml(r.dsc_sit_venda) + '</td>' +
+            '<td class="badge-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '">' + badge + '</td>' +
+            '<td>' +
+                '<div class="d-flex gap-2">' +
+                    '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" style="min-width:210px;">' + opts + '</select>' +
+                    '<button type="button" class="btn btn-sm btn-success js-ignore-loading" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" onclick="salvarSituacao(this, event)"><i class="fas fa-save"></i></button>' +
+                '</div>' +
+            '</td>';
+        return tr;
+    }
+
+        const btnMais = document.getElementById('btnCarregarMais');
+    if (btnMais) {
+        const textoOriginalBtn = btnMais.innerHTML;
+
+        btnMais.addEventListener('click', function (ev) {
+            // Impede o auto-loading.js de "adotar" o clique e prender o botão
+            if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+
+            btnMais.disabled = true;
+            btnMais.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Carregando...';
+
+            // Timeout garante que o botão NUNCA fique girando pra sempre
+            const controller = new AbortController();
+            const timeoutId = setTimeout(function () { controller.abort(); }, 30000);
+
+            const params = new URLSearchParams(window.location.search);
+            params.set('offset', offsetAtual);
+
+            fetch(URL_PAGINA + '?' + params.toString(), {
+                method: 'GET',
+                headers: { 'X-Silent-Request': 'true', 'Accept': 'application/json' },
+                signal: controller.signal
+            })
+            .then(function (resp) {
+                if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
+                return resp.json();
+            })
+            .then(function (data) {
+                if (!data.success) {
+                    mostrarToast(data.message || 'Erro ao carregar mais.', 'danger');
+                    return;
+                }
+                const tbody = document.getElementById('corpoTabela');
+                const lista = data.registros || [];
+                lista.forEach(function (r) { tbody.appendChild(criarLinha(r)); });
+                offsetAtual += lista.length;
+                if (!data.tem_mais || lista.length === 0) {
+                    document.getElementById('areaCarregarMais').style.display = 'none';
+                }
+            })
+            .catch(function (err) {
+                if (err.name === 'AbortError') {
+                    mostrarToast('Tempo esgotado ao carregar. Tente novamente.', 'danger');
+                } else {
+                    mostrarToast('Erro ao carregar: ' + err.message, 'danger');
+                }
+            })
+            .finally(function () {
+                clearTimeout(timeoutId);
+                btnMais.disabled = false;
+                btnMais.innerHTML = textoOriginalBtn;
+            });
+        });
+    }
+</script>
+{% endblock %}
