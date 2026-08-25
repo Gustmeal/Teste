@@ -10,6 +10,14 @@ from app.models.cotas_fundos import (
     e_dia_util, calcular_ind_cota,
 )
 from app.utils.audit import registrar_log
+import io
+from datetime import datetime
+from flask import Response
+from sqlalchemy import text
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
 
 cotas_fundos_bp = Blueprint(
     'cotas_fundos', __name__, url_prefix='/cotas-fundos'
@@ -20,6 +28,7 @@ cotas_fundos_bp = Blueprint(
 # não se move e o índice dá zero). Troque para 'util' se a regra for outra.
 AUTO_PREENCHER_EM = 'nao_util'
 
+_MES_ABREV = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ']
 
 def _to_decimal(valor):
     """Converte string do formulário em Decimal. None se vazio/inválido."""
@@ -201,3 +210,186 @@ def preencher_automaticos(chave):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+@cotas_fundos_bp.route('/performance/excel')
+@login_required
+def performance_excel():
+    """Performance Diária (FIN_VW034): ano mais recente com detalhe mensal
+    (dias agrupados, só o mês atual aberto) + ACUMULADO; anos anteriores
+    aparecem apenas como uma linha de ACUMULADO cada. Totais com 4 casas."""
+    from collections import OrderedDict
+
+    rows = db.session.execute(text("""
+        SELECT ANO, DT_ATUALIZACAO, FAE_COTA, FAE_IND_COTA, BB_COTA, BB_IND_COTA,
+               CX_COTA, CX_IND_COTA, SELIC, ANBIMA,
+               PC_IRFM_FAE, PC_SELIC_FAE, PC_IRFM_BB, PC_SELIC_BB, PC_IRFM_CX, PC_SELIC_CX
+        FROM [BDG].[FIN_VW034_PERFORMANCE_DIARIA_FUNDOS]
+        ORDER BY ANO, DT_ATUALIZACAO
+    """)).fetchall()
+
+    if not rows:
+        return Response('Sem dados na FIN_VW034.', mimetype='text/plain')
+
+    # índices dentro de cada linha (com ANO na frente)
+    I_DT, I_FAEC, I_FAEI, I_BBC, I_BBI, I_CXC, I_CXI, I_SELIC, I_ANB = 1, 2, 3, 4, 5, 6, 7, 8, 9
+    I_PC = 10  # começam os 6 PC_* (10..15)
+
+    _n = lambda v: float(v) if v is not None else None
+
+    # agrupa por ano
+    por_ano = OrderedDict()
+    for r in rows:
+        por_ano.setdefault(int(r[0]), []).append(r)
+    anos = sorted(por_ano.keys())
+    ano = max(anos)                       # ano mais recente = detalhado
+    outros = sorted([a for a in anos if a != ano], reverse=True)
+
+    # último registro de cada ano (p/ base do ano seguinte)
+    last_rec = {a: recs[-1] for a, recs in por_ano.items()}
+    def base_cotas(a):
+        p = a - 1
+        if p in last_rec:
+            lr = last_rec[p]
+            return (_n(lr[I_FAEC]), _n(lr[I_BBC]), _n(lr[I_CXC]))
+        return (None, None, None)
+
+    # ---------- helper: acumulado de um ano inteiro (valores) ----------
+    def acum_ano(recs, base):
+        first, last = recs[0], recs[-1]
+        def var(idx, b):
+            c1 = _n(last[idx]); c0 = b if b is not None else _n(first[idx])
+            return (c1 / c0 - 1) if (c0 not in (None, 0) and c1 is not None) else None
+        fae = var(I_FAEC, base[0]); bb = var(I_BBC, base[1]); cx = var(I_CXC, base[2])
+        ps = pa = 1.0
+        for r in recs:
+            s = _n(r[I_SELIC]) or 0.0; a_ = _n(r[I_ANB]) or 0.0
+            ps *= (1 + s / 100.0); pa *= (1 + a_ / 100.0)
+        selic, anb = ps - 1, pa - 1
+        rt = lambda f, i: (f / i) if (f is not None and i not in (None, 0)) else None
+        return {'C': fae, 'E': bb, 'G': cx, 'H': selic, 'I': anb,
+                'J': rt(fae, anb), 'K': rt(fae, selic), 'L': rt(bb, anb),
+                'M': rt(bb, selic), 'N': rt(cx, anb), 'O': rt(cx, selic)}
+
+    # ================= monta a planilha =================
+    wb = Workbook(); ws = wb.active; ws.title = str(ano)
+    ws.sheet_properties.outlinePr.summaryBelow = True
+
+    thin = Side(style='thin'); borda = Border(thin, thin, thin, thin)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    azul = PatternFill('solid', fgColor='1F4E79'); fbranco = Font(bold=True, color='FFFFFF')
+    realce = PatternFill('solid', fgColor='D9E1F2'); realce_mes = PatternFill('solid', fgColor='EDF1F7')
+    realce_ano = PatternFill('solid', fgColor='FDE9D9')
+    F_COTA = '0.000000000'; F_PCT6 = '0.000000%'; F_TOT = '0.0000%'
+
+    ws['A1'] = 'Diretoria Contábil e Financeira - Difin'
+    ws['A2'] = 'Superintendência Financeira - Sufin'
+    ws['A3'] = 'Gerência de Finanças - Gefin'
+    ws['A5'] = 'Performance dos Fundos de Investimentos'
+    for c in ('A1', 'A2', 'A3'): ws[c].font = Font(bold=True, size=10)
+    ws['A5'].font = Font(bold=True, size=13, color='1F4E79')
+
+    L1, L2 = 7, 8
+    ws.merge_cells(start_row=L1, start_column=1, end_row=L2, end_column=1); ws.cell(L1, 1, 'DATA')
+    def grp(ci, tit, span=2):
+        ws.merge_cells(start_row=L1, start_column=ci, end_row=L1, end_column=ci+span-1); ws.cell(L1, ci, tit)
+    grp(2, 'Extramercado FAE 2'); grp(4, 'BB RF Exclusivo Emgea'); grp(6, 'Caixa RF Exclusivo XXI')
+    ws.merge_cells(start_row=L1, start_column=8, end_row=L1, end_column=9); ws.cell(L1, 8, 'Benchmarks')
+    ws.merge_cells(start_row=L1, start_column=10, end_row=L1, end_column=15); ws.cell(L1, 10, 'Performance (%)')
+    sub = [None, 'Cota', 'Variação', 'Cota', 'Variação', 'Cota', 'Variação', 'Selic', 'Anbima IRFM 1',
+           '% IRFM FAE2', '% SELIC FAE2', '% IRFM BB', '% SELIC BB', '% IRFM CX', '% SELIC CX']
+    for i, t in enumerate(sub, start=1):
+        if t: ws.cell(L2, i, t)
+    for r in (L1, L2):
+        for c in range(1, 16):
+            cell = ws.cell(r, c); cell.font = fbranco; cell.fill = azul; cell.alignment = center; cell.border = borda
+
+    # ---------- ano mais recente: detalhe mensal ----------
+    registros_ano = por_ano[ano]
+    por_mes = OrderedDict()
+    for r in registros_ano:
+        por_mes.setdefault(r[I_DT].month, []).append(r)
+    meses = list(por_mes.keys())
+    mes_mais_recente = meses[-1] if meses else None
+
+    linhas_mes = []
+    prev_ud = None
+    AUX_L, AUX_M = 21, 22
+    lin = 9
+
+    for m in meses:
+        registros = por_mes[m]
+        pi = lin
+        for r in registros:
+            ws.cell(lin, 1, r[I_DT]).number_format = 'dd/mm/yyyy'; ws.cell(lin, 1).alignment = center
+            ws.cell(lin, 2, _n(r[I_FAEC])).number_format = F_COTA
+            ws.cell(lin, 4, _n(r[I_BBC])).number_format = F_COTA
+            ws.cell(lin, 6, _n(r[I_CXC])).number_format = F_COTA
+            for col, idx in [(3, I_FAEI), (5, I_BBI), (7, I_CXI), (8, I_SELIC), (9, I_ANB)]:
+                v = _n(r[idx]); ws.cell(lin, col, (v/100.0) if v is not None else None).number_format = F_PCT6
+            # 6 colunas PC_* vindas da view (já em %)
+            for col, idx in [(10, I_PC), (11, I_PC+1), (12, I_PC+2), (13, I_PC+3), (14, I_PC+4), (15, I_PC+5)]:
+                v = _n(r[idx]); ws.cell(lin, col, (v/100.0) if v is not None else None).number_format = F_PCT6
+            ws.cell(lin, AUX_L, f"=1+H{lin}")
+            ws.cell(lin, AUX_M, f"=1+I{lin}")
+            ws.row_dimensions[lin].outline_level = 1
+            ws.row_dimensions[lin].hidden = (m != mes_mais_recente)
+            lin += 1
+        ud = lin - 1
+
+        auxL = get_column_letter(AUX_L); auxM = get_column_letter(AUX_M)
+        ws.cell(lin, 1, f"{_MES_ABREV[m-1]}/{ano}").font = Font(bold=True)
+        base = prev_ud if prev_ud else pi
+        ws.cell(lin, 3, f"=(B{ud}/B{base})-1").number_format = F_TOT
+        ws.cell(lin, 5, f"=(D{ud}/D{base})-1").number_format = F_TOT
+        ws.cell(lin, 7, f"=(F{ud}/F{base})-1").number_format = F_TOT
+        ws.cell(lin, 8, f"=PRODUCT({auxL}{pi}:{auxL}{ud})-1").number_format = F_TOT
+        ws.cell(lin, 9, f"=PRODUCT({auxM}{pi}:{auxM}{ud})-1").number_format = F_TOT
+        ws.cell(lin, 10, f"=C{lin}/I{lin}").number_format = F_TOT
+        ws.cell(lin, 11, f"=C{lin}/H{lin}").number_format = F_TOT
+        ws.cell(lin, 12, f"=E{lin}/I{lin}").number_format = F_TOT
+        ws.cell(lin, 13, f"=E{lin}/H{lin}").number_format = F_TOT
+        ws.cell(lin, 14, f"=G{lin}/I{lin}").number_format = F_TOT
+        ws.cell(lin, 15, f"=G{lin}/H{lin}").number_format = F_TOT
+        for c in range(1, 16):
+            ws.cell(lin, c).fill = realce_mes; ws.cell(lin, c).border = borda
+        linhas_mes.append(lin)
+        prev_ud = ud
+        lin += 1
+
+    ws.column_dimensions[get_column_letter(AUX_L)].hidden = True
+    ws.column_dimensions[get_column_letter(AUX_M)].hidden = True
+
+    # ACUMULADO do ano mais recente (produtório das linhas mensais)
+    lac = lin + 1
+    ws.cell(lac, 1, f'ACUMULADO {ano}').font = Font(bold=True)
+    def prod_meses(colL):
+        return "=" + "*".join([f"(1+{colL}{lmr})" for lmr in linhas_mes]) + "-1"
+    for colL, colnum in [('C', 3), ('E', 5), ('G', 7), ('H', 8), ('I', 9)]:
+        ws.cell(lac, colnum, prod_meses(colL)).number_format = F_TOT
+    for col, (num, den) in {10:('C','I'),11:('C','H'),12:('E','I'),13:('E','H'),14:('G','I'),15:('G','H')}.items():
+        ws.cell(lac, col, f"={num}{lac}/{den}{lac}").number_format = F_TOT
+    for c in range(1, 16):
+        ws.cell(lac, c).fill = realce; ws.cell(lac, c).font = Font(bold=True); ws.cell(lac, c).border = borda
+
+    # ---------- outros anos: só ACUMULADO (valores) ----------
+    lin = lac + 2
+    for a in outros:
+        vals = acum_ano(por_ano[a], base_cotas(a))
+        ws.cell(lin, 1, f'ACUMULADO {a}').font = Font(bold=True)
+        for colL, colnum in [('C',3),('E',5),('G',7),('H',8),('I',9),
+                             ('J',10),('K',11),('L',12),('M',13),('N',14),('O',15)]:
+            v = vals[colL]
+            cc = ws.cell(lin, colnum, v if v is not None else None)
+            cc.number_format = F_TOT
+        for c in range(1, 16):
+            ws.cell(lin, c).fill = realce_ano; ws.cell(lin, c).font = Font(bold=True); ws.cell(lin, c).border = borda
+        lin += 1
+
+    larg = {'A':12,'B':13,'C':12,'D':13,'E':12,'F':13,'G':12,'H':11,'I':13,
+            'J':12,'K':12,'L':12,'M':12,'N':12,'O':12}
+    for col, w in larg.items(): ws.column_dimensions[col].width = w
+
+    bio = io.BytesIO(); wb.save(bio); bio.seek(0)
+    return Response(bio.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="PERFORMANCE_FUNDOS_{ano}.xlsx"'})
