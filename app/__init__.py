@@ -207,6 +207,16 @@ def create_app():
 
         return redirect(url_for('main.geinc_index'))
 
+    @app.template_filter('mil')
+    def mil(valor):
+        """Formata inteiros com separador de milhar no padrão brasileiro (1.234.567)."""
+        if valor is None or valor == '':
+            return '0'
+        try:
+            return '{:,.0f}'.format(float(valor)).replace(',', '.')
+        except (ValueError, TypeError):
+            return valor
+
     @app.context_processor
     def inject_pendentes_reset():
         if current_user.is_authenticated and (current_user.perfil in ['admin', 'moderador']):

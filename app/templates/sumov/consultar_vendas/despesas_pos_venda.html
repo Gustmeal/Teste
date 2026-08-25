@@ -25,7 +25,7 @@
                     <div class="dpv-stat-icon dpv-bg-blue me-3"><i class="fas fa-list-ol"></i></div>
                     <div>
                         <h6 class="text-muted mb-1">Registros</h6>
-                        <h4 class="mb-0 fw-bold">{{ total_registros }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ total_registros | mil }}</h4>
                     </div>
                 </div>
             </div>
@@ -47,7 +47,7 @@
                     <div class="dpv-stat-icon dpv-bg-orange me-3"><i class="fas fa-hourglass-half"></i></div>
                     <div>
                         <h6 class="text-muted mb-1">Pendentes</h6>
-                        <h4 class="mb-0 fw-bold">{{ total_pendentes }}</h4>
+                        <h4 class="mb-0 fw-bold">{{ total_pendentes | mil }}</h4>
                     </div>
                 </div>
             </div>
@@ -91,7 +91,7 @@
                                 <span class="badge bg-secondary">{{ item.dsc }}</span>
                             {% endif %}
                         </td>
-                        <td class="text-center">{{ item.qtd }}</td>
+                        <td class="text-center">{{ item.qtd | mil }}</td>
                         <td class="text-end">R$ {{ item.vr_despesa_fmt }}</td>
                     </tr>
                     {% else %}
@@ -104,7 +104,7 @@
                 <tfoot>
                     <tr style="background:#eef2ff;font-weight:700;">
                         <td>TOTAL GERAL</td>
-                        <td class="text-center">{{ resumo_total_qtd }}</td>
+                        <td class="text-center">{{ resumo_total_qtd | mil }}</td>
                         <td class="text-end">R$ {{ resumo_total_despesa }}</td>
                     </tr>
                 </tfoot>
@@ -149,6 +149,24 @@
                     </select>
                 </div>
                 <div class="col-md-2">
+                    <label class="form-label">Ano da Venda</label>
+                    <select name="ano_venda" class="form-select">
+                        <option value="">Todos</option>
+                        {% for ano in anos_venda %}
+                            <option value="{{ ano }}" {% if filtros.ano_venda == ano|string %}selected{% endif %}>{{ ano }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Item Serviço</label>
+                    <select name="item_servico" class="form-select">
+                        <option value="">Todos</option>
+                        {% for it in itens_servico %}
+                            <option value="{{ it }}" {% if filtros.item_servico == it %}selected{% endif %}>{{ it }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
                     <label class="form-label">Pagamento (De)</label>
                     <input type="date" name="dt_ini" class="form-control" value="{{ filtros.dt_ini }}">
                 </div>
@@ -168,33 +186,40 @@
     <div style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:0;min-width:0;overflow:hidden;">
         <div class="dpv-scroll"
              style="width:100%;max-width:100%;min-width:0;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;border-radius:12px;">
-            <table class="dpv-table" style="min-width:1600px;width:100%;margin-bottom:0;border-collapse:collapse;">
+            <table class="dpv-table">
+                <colgroup>
+                    <col class="dpv-col-contrato">
+                    <col class="dpv-col-ocorrencia">
+                    <col class="dpv-col-servico">
+                    <col class="dpv-col-data">
+                    <col class="dpv-col-despesa">
+                    <col class="dpv-col-data">
+                    <col class="dpv-col-venda">
+                    <col class="dpv-col-registrada">
+                    <col class="dpv-col-classificar">
+                </colgroup>
                 <thead>
                     <tr>
-                        <th>Data Ref.</th>
                         <th>Nº Imóvel</th>
                         <th>Nº Ocorr.</th>
                         <th>Item Serviço</th>
-                        <th>Dt. Pagamento</th>
+                        <th>Dt. Pgto</th>
                         <th class="text-end">Vr. Despesa</th>
-                        <th class="text-end">Vr. Venda</th>
                         <th>Dt. Venda</th>
                         <th>Sit. Venda</th>
                         <th>Situação Registrada</th>
-                        <th style="min-width:300px;">Classificar</th>
+                        <th>Classificar</th>
                     </tr>
                 </thead>
                 <tbody id="corpoTabela">
                     {% for r in registros %}
                     <tr>
-                        <td>{{ r.dt_referencia }}</td>
                         <td>{{ r.nr_contrato }}</td>
                         <td>{{ r.nr_ocorrencia }}</td>
                         <td>{{ r.dsc_item_servico }}</td>
-                        <td>{{ r.dt_lancamento_pagamento }}</td>
+                        <td class="dpv-data">{{ r.dt_lancamento_pagamento }}</td>
                         <td class="text-end">R$ {{ r.vr_despesa_fmt }}</td>
-                        <td class="text-end">R$ {{ r.vr_venda_fmt }}</td>
-                        <td>{{ r.dt_venda }}</td>
+                        <td class="dpv-data">{{ r.dt_venda }}</td>
                         <td>{{ r.dsc_sit_venda }}</td>
                         <td class="badge-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}">
                             {% if r.id_situacao_acerto is not none %}
@@ -204,8 +229,8 @@
                             {% endif %}
                         </td>
                         <td>
-                            <div class="d-flex gap-2">
-                                <select class="form-select form-select-sm sel-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}" style="min-width:210px;">
+                            <div class="dpv-classificar">
+                                <select class="form-select form-select-sm sel-situacao" data-ocorrencia="{{ r.nr_ocorrencia }}">
                                     <option value="">— Selecione —</option>
                                     {% for s in situacoes_acerto %}
                                         <option value="{{ s.id }}" {% if r.id_situacao_acerto == s.id %}selected{% endif %}>{{ s.dsc }}</option>
@@ -221,7 +246,7 @@
                     </tr>
                     {% else %}
                     <tr id="linhaVazia">
-                        <td colspan="12" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             <i class="fas fa-inbox fa-2x d-block mb-2"></i>
                             Nenhuma despesa encontrada para os filtros informados.
                         </td>
@@ -258,18 +283,47 @@
     .dpv-bg-green  { background: linear-gradient(135deg, #1cc88a, #13855c); }
     .dpv-bg-orange { background: linear-gradient(135deg, #f6c23e, #dda20a); }
 
+    .dpv-table {
+        width: 100%; min-width: 1180px; margin-bottom: 0;
+        border-collapse: collapse; table-layout: fixed;
+    }
+
     .dpv-table thead th {
-        background: #f8f9fc; font-weight: 600; font-size: 0.8rem;
+        background: #f8f9fc; font-weight: 600; font-size: 0.76rem;
         color: #5a5c69; border-bottom: 2px solid #e3e6f0;
-        text-transform: uppercase; letter-spacing: 0.3px;
-        white-space: nowrap; padding: 0.7rem 0.85rem;
+        text-transform: uppercase; letter-spacing: 0.15px;
+        white-space: nowrap; padding: 0.62rem 0.42rem;
     }
     .dpv-table tbody td {
-        font-size: 0.85rem; vertical-align: middle;
-        white-space: nowrap; padding: 0.6rem 0.85rem;
+        font-size: 0.8rem; vertical-align: middle;
+        white-space: nowrap; padding: 0.55rem 0.42rem;
         border-bottom: 1px solid #edf0f5;
     }
     .dpv-table tbody tr:hover { background: #f8fbff; }
+
+    /* Larguras fixas das colunas */
+    .dpv-col-contrato     { width: 108px; }
+    .dpv-col-ocorrencia   { width: 84px; }
+    .dpv-col-servico      { width: 180px; }
+    .dpv-col-data         { width: 72px; }
+    .dpv-col-despesa      { width: 128px; }
+    .dpv-col-venda        { width: 88px; }
+    .dpv-col-registrada   { width: 155px; }
+    .dpv-col-classificar  { width: 205px; }
+
+    .dpv-table td:nth-child(1),
+    .dpv-table td:nth-child(2),
+    .dpv-table td:nth-child(5) {
+        font-variant-numeric: tabular-nums;
+    }
+
+    .dpv-classificar {
+        display: flex; align-items: center; gap: 0.35rem; width: 100%;
+    }
+    .dpv-classificar .sel-situacao {
+        flex: 1 1 auto; width: auto; min-width: 0;
+    }
+    .dpv-classificar .btn { flex: 0 0 auto; }
 
     /* Tabela de resumo por situação */
     .dpv-resumo thead th {
@@ -314,6 +368,22 @@
         cont.appendChild(div);
         setTimeout(function () { div.remove(); }, 3000);
     }
+
+    // Exibe apenas dois dígitos no ano, sem alterar o valor recebido do servidor.
+    function formatarDataCurta(valor) {
+        if (valor === null || valor === undefined) return '';
+        const texto = String(valor).trim();
+        let partes = texto.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/);
+        if (partes) return partes[1] + '/' + partes[2] + '/' + partes[3].slice(-2) + partes[4];
+
+        partes = texto.match(/^(\d{4})-(\d{2})-(\d{2})(.*)$/);
+        if (partes) return partes[3] + '/' + partes[2] + '/' + partes[1].slice(-2) + partes[4];
+        return texto;
+    }
+
+    document.querySelectorAll('.dpv-data').forEach(function (cell) {
+        cell.textContent = formatarDataCurta(cell.textContent);
+    });
 
     // -------------------- Salvar / editar situação --------------------
     function atualizarLinhas(nr, idSituacao, dscSituacao) {
@@ -394,20 +464,17 @@
 
         const tr = document.createElement('tr');
         tr.innerHTML =
-            '<td>' + escapeHtml(r.dt_referencia) + '</td>' +
             '<td>' + escapeHtml(r.nr_contrato) + '</td>' +
             '<td>' + escapeHtml(r.nr_ocorrencia) + '</td>' +
             '<td>' + escapeHtml(r.dsc_item_servico) + '</td>' +
-            '<td>' + escapeHtml(r.dt_lancamento_pagamento) + '</td>' +
+            '<td class="dpv-data">' + escapeHtml(formatarDataCurta(r.dt_lancamento_pagamento)) + '</td>' +
             '<td class="text-end">R$ ' + escapeHtml(r.vr_despesa_fmt) + '</td>' +
-            '<td>' + escapeHtml(r.nu_imovel) + '</td>' +
-            '<td class="text-end">R$ ' + escapeHtml(r.vr_venda_fmt) + '</td>' +
-            '<td>' + escapeHtml(r.dt_venda) + '</td>' +
+            '<td class="dpv-data">' + escapeHtml(formatarDataCurta(r.dt_venda)) + '</td>' +
             '<td>' + escapeHtml(r.dsc_sit_venda) + '</td>' +
             '<td class="badge-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '">' + badge + '</td>' +
             '<td>' +
-                '<div class="d-flex gap-2">' +
-                    '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" style="min-width:210px;">' + opts + '</select>' +
+                '<div class="dpv-classificar">' +
+                    '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '">' + opts + '</select>' +
                     '<button type="button" class="btn btn-sm btn-success js-ignore-loading" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" onclick="salvarSituacao(this, event)"><i class="fas fa-save"></i></button>' +
                 '</div>' +
             '</td>';

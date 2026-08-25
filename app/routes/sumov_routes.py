@@ -4318,39 +4318,92 @@ def _filtros_despesas_pos_venda():
         'nu_imovel': (request.args.get('nu_imovel') or '').strip(),
         'situacao_venda': (request.args.get('situacao_venda') or '').strip(),
         'situacao_acerto': (request.args.get('situacao_acerto') or '').strip(),
+        'ano_venda': (request.args.get('ano_venda') or '').strip(),        # NOVO
+        'item_servico': (request.args.get('item_servico') or '').strip(),  # NOVO
         'dt_ini': (request.args.get('dt_ini') or '').strip(),
         'dt_fim': (request.args.get('dt_fim') or '').strip(),
     }
 
+def _anos_venda_lista():
+    from sqlalchemy import text
+    try:
+        rows = db.session.execute(text("""
+            SELECT DISTINCT YEAR(DT_VENDA) AS ANO
+            FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA]
+            WHERE DT_VENDA IS NOT NULL
+            ORDER BY ANO DESC
+        """)).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def _itens_servico_lista():
+    from sqlalchemy import text
+    try:
+        rows = db.session.execute(text("""
+            SELECT DISTINCT DSC_ITEM_SERVICO
+            FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA]
+            WHERE DSC_ITEM_SERVICO IS NOT NULL
+            ORDER BY DSC_ITEM_SERVICO
+        """)).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
+
 
 def _where_despesas_pos_venda(filtros):
-    """Monta o WHERE e os parâmetros a partir dos filtros."""
+    """
+    Monta o WHERE e os parâmetros a partir dos filtros.
+    Reaproveitado pela listagem, paginação, totais e resumo por situação,
+    então qualquer filtro adicionado aqui vale para todos automaticamente.
+    """
     where = " WHERE 1 = 1"
     params = {}
+
     if filtros.get('nr_contrato'):
         where += " AND CAST(VW.NR_CONTRATO AS VARCHAR(50)) LIKE :nr_contrato"
         params['nr_contrato'] = '%' + filtros['nr_contrato'] + '%'
+
     if filtros.get('nr_ocorrencia'):
         where += " AND CAST(VW.NR_OCORRENCIA AS VARCHAR(50)) LIKE :nr_ocorrencia"
         params['nr_ocorrencia'] = '%' + filtros['nr_ocorrencia'] + '%'
+
     if filtros.get('nu_imovel'):
         where += " AND CAST(VW.NU_IMOVEL AS VARCHAR(50)) LIKE :nu_imovel"
         params['nu_imovel'] = '%' + filtros['nu_imovel'] + '%'
+
     if filtros.get('situacao_venda'):
         where += " AND VW.DSC_SIT_VENDA = :situacao_venda"
         params['situacao_venda'] = filtros['situacao_venda']
+
     sa = filtros.get('situacao_acerto')
     if sa == '__NAO__':
         where += " AND SIT.ID_SITUACAO IS NULL"
     elif sa:
         where += " AND SIT.ID_SITUACAO = :situacao_acerto"
         params['situacao_acerto'] = sa
+
+    if filtros.get('ano_venda'):
+        where += " AND YEAR(VW.DT_VENDA) = :ano_venda"
+        params['ano_venda'] = int(filtros['ano_venda'])
+
+    if filtros.get('item_servico'):
+        where += " AND VW.DSC_ITEM_SERVICO = :item_servico"
+        params['item_servico'] = filtros['item_servico']
+
     if filtros.get('dt_ini'):
         where += " AND VW.DT_LANCAMENTO_PAGAMENTO >= :dt_ini"
         params['dt_ini'] = filtros['dt_ini']
+
     if filtros.get('dt_fim'):
         where += " AND VW.DT_LANCAMENTO_PAGAMENTO <= :dt_fim"
         params['dt_fim'] = filtros['dt_fim']
+
     return where, params
 
 
@@ -4542,7 +4595,9 @@ def despesas_pos_venda():
         resumo_situacoes=resumo_situacoes,  # NOVO
         resumo_total_qtd=resumo_total_qtd,  # NOVO
         resumo_total_despesa=resumo_total_despesa,  # NOVO
-        resumo_total_venda=resumo_total_venda,  # NOVO
+        resumo_total_venda=resumo_total_venda,
+        anos_venda=_anos_venda_lista(),  # NOVO
+        itens_servico=_itens_servico_lista(),  # NOVO
     )
 
 
@@ -4665,3 +4720,4 @@ def despesas_pos_venda_salvar():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Erro ao salvar: {}'.format(str(e))}), 500
+
