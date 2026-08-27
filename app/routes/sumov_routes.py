@@ -4633,13 +4633,12 @@ def despesas_pos_venda_pagina():
 def despesas_pos_venda_salvar():
     """
     Salva/edita/remove a situação de acerto de uma ocorrência na MOV_TB054.
-    Quando a situação for a que exige observação (ID 5), grava também a OBS
-    no mesmo registro. OBS vazia é aceita para as demais situações.
+    A OBS é opcional e gravada no mesmo registro para qualquer situação.
+    Situação vazia remove a classificação.
     """
     from sqlalchemy import text
     from app.utils.audit import registrar_log
 
-    ID_SITUACAO_OBS = 5          # situação que exige observação
     OBS_MAX = 500                # limite da coluna OBS varchar(500)
 
     try:
@@ -4676,13 +4675,7 @@ def despesas_pos_venda_salvar():
         except (TypeError, ValueError):
             return jsonify({'success': False, 'message': 'Situação inválida.'}), 400
 
-        # Observação obrigatória para a situação que exige OBS
-        if id_situacao == ID_SITUACAO_OBS and not obs:
-            return jsonify({'success': False, 'message': 'Observação obrigatória para esta situação.'}), 400
-
-        # Para as demais situações, não guardamos observação
-        if id_situacao != ID_SITUACAO_OBS:
-            obs = ''
+        # OBS é opcional e válida para qualquer situação (já truncada em OBS_MAX)
 
         # Descrição confiável (vem do parâmetro pelo ID)
         dsc_row = db.session.execute(text("""
@@ -4735,4 +4728,3 @@ def despesas_pos_venda_salvar():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Erro ao salvar: {}'.format(str(e))}), 500
-

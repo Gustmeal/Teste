@@ -6,19 +6,23 @@ COD_EMPRESA_SERASA = 223371
 
 def selecionar_contratos_distribuiveis():
     """
-    Seleciona os contratos distribuíveis para o POOL DAS ASSESSORIAS (DCA_TB006),
-    lendo da nova tabela COM_TB082_DISTRIBUICAO_SERASA_ASSESSORIA_CRITERIOS.
+    [VERSÃO CORRIGIDA - JUDICIALIZADO POR CPF, RESPEITANDO O ARRASTO]
+    Seleciona os contratos distribuíveis para o POOL DAS ASSESSORIAS (DCA_TB006).
 
-    Regras aplicadas nesta seleção:
-      - O pool das assessorias recebe:
-          (a) TODO contrato JUDICIALIZADO (JUDICIALIZADOS IS NOT NULL) -> sempre assessoria,
-              mesmo que o CPF seja da Serasa (o judicializado "quebra" o arrasto);
-          (b) contratos ONDE='ASSESSORIA' de CPFs que NÃO são da Serasa.
-      - Os CPFs marcados como SERASA (ONDE='SERASA') NÃO entram no pool (são tratados
-        na função distribuir_contratos_serasa), salvo seus contratos judicializados.
-      - CPFs com acordo vigente em empresa que PERMANECE são trazidos por inteiro
-        (etapas 2 e 3), pois o acordo prevalece sobre a Serasa.
+    Regras:
+      - JUDICIALIZADO POR CPF: se o CPF possui QUALQUER contrato com processo em
+        BDG.COM_TB016_PROCESSOS_JUDICIAIS, TODOS os contratos desse CPF vão para o pool
+        (inclusive os que seriam da Serasa). Assim o CPF não se parte e o arrasto é respeitado.
+      - contratos ONDE='ASSESSORIA' de CPFs que NÃO são Serasa (e não judicializados).
+      - CPFs marcados como SERASA e NÃO judicializados NÃO entram aqui (vão em distribuir_contratos_serasa).
+      - CPFs com acordo vigente em empresa que PERMANECE entram por inteiro (o acordo prevalece).
     """
+    ### ALTERAÇÕES REALIZADAS ###
+    # 1. Judicialização passou a ser avaliada por CPF (via COM_TB016_PROCESSOS_JUDICIAIS),
+    #    e não mais por contrato (coluna COM_TB082.JUDICIALIZADOS).
+    # 2. Criada a temp #CPFsJudicializados; a ETAPA 1 puxa TODOS os contratos desses CPFs
+    #    para o pool, mesmo os marcados como SERASA -> o arrasto deixa de ser quebrado.
+    ############################
     try:
         with db.engine.connect() as connection:
             trans = connection.begin()
@@ -70,8 +74,29 @@ def selecionar_contratos_distribuiveis():
                     PRINT 'CPFs SERASA (tratados à parte): ' + CAST(@QtdeCPFsSerasa AS VARCHAR(10));
 
                     -- ================================================================
+                    -- NOVO: CPFs JUDICIALIZADOS (avaliado POR CPF, tabela-fonte de processos)
+                    -- ================================================================
+                    IF OBJECT_ID('tempdb..#CPFsJudicializados') IS NOT NULL DROP TABLE #CPFsJudicializados;
+                    SELECT DISTINCT CON.NR_CPF_CNPJ
+                    INTO #CPFsJudicializados
+                    FROM [BDG].[COM_TB001_CONTRATO] AS CON
+                        INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] AS SIT
+                            ON CON.fkContratoSISCTR = SIT.fkContratoSISCTR
+                        INNER JOIN (
+                            SELECT DISTINCT fkContratoSISCTR
+                            FROM [BDG].[COM_TB016_PROCESSOS_JUDICIAIS]
+                        ) AS JUD
+                            ON CON.fkContratoSISCTR = JUD.fkContratoSISCTR
+                    WHERE SIT.[fkSituacaoCredito] = 1;
+                    CREATE INDEX IX_CPFJUD ON #CPFsJudicializados(NR_CPF_CNPJ);
+
+                    DECLARE @QtdeCPFsJud INT;
+                    SELECT @QtdeCPFsJud = COUNT(*) FROM #CPFsJudicializados;
+                    PRINT 'CPFs JUDICIALIZADOS (arrastados p/ pool): ' + CAST(@QtdeCPFsJud AS VARCHAR(10));
+
+                    -- ================================================================
                     -- ETAPA 1: Pool das ASSESSORIAS
-                    --   (a) judicializados (sempre assessoria, inclusive em CPF-Serasa)
+                    --   (a) TODOS os contratos de CPFs judicializados (mesmo os Serasa)
                     --   (b) ONDE='ASSESSORIA' de CPFs que NÃO são Serasa
                     -- ================================================================
                     INSERT INTO [BDG].[DCA_TB006_DISTRIBUIVEIS]
@@ -92,11 +117,13 @@ def selecionar_contratos_distribuiveis():
                             ON ECA.fkContratoSISCTR = T.fkContratoSISCTR
                         LEFT JOIN #CPFsSerasa AS SER
                             ON CON.NR_CPF_CNPJ = SER.NR_CPF_CNPJ
+                        LEFT JOIN #CPFsJudicializados AS JUD
+                            ON CON.NR_CPF_CNPJ = JUD.NR_CPF_CNPJ
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
                         AND T.SIT_ESPECIAL IS NULL
                         AND (
-                              T.JUDICIALIZADOS IS NOT NULL
+                              JUD.NR_CPF_CNPJ IS NOT NULL
                               OR (T.ONDE = 'ASSESSORIA' AND SER.NR_CPF_CNPJ IS NULL)
                             );
 
@@ -125,7 +152,7 @@ def selecionar_contratos_distribuiveis():
                     WHERE
                         SIT.[fkSituacaoCredito] = 1
                         AND ALV.fkEstadoAcordo = 1;
-                    CREATE INDEX IX_CPF ON #CPFsComAcordo(NR_CPF_CNPJ);
+                    CREATE INDEX IX_CPF2 ON #CPFsComAcordo(NR_CPF_CNPJ);
 
                     DECLARE @QtdeCPFsComAcordo INT;
                     SELECT @QtdeCPFsComAcordo = COUNT(*) FROM #CPFsComAcordo;
@@ -163,6 +190,7 @@ def selecionar_contratos_distribuiveis():
                     PRINT '========================================';
 
                     DROP TABLE #CPFsSerasa;
+                    DROP TABLE #CPFsJudicializados;
                     DROP TABLE #CPFsComAcordo;
                 """)
 
@@ -1567,10 +1595,11 @@ def distribuir_contratos_serasa(edital_id, periodo_id):
     """
     Aloca para a SERASA (empresa 223371) os contratos dos CPFs marcados como SERASA
     (ONDE='SERASA', base <= 1.000 na COM_TB082), aplicando:
-      - ARRASTO: todos os contratos NÃO judicializados do mesmo CPF vão para a SERASA
-        (inclusive os ACIMA_1000), porque o filtro é por CPF.
-      - EXCEÇÃO JUDICIALIZADO: contratos com JUDICIALIZADOS preenchido NÃO vão para a SERASA
-        (ficam para as assessorias, via pool normal).
+      - ARRASTO: todos os contratos do mesmo CPF vão para a SERASA (inclusive os ACIMA_1000),
+        porque o filtro é por CPF.
+      - EXCEÇÃO JUDICIALIZADO (POR CPF): se o CPF tem QUALQUER contrato com processo em
+        BDG.COM_TB016_PROCESSOS_JUDICIAIS, NENHUM contrato desse CPF vai para a SERASA -
+        o CPF inteiro fica com as assessorias (via pool), preservando o arrasto.
       - PRIORIDADE DO ACORDO: CPF com acordo vigente em empresa que PERMANECE não vai para a
         SERASA (o acordo prevalece; o CPF é tratado no fluxo de acordos das assessorias).
 
@@ -1580,6 +1609,12 @@ def distribuir_contratos_serasa(edital_id, periodo_id):
     Deve ser chamada DEPOIS de distribuir_acordos_vigentes_empresas_permanece(), pois essa
     função limpa a DCA_TB005 do edital/período no início.
     """
+    ### ALTERAÇÕES REALIZADAS ###
+    # 1. A exceção do judicializado passou a ser POR CPF (via COM_TB016_PROCESSOS_JUDICIAIS),
+    #    e não mais por contrato (coluna COM_TB082.JUDICIALIZADOS).
+    # 2. Criada a temp #CPFsJudicializados; o INSERT da SERASA agora exclui o CPF inteiro
+    #    quando ele é judicializado -> evita partir o CPF e duplicar contratos na DCA_TB005.
+    ############################
     COD_EMPRESA_SERASA = 223371
     COD_CRITERIO_SERASA = 13  # Cadastrar "Contrato Serasa" em DCA_TB004_CRITERIO_SELECAO
 
@@ -1615,8 +1650,22 @@ def distribuir_contratos_serasa(edital_id, periodo_id):
             WHERE ALV.fkEstadoAcordo = 1;
             CREATE INDEX IX_CPF2 ON #CPFsAcordoPermanece(NR_CPF_CNPJ);
 
-            -- Inserir na distribuição os contratos NÃO judicializados dos CPFs SERASA
-            -- (exceto CPFs com acordo em empresa que permanece)
+            -- NOVO: CPFs JUDICIALIZADOS (por CPF) - não vão para a SERASA
+            IF OBJECT_ID('tempdb..#CPFsJudicializados') IS NOT NULL DROP TABLE #CPFsJudicializados;
+            SELECT DISTINCT CON.NR_CPF_CNPJ
+            INTO #CPFsJudicializados
+            FROM [BDG].[COM_TB001_CONTRATO] CON
+            INNER JOIN [BDG].[COM_TB007_SITUACAO_CONTRATOS] SIT
+                ON CON.fkContratoSISCTR = SIT.fkContratoSISCTR
+            INNER JOIN (
+                SELECT DISTINCT fkContratoSISCTR FROM [BDG].[COM_TB016_PROCESSOS_JUDICIAIS]
+            ) JUD ON CON.fkContratoSISCTR = JUD.fkContratoSISCTR
+            WHERE SIT.[fkSituacaoCredito] = 1;
+            CREATE INDEX IX_CPFJUD ON #CPFsJudicializados(NR_CPF_CNPJ);
+
+            -- Inserir na distribuição os contratos dos CPFs SERASA que:
+            --   - NÃO são de CPF judicializado (o CPF inteiro fica com as assessorias);
+            --   - NÃO têm acordo em empresa que permanece (o acordo prevalece).
             INSERT INTO [BDG].[DCA_TB005_DISTRIBUICAO]
             ([DT_REFERENCIA], [ID_EDITAL], [ID_PERIODO], [fkContratoSISCTR],
              [COD_EMPRESA_COBRANCA], [COD_CRITERIO_SELECAO], [NR_CPF_CNPJ],
@@ -1636,10 +1685,12 @@ def distribuir_contratos_serasa(edital_id, periodo_id):
                 ON CON.NR_CPF_CNPJ = S.NR_CPF_CNPJ
             LEFT JOIN #CPFsAcordoPermanece AP
                 ON CON.NR_CPF_CNPJ = AP.NR_CPF_CNPJ
+            LEFT JOIN #CPFsJudicializados JUD
+                ON CON.NR_CPF_CNPJ = JUD.NR_CPF_CNPJ
             WHERE
                 SIT.[fkSituacaoCredito] = 1
                 AND T.SIT_ESPECIAL IS NULL
-                AND T.JUDICIALIZADOS IS NULL        -- judicializado nunca vai para a SERASA
+                AND JUD.NR_CPF_CNPJ IS NULL          -- exclui o CPF judicializado INTEIRO da Serasa
                 AND AP.NR_CPF_CNPJ IS NULL           -- acordo em permanece prevalece
                 AND NOT EXISTS (
                     SELECT 1 FROM [BDG].[DCA_TB005_DISTRIBUICAO] D
@@ -1652,6 +1703,7 @@ def distribuir_contratos_serasa(edital_id, periodo_id):
 
             DROP TABLE #CPFsSerasa;
             DROP TABLE #CPFsAcordoPermanece;
+            DROP TABLE #CPFsJudicializados;
 
             SELECT @ContratosSerasa AS ContratosSerasa;
         """)

@@ -277,7 +277,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted mb-2">Esta situação exige o preenchimento de uma observação.</p>
+                    <p class="text-muted mb-2">Preencha uma observação para esta classificação (opcional).</p>
                     <input type="hidden" id="obsNrOcorrencia">
                     <input type="hidden" id="obsIdSituacao">
                     <textarea id="obsTexto" class="form-control" rows="4" maxlength="500"
@@ -440,14 +440,14 @@
         const select = row.querySelector('select.sel-situacao');
         const idSit = select.value;
 
-        // Se a situação exige observação, abre o modal em vez de salvar direto
-        if (String(idSit) === String(ID_SITUACAO_OBS)) {
-            abrirModalObs(nr, idSit, select.getAttribute('data-obs') || '');
+        // Situação vazia ("— Selecione —"): salva direto para limpar a classificação
+        if (!idSit) {
+            enviarSalvar(nr, '', '', btn);
             return;
         }
 
-        // Demais situações: salva direto (obs vazia)
-        enviarSalvar(nr, idSit, '', btn);
+        // Qualquer situação escolhida abre o modal para preencher a observação
+        abrirModalObs(nr, idSit, select.getAttribute('data-obs') || '');
     }
 
     // Envia o salvamento ao backend. "botao" é o elemento a ser animado
@@ -524,10 +524,6 @@
                 const nr = document.getElementById('obsNrOcorrencia').value;
                 const idSit = document.getElementById('obsIdSituacao').value;
                 const obs = document.getElementById('obsTexto').value.trim();
-                if (!obs) {
-                    mostrarToast('Preencha a observação para salvar.', 'danger');
-                    return;
-                }
                 enviarSalvar(nr, idSit, obs, btnObs);
             });
         }
