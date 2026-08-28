@@ -461,3 +461,89 @@ def planilha_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{nome}"'}
     )
+
+@bloqueios_judiciais_bp.route('/liberar-parcial', methods=['POST'])
+@login_required
+def liberar_parcial():
+    """Libera PARTE do valor de um bloqueio:
+       - cria um novo registro (idêntico ao original) com o valor liberado e a
+         DT_DESBLOQUEIO informada, mantendo a DT_DEPOSITO original;
+       - subtrai o valor liberado do registro original, que continua bloqueado.
+       A linha original é identificada pelos valores originais (o_*)."""
+    valor_liberado = _parse_decimal(request.form.get('VR_LIBERADO'))
+    dt_desb = _parse_data(request.form.get('DT_DESBLOQUEIO'))
+
+    # Valores ORIGINAIS (identificam a linha) — mesmo esquema do editar
+    o_dep = _parse_data(request.form.get('o_DT_DEPOSITO'))
+    o_vr = _parse_decimal(request.form.get('o_VR_BLOQUEADO'))
+    o_conta = (request.form.get('o_CONTA') or '').strip()
+    o_processo = (request.form.get('o_PROCESSO') or '').strip()
+    o_vara = (request.form.get('o_VARA') or '').strip()
+    o_autor = (request.form.get('o_AUTOR') or '').strip()
+
+    if not o_dep or o_vr is None or not o_processo:
+        return jsonify({'success': False, 'message': 'Registro original inválido.'}), 400
+    if valor_liberado is None or valor_liberado <= 0:
+        return jsonify({'success': False, 'message': 'Informe um valor liberado maior que zero.'}), 400
+    if valor_liberado >= o_vr:
+        return jsonify({'success': False,
+                        'message': f'O valor liberado deve ser menor que o valor bloqueado '
+                                   f'({_fmt_vr(o_vr)}). Para liberar tudo, use a edição e informe a data de desbloqueio.'}), 400
+    if not dt_desb:
+        return jsonify({'success': False, 'message': 'Informe a data do desbloqueio (liberação).'}), 400
+
+    novo_valor_original = o_vr - valor_liberado
+
+    params = {
+        'lib': valor_liberado, 'novo': novo_valor_original, 'dt_desb': dt_desb,
+        'o_dep': o_dep.strftime('%Y%m%d'), 'o_vr': o_vr,
+        'o_conta': o_conta, 'o_processo': o_processo, 'o_vara': o_vara, 'o_autor': o_autor,
+    }
+
+    try:
+        # 1) Subtrai a parte liberada do registro original (continua bloqueado)
+        upd = db.session.execute(text(f"""
+            UPDATE {_TB}
+            SET VR_BLOQUEADO = :novo
+            WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :o_dep
+              AND VR_BLOQUEADO = :o_vr
+              AND ISNULL(CONTA, '') = :o_conta
+              AND ISNULL(PROCESSO, '') = :o_processo
+              AND ISNULL(VARA, '') = :o_vara
+              AND ISNULL(AUTOR, '') = :o_autor
+              AND DT_DESBLOQUEIO IS NULL
+        """), params)
+
+        if upd.rowcount == 0:
+            db.session.rollback()
+            return jsonify({'success': False,
+                            'message': 'Registro original não encontrado (pode ter sido alterado).'}), 404
+
+        # 2) Cria o novo registro (parte liberada), igual ao original,
+        #    com a mesma DT_DEPOSITO e a DT_DESBLOQUEIO informada
+        db.session.execute(text(f"""
+            INSERT INTO {_TB}
+                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO)
+            VALUES (:dt_dep, :lib, :conta, :processo, :vara, :autor, :dt_desb)
+        """), {'dt_dep': o_dep, 'lib': valor_liberado, 'conta': o_conta,
+               'processo': o_processo, 'vara': o_vara, 'autor': o_autor, 'dt_desb': dt_desb})
+
+        db.session.commit()
+
+        registrar_log(
+            acao='liberacao_parcial', entidade='bloqueios_judiciais', entidade_id=None,
+            descricao=f'Liberação parcial — processo {o_processo}: liberado {_fmt_vr(valor_liberado)}, '
+                      f'restante bloqueado {_fmt_vr(novo_valor_original)}',
+            dados_novos={'DT_DEPOSITO': o_dep.strftime('%Y-%m-%d'),
+                         'VR_LIBERADO': str(valor_liberado),
+                         'VR_RESTANTE': str(novo_valor_original),
+                         'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d'),
+                         'CONTA': o_conta, 'PROCESSO': o_processo,
+                         'VARA': o_vara, 'AUTOR': o_autor},
+        )
+        return jsonify({'success': True,
+                        'message': f'Liberado {_fmt_vr(valor_liberado)} do processo {o_processo}. '
+                                   f'Restam {_fmt_vr(novo_valor_original)} bloqueados.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Erro na liberação parcial: {str(e)}'}), 500

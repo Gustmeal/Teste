@@ -67,6 +67,12 @@ def index():
     f_anomes = _norm_anomes(request.args.get('anomes'))
     f_fundo = (request.args.get('fundo') or '').strip()
 
+    # Se a competência não veio na URL, usa a MAIOR competência disponível
+    if not request.args.get('anomes'):
+        maior = db.session.execute(text(f"SELECT MAX(ANO_MES) FROM {_TB}")).scalar()
+        if maior:
+            f_anomes = _norm_anomes(maior)
+
     cond, params = [], {}
     if f_anomes:
         cond.append("c.ANO_MES = :p_am"); params['p_am'] = f_anomes
@@ -95,10 +101,56 @@ def index():
             'vr': r[7], 'vr_str': ('' if r[7] is None else str(r[7])), 'vr_fmt': _fmt_vr(r[7]),
         })
 
+    # ===== Tabela totalizadora (cruzada): Ativo × Fundo, com totais =====
+    from collections import OrderedDict
+    fundos_ord = OrderedDict()   # id_fundo -> dsc  (colunas)
+    ativos_ord = OrderedDict()   # id_ativo -> dsc  (linhas)
+    celulas = {}                 # (id_ativo, id_fundo) -> soma VR
+    tot_fundo = {}               # id_fundo -> soma
+    tot_ativo = {}               # id_ativo -> soma
+    tot_geral = Decimal('0')
+
+    for l in lista:
+        if l['vr'] is None:
+            continue
+        if (l['dsc_ativo'] or '').strip().upper() in ('TOTAL', 'TOTAIS'):
+            continue   # não entra no cruzamento (a tabela já calcula os totais)
+        vr = Decimal(str(l['vr']))
+        fid, aid = l['id_fundo'], l['id_ativo']
+        fundos_ord.setdefault(fid, l['dsc_fundo'])
+        ativos_ord.setdefault(aid, l['dsc_ativo'])
+        celulas[(aid, fid)] = celulas.get((aid, fid), Decimal('0')) + vr
+        tot_fundo[fid] = tot_fundo.get(fid, Decimal('0')) + vr
+        tot_ativo[aid] = tot_ativo.get(aid, Decimal('0')) + vr
+        tot_geral += vr
+
+    resumo_cols = [{'id': fid, 'dsc': dsc} for fid, dsc in fundos_ord.items()]
+    resumo_linhas = []
+    for aid, adsc in ativos_ord.items():
+        cels = []
+        for fid, _ in fundos_ord.items():
+            v = celulas.get((aid, fid))
+            cels.append({'vr_fmt': _fmt_vr(v) if v is not None else '', 'zero': v is None})
+        resumo_linhas.append({
+            'dsc_ativo': adsc,
+            'cels': cels,
+            'total_fmt': _fmt_vr(tot_ativo.get(aid)),
+        })
+
+    resumo = {
+        'cols': resumo_cols,
+        'linhas': resumo_linhas,
+        'tot_fundo': [{'vr_fmt': _fmt_vr(tot_fundo.get(f['id']))} for f in resumo_cols],
+        'tot_geral_fmt': _fmt_vr(tot_geral),
+        'tem_dados': len(resumo_linhas) > 0,
+        'competencia_fmt': _fmt_anomes(f_anomes) if f_anomes else 'Todas as competências',
+    }
+
     return render_template(
         'composicao_fundos/index.html',
         fundos=fundos, ativos=ativos, itens=itens, lista=lista,
         filtros={'anomes': f_anomes, 'fundo': f_fundo},
+        resumo=resumo,
     )
 
 

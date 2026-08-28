@@ -16,6 +16,7 @@
                   display: flex; align-items: center; justify-content: center; }
     .bj-modal { background: #fff; border-radius: 12px; padding: 1.6rem; width: 640px;
                 max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+    .bj-acoes { display: flex; gap: .3rem; }
 </style>
 
 <div class="bj-container fade-in">
@@ -142,14 +143,27 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-primary"
-                                    onclick='bjEditar(this)'
-                                    data-dep="{{ b.dt_deposito_iso }}" data-vr="{{ b.vr_str }}"
-                                    data-conta="{{ b.conta }}" data-processo="{{ b.processo }}"
-                                    data-vara="{{ b.vara }}" data-autor="{{ b.autor }}"
-                                    data-desb="{{ b.dt_desbloqueio_iso }}">
-                                    <i class="fas fa-pen"></i>
-                                </button>
+                                <div class="bj-acoes">
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                        onclick='bjEditar(this)'
+                                        data-dep="{{ b.dt_deposito_iso }}" data-vr="{{ b.vr_str }}"
+                                        data-conta="{{ b.conta }}" data-processo="{{ b.processo }}"
+                                        data-vara="{{ b.vara }}" data-autor="{{ b.autor }}"
+                                        data-desb="{{ b.dt_desbloqueio_iso }}">
+                                        <i class="fas fa-pen"></i>
+                                    </button>
+                                    {% if not b.dt_desbloqueio %}
+                                    <button type="button" class="btn btn-sm btn-outline-success"
+                                        title="Liberar parte do valor"
+                                        onclick='bjAbrirParcial(this)'
+                                        data-dep="{{ b.dt_deposito_iso }}" data-vr="{{ b.vr_str }}"
+                                        data-vrfmt="{{ b.vr_fmt }}"
+                                        data-conta="{{ b.conta }}" data-processo="{{ b.processo }}"
+                                        data-vara="{{ b.vara }}" data-autor="{{ b.autor }}">
+                                        <i class="fas fa-scissors"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% else %}
@@ -220,6 +234,44 @@
     </div>
 </div>
 
+<!-- MODAL DE LIBERAÇÃO PARCIAL -->
+<div id="bjParcialOverlay" class="bj-overlay" style="display:none;">
+    <div class="bj-modal" style="width:520px;">
+        <h5 class="fw-bold mb-1">Liberação Parcial</h5>
+        <p class="text-muted" style="font-size:.85rem;">
+            Processo <strong id="p_proc_lbl">—</strong> · Bloqueado atual:
+            <strong id="p_vr_lbl">—</strong>.
+            O valor liberado vira um novo registro (desbloqueado) e é subtraído do bloqueio atual.
+        </p>
+        <form id="formParcial" onsubmit="return false;">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="bj-label">Valor a liberar *</label>
+                    <input type="number" step="any" min="0" class="form-control" name="VR_LIBERADO" id="p_vr" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="bj-label">Data do desbloqueio *</label>
+                    <input type="date" class="form-control" name="DT_DESBLOQUEIO" id="p_desb" required>
+                </div>
+            </div>
+
+            <!-- valores originais (identificam a linha) -->
+            <input type="hidden" name="o_DT_DEPOSITO" id="p_o_dep">
+            <input type="hidden" name="o_VR_BLOQUEADO" id="p_o_vr">
+            <input type="hidden" name="o_CONTA" id="p_o_conta">
+            <input type="hidden" name="o_PROCESSO" id="p_o_processo">
+            <input type="hidden" name="o_VARA" id="p_o_vara">
+            <input type="hidden" name="o_AUTOR" id="p_o_autor">
+        </form>
+        <div class="mt-3 d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary" onclick="bjFecharParcial()">Cancelar</button>
+            <button type="button" class="btn btn-success" onclick="bjSalvarParcial()">
+                <i class="fas fa-scissors me-2"></i>Liberar valor
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
 function bjFeedback(tipo, msg) {
     var el = document.getElementById('bjFeedback');
@@ -260,6 +312,30 @@ function bjSalvarEdicao() {
     bjEnviar("{{ url_for('bloqueios_judiciais.editar') }}", document.getElementById('formEditar'))
         .then(function (d) {
             if (d.success) { bjFeedback('success', d.message); setTimeout(function(){location.reload();}, 1200); }
+            else bjFeedback('danger', d.message);
+        }).catch(function (e) { bjFeedback('danger', 'Erro: ' + e); });
+}
+
+// ---- Liberação parcial ----
+function bjAbrirParcial(btn) {
+    document.getElementById('p_proc_lbl').textContent = btn.dataset.processo || '—';
+    document.getElementById('p_vr_lbl').textContent = btn.dataset.vrfmt || '—';
+    document.getElementById('p_vr').value = '';
+    document.getElementById('p_vr').max = btn.dataset.vr;
+    document.getElementById('p_desb').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('p_o_dep').value = btn.dataset.dep;
+    document.getElementById('p_o_vr').value = btn.dataset.vr;
+    document.getElementById('p_o_conta').value = btn.dataset.conta;
+    document.getElementById('p_o_processo').value = btn.dataset.processo;
+    document.getElementById('p_o_vara').value = btn.dataset.vara;
+    document.getElementById('p_o_autor').value = btn.dataset.autor;
+    document.getElementById('bjParcialOverlay').style.display = 'flex';
+}
+function bjFecharParcial() { document.getElementById('bjParcialOverlay').style.display = 'none'; }
+function bjSalvarParcial() {
+    bjEnviar("{{ url_for('bloqueios_judiciais.liberar_parcial') }}", document.getElementById('formParcial'))
+        .then(function (d) {
+            if (d.success) { bjFeedback('success', d.message); setTimeout(function(){location.reload();}, 1300); }
             else bjFeedback('danger', d.message);
         }).catch(function (e) { bjFeedback('danger', 'Erro: ' + e); });
 }

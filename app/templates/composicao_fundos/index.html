@@ -17,6 +17,54 @@
     .cp-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1050;
                   display: none; align-items: center; justify-content: center; }
     .cp-modal { background: #fff; border-radius: 12px; padding: 1.6rem; width: 560px; max-width: 95vw; }
+        .cp-comp { float: right; font-weight: 600; font-size: .8rem; opacity: .9; }
+
+    .cp-resumo-wrap { padding: 1rem 1.1rem 1.1rem; }
+    .cp-resumo { width: 100%; border-collapse: separate; border-spacing: 0;
+                 font-size: .84rem; min-width: 640px; }
+    .cp-resumo th, .cp-resumo td { padding: .6rem .85rem; white-space: nowrap;
+                 border-bottom: 1px solid #eef1f6; }
+
+    /* Cabeçalho claro e leve */
+    .cp-resumo thead th { background: #eef2f9; color: #1e3a5c; font-weight: 700;
+                 font-size: .72rem; letter-spacing: .03em; text-transform: uppercase;
+                 border-bottom: 2px solid #cdd8ea; position: sticky; top: 0; }
+    .cp-resumo thead th.text-end { text-align: right; }
+
+    /* Coluna de ativo fixa à esquerda */
+    .cp-resumo .col-ativo { text-align: left; font-weight: 600; color: #334155;
+                 background: #fff; position: sticky; left: 0; z-index: 1; }
+    .cp-resumo thead .col-ativo { background: #eef2f9; z-index: 2; }
+
+    /* Números monoespaçados p/ alinhar casas */
+    .cp-resumo td.num { font-variant-numeric: tabular-nums; color: #1f2937; }
+
+    /* Zebra suave */
+    .cp-resumo tbody tr:nth-child(even) td { background: #f8fafc; }
+    .cp-resumo tbody tr:nth-child(even) .col-ativo { background: #f8fafc; }
+    .cp-resumo tbody tr:hover td { background: #eef5ff; }
+    .cp-resumo tbody tr:hover .col-ativo { background: #e7eefb; }
+
+    /* Total do ativo (coluna à direita) — legível */
+    .cp-resumo .col-tot { font-weight: 700; color: #1e3a5c; background: #eaf1fb; }
+    .cp-resumo thead .col-tot { background: #dbe6f7; color: #1e3a5c; }
+
+        /* Rodapé (Total do Fundo) — tudo branco */
+    .cp-resumo tfoot td { font-weight: 700; background: #1f4e79; color: #fff !important;
+                 border-top: 2px solid #17395c; border-bottom: none; }
+    .cp-resumo tfoot td.num { color: #fff !important; }   /* vence o .num escuro */
+    .cp-resumo tfoot .col-ativo { background: #1f4e79; color: #fff !important; }
+    .cp-resumo tfoot .col-geral { background: #16324f; color: #fff !important; }
+
+    /* célula vazia discreta */
+    .cp-resumo .cel-zero { color: #cbd5e1; }
+
+    /* cantos arredondados na moldura */
+    .cp-resumo thead th:first-child { border-top-left-radius: 10px; }
+    .cp-resumo thead th:last-child { border-top-right-radius: 10px; }
+    .cp-nota-fae { margin-top: .8rem; padding: .6rem .9rem; font-size: .82rem;
+                   color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
+                   border-radius: 8px; }
 </style>
 
 <div class="cp-container fade-in">
@@ -121,6 +169,52 @@
             </form>
         </div>
     </div>
+
+            <!-- RESUMO TOTALIZADOR (cruzada Ativo × Fundo) -->
+    {% if resumo.tem_dados %}
+    <div class="cp-card">
+        <div class="cp-head">
+            <i class="fas fa-calculator me-2"></i>Resumo por Fundo e Ativo
+            <span class="cp-comp">{{ resumo.competencia_fmt }}</span>
+        </div>
+        <div class="cp-resumo-wrap">
+            <div style="overflow-x:auto;">
+                <table class="cp-resumo">
+                    <thead>
+                        <tr>
+                            <th class="col-ativo">Ativo</th>
+                            {% for c in resumo.cols %}<th class="text-end">{{ c.dsc }}</th>{% endfor %}
+                            <th class="text-end col-tot">Total do Ativo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in resumo.linhas %}
+                        <tr>
+                            <td class="col-ativo">{{ l.dsc_ativo }}</td>
+                            {% for cel in l.cels %}
+                            <td class="text-end num {{ 'cel-zero' if cel.zero }}">{{ cel.vr_fmt }}</td>
+                            {% endfor %}
+                            <td class="text-end num col-tot">{{ l.total_fmt }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="col-ativo">Total do Fundo</td>
+                            {% for t in resumo.tot_fundo %}<td class="text-end num">{{ t.vr_fmt }}</td>{% endfor %}
+                            <td class="text-end num col-geral">{{ resumo.tot_geral_fmt }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="cp-nota-fae">
+                <i class="fas fa-circle-info me-2"></i>
+                Os valores do fundo <strong>BB Extramercado FAE 2</strong> são expressos em <strong>percentual (%)</strong>.
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- LISTA -->
     <div class="cp-card">
