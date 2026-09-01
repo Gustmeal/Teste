@@ -21,6 +21,8 @@ from flask import Response
 from sqlalchemy import text
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side
 
 bloqueios_judiciais_bp = Blueprint(
     'bloqueios_judiciais', __name__, url_prefix='/bloqueios-judiciais'
@@ -33,11 +35,13 @@ def _parse_data(s):
     s = (s or '').strip()
     if not s:
         return None
-    try:
-        return datetime.strptime(s, '%Y-%m-%d').date()
-    except ValueError:
-        return None
-
+    # aceita AAAA-MM-DD, AAAAMMDD, DD/MM/AAAA
+    for fmt in ('%Y-%m-%d', '%Y%m%d', '%d/%m/%Y'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
 
 def _parse_decimal(s):
     s = (s or '').strip()
@@ -72,6 +76,21 @@ def _carregar_contas():
     return [{'id': r[0], 'dsc': (r[1] or '').strip()}
             for r in db.session.execute(sql).fetchall()]
 
+def _parse_bit(s):
+    """'1'/'0'/'sim'/'nao' -> 1/0 ; vazio -> None."""
+    s = (s or '').strip().lower()
+    if s in ('1', 'sim', 'true', 's'):
+        return 1
+    if s in ('0', 'nao', 'não', 'false', 'n'):
+        return 0
+    return None
+
+
+def _parse_evento(s):
+    """Aceita apenas 'D', 'T', 'D/T'. Caso contrário, None."""
+    s = (s or '').strip().upper()
+    return s if s in ('D', 'T', 'D/T') else None
+
 
 @bloqueios_judiciais_bp.route('/')
 @login_required
@@ -81,6 +100,7 @@ def index():
     f_autor = (request.args.get('autor') or '').strip()
     f_conta = (request.args.get('conta') or '').strip()
     f_situacao = (request.args.get('situacao') or 'todos').strip()
+    f_vr_exato = _parse_decimal(request.args.get('vr_exato'))
 
     condicoes, params = [], {}
     if f_processo:
@@ -93,10 +113,14 @@ def index():
         condicoes.append("DT_DESBLOQUEIO IS NULL")
     elif f_situacao == 'desbloqueado':
         condicoes.append("DT_DESBLOQUEIO IS NOT NULL")
+    if f_vr_exato is not None:
+        condicoes.append("VR_BLOQUEADO = :p_vrex");
+        params['p_vrex'] = f_vr_exato
     where = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 
     sql = text(f"""
-        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO
+        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO,
+               EXCE, EVENTO
         FROM {_TB} {where}
         ORDER BY DT_DEPOSITO DESC, PROCESSO
     """)
@@ -104,19 +128,25 @@ def index():
 
     lista = []
     for r in rows:
+        exce = r[7]
         lista.append({
             'dt_deposito': r[0], 'dt_deposito_iso': r[0].strftime('%Y-%m-%d') if r[0] else '',
             'vr': r[1], 'vr_str': ('' if r[1] is None else str(r[1])), 'vr_fmt': _fmt_vr(r[1]),
             'conta': (r[2] or ''), 'processo': (r[3] or ''),
             'vara': (r[4] or ''), 'autor': (r[5] or ''),
             'dt_desbloqueio': r[6], 'dt_desbloqueio_iso': r[6].strftime('%Y-%m-%d') if r[6] else '',
+            'exce': exce,
+            'exce_str': ('' if exce is None else ('1' if exce else '0')),
+            'exce_lbl': ('Sim' if exce == 1 else ('Não' if exce == 0 else '—')),
+            'evento': (r[8] or ''),
         })
 
     return render_template(
         'bloqueios_judiciais/index.html',
         contas=_carregar_contas(), lista=lista,
-        filtros={'processo': f_processo, 'autor': f_autor,
-                 'conta': f_conta, 'situacao': f_situacao},
+        filtros={'processo': f_processo, 'autor': f_autor, 'conta': f_conta,
+                 'situacao': f_situacao,
+                 'vr_exato': request.args.get('vr_exato', ''),},
     )
 
 
@@ -129,6 +159,7 @@ def incluir():
     processo = (request.form.get('PROCESSO') or '').strip()
     vara = (request.form.get('VARA') or '').strip()
     autor = (request.form.get('AUTOR') or '').strip()
+    exce = _parse_bit(request.form.get('EXCE'))
 
     if not dt_dep:
         return jsonify({'success': False, 'message': 'Informe a data do depósito.'}), 400
@@ -142,17 +173,18 @@ def incluir():
     try:
         db.session.execute(text(f"""
             INSERT INTO {_TB}
-                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO)
-            VALUES (:dt_dep, :vr, :conta, :processo, :vara, :autor, NULL)
+                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO, EXCE, EVENTO)
+            VALUES (:dt_dep, :vr, :conta, :processo, :vara, :autor, NULL, :exce, NULL)
         """), {'dt_dep': dt_dep, 'vr': vr, 'conta': conta,
-               'processo': processo, 'vara': vara, 'autor': autor})
+               'processo': processo, 'vara': vara, 'autor': autor, 'exce': exce})
         db.session.commit()
 
         registrar_log(
             acao='inclusao', entidade='bloqueios_judiciais', entidade_id=None,
             descricao=f'Novo bloqueio — processo {processo}',
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
-                         'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor},
+                         'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
+                         'EXCE': exce},
         )
         return jsonify({'success': True, 'message': f'Bloqueio do processo {processo} incluído.'})
     except Exception as e:
@@ -163,7 +195,6 @@ def incluir():
 @bloqueios_judiciais_bp.route('/editar', methods=['POST'])
 @login_required
 def editar():
-    # Novos valores
     dt_dep = _parse_data(request.form.get('DT_DEPOSITO'))
     vr = _parse_decimal(request.form.get('VR_BLOQUEADO'))
     conta = (request.form.get('CONTA') or '').strip()
@@ -171,18 +202,19 @@ def editar():
     vara = (request.form.get('VARA') or '').strip()
     autor = (request.form.get('AUTOR') or '').strip()
     dt_desb = _parse_data(request.form.get('DT_DESBLOQUEIO'))  # pode ser None
+    exce = _parse_bit(request.form.get('EXCE'))
+    evento = _parse_evento(request.form.get('EVENTO')) if dt_desb else None  # só se desbloqueado
 
     if not dt_dep or vr is None or not conta or not processo:
         return jsonify({'success': False,
                         'message': 'Data do depósito, valor, conta e processo são obrigatórios.'}), 400
 
-    # Valores ORIGINAIS (identificam a linha) — comparação null-safe por string
     o_dep = _parse_data(request.form.get('o_DT_DEPOSITO'))
     o_vr = _parse_decimal(request.form.get('o_VR_BLOQUEADO'))
     o_desb = _parse_data(request.form.get('o_DT_DESBLOQUEIO'))
     params = {
         'dt_dep': dt_dep, 'vr': vr, 'conta': conta, 'processo': processo,
-        'vara': vara, 'autor': autor, 'dt_desb': dt_desb,
+        'vara': vara, 'autor': autor, 'dt_desb': dt_desb, 'exce': exce, 'evento': evento,
         'o_dep': o_dep.strftime('%Y%m%d') if o_dep else '',
         'o_vr': o_vr,
         'o_conta': (request.form.get('o_CONTA') or '').strip(),
@@ -197,14 +229,13 @@ def editar():
             UPDATE {_TB}
             SET DT_DEPOSITO = :dt_dep, VR_BLOQUEADO = :vr, CONTA = :conta,
                 PROCESSO = :processo, VARA = :vara, AUTOR = :autor,
-                DT_DESBLOQUEIO = :dt_desb
+                DT_DESBLOQUEIO = :dt_desb, EXCE = :exce, EVENTO = :evento
             WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :o_dep
-              AND VR_BLOQUEADO = :o_vr
-              AND ISNULL(CONTA, '') = :o_conta
-              AND ISNULL(PROCESSO, '') = :o_processo
-              AND ISNULL(VARA, '') = :o_vara
-              AND ISNULL(AUTOR, '') = :o_autor
-              AND ISNULL(CONVERT(varchar(8), DT_DESBLOQUEIO, 112), '') = :o_desb
+              AND ROUND(VR_BLOQUEADO, 2) = ROUND(:o_vr, 2)
+              AND RTRIM(ISNULL(CONTA, '')) = RTRIM(:o_conta)
+              AND RTRIM(ISNULL(PROCESSO, '')) = RTRIM(:o_processo)
+              AND RTRIM(ISNULL(VARA, '')) = RTRIM(:o_vara)
+              AND RTRIM(ISNULL(AUTOR, '')) = RTRIM(:o_autor)
         """), params)
         db.session.commit()
 
@@ -217,10 +248,12 @@ def editar():
             descricao=f'Edição de bloqueio — processo {processo}',
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
                          'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
-                         'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d') if dt_desb else None},
+                         'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d') if dt_desb else None,
+                         'EXCE': exce, 'EVENTO': evento},
         )
         aviso = '' if result.rowcount == 1 else f' ({result.rowcount} linhas idênticas atualizadas)'
         return jsonify({'success': True, 'message': f'Bloqueio atualizado.{aviso}'})
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro ao editar: {str(e)}'}), 500
@@ -480,6 +513,7 @@ def liberar_parcial():
     o_processo = (request.form.get('o_PROCESSO') or '').strip()
     o_vara = (request.form.get('o_VARA') or '').strip()
     o_autor = (request.form.get('o_AUTOR') or '').strip()
+    evento = _parse_evento(request.form.get('EVENTO'))
 
     if not o_dep or o_vr is None or not o_processo:
         return jsonify({'success': False, 'message': 'Registro original inválido.'}), 400
@@ -523,10 +557,11 @@ def liberar_parcial():
         #    com a mesma DT_DEPOSITO e a DT_DESBLOQUEIO informada
         db.session.execute(text(f"""
             INSERT INTO {_TB}
-                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO)
-            VALUES (:dt_dep, :lib, :conta, :processo, :vara, :autor, :dt_desb)
+                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO, EXCE, EVENTO)
+            VALUES (:dt_dep, :lib, :conta, :processo, :vara, :autor, :dt_desb, :exce, :evento)
         """), {'dt_dep': o_dep, 'lib': valor_liberado, 'conta': o_conta,
-               'processo': o_processo, 'vara': o_vara, 'autor': o_autor, 'dt_desb': dt_desb})
+               'processo': o_processo, 'vara': o_vara, 'autor': o_autor,
+               'dt_desb': dt_desb, 'exce': _parse_bit(request.form.get('EXCE')), 'evento': evento})
 
         db.session.commit()
 
@@ -547,3 +582,175 @@ def liberar_parcial():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro na liberação parcial: {str(e)}'}), 500
+
+
+def _fmt_data_ponto(d):
+    """DD.M.AAAA (dia com zero à esquerda não; mês sem zero, como no modelo)."""
+    if not d:
+        return ''
+    return f"{d.day}.{d.month}.{d.year}"
+
+
+def _dados_bloqueio_diario(dia):
+    """Registros cujo DEPÓSITO = dia OU DESBLOQUEIO = dia.
+    Quando o registro entrou porque o DESBLOQUEIO foi nesta data,
+    mostra a mensagem de situação (Desbloqueados e Transferidos em ...)."""
+    dia_112 = dia.strftime('%Y%m%d')
+    rows = db.session.execute(text(f"""
+        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO
+        FROM {_TB}
+        WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
+           OR CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :d
+        ORDER BY PROCESSO
+    """), {'d': dia_112}).fetchall()
+
+    cartoes = []
+    for r in rows:
+        dep, vr, conta, proc, vara, autor, desb = r
+        dep_d = dep.date() if hasattr(dep, 'date') else dep
+        desb_d = desb.date() if (desb and hasattr(desb, 'date')) else desb
+
+        # entrou por causa do DESBLOQUEIO nesta data? -> mostra a situação
+        desb_na_data = bool(desb_d and desb_d.strftime('%Y%m%d') == dia_112)
+
+        situacao = ''
+        if desb_na_data:
+            situacao = f"Desbloqueados e Transferidos em {_fmt_data_ponto(desb_d)}"
+
+        cartoes.append({
+            'dt_bloqueio': _fmt_data_ponto(dep_d),
+            'dt_transf': _fmt_data_ponto(desb_d) if desb_na_data else '',
+            'processo': (proc or ''),
+            'vara': (vara or ''),
+            'autor': (autor or ''),
+            'vr': vr,
+            'vr_fmt': _fmt_vr(vr),
+            'conta': (conta or ''),
+            'situacao': situacao,
+        })
+    return cartoes
+
+
+@bloqueios_judiciais_bp.route('/bloqueio-diario')
+@login_required
+def bloqueio_diario():
+    """Página do Bloqueio Diário: escolhe uma data e vê os cartões."""
+    dia_str = (request.args.get('dia') or '').strip()
+    dia = _parse_data(dia_str)
+    cartoes = _dados_bloqueio_diario(dia) if dia else []
+    return render_template(
+        'bloqueios_judiciais/bloqueio_diario.html',
+        dia=dia_str, dia_fmt=_fmt_data_ponto(dia) if dia else '',
+        cartoes=cartoes, tem_data=bool(dia),
+    )
+
+
+@bloqueios_judiciais_bp.route('/bloqueio-diario/excel')
+@login_required
+def bloqueio_diario_excel():
+    """Excel do dia escolhido (uma aba = a data), linhas claras e Situação
+    vertical à direita. A 2ª data (Desbloqueios/Transferências) só aparece
+    quando há data de desbloqueio."""
+    from openpyxl.styles import PatternFill
+    dia = _parse_data((request.args.get('dia') or '').strip())
+    if not dia:
+        return Response('Informe a data.', mimetype='text/plain')
+    cartoes = _dados_bloqueio_diario(dia)
+
+    wb = Workbook(); ws = wb.active
+    ws.title = _fmt_data_ponto(dia)[:31]
+    ws.sheet_view.showGridLines = False
+
+    # bordas claras
+    fina = Side(style='thin', color='D6DEEA')
+    borda = Border(left=fina, right=fina, top=fina, bottom=fina)
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    left = Alignment(horizontal='left', vertical='center', wrap_text=True)
+    right = Alignment(horizontal='right', vertical='center')
+    azul_txt = Font(bold=True, color='1F3A5F')
+    azul_hdr = PatternFill('solid', fgColor='1F4E79')
+    branco_b = Font(bold=True, color='FFFFFF')
+    azul_claro = PatternFill('solid', fgColor='EAF1FB')
+    cinza = PatternFill('solid', fgColor='F5F7FA')
+    verm = Font(bold=True, color='C0392B')     # situação em vermelho
+    F_MOEDA = '"R$"\\ #,##0.00'
+
+    ws.column_dimensions['A'].width = 46
+    ws.column_dimensions['B'].width = 22
+    ws.column_dimensions['C'].width = 34
+
+    # Título geral
+    ws.merge_cells('A1:C1')
+    t = ws.cell(1, 1, f"Bloqueios do dia {_fmt_data_ponto(dia)}")
+    t.font = Font(bold=True, size=15, color='1F3A5F'); t.alignment = center
+    ws.row_dimensions[1].height = 26
+
+    lin = 3
+    for c in cartoes:
+        tem_desb = bool(c.get('situacao'))               # tem desbloqueio nesta data
+        n_datas = 2 if tem_desb else 1                    # linhas de data no topo
+
+        # ---- Topo: datas (A:B) + Situação (C, mesclada na altura do cartão) ----
+        ws.cell(lin, 1, f"Data do Bloqueio: {c['dt_bloqueio']}")
+        ws.cell(lin, 1).font = branco_b; ws.cell(lin, 1).fill = azul_hdr; ws.cell(lin, 1).alignment = left
+        ws.cell(lin, 2).fill = azul_hdr
+        if tem_desb:
+            ws.cell(lin + 1, 1, f"Data dos Desbloqueios/Transferências: {c['dt_transf']}")
+            ws.cell(lin + 1, 1).font = branco_b; ws.cell(lin + 1, 1).fill = azul_hdr
+            ws.cell(lin + 1, 1).alignment = left
+            ws.cell(lin + 1, 2).fill = azul_hdr
+
+        # linhas do bloco (datas + processo + valor ordem + cabeçalho + conta + total)
+        ini_bloco = lin
+        # depois das datas vêm: Processo, Valor da ordem, Cabeçalho conta, Conta, Total
+        base = lin + n_datas
+        # Processo/Vara/Autor
+        ws.merge_cells(start_row=base, start_column=1, end_row=base, end_column=2)
+        ws.cell(base, 1, f"Processo: {c['processo']}"
+                         + (f"   ·   Vara: {c['vara']}" if c['vara'] else "")
+                         + (f"   ·   Autor: {c['autor']}" if c['autor'] else "")).alignment = left
+        # Valor da ordem
+        ws.cell(base + 1, 1, 'Valor da ordem:').font = azul_txt
+        vo = ws.cell(base + 1, 2, float(c['vr']) if c['vr'] is not None else 0.0)
+        vo.number_format = F_MOEDA; vo.font = azul_txt; vo.alignment = right
+        # Cabeçalho conta
+        ws.cell(base + 2, 1, 'Conta corrente/Investimento').font = azul_txt
+        ws.cell(base + 2, 1).fill = azul_claro; ws.cell(base + 2, 1).border = borda
+        h2 = ws.cell(base + 2, 2, 'Valor Bloqueado'); h2.font = azul_txt; h2.fill = azul_claro
+        h2.alignment = right; h2.border = borda
+        # Conta + valor
+        ws.cell(base + 3, 1, c['conta']).border = borda
+        vb = ws.cell(base + 3, 2, float(c['vr']) if c['vr'] is not None else 0.0)
+        vb.number_format = F_MOEDA; vb.alignment = right; vb.border = borda
+        # Total
+        ws.cell(base + 4, 1, 'Total Bloqueado').font = azul_txt
+        ws.cell(base + 4, 1).fill = cinza; ws.cell(base + 4, 1).border = borda
+        vt = ws.cell(base + 4, 2, float(c['vr']) if c['vr'] is not None else 0.0)
+        vt.number_format = F_MOEDA; vt.font = azul_txt; vt.alignment = right
+        vt.fill = cinza; vt.border = borda
+
+        fim_bloco = base + 4
+
+        # ---- Situação: título na faixa azul + texto no corpo ----
+        # título "Situação" na(s) linha(s) de data (faixa azul), alinhado ao topo
+        ws.merge_cells(start_row=ini_bloco, start_column=3, end_row=ini_bloco + n_datas - 1, end_column=3)
+        stit = ws.cell(ini_bloco, 3, 'Situação')
+        stit.font = branco_b;
+        stit.fill = azul_hdr;
+        stit.alignment = center
+
+        # corpo da situação (abaixo do título), mesclado até o fim do cartão
+        ws.merge_cells(start_row=base, start_column=3, end_row=fim_bloco, end_column=3)
+        sc = ws.cell(base, 3, c['situacao'] if tem_desb else '')
+        sc.alignment = center
+        sc.font = verm
+        sc.border = borda
+
+        lin = fim_bloco + 2   # separa os cartões
+
+    bio = io.BytesIO(); wb.save(bio); bio.seek(0)
+    nome = f"BLOQUEIO_DIARIO_{dia.strftime('%Y%m%d')}.xlsx"
+    return Response(
+        bio.getvalue(),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={'Content-Disposition': f'attachment; filename="{nome}"'})

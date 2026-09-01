@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .bd-wrap { max-width: 900px; margin: 0 auto; }
+    .bd-tools { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin-bottom: 1.2rem; }
+    .bd-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px;
+               margin-bottom: 1.4rem; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.06); }
+    .bd-l1 { display: flex; justify-content: space-between; background: #1f4e79; color: #fff;
+             padding: .6rem .9rem; font-weight: 700; }
+    .bd-l1 .bd-sit { color: #ffe4b5; font-weight: 700; }
+    .bd-body { padding: .8rem .9rem; background: #ffffff; }
+    .bd-proc { font-size: .88rem; margin-bottom: .6rem; color: #1f2937; }
+    .bd-ordem { font-weight: 700; color: #1f4e79; }
+    table.bd-t { width: 100%; border-collapse: collapse; font-size: .85rem; background: #fff; }
+    table.bd-t th, table.bd-t td { border: 1px solid #e2e8f0; padding: .45rem .7rem; background: #fff; }
+    table.bd-t th { background: #eaf1fb; text-align: left; color: #1e3a5c; }
+    table.bd-t td.v, table.bd-t th.v { text-align: right; white-space: nowrap; }
+    table.bd-t tr.tot td { font-weight: 700; background: #f5f7fa; }
+</style>
+
+<div class="bd-wrap fade-in">
+    <a href="{{ url_for('bloqueios_judiciais.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-4">Bloqueio Diário</h1>
+
+    <form method="get" class="bd-tools">
+        <div>
+            <label class="bj-label" style="font-size:.8rem;font-weight:600;color:#475569;">Data</label>
+            <input type="date" class="form-control" name="dia" value="{{ dia }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-2"></i>Buscar</button>
+        {% if tem_data and cartoes %}
+        <a class="btn btn-success" href="{{ url_for('bloqueios_judiciais.bloqueio_diario_excel', dia=dia) }}">
+            <i class="fas fa-file-excel me-2"></i>Gerar Excel
+        </a>
+        {% endif %}
+    </form>
+
+    {% if tem_data %}
+        {% if cartoes %}
+                        {% for c in cartoes %}
+            <div class="bd-card">
+                <div class="bd-l1">
+                    <span>Data do Bloqueio: {{ c.dt_bloqueio }} - Memo</span>
+                    <span class="bd-sit">{{ c.situacao }}</span>
+                </div>
+                <div class="bd-body">
+                    <div class="bd-proc">
+                        <strong>Processo:</strong> {{ c.processo }}
+                        {% if c.vara %}&nbsp;&nbsp;<strong>Vara:</strong> {{ c.vara }}{% endif %}
+                        {% if c.autor %}&nbsp;&nbsp;<strong>Autor:</strong> {{ c.autor }}{% endif %}
+                        <div>Valor da ordem: <span class="bd-ordem">{{ c.vr_fmt }}</span></div>
+                    </div>
+                    <table class="bd-t">
+                        <thead>
+                            <tr><th>Conta corrente</th><th class="v">Valor Bloqueado</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>{{ c.conta }}</td><td class="v">{{ c.vr_fmt }}</td></tr>
+                            <tr class="tot"><td>Total Bloqueado</td><td class="v">{{ c.vr_fmt }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-warning">
+                Nenhum bloqueio com depósito ou desbloqueio em {{ dia_fmt }}.
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="alert alert-info">Escolha uma data e clique em Buscar.</div>
+    {% endif %}
+</div>
+{% endblock %}
