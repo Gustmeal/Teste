@@ -14,6 +14,11 @@
                font-size: .88rem; color: #334155; margin-bottom: 1rem; }
     .cf-label { font-size: .8rem; font-weight: 600; color: #475569; }
     .cf-ind { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .cf-bloco { border: 1px solid #e2e8f0; border-radius: 10px; padding: .9rem 1rem; margin-top: 1rem; background: #fbfdff; }
+    .cf-bloco-tit { font-weight: 700; color: #1e3a5c; margin-bottom: .6rem; }
+    .cf-mov { margin-top: .6rem; }
+    .cf-mov summary { cursor: pointer; font-size: .85rem; color: #2563eb; font-weight: 600; }
+    .cf-mov[open] summary { margin-bottom: .3rem; }
 </style>
 
 <div class="cf-container fade-in">
@@ -100,15 +105,45 @@
                             </small>
                         </div>
 
-                        {% for (attr, label) in f.campos %}
-                        <div class="col-md-4">
-                            <label class="cf-label">{{ label }}</label>
-                            <input type="number" step="any" class="form-control"
-                                   name="{{ attr }}"
-                                   placeholder="Anterior: {{ f.dados_anteriores.get(attr) if f.dados_anteriores.get(attr) is not none else '—' }}">
+                    </div>
+
+                    {% if f.multiplo %}
+                        {% for b in f.blocos %}
+                        <div class="cf-bloco">
+                            <div class="cf-bloco-tit">{{ b.label }}</div>
+                            <div class="row g-3">
+                                {% for (attr, label) in b.campos_saldo %}
+                                <div class="col-md-4">
+                                    <label class="cf-label">{{ label }}</label>
+                                    <input type="number" step="any" class="form-control" name="{{ attr }}"
+                                           placeholder="Anterior: {{ f.dados_anteriores.get(attr) if f.dados_anteriores.get(attr) is not none else '—' }}">
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <details class="cf-mov">
+                                <summary>Movimentos (Aplicação / Resgate / IR / IOF)</summary>
+                                <div class="row g-3 mt-1">
+                                    {% for (attr, label) in b.campos_mov %}
+                                    <div class="col-md-3">
+                                        <label class="cf-label">{{ label }}</label>
+                                        <input type="number" step="any" class="form-control" name="{{ attr }}" placeholder="0">
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
                         </div>
                         {% endfor %}
-                    </div>
+                    {% else %}
+                        <div class="row g-3">
+                            {% for (attr, label) in f.campos %}
+                            <div class="col-md-4">
+                                <label class="cf-label">{{ label }}</label>
+                                <input type="number" step="any" class="form-control" name="{{ attr }}"
+                                       placeholder="Anterior: {{ f.dados_anteriores.get(attr) if f.dados_anteriores.get(attr) is not none else '—' }}">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
 
                     <div class="mt-3">
                         <button type="button" class="btn btn-primary"

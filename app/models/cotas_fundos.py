@@ -22,10 +22,21 @@ class CotasBBFae2(db.Model):
     VR_SD_BRUTO_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
     VR_BLOQUEIO_JUDICIAL_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
     VR_SD_LIQUIDO_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
-    VR_APLICACAO = db.Column(db.Numeric(18, 2))
-    VR_RESGATE = db.Column(db.Numeric(18, 2))
-    VR_IR = db.Column(db.Numeric(18, 2))
-    VR_IOF = db.Column(db.Numeric(18, 2))
+    # Conta 191.166-X
+    VR_APLICACAO_BB_FAE2 = db.Column(db.Numeric(18, 2))
+    VR_RESGATE_BB_FAE2 = db.Column(db.Numeric(18, 2))
+    VR_IR_BB_FAE2 = db.Column(db.Numeric(18, 2))
+    VR_IOF_BB_FAE2 = db.Column(db.Numeric(18, 2))
+    # Conta 192.166-5 (CC)
+    VR_APLICACAO_BB_FAE2_CC = db.Column(db.Numeric(18, 2))
+    VR_RESGATE_BB_FAE2_CC = db.Column(db.Numeric(18, 2))
+    VR_IR_BB_FAE2_CC = db.Column(db.Numeric(18, 2))
+    VR_IOF_BB_FAE2_CC = db.Column(db.Numeric(18, 2))
+    # Conta 100.000-4
+    VR_APLICACAO_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
+    VR_RESGATE_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
+    VR_IR_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
+    VR_IOF_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
 
 
 class CotasBBExclusivo(db.Model):
@@ -65,25 +76,57 @@ class CotasCaixaXXI(db.Model):
 # CONFIGURAÇÃO DOS FUNDOS (o app funciona igual para os três)
 # =========================================================================
 FUNDOS = {
-    'bb_fae2': {
+        'bb_fae2': {
         'label': 'BB Extramercado FAE 2',
         'tabela': 'FIN_TB026',
         'model': CotasBBFae2,
-        'sd_bruto': 'VR_SD_BRUTO_BB_FAE2',
-        'campos': [
-            ('VR_SD_BRUTO_BB_FAE2', 'Saldo Bruto (191.166-X)'),
-            ('VR_BLOQUEIO_JUDICIAL_BB_FAE2', 'Bloqueio Judicial (191.166-X)'),
-            ('VR_SD_LIQUIDO_BB_FAE2', 'Saldo Líquido (191.166-X)'),
-            ('VR_SD_BRUTO_BB_FAE2_CC', 'Saldo Bruto (192.166-5)'),
-            ('VR_BLOQUEIO_JUDICIAL_BB_FAE2_CC', 'Bloqueio Judicial (192.166-5)'),
-            ('VR_SD_LIQUIDO_BB_FAE2_CC', 'Saldo Líquido (192.166-5)'),
-            ('VR_SD_BRUTO_BB_FAE2_1000004', 'Saldo Bruto (100.000-4)'),
-            ('VR_BLOQUEIO_JUDICIAL_BB_FAE2_1000004', 'Bloqueio Judicial (100.000-4)'),
-            ('VR_SD_LIQUIDO_BB_FAE2_1000004', 'Saldo Líquido (100.000-4)'),
-            ('VR_APLICACAO', 'Aplicação'),
-            ('VR_RESGATE', 'Resgate'),
-            ('VR_IR', 'IR'),
-            ('VR_IOF', 'IOF'),
+        'multiplo': True,   # <- marca que este fundo tem vários blocos
+        'blocos': [
+            {
+                'label': 'Conta 191.166-X',
+                'sd_bruto': 'VR_SD_BRUTO_BB_FAE2',
+                'campos_saldo': [
+                    ('VR_SD_BRUTO_BB_FAE2', 'Saldo Bruto'),
+                    ('VR_BLOQUEIO_JUDICIAL_BB_FAE2', 'Bloqueio Judicial'),
+                    ('VR_SD_LIQUIDO_BB_FAE2', 'Saldo Líquido'),
+                ],
+                'campos_mov': [
+                    ('VR_APLICACAO_BB_FAE2', 'Aplicação'),
+                    ('VR_RESGATE_BB_FAE2', 'Resgate'),
+                    ('VR_IR_BB_FAE2', 'IR'),
+                    ('VR_IOF_BB_FAE2', 'IOF'),
+                ],
+            },
+            {
+                'label': 'Conta 192.166-5',
+                'sd_bruto': 'VR_SD_BRUTO_BB_FAE2_CC',
+                'campos_saldo': [
+                    ('VR_SD_BRUTO_BB_FAE2_CC', 'Saldo Bruto'),
+                    ('VR_BLOQUEIO_JUDICIAL_BB_FAE2_CC', 'Bloqueio Judicial'),
+                    ('VR_SD_LIQUIDO_BB_FAE2_CC', 'Saldo Líquido'),
+                ],
+                'campos_mov': [
+                    ('VR_APLICACAO_BB_FAE2_CC', 'Aplicação'),
+                    ('VR_RESGATE_BB_FAE2_CC', 'Resgate'),
+                    ('VR_IR_BB_FAE2_CC', 'IR'),
+                    ('VR_IOF_BB_FAE2_CC', 'IOF'),
+                ],
+            },
+            {
+                'label': 'Conta 100.000-4',
+                'sd_bruto': 'VR_SD_BRUTO_BB_FAE2_1000004',
+                'campos_saldo': [
+                    ('VR_SD_BRUTO_BB_FAE2_1000004', 'Saldo Bruto'),
+                    ('VR_BLOQUEIO_JUDICIAL_BB_FAE2_1000004', 'Bloqueio Judicial'),
+                    ('VR_SD_LIQUIDO_BB_FAE2_1000004', 'Saldo Líquido'),
+                ],
+                'campos_mov': [
+                    ('VR_APLICACAO_BB_FAE2_1000004', 'Aplicação'),
+                    ('VR_RESGATE_BB_FAE2_1000004', 'Resgate'),
+                    ('VR_IR_BB_FAE2_1000004', 'IR'),
+                    ('VR_IOF_BB_FAE2_1000004', 'IOF'),
+                ],
+            },
         ],
     },
     'bb_exclusivo': {

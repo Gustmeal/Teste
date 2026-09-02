@@ -63,9 +63,18 @@ def _montar_contexto_fundo(chave, cfg):
     ultimo = obter_ultimo_registro(model)
     proxima = obter_proxima_data(model)
 
+    # Lista de atributos do fundo: blocos (FAE 2) ou campos planos (demais)
+    if cfg.get('multiplo'):
+        attrs = []
+        for b in cfg['blocos']:
+            for (attr, _l) in (b['campos_saldo'] + b['campos_mov']):
+                attrs.append(attr)
+    else:
+        attrs = [attr for (attr, _l) in cfg['campos']]
+
     dados_anteriores = {}
     if ultimo is not None:
-        for (attr, _label) in cfg['campos']:
+        for attr in attrs:
             valor = getattr(ultimo, attr, None)
             dados_anteriores[attr] = float(valor) if valor is not None else None
 
@@ -74,7 +83,9 @@ def _montar_contexto_fundo(chave, cfg):
         'chave': chave,
         'label': cfg['label'],
         'tabela': cfg['tabela'],
-        'campos': cfg['campos'],
+        'campos': cfg.get('campos', []),
+        'multiplo': cfg.get('multiplo', False),
+        'blocos': cfg.get('blocos', []),
         'proxima_data': proxima,
         'data_anterior': ultimo.DATA if ultimo else None,
         'vr_cota_anterior': float(ultimo.VR_COTA) if (ultimo and ultimo.VR_COTA is not None) else None,
@@ -125,13 +136,22 @@ def salvar(chave):
                         f'linha (data inicial) diretamente no banco para iniciar a série.')
         }), 400
 
+    # Lista de atributos a gravar: blocos (FAE 2) ou campos planos (demais)
+    if cfg.get('multiplo'):
+        attrs = []
+        for b in cfg['blocos']:
+            for (attr, _l) in (b['campos_saldo'] + b['campos_mov']):
+                attrs.append(attr)
+    else:
+        attrs = [attr for (attr, _l) in cfg['campos']]
+
     try:
         if _auto_preencher(proxima):
             # Dia de repetição: copia tudo do dia anterior e zera o IND_COTA.
             registro = model(DATA=proxima)
             registro.VR_COTA = ultimo.VR_COTA
             registro.IND_COTA = Decimal('0.00000000')
-            for (attr, _label) in cfg['campos']:
+            for attr in attrs:
                 setattr(registro, attr, getattr(ultimo, attr, None))
             origem = 'automático (repetiu o dia anterior)'
         else:
@@ -144,7 +164,7 @@ def salvar(chave):
             registro.IND_COTA = calcular_ind_cota(
                 vr_cota, ultimo.VR_COTA if ultimo else None
             )
-            for (attr, _label) in cfg['campos']:
+            for attr in attrs:
                 setattr(registro, attr, _to_decimal(request.form.get(attr)))
             origem = 'manual'
 
@@ -434,46 +454,46 @@ def rentabilidade_calculada():
 
 
 def _rentabilidade_fundo(chave, cfg, dia):
-    """Calcula a rentabilidade do fundo na data:
-       (SD_BRUTO_atual - SD_BRUTO_anterior) + VR_RESGATE + VR_IR - VR_APLICACAO + VR_IOF.
-       Campos ausentes contam como 0. 'anterior' = registro imediatamente anterior."""
     model = cfg['model']
-    sd_attr = cfg['sd_bruto']
+    def _d(v): return Decimal(str(v)) if v is not None else Decimal('0')
 
-    def _d(v):
-        return Decimal(str(v)) if v is not None else Decimal('0')
-
-    # registro da data escolhida
     atual = db.session.query(model).filter(model.DATA == dia).first()
     if atual is None:
-        return {'label': cfg['label'], 'ok': False,
-                'msg': f'Não há lançamento em {dia.strftime("%d/%m/%Y")} para este fundo.'}
-
-    # registro imediatamente anterior (a data anterior mais recente)
-    anterior = (db.session.query(model)
-                .filter(model.DATA < dia)
-                .order_by(model.DATA.desc())
-                .first())
+        return {'label': cfg['label'], 'multiplo': cfg.get('multiplo', False),
+                'ok': False, 'msg': f'Não há lançamento em {dia.strftime("%d/%m/%Y")}.'}
+    anterior = (db.session.query(model).filter(model.DATA < dia)
+                .order_by(model.DATA.desc()).first())
     if anterior is None:
-        return {'label': cfg['label'], 'ok': False,
-                'msg': 'Não há registro anterior para comparar.'}
+        return {'label': cfg['label'], 'multiplo': cfg.get('multiplo', False),
+                'ok': False, 'msg': 'Não há registro anterior para comparar.'}
 
-    sd_atual = _d(getattr(atual, sd_attr, None))
-    sd_anterior = _d(getattr(anterior, sd_attr, None))
-    aplic = _d(getattr(atual, 'VR_APLICACAO', None))
-    resg = _d(getattr(atual, 'VR_RESGATE', None))
-    ir = _d(getattr(atual, 'VR_IR', None))
-    iof = _d(getattr(atual, 'VR_IOF', None))
+    def calc(sd_attr, apl, res, ir, iof):
+        sd_a = _d(getattr(atual, sd_attr, None)); sd_ant = _d(getattr(anterior, sd_attr, None))
+        a = _d(getattr(atual, apl, None)); r = _d(getattr(atual, res, None))
+        i = _d(getattr(atual, ir, None)); o = _d(getattr(atual, iof, None))
+        rent = (sd_a - sd_ant) + r + i - a + o
+        return {'sd_atual': _fmt_vr(sd_a), 'sd_anterior': _fmt_vr(sd_ant),
+                'aplicacao': _fmt_vr(a), 'resgate': _fmt_vr(r), 'ir': _fmt_vr(i), 'iof': _fmt_vr(o),
+                'rentabilidade': _fmt_vr(rent), 'positiva': rent >= 0}
 
-    rent = (sd_atual - sd_anterior) + resg + ir - aplic + iof
+    base = {'label': cfg['label'], 'ok': True,
+            'data_atual': atual.DATA.strftime('%d/%m/%Y'),
+            'data_anterior': anterior.DATA.strftime('%d/%m/%Y')}
 
-    return {
-        'label': cfg['label'], 'ok': True,
-        'data_atual': atual.DATA.strftime('%d/%m/%Y'),
-        'data_anterior': anterior.DATA.strftime('%d/%m/%Y'),
-        'sd_atual': _fmt_vr(sd_atual), 'sd_anterior': _fmt_vr(sd_anterior),
-        'aplicacao': _fmt_vr(aplic), 'resgate': _fmt_vr(resg),
-        'ir': _fmt_vr(ir), 'iof': _fmt_vr(iof),
-        'rentabilidade': _fmt_vr(rent),
-        'positiva': rent >= 0,
-    }
+    if cfg.get('multiplo'):
+        quadros = []
+        for b in cfg['blocos']:
+            m = {a2: attr for attr, a2 in []}  # noop
+            apl = next(a for a, _ in b['campos_mov'] if a.startswith('VR_APLICACAO'))
+            res = next(a for a, _ in b['campos_mov'] if a.startswith('VR_RESGATE'))
+            ir = next(a for a, _ in b['campos_mov'] if a.startswith('VR_IR'))
+            iof = next(a for a, _ in b['campos_mov'] if a.startswith('VR_IOF'))
+            q = calc(b['sd_bruto'], apl, res, ir, iof)
+            q['label'] = b['label']
+            quadros.append(q)
+        base['multiplo'] = True; base['quadros'] = quadros
+        return base
+    else:
+        base['multiplo'] = False
+        base.update(calc(cfg['sd_bruto'], 'VR_APLICACAO', 'VR_RESGATE', 'VR_IR', 'VR_IOF'))
+        return base

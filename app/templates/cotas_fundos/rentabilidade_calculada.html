@@ -16,6 +16,8 @@
     .rc-pos { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
     .rc-neg { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
     .rc-formula { font-size: .78rem; color: #94a3b8; margin-top: .5rem; }
+    .rc-sub { border:1px solid #e2e8f0; border-radius:10px; padding:.8rem; margin-bottom:.8rem; }
+    .rc-sub-tit { font-weight:700; color:#1e3a5c; margin-bottom:.5rem; }
 </style>
 
 <div class="rc-wrap fade-in">
@@ -43,6 +45,24 @@
             <div class="rc-body">
                 {% if not r.ok %}
                     <div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>{{ r.msg }}</div>
+                {% elif r.multiplo %}
+                    {% for q in r.quadros %}
+                    <div class="rc-sub">
+                        <div class="rc-sub-tit">{{ q.label }}</div>
+                        <div class="rc-grid">
+                            <div class="lbl">Saldo Bruto (atual)</div><div class="val">{{ q.sd_atual }}</div>
+                            <div class="lbl">Saldo Bruto (anterior)</div><div class="val">{{ q.sd_anterior }}</div>
+                            <div class="lbl">Resgate</div><div class="val">{{ q.resgate }}</div>
+                            <div class="lbl">IR</div><div class="val">{{ q.ir }}</div>
+                            <div class="lbl">Aplicação</div><div class="val">{{ q.aplicacao }}</div>
+                            <div class="lbl">IOF</div><div class="val">{{ q.iof }}</div>
+                        </div>
+                        <div class="rc-res {{ 'rc-pos' if q.positiva else 'rc-neg' }}">
+                            <span>Rentabilidade</span><span>{{ q.rentabilidade }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <div class="rc-formula">(Saldo Bruto atual − anterior) + Resgate + IR − Aplicação + IOF</div>
                 {% else %}
                     <div class="rc-grid">
                         <div class="lbl">Saldo Bruto (atual)</div><div class="val">{{ r.sd_atual }}</div>
@@ -55,9 +75,7 @@
                     <div class="rc-res {{ 'rc-pos' if r.positiva else 'rc-neg' }}">
                         <span>Rentabilidade</span><span>{{ r.rentabilidade }}</span>
                     </div>
-                    <div class="rc-formula">
-                        (Saldo Bruto atual − anterior) + Resgate + IR − Aplicação + IOF
-                    </div>
+                    <div class="rc-formula">(Saldo Bruto atual − anterior) + Resgate + IR − Aplicação + IOF</div>
                 {% endif %}
             </div>
         </div>
