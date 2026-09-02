@@ -17,6 +17,17 @@
     .bj-modal { background: #fff; border-radius: 12px; padding: 1.6rem; width: 640px;
                 max-width: 95vw; max-height: 90vh; overflow-y: auto; }
     .bj-acoes { display: flex; gap: .3rem; }
+
+    .bj-stats { display: flex; flex-wrap: wrap; gap: .7rem; margin-bottom: 1.2rem; }
+    .bj-stat { flex: 1 1 160px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+               padding: .8rem 1rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+    .bj-stat .st-lbl { font-size: .74rem; text-transform: uppercase; letter-spacing: .03em;
+                       color: #64748b; font-weight: 600; }
+    .bj-stat .st-num { font-size: 1.35rem; font-weight: 800; color: #1e3a5c; line-height: 1.15; }
+    .bj-stat .st-sub { font-size: .78rem; color: #94a3b8; }
+    .bj-stat.s-blue { border-top: 3px solid #2563eb; }
+    .bj-stat.s-amber { border-top: 3px solid #f59e0b; }
+    .bj-stat.s-green { border-top: 3px solid #16a34a; }
 </style>
 
 <div class="bj-container fade-in">
@@ -71,6 +82,10 @@
                         <label class="bj-label">Autor</label>
                         <input type="text" class="form-control" name="AUTOR">
                     </div>
+                    <div class="col-md-4">
+                        <label class="bj-label">Memo SEI</label>
+                        <input type="text" class="form-control" name="MEMO_SEI">
+                    </div>
                     <div class="col-md-3">
                         <label class="bj-label">Excedente</label>
                         <select class="form-select" name="EXCE">
@@ -123,14 +138,34 @@
                     <label class="bj-label">Valor exato</label>
                     <input type="number" step="any" class="form-control" name="vr_exato" value="{{ filtros.vr_exato }}">
                 </div>
-                <div class="col-md-1">
+                <div class="col-md-2 d-flex gap-2">
                     <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i></button>
+                    <a href="{{ url_for('bloqueios_judiciais.index') }}" class="btn btn-outline-secondary w-100" title="Limpar filtros"><i class="fas fa-eraser"></i></a>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- TABELA -->
+    <!-- CAIXINHAS DE TOTAIS (sensíveis aos filtros) -->
+    <div class="bj-stats">
+        <div class="bj-stat s-blue">
+            <div class="st-lbl">Registros</div>
+            <div class="st-num">{{ totais.qtd }}</div>
+            <div class="st-sub">Total: {{ totais.valor }}</div>
+        </div>
+        <div class="bj-stat s-amber">
+            <div class="st-lbl">Bloqueados</div>
+            <div class="st-num">{{ totais.qtd_bloq }}</div>
+            <div class="st-sub">{{ totais.valor_bloq }}</div>
+        </div>
+        <div class="bj-stat s-green">
+            <div class="st-lbl">Desbloqueados</div>
+            <div class="st-num">{{ totais.qtd_desb }}</div>
+            <div class="st-sub">{{ totais.valor_desb }}</div>
+        </div>
+    </div>
+
     <div class="bj-card">
         <div class="bj-head"><i class="fas fa-table me-2"></i>Bloqueios ({{ lista|length }})</div>
         <div class="bj-body p-0">
@@ -168,7 +203,8 @@
                                         data-conta="{{ b.conta }}" data-processo="{{ b.processo }}"
                                         data-vara="{{ b.vara }}" data-autor="{{ b.autor }}"
                                         data-desb="{{ b.dt_desbloqueio_iso }}"
-                                        data-exce="{{ b.exce_str }}" data-evento="{{ b.evento }}">
+                                        data-exce="{{ b.exce_str }}" data-evento="{{ b.evento }}"
+                                        data-memo="{{ b.memo_sei }}">
                                         <i class="fas fa-pen"></i>
                                     </button>
                                     {% if not b.dt_desbloqueio %}
@@ -178,7 +214,8 @@
                                         data-dep="{{ b.dt_deposito_iso }}" data-vr="{{ b.vr_str }}"
                                         data-vrfmt="{{ b.vr_fmt }}"
                                         data-conta="{{ b.conta }}" data-processo="{{ b.processo }}"
-                                        data-vara="{{ b.vara }}" data-autor="{{ b.autor }}">
+                                        data-vara="{{ b.vara }}" data-autor="{{ b.autor }}"
+                                        data-memo="{{ b.memo_sei }}">
                                         <i class="fas fa-scissors"></i>
                                     </button>
                                     {% endif %}
@@ -228,6 +265,10 @@
                 <div class="col-md-6">
                     <label class="bj-label">Autor</label>
                     <input type="text" class="form-control" name="AUTOR" id="e_autor">
+                </div>
+                <div class="col-md-6">
+                    <label class="bj-label">Memo SEI</label>
+                    <input type="text" class="form-control" name="MEMO_SEI" id="e_memo">
                 </div>
                 <div class="col-md-6">
                     <label class="bj-label">Data do Desbloqueio</label>
@@ -360,6 +401,7 @@ function bjEditar(btn) {
     document.getElementById('e_processo').value = btn.dataset.processo;
     document.getElementById('e_vara').value = btn.dataset.vara;
     document.getElementById('e_autor').value = btn.dataset.autor;
+    document.getElementById('e_memo').value = btn.dataset.memo || '';
     document.getElementById('e_desb').value = btn.dataset.desb;
     document.getElementById('e_exce').value = btn.dataset.exce || '';
     document.getElementById('e_evento').value = btn.dataset.evento || '';

@@ -28,7 +28,7 @@
 
     <form method="get" class="bd-tools">
         <div>
-            <label class="bj-label" style="font-size:.8rem;font-weight:600;color:#475569;">Data</label>
+            <label style="font-size:.8rem;font-weight:600;color:#475569;">Data</label>
             <input type="date" class="form-control" name="dia" value="{{ dia }}" required>
         </div>
         <button type="submit" class="btn btn-primary"><i class="fas fa-search me-2"></i>Buscar</button>
@@ -41,7 +41,7 @@
 
     {% if tem_data %}
         {% if cartoes %}
-                        {% for c in cartoes %}
+            {% for c in cartoes %}
             <div class="bd-card">
                 <div class="bd-l1">
                     <span>Data do Bloqueio: {{ c.dt_bloqueio }} - Memo</span>
@@ -52,15 +52,18 @@
                         <strong>Processo:</strong> {{ c.processo }}
                         {% if c.vara %}&nbsp;&nbsp;<strong>Vara:</strong> {{ c.vara }}{% endif %}
                         {% if c.autor %}&nbsp;&nbsp;<strong>Autor:</strong> {{ c.autor }}{% endif %}
-                        <div>Valor da ordem: <span class="bd-ordem">{{ c.vr_fmt }}</span></div>
+                        {% if c.memo_sei %}&nbsp;&nbsp;<strong>Memo SEI:</strong> {{ c.memo_sei }}{% endif %}
+                        <div>Valor da ordem: <span class="bd-ordem">{{ c.total_fmt }}</span></div>
                     </div>
                     <table class="bd-t">
                         <thead>
-                            <tr><th>Conta corrente</th><th class="v">Valor Bloqueado</th></tr>
+                            <tr><th>Conta corrente/Investimento</th><th class="v">Valor Bloqueado</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>{{ c.conta }}</td><td class="v">{{ c.vr_fmt }}</td></tr>
-                            <tr class="tot"><td>Total Bloqueado</td><td class="v">{{ c.vr_fmt }}</td></tr>
+                            {% for ct in c.contas %}
+                            <tr><td>{{ ct.conta }}</td><td class="v">{{ ct.vr_fmt }}</td></tr>
+                            {% endfor %}
+                            <tr class="tot"><td>Total Bloqueado</td><td class="v">{{ c.total_fmt }}</td></tr>
                         </tbody>
                     </table>
                 </div>

@@ -114,13 +114,13 @@ def index():
     elif f_situacao == 'desbloqueado':
         condicoes.append("DT_DESBLOQUEIO IS NOT NULL")
     if f_vr_exato is not None:
-        condicoes.append("VR_BLOQUEADO = :p_vrex");
+        condicoes.append("VR_BLOQUEADO = :p_vrex")
         params['p_vrex'] = f_vr_exato
     where = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 
     sql = text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO,
-               EXCE, EVENTO
+               EXCE, EVENTO, MEMO_SEI
         FROM {_TB} {where}
         ORDER BY DT_DEPOSITO DESC, PROCESSO
     """)
@@ -139,14 +139,37 @@ def index():
             'exce_str': ('' if exce is None else ('1' if exce else '0')),
             'exce_lbl': ('Sim' if exce == 1 else ('Não' if exce == 0 else '—')),
             'evento': (r[8] or ''),
+            'memo_sei': (r[9] or ''),
         })
+
+    # ===== Totais sensíveis aos filtros (calculados sobre a lista já filtrada) =====
+    qtd = len(lista)
+    total_valor = Decimal('0')
+    qtd_bloq = 0
+    total_bloq = Decimal('0')
+    qtd_desb = 0
+    total_desb = Decimal('0')
+    for l in lista:
+        vr = Decimal(str(l['vr'])) if l['vr'] is not None else Decimal('0')
+        total_valor += vr
+        if l['dt_desbloqueio']:
+            qtd_desb += 1; total_desb += vr
+        else:
+            qtd_bloq += 1; total_bloq += vr
+
+    totais = {
+        'qtd': qtd,
+        'valor': _fmt_vr(total_valor),
+        'qtd_bloq': qtd_bloq, 'valor_bloq': _fmt_vr(total_bloq),
+        'qtd_desb': qtd_desb, 'valor_desb': _fmt_vr(total_desb),
+    }
 
     return render_template(
         'bloqueios_judiciais/index.html',
-        contas=_carregar_contas(), lista=lista,
+        contas=_carregar_contas(), lista=lista, totais=totais,
         filtros={'processo': f_processo, 'autor': f_autor, 'conta': f_conta,
                  'situacao': f_situacao,
-                 'vr_exato': request.args.get('vr_exato', ''),},
+                 'vr_exato': request.args.get('vr_exato', '')},
     )
 
 
@@ -592,40 +615,61 @@ def _fmt_data_ponto(d):
 
 
 def _dados_bloqueio_diario(dia):
-    """Registros cujo DEPÓSITO = dia OU DESBLOQUEIO = dia.
-    Quando o registro entrou porque o DESBLOQUEIO foi nesta data,
-    mostra a mensagem de situação (Desbloqueados e Transferidos em ...)."""
+    """Registros com DEPÓSITO = dia OU DESBLOQUEIO = dia, AGRUPADOS por
+    (processo, vara, autor, memo_sei, data do depósito). Cada grupo = um cartão
+    com várias contas e o total somado. Situação aparece quando há desbloqueio na data."""
+    from collections import OrderedDict
     dia_112 = dia.strftime('%Y%m%d')
     rows = db.session.execute(text(f"""
-        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO
+        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
+               DT_DESBLOQUEIO, MEMO_SEI
         FROM {_TB}
         WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
            OR CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :d
-        ORDER BY PROCESSO
+        ORDER BY PROCESSO, DT_DEPOSITO
     """), {'d': dia_112}).fetchall()
 
-    cartoes = []
+    grupos = OrderedDict()
     for r in rows:
-        dep, vr, conta, proc, vara, autor, desb = r
+        dep, vr, conta, proc, vara, autor, desb, memo = r
         dep_d = dep.date() if hasattr(dep, 'date') else dep
         desb_d = desb.date() if (desb and hasattr(desb, 'date')) else desb
 
-        # entrou por causa do DESBLOQUEIO nesta data? -> mostra a situação
-        desb_na_data = bool(desb_d and desb_d.strftime('%Y%m%d') == dia_112)
+        chave = (
+            (proc or '').strip(), (vara or '').strip(),
+            (autor or '').strip(), (memo or '').strip(),
+            dep_d.strftime('%Y%m%d') if dep_d else '',
+        )
 
+        if chave not in grupos:
+            grupos[chave] = {
+                'dt_bloqueio': _fmt_data_ponto(dep_d),
+                'processo': (proc or ''), 'vara': (vara or ''),
+                'autor': (autor or ''), 'memo_sei': (memo or ''),
+                'contas': [], 'total': Decimal('0'),
+                'desb_na_data': False, 'dt_transf': '',
+            }
+
+        g = grupos[chave]
+        vrd = Decimal(str(vr)) if vr is not None else Decimal('0')
+        g['contas'].append({'conta': (conta or ''), 'vr_fmt': _fmt_vr(vrd), 'valor': vrd})
+        g['total'] += vrd
+
+        if desb_d and desb_d.strftime('%Y%m%d') == dia_112:
+            g['desb_na_data'] = True
+            g['dt_transf'] = _fmt_data_ponto(desb_d)
+
+    cartoes = []
+    for g in grupos.values():
         situacao = ''
-        if desb_na_data:
-            situacao = f"Desbloqueados e Transferidos em {_fmt_data_ponto(desb_d)}"
-
+        if g['desb_na_data']:
+            situacao = f"Desbloqueados e Transferidos em {g['dt_transf']}"
         cartoes.append({
-            'dt_bloqueio': _fmt_data_ponto(dep_d),
-            'dt_transf': _fmt_data_ponto(desb_d) if desb_na_data else '',
-            'processo': (proc or ''),
-            'vara': (vara or ''),
-            'autor': (autor or ''),
-            'vr': vr,
-            'vr_fmt': _fmt_vr(vr),
-            'conta': (conta or ''),
+            'dt_bloqueio': g['dt_bloqueio'], 'dt_transf': g['dt_transf'],
+            'processo': g['processo'], 'vara': g['vara'],
+            'autor': g['autor'], 'memo_sei': g['memo_sei'],
+            'contas': g['contas'],
+            'total_fmt': _fmt_vr(g['total']), 'total_valor': g['total'],
             'situacao': situacao,
         })
     return cartoes
@@ -648,9 +692,8 @@ def bloqueio_diario():
 @bloqueios_judiciais_bp.route('/bloqueio-diario/excel')
 @login_required
 def bloqueio_diario_excel():
-    """Excel do dia escolhido (uma aba = a data), linhas claras e Situação
-    vertical à direita. A 2ª data (Desbloqueios/Transferências) só aparece
-    quando há data de desbloqueio."""
+    """Excel do dia (uma aba = a data), agrupado por processo/vara/autor/memo/data.
+    Várias contas somando o total; Situação vertical à direita."""
     from openpyxl.styles import PatternFill
     dia = _parse_data((request.args.get('dia') or '').strip())
     if not dia:
@@ -661,7 +704,6 @@ def bloqueio_diario_excel():
     ws.title = _fmt_data_ponto(dia)[:31]
     ws.sheet_view.showGridLines = False
 
-    # bordas claras
     fina = Side(style='thin', color='D6DEEA')
     borda = Border(left=fina, right=fina, top=fina, bottom=fina)
     center = Alignment(horizontal='center', vertical='center', wrap_text=True)
@@ -672,14 +714,13 @@ def bloqueio_diario_excel():
     branco_b = Font(bold=True, color='FFFFFF')
     azul_claro = PatternFill('solid', fgColor='EAF1FB')
     cinza = PatternFill('solid', fgColor='F5F7FA')
-    verm = Font(bold=True, color='C0392B')     # situação em vermelho
+    verm = Font(bold=True, color='C0392B')
     F_MOEDA = '"R$"\\ #,##0.00'
 
     ws.column_dimensions['A'].width = 46
     ws.column_dimensions['B'].width = 22
     ws.column_dimensions['C'].width = 34
 
-    # Título geral
     ws.merge_cells('A1:C1')
     t = ws.cell(1, 1, f"Bloqueios do dia {_fmt_data_ponto(dia)}")
     t.font = Font(bold=True, size=15, color='1F3A5F'); t.alignment = center
@@ -687,66 +728,66 @@ def bloqueio_diario_excel():
 
     lin = 3
     for c in cartoes:
-        tem_desb = bool(c.get('situacao'))               # tem desbloqueio nesta data
-        n_datas = 2 if tem_desb else 1                    # linhas de data no topo
+        tem_desb = bool(c.get('situacao'))
+        n_datas = 2 if tem_desb else 1
 
-        # ---- Topo: datas (A:B) + Situação (C, mesclada na altura do cartão) ----
+        # Topo: datas (A:B) em faixa azul
         ws.cell(lin, 1, f"Data do Bloqueio: {c['dt_bloqueio']}")
         ws.cell(lin, 1).font = branco_b; ws.cell(lin, 1).fill = azul_hdr; ws.cell(lin, 1).alignment = left
         ws.cell(lin, 2).fill = azul_hdr
         if tem_desb:
             ws.cell(lin + 1, 1, f"Data dos Desbloqueios/Transferências: {c['dt_transf']}")
-            ws.cell(lin + 1, 1).font = branco_b; ws.cell(lin + 1, 1).fill = azul_hdr
-            ws.cell(lin + 1, 1).alignment = left
+            ws.cell(lin + 1, 1).font = branco_b; ws.cell(lin + 1, 1).fill = azul_hdr; ws.cell(lin + 1, 1).alignment = left
             ws.cell(lin + 1, 2).fill = azul_hdr
 
-        # linhas do bloco (datas + processo + valor ordem + cabeçalho + conta + total)
         ini_bloco = lin
-        # depois das datas vêm: Processo, Valor da ordem, Cabeçalho conta, Conta, Total
         base = lin + n_datas
-        # Processo/Vara/Autor
+
+        # Processo/Vara/Autor/Memo SEI (memo ao lado do autor)
         ws.merge_cells(start_row=base, start_column=1, end_row=base, end_column=2)
-        ws.cell(base, 1, f"Processo: {c['processo']}"
-                         + (f"   ·   Vara: {c['vara']}" if c['vara'] else "")
-                         + (f"   ·   Autor: {c['autor']}" if c['autor'] else "")).alignment = left
-        # Valor da ordem
+        linha_proc = (f"Processo: {c['processo']}"
+                      + (f"   ·   Vara: {c['vara']}" if c['vara'] else "")
+                      + (f"   ·   Autor: {c['autor']}" if c['autor'] else "")
+                      + (f"   ·   Memo SEI: {c['memo_sei']}" if c['memo_sei'] else ""))
+        ws.cell(base, 1, linha_proc).alignment = left
+
+        # Valor da ordem = total
         ws.cell(base + 1, 1, 'Valor da ordem:').font = azul_txt
-        vo = ws.cell(base + 1, 2, float(c['vr']) if c['vr'] is not None else 0.0)
+        vo = ws.cell(base + 1, 2, float(c['total_valor']))
         vo.number_format = F_MOEDA; vo.font = azul_txt; vo.alignment = right
-        # Cabeçalho conta
+
+        # Cabeçalho da tabela conta
         ws.cell(base + 2, 1, 'Conta corrente/Investimento').font = azul_txt
         ws.cell(base + 2, 1).fill = azul_claro; ws.cell(base + 2, 1).border = borda
         h2 = ws.cell(base + 2, 2, 'Valor Bloqueado'); h2.font = azul_txt; h2.fill = azul_claro
         h2.alignment = right; h2.border = borda
-        # Conta + valor
-        ws.cell(base + 3, 1, c['conta']).border = borda
-        vb = ws.cell(base + 3, 2, float(c['vr']) if c['vr'] is not None else 0.0)
-        vb.number_format = F_MOEDA; vb.alignment = right; vb.border = borda
+
+        # Linhas das contas
+        rr = base + 3
+        for ct in c['contas']:
+            ws.cell(rr, 1, ct['conta']).border = borda
+            vb = ws.cell(rr, 2, float(ct['valor']))
+            vb.number_format = F_MOEDA; vb.alignment = right; vb.border = borda
+            rr += 1
+
         # Total
-        ws.cell(base + 4, 1, 'Total Bloqueado').font = azul_txt
-        ws.cell(base + 4, 1).fill = cinza; ws.cell(base + 4, 1).border = borda
-        vt = ws.cell(base + 4, 2, float(c['vr']) if c['vr'] is not None else 0.0)
-        vt.number_format = F_MOEDA; vt.font = azul_txt; vt.alignment = right
-        vt.fill = cinza; vt.border = borda
+        ws.cell(rr, 1, 'Total Bloqueado').font = azul_txt
+        ws.cell(rr, 1).fill = cinza; ws.cell(rr, 1).border = borda
+        vt = ws.cell(rr, 2, float(c['total_valor']))
+        vt.number_format = F_MOEDA; vt.font = azul_txt; vt.alignment = right; vt.fill = cinza; vt.border = borda
 
-        fim_bloco = base + 4
+        fim_bloco = rr
 
-        # ---- Situação: título na faixa azul + texto no corpo ----
-        # título "Situação" na(s) linha(s) de data (faixa azul), alinhado ao topo
+        # Situação: título na faixa azul + texto no corpo (coluna C)
         ws.merge_cells(start_row=ini_bloco, start_column=3, end_row=ini_bloco + n_datas - 1, end_column=3)
         stit = ws.cell(ini_bloco, 3, 'Situação')
-        stit.font = branco_b;
-        stit.fill = azul_hdr;
-        stit.alignment = center
+        stit.font = branco_b; stit.fill = azul_hdr; stit.alignment = center
 
-        # corpo da situação (abaixo do título), mesclado até o fim do cartão
         ws.merge_cells(start_row=base, start_column=3, end_row=fim_bloco, end_column=3)
         sc = ws.cell(base, 3, c['situacao'] if tem_desb else '')
-        sc.alignment = center
-        sc.font = verm
-        sc.border = borda
+        sc.alignment = center; sc.font = verm; sc.border = borda
 
-        lin = fim_bloco + 2   # separa os cartões
+        lin = fim_bloco + 2
 
     bio = io.BytesIO(); wb.save(bio); bio.seek(0)
     nome = f"BLOQUEIO_DIARIO_{dia.strftime('%Y%m%d')}.xlsx"
