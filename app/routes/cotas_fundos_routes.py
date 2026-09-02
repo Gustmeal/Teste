@@ -1,5 +1,5 @@
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 
 from flask import Blueprint, render_template, request, jsonify
 from flask_login import login_required
@@ -11,12 +11,12 @@ from app.models.cotas_fundos import (
 )
 from app.utils.audit import registrar_log
 import io
-from datetime import datetime
 from flask import Response
 from sqlalchemy import text
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from datetime import datetime
 
 
 cotas_fundos_bp = Blueprint(
@@ -83,6 +83,19 @@ def _montar_contexto_fundo(chave, cfg):
         'auto': _auto_preencher(proxima) if proxima else False,
         'vazia': ultimo is None,
     }
+
+def _fmt_vr(v):
+    """Formata valor no padrão BR: 1234567.89 -> 'R$ 1.234.567,89'. None/vazio -> 'R$ 0,00'."""
+    if v is None or v == '':
+        v = 0
+    try:
+        d = Decimal(str(v)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        d = Decimal('0.00')
+    # separador de milhar e vírgula decimal
+    s = f'{d:,.2f}'                       # 1,234,567.89
+    s = s.replace(',', 'X').replace('.', ',').replace('X', '.')  # 1.234.567,89
+    return f'R$ {s}'
 
 
 @cotas_fundos_bp.route('/')
@@ -393,3 +406,74 @@ def performance_excel():
     return Response(bio.getvalue(),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="PERFORMANCE_FUNDOS_{ano}.xlsx"'})
+
+@cotas_fundos_bp.route('/rentabilidade-calculada')
+@login_required
+def rentabilidade_calculada():
+    """Página: escolhe uma data e vê a rentabilidade calculada dos 3 fundos."""
+    dia_str = (request.args.get('dia') or '').strip()
+    dia = None
+    if dia_str:
+        try:
+            dia = datetime.strptime(dia_str, '%Y-%m-%d').date()
+        except ValueError:
+            dia = None
+
+    resultados = []
+    if dia:
+        for chave, cfg in FUNDOS.items():
+            resultados.append(_rentabilidade_fundo(chave, cfg, dia))
+
+    return render_template(
+        'cotas_fundos/rentabilidade_calculada.html',
+        dia=dia_str,
+        dia_fmt=dia.strftime('%d/%m/%Y') if dia else '',
+        resultados=resultados,
+        tem_data=bool(dia),
+    )
+
+
+def _rentabilidade_fundo(chave, cfg, dia):
+    """Calcula a rentabilidade do fundo na data:
+       (SD_BRUTO_atual - SD_BRUTO_anterior) + VR_RESGATE + VR_IR - VR_APLICACAO + VR_IOF.
+       Campos ausentes contam como 0. 'anterior' = registro imediatamente anterior."""
+    model = cfg['model']
+    sd_attr = cfg['sd_bruto']
+
+    def _d(v):
+        return Decimal(str(v)) if v is not None else Decimal('0')
+
+    # registro da data escolhida
+    atual = db.session.query(model).filter(model.DATA == dia).first()
+    if atual is None:
+        return {'label': cfg['label'], 'ok': False,
+                'msg': f'Não há lançamento em {dia.strftime("%d/%m/%Y")} para este fundo.'}
+
+    # registro imediatamente anterior (a data anterior mais recente)
+    anterior = (db.session.query(model)
+                .filter(model.DATA < dia)
+                .order_by(model.DATA.desc())
+                .first())
+    if anterior is None:
+        return {'label': cfg['label'], 'ok': False,
+                'msg': 'Não há registro anterior para comparar.'}
+
+    sd_atual = _d(getattr(atual, sd_attr, None))
+    sd_anterior = _d(getattr(anterior, sd_attr, None))
+    aplic = _d(getattr(atual, 'VR_APLICACAO', None))
+    resg = _d(getattr(atual, 'VR_RESGATE', None))
+    ir = _d(getattr(atual, 'VR_IR', None))
+    iof = _d(getattr(atual, 'VR_IOF', None))
+
+    rent = (sd_atual - sd_anterior) + resg + ir - aplic + iof
+
+    return {
+        'label': cfg['label'], 'ok': True,
+        'data_atual': atual.DATA.strftime('%d/%m/%Y'),
+        'data_anterior': anterior.DATA.strftime('%d/%m/%Y'),
+        'sd_atual': _fmt_vr(sd_atual), 'sd_anterior': _fmt_vr(sd_anterior),
+        'aplicacao': _fmt_vr(aplic), 'resgate': _fmt_vr(resg),
+        'ir': _fmt_vr(ir), 'iof': _fmt_vr(iof),
+        'rentabilidade': _fmt_vr(rent),
+        'positiva': rent >= 0,
+    }

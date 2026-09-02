@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .rc-wrap { max-width: 900px; margin: 0 auto; }
+    .rc-tools { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin-bottom: 1.2rem; }
+    .rc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 1.2rem; overflow: hidden; }
+    .rc-head { background: #1f4e79; color: #fff; padding: .7rem 1rem; font-weight: 700;
+               display: flex; justify-content: space-between; align-items: center; }
+    .rc-body { padding: 1rem 1.1rem; }
+    .rc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem 1.2rem; font-size: .87rem; }
+    .rc-grid .lbl { color: #64748b; } .rc-grid .val { text-align: right; font-variant-numeric: tabular-nums; }
+    .rc-res { margin-top: .8rem; padding: .7rem 1rem; border-radius: 8px; font-weight: 800;
+              display: flex; justify-content: space-between; font-size: 1.05rem; }
+    .rc-pos { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .rc-neg { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .rc-formula { font-size: .78rem; color: #94a3b8; margin-top: .5rem; }
+</style>
+
+<div class="rc-wrap fade-in">
+    <a href="{{ url_for('cotas_fundos.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-4">Rentabilidade Calculada</h1>
+
+    <form method="get" class="rc-tools">
+        <div>
+            <label style="font-size:.8rem;font-weight:600;color:#475569;">Data</label>
+            <input type="date" class="form-control" name="dia" value="{{ dia }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-calculator me-2"></i>Calcular</button>
+    </form>
+
+    {% if tem_data %}
+        {% for r in resultados %}
+        <div class="rc-card">
+            <div class="rc-head">
+                <span>{{ r.label }}</span>
+                {% if r.ok %}<small style="opacity:.85;">{{ r.data_anterior }} → {{ r.data_atual }}</small>{% endif %}
+            </div>
+            <div class="rc-body">
+                {% if not r.ok %}
+                    <div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle me-2"></i>{{ r.msg }}</div>
+                {% else %}
+                    <div class="rc-grid">
+                        <div class="lbl">Saldo Bruto (atual)</div><div class="val">{{ r.sd_atual }}</div>
+                        <div class="lbl">Saldo Bruto (anterior)</div><div class="val">{{ r.sd_anterior }}</div>
+                        <div class="lbl">Resgate</div><div class="val">{{ r.resgate }}</div>
+                        <div class="lbl">IR</div><div class="val">{{ r.ir }}</div>
+                        <div class="lbl">Aplicação</div><div class="val">{{ r.aplicacao }}</div>
+                        <div class="lbl">IOF</div><div class="val">{{ r.iof }}</div>
+                    </div>
+                    <div class="rc-res {{ 'rc-pos' if r.positiva else 'rc-neg' }}">
+                        <span>Rentabilidade</span><span>{{ r.rentabilidade }}</span>
+                    </div>
+                    <div class="rc-formula">
+                        (Saldo Bruto atual − anterior) + Resgate + IR − Aplicação + IOF
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">Escolha uma data e clique em Calcular.</div>
+    {% endif %}
+</div>
+{% endblock %}

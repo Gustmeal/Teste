@@ -22,6 +22,10 @@ class CotasBBFae2(db.Model):
     VR_SD_BRUTO_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
     VR_BLOQUEIO_JUDICIAL_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
     VR_SD_LIQUIDO_BB_FAE2_1000004 = db.Column(db.Numeric(18, 2))
+    VR_APLICACAO = db.Column(db.Numeric(18, 2))
+    VR_RESGATE = db.Column(db.Numeric(18, 2))
+    VR_IR = db.Column(db.Numeric(18, 2))
+    VR_IOF = db.Column(db.Numeric(18, 2))
 
 
 class CotasBBExclusivo(db.Model):
@@ -35,6 +39,10 @@ class CotasBBExclusivo(db.Model):
     VR_SD_BRUTO_BB_EXCLUSIVO = db.Column(db.Numeric(18, 2))
     VR_BLOQUEIO_JUDICIAL_BB_EXCLUSIVO = db.Column(db.Numeric(18, 2))
     VR_SD_LIQUIDO_BB_EXCLUSIVO = db.Column(db.Numeric(18, 2))
+    VR_APLICACAO = db.Column(db.Numeric(18, 2))
+    VR_RESGATE = db.Column(db.Numeric(18, 2))
+    VR_IR = db.Column(db.Numeric(18, 2))
+    VR_IOF = db.Column(db.Numeric(18, 2))
 
 
 class CotasCaixaXXI(db.Model):
@@ -47,6 +55,10 @@ class CotasCaixaXXI(db.Model):
     IND_COTA = db.Column(db.Numeric(18, 8))
     VR_SD_BRUTO_CAIXA_EXCLUSIVO_XXI = db.Column(db.Numeric(18, 2))
     VR_SD_LIQUIDO_CAIXA_EXCLUSIVO_XXI = db.Column(db.Numeric(18, 2))
+    VR_APLICACAO = db.Column(db.Numeric(18, 2))
+    VR_RESGATE = db.Column(db.Numeric(18, 2))
+    VR_IR = db.Column(db.Numeric(18, 2))
+    VR_IOF = db.Column(db.Numeric(18, 2))
 
 
 # =========================================================================
@@ -57,6 +69,7 @@ FUNDOS = {
         'label': 'BB Extramercado FAE 2',
         'tabela': 'FIN_TB026',
         'model': CotasBBFae2,
+        'sd_bruto': 'VR_SD_BRUTO_BB_FAE2',
         'campos': [
             ('VR_SD_BRUTO_BB_FAE2', 'Saldo Bruto (191.166-X)'),
             ('VR_BLOQUEIO_JUDICIAL_BB_FAE2', 'Bloqueio Judicial (191.166-X)'),
@@ -67,25 +80,39 @@ FUNDOS = {
             ('VR_SD_BRUTO_BB_FAE2_1000004', 'Saldo Bruto (100.000-4)'),
             ('VR_BLOQUEIO_JUDICIAL_BB_FAE2_1000004', 'Bloqueio Judicial (100.000-4)'),
             ('VR_SD_LIQUIDO_BB_FAE2_1000004', 'Saldo Líquido (100.000-4)'),
+            ('VR_APLICACAO', 'Aplicação'),
+            ('VR_RESGATE', 'Resgate'),
+            ('VR_IR', 'IR'),
+            ('VR_IOF', 'IOF'),
         ],
     },
     'bb_exclusivo': {
         'label': 'BB Exclusivo Extramercado Emgea',
         'tabela': 'FIN_TB027',
         'model': CotasBBExclusivo,
+        'sd_bruto': 'VR_SD_BRUTO_BB_EXCLUSIVO',
         'campos': [
             ('VR_SD_BRUTO_BB_EXCLUSIVO', 'Saldo Bruto'),
             ('VR_BLOQUEIO_JUDICIAL_BB_EXCLUSIVO', 'Bloqueio Judicial'),
             ('VR_SD_LIQUIDO_BB_EXCLUSIVO', 'Saldo Líquido'),
+            ('VR_APLICACAO', 'Aplicação'),
+            ('VR_RESGATE', 'Resgate'),
+            ('VR_IR', 'IR'),
+            ('VR_IOF', 'IOF'),
         ],
     },
     'caixa_xxi': {
         'label': 'Caixa Extramercado Exclusivo XXI',
         'tabela': 'FIN_TB028',
         'model': CotasCaixaXXI,
+        'sd_bruto': 'VR_SD_BRUTO_CAIXA_EXCLUSIVO_XXI',
         'campos': [
             ('VR_SD_BRUTO_CAIXA_EXCLUSIVO_XXI', 'Saldo Bruto'),
             ('VR_SD_LIQUIDO_CAIXA_EXCLUSIVO_XXI', 'Saldo Líquido'),
+            ('VR_APLICACAO', 'Aplicação'),
+            ('VR_RESGATE', 'Resgate'),
+            ('VR_IR', 'IR'),
+            ('VR_IOF', 'IOF'),
         ],
     },
 }
