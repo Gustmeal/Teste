@@ -1,101 +1,246 @@
 {% extends "base.html" %}
 
 {% block content %}
+
 <div class="editais-container fade-in" style="max-width: 800px; margin: 0 auto;">
-    <a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
-        <i class="fas fa-arrow-left"></i> Voltar
-    </a>
 
-    <h1 class="fw-bold header-with-back mb-4">Índices ANBIMA</h1>
 
-    <div class="card shadow mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-robot me-2"></i>Importação automática ({{ indice|upper }})</h5>
-        </div>
-        <div class="card-body p-4">
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle me-2"></i>
-                O sistema consulta a ANBIMA e grava as variações na FIN_TB030.
-            </div>
-            <div class="row g-2 align-items-end">
-                <div class="col-auto">
-                    <label class="form-label fw-semibold">Data de referência</label>
-                    <input type="date" id="dataAnbima" class="form-control">
-                </div>
-                <div class="col-auto">
-                    <button type="button" class="btn btn-primary" id="btnImportar"
-                            onclick="importarAnbima()">
-                        <i class="fas fa-download me-2"></i>Importar
-                    </button>
-                </div>
-            </div>
-            <div id="feedbackAnbima" class="mt-3" style="display:none;"></div>
-        </div>
+<a href="{{ url_for('boletim_financeiro.index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar
+</a>
+
+<h1 class="fw-bold header-with-back mb-4">Índices ANBIMA</h1>
+
+<div class="card shadow mb-4">
+
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+            <i class="fas fa-robot me-2"></i>
+            Importação automática ({{ indice|upper }})
+        </h5>
     </div>
 
-    <div class="card shadow">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-table me-2"></i>Últimos importados</h5>
+    <div class="card-body p-4">
+
+        <div class="alert alert-info text-center">
+            <i class="fas fa-info-circle me-2"></i>
+            O sistema consulta a ANBIMA e grava as variações na FIN_TB030.
         </div>
-        <div class="card-body p-0">
-            <table class="table table-sm table-striped mb-0">
-                <thead>
-                    <tr>
-                        <th>Dia</th><th class="text-end">Diária %</th><th class="text-end">Mês %</th>
-                        <th class="text-end">Ano %</th><th class="text-end">12M %</th><th class="text-end">24M %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for r in ultimos %}
-                    <tr>
-                        <td>{{ r.DIA.strftime('%d/%m/%Y') }}</td>
-                        <td class="text-end">{{ r.VARIACAO_DIARIA_PERC }}</td>
-                        <td class="text-end">{{ r.VARIACAO_MENSAL_PERC }}</td>
-                        <td class="text-end">{{ r.VARIACAO_ANUAL_PERC }}</td>
-                        <td class="text-end">{{ r.VARIACAO_12MESES_PERC }}</td>
-                        <td class="text-end">{{ r.VARIACAO_24MESES_PERC }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="6" class="text-center text-muted py-3">Nenhum registro ainda.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+        <div class="row g-3 align-items-end justify-content-center">
+
+            <div class="col-auto">
+                <label class="form-label fw-semibold">
+                    Data de referência
+                </label>
+
+                <input
+                    type="date"
+                    id="dataAnbima"
+                    class="form-control"
+                >
+            </div>
+
+            <div class="col-auto">
+
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    id="btnImportar"
+                    onclick="importarAnbima()"
+                >
+                    <i class="fas fa-download me-2"></i>
+                    Importar
+                </button>
+
+            </div>
+
         </div>
+
+        <div
+            id="feedbackAnbima"
+            class="mt-3 text-center"
+            style="display:none;"
+        ></div>
+
     </div>
+
+</div>
+
+<div class="card shadow">
+
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+            <i class="fas fa-table me-2"></i>
+            Últimos importados
+        </h5>
+    </div>
+
+    <div class="card-body p-0">
+
+        <table class="table table-sm table-striped mb-0">
+
+            <thead>
+                <tr class="text-center">
+                    <th>Dia</th>
+                    <th>Diária %</th>
+                    <th>Mês %</th>
+                    <th>Ano %</th>
+                    <th>12M %</th>
+                    <th>24M %</th>
+                </tr>
+            </thead>
+
+            <tbody>
+
+                {% for r in ultimos %}
+
+                <tr class="text-center">
+
+                    <td>
+                        {{ r.DIA.strftime('%d/%m/%Y') }}
+                    </td>
+
+                    <td>
+                        {{ r.VARIACAO_DIARIA_PERC }}
+                    </td>
+
+                    <td>
+                        {{ r.VARIACAO_MENSAL_PERC }}
+                    </td>
+
+                    <td>
+                        {{ r.VARIACAO_ANUAL_PERC }}
+                    </td>
+
+                    <td>
+                        {{ r.VARIACAO_12MESES_PERC }}
+                    </td>
+
+                    <td>
+                        {{ r.VARIACAO_24MESES_PERC }}
+                    </td>
+
+                </tr>
+
+                {% else %}
+
+                <tr>
+                    <td
+                        colspan="6"
+                        class="text-center text-muted py-3"
+                    >
+                        Nenhum registro ainda.
+                    </td>
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+```
+
 </div>
 
 <script>
 function importarAnbima() {
+
     var data = document.getElementById('dataAnbima').value;
     var fb = document.getElementById('feedbackAnbima');
     var btn = document.getElementById('btnImportar');
-    if (!data) { fb.style.display='block'; fb.innerHTML='<div class="alert alert-warning mb-0">Selecione a data.</div>'; return; }
+
+    if (!data) {
+
+        fb.style.display = 'block';
+
+        fb.innerHTML =
+            '<div class="alert alert-warning mb-0">' +
+            'Selecione a data.' +
+            '</div>';
+
+        return;
+    }
 
     var original = btn.innerHTML;
+
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Importando...';
+
+    btn.innerHTML =
+        '<i class="fas fa-spinner fa-spin me-2"></i>' +
+        'Importando...';
+
     fb.style.display = 'block';
-    fb.innerHTML = '<div class="alert alert-info mb-0"><i class="fas fa-robot me-2"></i>Consultando a ANBIMA...</div>';
+
+    fb.innerHTML =
+        '<div class="alert alert-info mb-0">' +
+        '<i class="fas fa-robot me-2"></i>' +
+        'Consultando a ANBIMA...' +
+        '</div>';
 
     var fd = new FormData();
+
     fd.append('data', data);
+
     fetch("{{ url_for('indices_anbima.importar') }}", {
-        method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: fd
+
+        method: 'POST',
+
+        headers: {
+            'X-Silent-Request': 'true'
+        },
+
+        body: fd
+
     })
-    .then(function(r){ return r.json(); })
-    .then(function(d){
-        btn.disabled = false; btn.innerHTML = original;
+
+    .then(function(r) {
+        return r.json();
+    })
+
+    .then(function(d) {
+
+        btn.disabled = false;
+        btn.innerHTML = original;
+
         if (d.success) {
-            fb.innerHTML = '<div class="alert alert-success mb-0"><i class="fas fa-check-circle me-2"></i>' + d.message + '</div>';
-            setTimeout(function(){ location.reload(); }, 1800);
+
+            fb.innerHTML =
+                '<div class="alert alert-success mb-0">' +
+                '<i class="fas fa-check-circle me-2"></i>' +
+                d.message +
+                '</div>';
+
+            setTimeout(function() {
+                location.reload();
+            }, 1800);
+
         } else {
-            fb.innerHTML = '<div class="alert alert-danger mb-0"><i class="fas fa-times-circle me-2"></i>' + d.message + '</div>';
+
+            fb.innerHTML =
+                '<div class="alert alert-danger mb-0">' +
+                '<i class="fas fa-times-circle me-2"></i>' +
+                d.message +
+                '</div>';
         }
+
     })
-    .catch(function(e){
-        btn.disabled = false; btn.innerHTML = original;
-        fb.innerHTML = '<div class="alert alert-danger mb-0">Erro de conexão: ' + e + '</div>';
+
+    .catch(function(e) {
+
+        btn.disabled = false;
+        btn.innerHTML = original;
+
+        fb.innerHTML =
+            '<div class="alert alert-danger mb-0">' +
+            'Erro de conexão: ' + e +
+            '</div>';
     });
 }
 </script>
+
 {% endblock %}
