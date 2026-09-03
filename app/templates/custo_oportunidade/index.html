@@ -863,7 +863,33 @@
                         },
                         legend: {
                             position: 'bottom',
-                            labels: { boxWidth: 28, font: { size: 10 }, padding: 12 }
+                            labels: {
+                                usePointStyle: true,
+                                pointStyleWidth: 34,
+                                boxHeight: 10,
+                                font: { size: 10 },
+                                padding: 12,
+                                // Selic (tracejada) vira LINHA pontilhada; as demais mantêm o quadrado preenchido
+                                generateLabels: function (chart) {
+                                    var itens = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                    itens.forEach(function (item) {
+                                        var ds = chart.data.datasets[item.datasetIndex];
+                                        if (!ds) return;
+                                        if (ds.borderDash && ds.borderDash.length) {
+                                            item.pointStyle = 'line';          // marcador = linha
+                                            item.fillStyle = 'rgba(0,0,0,0)';
+                                            item.strokeStyle = ds.borderColor;
+                                            item.lineWidth = ds.borderWidth || 2;
+                                            item.lineDash = ds.borderDash;     // pontilhado igual ao gráfico
+                                        } else {
+                                            item.pointStyle = 'rect';          // quadrado preenchido (como antes)
+                                            item.lineWidth = 0;
+                                            item.lineDash = [];
+                                        }
+                                    });
+                                    return itens;
+                                }
+                            }
                         },
                         tooltip: {
                             callbacks: {
@@ -1018,7 +1044,33 @@
                         },
                         legend: {
                             position: 'bottom',
-                            labels: { boxWidth: 22, font: { size: 9 }, padding: 10 }
+                            labels: {
+                                usePointStyle: true,
+                                pointStyleWidth: 30,
+                                boxHeight: 9,
+                                font: { size: 9 },
+                                padding: 10,
+                                // Selic (tracejada) vira LINHA pontilhada; as demais mantêm o quadrado preenchido
+                                generateLabels: function (chart) {
+                                    var itens = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                    itens.forEach(function (item) {
+                                        var ds = chart.data.datasets[item.datasetIndex];
+                                        if (!ds) return;
+                                        if (ds.borderDash && ds.borderDash.length) {
+                                            item.pointStyle = 'line';
+                                            item.fillStyle = 'rgba(0,0,0,0)';
+                                            item.strokeStyle = ds.borderColor;
+                                            item.lineWidth = ds.borderWidth || 2;
+                                            item.lineDash = ds.borderDash;
+                                        } else {
+                                            item.pointStyle = 'rect';
+                                            item.lineWidth = 0;
+                                            item.lineDash = [];
+                                        }
+                                    });
+                                    return itens;
+                                }
+                            }
                         },
                         tooltip: {
                             callbacks: {

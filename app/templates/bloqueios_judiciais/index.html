@@ -138,6 +138,26 @@
                     <label class="bj-label">Valor exato</label>
                     <input type="number" step="any" class="form-control" name="vr_exato" value="{{ filtros.vr_exato }}">
                 </div>
+                <div class="col-md-3">
+                    <label class="bj-label">Memo SEI</label>
+                    <input type="text" class="form-control" name="memo_sei" value="{{ filtros.memo_sei }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="bj-label">Memorando</label>
+                    <select class="form-select" name="memo_status">
+                        <option value="todos" {{ 'selected' if filtros.memo_status == 'todos' }}>Todos</option>
+                        <option value="preenchido" {{ 'selected' if filtros.memo_status == 'preenchido' }}>Preenchido</option>
+                        <option value="nao_preenchido" {{ 'selected' if filtros.memo_status == 'nao_preenchido' }}>Não Preenchido</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="bj-label">Data do Depósito</label>
+                    <input type="date" class="form-control" name="dt_deposito" value="{{ filtros.dt_deposito }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="bj-label">Data do Desbloqueio</label>
+                    <input type="date" class="form-control" name="dt_desbloqueio" value="{{ filtros.dt_desbloqueio }}">
+                </div>
                 <div class="col-md-2 d-flex gap-2">
                     <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i></button>
                     <a href="{{ url_for('bloqueios_judiciais.index') }}" class="btn btn-outline-secondary w-100" title="Limpar filtros"><i class="fas fa-eraser"></i></a>

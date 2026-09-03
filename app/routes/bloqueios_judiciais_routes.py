@@ -100,7 +100,11 @@ def index():
     f_autor = (request.args.get('autor') or '').strip()
     f_conta = (request.args.get('conta') or '').strip()
     f_situacao = (request.args.get('situacao') or 'todos').strip()
+    f_memo = (request.args.get('memo_sei') or '').strip()
+    f_memo_status = (request.args.get('memo_status') or 'todos').strip()
     f_vr_exato = _parse_decimal(request.args.get('vr_exato'))
+    f_dt_dep = _parse_data(request.args.get('dt_deposito'))
+    f_dt_desb = _parse_data(request.args.get('dt_desbloqueio'))
 
     condicoes, params = [], {}
     if f_processo:
@@ -109,6 +113,18 @@ def index():
         condicoes.append("AUTOR LIKE :p_autor"); params['p_autor'] = f'%{f_autor}%'
     if f_conta:
         condicoes.append("CONTA = :p_conta"); params['p_conta'] = f_conta
+    if f_memo:
+        condicoes.append("MEMO_SEI LIKE :p_memo"); params['p_memo'] = f'%{f_memo}%'
+    if f_memo_status == 'preenchido':
+        condicoes.append("MEMO_SEI IS NOT NULL AND LTRIM(RTRIM(MEMO_SEI)) <> ''")
+    elif f_memo_status == 'nao_preenchido':
+        condicoes.append("(MEMO_SEI IS NULL OR LTRIM(RTRIM(MEMO_SEI)) = '')")
+    if f_dt_dep:
+        condicoes.append("CONVERT(varchar(8), DT_DEPOSITO, 112) = :p_dtdep")
+        params['p_dtdep'] = f_dt_dep.strftime('%Y%m%d')
+    if f_dt_desb:
+        condicoes.append("CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :p_dtdesb")
+        params['p_dtdesb'] = f_dt_desb.strftime('%Y%m%d')
     if f_situacao == 'bloqueado':
         condicoes.append("DT_DESBLOQUEIO IS NULL")
     elif f_situacao == 'desbloqueado':
@@ -168,8 +184,10 @@ def index():
         'bloqueios_judiciais/index.html',
         contas=_carregar_contas(), lista=lista, totais=totais,
         filtros={'processo': f_processo, 'autor': f_autor, 'conta': f_conta,
-                 'situacao': f_situacao,
-                 'vr_exato': request.args.get('vr_exato', '')},
+                 'situacao': f_situacao, 'memo_sei': f_memo, 'memo_status': f_memo_status,
+                 'vr_exato': request.args.get('vr_exato', ''),
+                 'dt_deposito': request.args.get('dt_deposito', ''),
+                 'dt_desbloqueio': request.args.get('dt_desbloqueio', '')},
     )
 
 
@@ -183,6 +201,7 @@ def incluir():
     vara = (request.form.get('VARA') or '').strip()
     autor = (request.form.get('AUTOR') or '').strip()
     exce = _parse_bit(request.form.get('EXCE'))
+    memo_sei = (request.form.get('MEMO_SEI') or '').strip()
 
     if not dt_dep:
         return jsonify({'success': False, 'message': 'Informe a data do depósito.'}), 400
@@ -196,10 +215,13 @@ def incluir():
     try:
         db.session.execute(text(f"""
             INSERT INTO {_TB}
-                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO, EXCE, EVENTO)
-            VALUES (:dt_dep, :vr, :conta, :processo, :vara, :autor, NULL, :exce, NULL)
+                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
+                 DT_DESBLOQUEIO, EXCE, EVENTO, MEMO_SEI)
+            VALUES (:dt_dep, :vr, :conta, :processo, :vara, :autor,
+                    NULL, :exce, NULL, :memo)
         """), {'dt_dep': dt_dep, 'vr': vr, 'conta': conta,
-               'processo': processo, 'vara': vara, 'autor': autor, 'exce': exce})
+               'processo': processo, 'vara': vara, 'autor': autor,
+               'exce': exce, 'memo': (memo_sei or None)})
         db.session.commit()
 
         registrar_log(
@@ -207,7 +229,7 @@ def incluir():
             descricao=f'Novo bloqueio — processo {processo}',
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
                          'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
-                         'EXCE': exce},
+                         'EXCE': exce, 'MEMO_SEI': memo_sei},
         )
         return jsonify({'success': True, 'message': f'Bloqueio do processo {processo} incluído.'})
     except Exception as e:
@@ -227,6 +249,7 @@ def editar():
     dt_desb = _parse_data(request.form.get('DT_DESBLOQUEIO'))  # pode ser None
     exce = _parse_bit(request.form.get('EXCE'))
     evento = _parse_evento(request.form.get('EVENTO')) if dt_desb else None  # só se desbloqueado
+    memo_sei = (request.form.get('MEMO_SEI') or '').strip()
 
     if not dt_dep or vr is None or not conta or not processo:
         return jsonify({'success': False,
@@ -238,6 +261,7 @@ def editar():
     params = {
         'dt_dep': dt_dep, 'vr': vr, 'conta': conta, 'processo': processo,
         'vara': vara, 'autor': autor, 'dt_desb': dt_desb, 'exce': exce, 'evento': evento,
+        'memo': (memo_sei or None),
         'o_dep': o_dep.strftime('%Y%m%d') if o_dep else '',
         'o_vr': o_vr,
         'o_conta': (request.form.get('o_CONTA') or '').strip(),
@@ -252,7 +276,8 @@ def editar():
             UPDATE {_TB}
             SET DT_DEPOSITO = :dt_dep, VR_BLOQUEADO = :vr, CONTA = :conta,
                 PROCESSO = :processo, VARA = :vara, AUTOR = :autor,
-                DT_DESBLOQUEIO = :dt_desb, EXCE = :exce, EVENTO = :evento
+                DT_DESBLOQUEIO = :dt_desb, EXCE = :exce, EVENTO = :evento,
+                MEMO_SEI = :memo
             WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :o_dep
               AND ROUND(VR_BLOQUEADO, 2) = ROUND(:o_vr, 2)
               AND RTRIM(ISNULL(CONTA, '')) = RTRIM(:o_conta)
@@ -272,7 +297,7 @@ def editar():
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
                          'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
                          'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d') if dt_desb else None,
-                         'EXCE': exce, 'EVENTO': evento},
+                         'EXCE': exce, 'EVENTO': evento, 'MEMO_SEI': memo_sei},
         )
         aviso = '' if result.rowcount == 1 else f' ({result.rowcount} linhas idênticas atualizadas)'
         return jsonify({'success': True, 'message': f'Bloqueio atualizado.{aviso}'})
