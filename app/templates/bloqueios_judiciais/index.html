@@ -84,7 +84,11 @@
                     </div>
                     <div class="col-md-4">
                         <label class="bj-label">Memo SEI</label>
-                        <input type="text" class="form-control" name="MEMO_SEI">
+                        <div class="input-group">
+                            <input type="text" class="form-control" name="MEMO_SEI" id="n_memo" placeholder="Ex: 715/2026">
+                            <span class="input-group-text">/Gefin/Sufin/Difin</span>
+                        </div>
+                        <small class="text-muted">Digite só o número/ano; o sistema completa com /Gefin/Sufin/Difin.</small>
                     </div>
                     <div class="col-md-3">
                         <label class="bj-label">Excedente</label>
@@ -288,7 +292,10 @@
                 </div>
                 <div class="col-md-6">
                     <label class="bj-label">Memo SEI</label>
-                    <input type="text" class="form-control" name="MEMO_SEI" id="e_memo">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="MEMO_SEI" id="e_memo" placeholder="Ex: 715/2026">
+                        <span class="input-group-text">/Gefin/Sufin/Difin</span>
+                    </div>
                 </div>
                 <div class="col-md-6">
                     <label class="bj-label">Data do Desbloqueio</label>
@@ -414,6 +421,13 @@ function bjIncluir() {
         }).catch(function (e) { bjFeedback('danger', 'Erro: ' + e); });
 }
 function _bjYmd(v){ return (v||'').replace(/-/g,''); }
+// Remove o sufixo fixo '/Gefin/Sufin/Difin' pra edicao mostrar so a parte variavel
+function bjTiraSufixoMemo(v) {
+    return (v || '')
+        .replace(/(\s*\/\s*gefin\s*\/\s*sufin\s*\/\s*difin\s*)+$/i, '')
+        .replace(/\/+$/, '')
+        .trim();
+}
 function bjEditar(btn) {
     document.getElementById('e_dep').value = btn.dataset.dep;
     document.getElementById('e_vr').value = btn.dataset.vr;
@@ -421,7 +435,7 @@ function bjEditar(btn) {
     document.getElementById('e_processo').value = btn.dataset.processo;
     document.getElementById('e_vara').value = btn.dataset.vara;
     document.getElementById('e_autor').value = btn.dataset.autor;
-    document.getElementById('e_memo').value = btn.dataset.memo || '';
+    document.getElementById('e_memo').value = bjTiraSufixoMemo(btn.dataset.memo || '');
     document.getElementById('e_desb').value = btn.dataset.desb;
     document.getElementById('e_exce').value = btn.dataset.exce || '';
     document.getElementById('e_evento').value = btn.dataset.evento || '';
