@@ -91,6 +91,33 @@ def _parse_evento(s):
     s = (s or '').strip().upper()
     return s if s in ('D', 'T', 'D/T') else None
 
+_MEMO_SUFIXO = '/Gefin/Sufin/Difin'
+
+
+def _montar_memo_sei(valor):
+    """
+    Monta o Memo SEI completo pra gravar no banco.
+    O usuário digita só a parte variável (ex.: '715/2026') e o sistema anexa o
+    sufixo fixo '/Gefin/Sufin/Difin', gravando o valor COMPLETO
+    (ex.: '715/2026/Gefin/Sufin/Difin').
+
+    Idempotente: se o valor já vier com o sufixo (ex.: numa reedição), ele é
+    removido antes de reanexar — nunca duplica. Tolera espaços e caixa.
+    Retorna None quando o usuário não informa nada.
+    Compatível com Python 3.9 e 3.12.
+    """
+    import re
+    base = (valor or '').strip()
+    if not base:
+        return None
+    # remove o sufixo fixo (uma ou mais vezes) do fim, se já estiver presente
+    base = re.sub(r'(\s*/\s*gefin\s*/\s*sufin\s*/\s*difin\s*)+$', '',
+                  base, flags=re.IGNORECASE).strip()
+    base = base.rstrip('/').strip()
+    if not base:
+        return None
+    return base + _MEMO_SUFIXO
+
 
 @bloqueios_judiciais_bp.route('/')
 @login_required
@@ -201,7 +228,7 @@ def incluir():
     vara = (request.form.get('VARA') or '').strip()
     autor = (request.form.get('AUTOR') or '').strip()
     exce = _parse_bit(request.form.get('EXCE'))
-    memo_sei = (request.form.get('MEMO_SEI') or '').strip()
+    memo_sei = _montar_memo_sei(request.form.get('MEMO_SEI'))  # monta o valor completo
 
     if not dt_dep:
         return jsonify({'success': False, 'message': 'Informe a data do depósito.'}), 400
@@ -221,7 +248,7 @@ def incluir():
                     NULL, :exce, NULL, :memo)
         """), {'dt_dep': dt_dep, 'vr': vr, 'conta': conta,
                'processo': processo, 'vara': vara, 'autor': autor,
-               'exce': exce, 'memo': (memo_sei or None)})
+               'exce': exce, 'memo': memo_sei})
         db.session.commit()
 
         registrar_log(
@@ -249,7 +276,7 @@ def editar():
     dt_desb = _parse_data(request.form.get('DT_DESBLOQUEIO'))  # pode ser None
     exce = _parse_bit(request.form.get('EXCE'))
     evento = _parse_evento(request.form.get('EVENTO')) if dt_desb else None  # só se desbloqueado
-    memo_sei = (request.form.get('MEMO_SEI') or '').strip()
+    memo_sei = _montar_memo_sei(request.form.get('MEMO_SEI'))  # monta o valor completo (idempotente)
 
     if not dt_dep or vr is None or not conta or not processo:
         return jsonify({'success': False,
