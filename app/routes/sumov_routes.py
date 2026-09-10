@@ -2505,24 +2505,53 @@ def buscar_diferenca_siscor():
 @login_required
 def penalidade_ans_index():
     """
-    Página inicial de Penalidades ANS
-    Lista todas as deliberações salvas
+    Página inicial de Penalidades ANS.
+    Lista as deliberações salvas, com filtros opcionais por Nº do Contrato
+    e por intervalo de Data de Entrada no Estoque (DT_ESTOQUE).
     """
     try:
         from app.models.deliberacao_ans import DeliberacaoANS
         from app.models.penalidade_ans import PenalidadeANS
 
-        # Buscar todas as deliberações salvas
-        deliberacoes = DeliberacaoANS.query.order_by(
-            DeliberacaoANS.CREATED_AT.desc()
-        ).all()
+        # ===== CAPTURAR FILTROS (querystring, método GET) =====
+        filtro_contrato = request.args.get('nu_contrato', '').strip()
+        filtro_dt_ini = request.args.get('dt_estoque_ini', '').strip()
+        filtro_dt_fim = request.args.get('dt_estoque_fim', '').strip()
+
+        # ===== MONTAR A CONSULTA APLICANDO OS FILTROS =====
+        query = DeliberacaoANS.query
+
+        # Filtro por Nº do Contrato (busca parcial)
+        if filtro_contrato:
+            query = query.filter(DeliberacaoANS.NU_CONTRATO.like(f'%{filtro_contrato}%'))
+
+        # Filtro por Data de Entrada no Estoque (intervalo De / Até)
+        if filtro_dt_ini:
+            try:
+                dt_ini = datetime.strptime(filtro_dt_ini, '%Y-%m-%d').date()
+                query = query.filter(DeliberacaoANS.DT_ESTOQUE >= dt_ini)
+            except ValueError:
+                flash('Data inicial do estoque inválida.', 'warning')
+
+        if filtro_dt_fim:
+            try:
+                dt_fim = datetime.strptime(filtro_dt_fim, '%Y-%m-%d').date()
+                query = query.filter(DeliberacaoANS.DT_ESTOQUE <= dt_fim)
+            except ValueError:
+                flash('Data final do estoque inválida.', 'warning')
+
+        # Ordenação mantida: mais recentes primeiro
+        deliberacoes = query.order_by(DeliberacaoANS.CREATED_AT.desc()).all()
 
         # Contar contratos ANS cadastrados (tabela de referência)
         total_contratos_ans = PenalidadeANS.query.count()
 
         return render_template('sumov/penalidade_ans/index.html',
                                deliberacoes=deliberacoes,
-                               total_contratos_ans=total_contratos_ans)
+                               total_contratos_ans=total_contratos_ans,
+                               filtro_contrato=filtro_contrato,
+                               filtro_dt_ini=filtro_dt_ini,
+                               filtro_dt_fim=filtro_dt_fim)
 
     except Exception as e:
         flash(f'Erro ao carregar penalidades ANS: {str(e)}', 'danger')
@@ -2715,63 +2744,51 @@ def obter_prazo_contrato_03_2014(nu_contrato):
 @login_required
 def penalidade_ans_consultar():
     """
-    Página para consultar e calcular penalidades ANS de um contrato
-    Esta é apenas para VISUALIZAÇÃO dos cálculos
+    Página para consultar e calcular penalidades ANS de um imóvel.
+    Esta é apenas para VISUALIZAÇÃO dos cálculos.
+
+    OBS.: Os dados de Entrada em Estoque, Venda e Laudo passaram a vir de uma
+    ÚNICA view consolidada (MOV_VW012_IMOVEIS_ENTRADA_VENDA_LAUDO_DESPESA),
+    chaveada por NU_IMOVEL. O tipo de despesa (IPTU x Condomínio), usado só para
+    definir o prazo do Contrato 03/2014, continua sendo obtido pela TB004+TB003.
     """
     if request.method == 'POST':
         try:
             from app.models.penalidade_ans import PenalidadeANS
             from dateutil.relativedelta import relativedelta
 
-            # Capturar número do contrato
+            # Capturar número do imóvel
             nu_contrato = request.form.get('nu_contrato', '').strip()
 
             if not nu_contrato:
-                flash('Informe o número do contrato.', 'warning')
+                flash('Informe o número do imóvel.', 'warning')
                 return redirect(url_for('sumov.penalidade_ans_consultar'))
 
-            # ===== BUSCAR DATA DE ENTRADA NO ESTOQUE =====
-            sql_estoque = text("""
-                SELECT TOP 1 
-                    [DT_ENTRADA_ESTOQUE]
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
-                WHERE [NR_CONTRATO] = :contrato
-            """)
-            result_estoque = db.session.execute(sql_estoque, {'contrato': nu_contrato}).fetchone()
-
-            if not result_estoque or not result_estoque[0]:
-                flash('Data de entrada no estoque não encontrada para este contrato.', 'warning')
-                return redirect(url_for('sumov.penalidade_ans_consultar'))
-
-            dt_entrada_estoque = result_estoque[0]
-
-            # ===== BUSCAR DADOS DE VENDA =====
-            sql_venda = text("""
-                SELECT TOP 1
+            # ===== BUSCAR DADOS DO IMÓVEL (VIEW CONSOLIDADA) =====
+            # Uma única leitura substitui as antigas consultas às tabelas
+            # MOV_TB012 (estoque), MOV_TB023 (venda) e MOV_TB001 (laudo).
+            sql_dados = text("""
+                SELECT
+                    [DT_ENTRADA_ESTOQUE],
+                    [DT_VENDA],
                     [VR_VENDA],
-                    [DT_VENDA]
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
-                WHERE [NU_IMOVEL] = :contrato
-                ORDER BY [DT_VENDA] DESC
+                    [DT_LAUDO],
+                    [VR_LAUDO_AVAL]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_VW012_IMOVEIS_ENTRADA_VENDA_LAUDO_DESPESA]
+                WHERE [NU_IMOVEL] = :nu_imovel
             """)
-            result_venda = db.session.execute(sql_venda, {'contrato': nu_contrato}).fetchone()
+            dados = db.session.execute(sql_dados, {'nu_imovel': nu_contrato}).fetchone()
 
-            vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
-            dt_venda = result_venda[1] if result_venda and result_venda[1] else None
+            # A data de entrada no estoque é obrigatória: sem ela não há cálculo.
+            if not dados or not dados[0]:
+                flash('Data de entrada no estoque não encontrada para este imóvel.', 'warning')
+                return redirect(url_for('sumov.penalidade_ans_consultar'))
 
-            # ===== BUSCAR VALOR DE AVALIAÇÃO =====
-            sql_avaliacao = text("""
-                SELECT TOP 1
-                    [VR_LAUDO_AVALIACAO],
-                    [DT_LAUDO]
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
-                WHERE [NR_CONTRATO] = :contrato
-                ORDER BY [DT_REFERENCIA] DESC
-            """)
-            result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': nu_contrato}).fetchone()
-
-            vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
-            dt_laudo = result_avaliacao[1] if result_avaliacao and result_avaliacao[1] else None
+            dt_entrada_estoque = dados[0]
+            dt_venda = dados[1] if dados[1] else None
+            vr_venda = float(dados[2]) if dados[2] is not None else None
+            dt_laudo = dados[3] if dados[3] else None
+            vr_avaliacao = float(dados[4]) if dados[4] is not None else None
 
             # ===== BUSCAR TODOS OS CONTRATOS ANS (TABELA DE REFERÊNCIA) =====
             contratos_ans = PenalidadeANS.query.order_by(
@@ -2787,6 +2804,7 @@ def penalidade_ans_consultar():
             total_penalidades = 0
 
             # ===== VERIFICAR TIPO DE DESPESA PARA CONTRATO 03/2014 =====
+            # (Mantido: continua consultando MOV_TB004 + MOV_TB003)
             prazo_contrato_03_2014 = obter_prazo_contrato_03_2014(nu_contrato)
 
             for contrato_ans in contratos_ans:
@@ -2797,24 +2815,20 @@ def penalidade_ans_consultar():
                     data_limite_pagamento = dt_entrada_estoque + timedelta(days=120)
 
                 elif contrato_ans.NU_CONTRATO == 'Contrato 03/2014':
-                    # REGRA ESPECIAL: Se entrada < 13/03/2014, data limite é 31/12/2015
+                    # REGRA ESPECIAL: Se entrada < início da vigência, data limite fixa 31/12/2015
                     if dt_entrada_estoque < contrato_ans.INI_VIGENCIA:
-                        # Imóvel entrou ANTES do contrato: prazo até 31/12/2015
                         data_limite_pagamento = datetime(2015, 12, 31).date()
-                        print(
-                            f"[INFO] Contrato 03/2014 - Imóvel em estoque antes do contrato: Data limite fixa 31/12/2015")
+                        print("[INFO] Contrato 03/2014 - Imóvel em estoque antes do contrato: Data limite fixa 31/12/2015")
                     else:
                         # Imóvel entrou DEPOIS do contrato: usa prazo normal (120 IPTU ou 150 Condomínio)
                         data_limite_pagamento = dt_entrada_estoque + timedelta(days=prazo_contrato_03_2014)
-                        print(
-                            f"[INFO] Contrato 03/2014 - Imóvel em estoque depois do contrato: Prazo {prazo_contrato_03_2014} dias")
+                        print(f"[INFO] Contrato 03/2014 - Imóvel em estoque depois do contrato: Prazo {prazo_contrato_03_2014} dias")
 
                 elif contrato_ans.NU_CONTRATO == 'Contrato 13/2019':
                     # Contrato 13/2019: se entrada < início contrato, conta da assinatura
                     if dt_entrada_estoque < contrato_ans.INI_VIGENCIA:
                         data_limite_pagamento = contrato_ans.INI_VIGENCIA + timedelta(days=120)
-                        print(
-                            f"[INFO] Contrato 13/2019 - Imóvel em estoque antes do contrato: Prazo conta da assinatura")
+                        print("[INFO] Contrato 13/2019 - Imóvel em estoque antes do contrato: Prazo conta da assinatura")
                     else:
                         data_limite_pagamento = dt_entrada_estoque + timedelta(days=120)
 
@@ -2827,16 +2841,13 @@ def penalidade_ans_consultar():
                 if contrato_ans.NU_CONTRATO == 'Contrato s/nº':
                     # Contrato s/nº: só pode penalizar após 18 meses da assinatura
                     data_minima_penalizacao = contrato_ans.INI_VIGENCIA + relativedelta(months=18)
-                    # Penalidade começa no dia seguinte ao maior entre data_limite e data_minima
                     data_inicio_penalidade = max(data_limite_pagamento, data_minima_penalizacao) + timedelta(days=1)
-                    print(
-                        f"[DEBUG] Contrato s/nº - Data mínima: {data_minima_penalizacao}, Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
+                    print(f"[DEBUG] Contrato s/nº - Data mínima: {data_minima_penalizacao}, Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
                 else:
                     # Penalidade começa no dia seguinte ao vencimento do prazo
-                    # E não pode começar antes do início da vigência do contrato
+                    # e não pode começar antes do início da vigência do contrato
                     data_inicio_penalidade = max(data_limite_pagamento + timedelta(days=1), contrato_ans.INI_VIGENCIA)
-                    print(
-                        f"[DEBUG] {contrato_ans.NU_CONTRATO} - Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
+                    print(f"[DEBUG] {contrato_ans.NU_CONTRATO} - Data limite: {data_limite_pagamento}, Início penalidade: {data_inicio_penalidade}")
 
                 # ===== DATA DE FIM DA PENALIDADE =====
                 data_fim_penalidade = contrato_ans.FIM_VIGENCIA
@@ -2854,13 +2865,9 @@ def penalidade_ans_consultar():
                     continue
 
                 # ===== CALCULAR QUANTIDADE DE MESES =====
-                # USAR A MESMA LÓGICA DO ACCESS: Calcular dias e dividir por 30
+                # Mesma lógica do Access: calcular dias e dividir por 30
                 # Fórmula Access: IIf([Atr03]/30>=0.33 And [Atr03]/30<1,1,Int([Atr03]/30))
-
-                # Calcular quantidade de DIAS entre as datas
                 dias_atraso = (data_fim_penalidade - data_inicio_penalidade).days
-
-                # Aplicar a fórmula do Access
                 meses_calculado = dias_atraso / 30.0
 
                 if meses_calculado >= 0.33 and meses_calculado < 1:
@@ -2868,8 +2875,7 @@ def penalidade_ans_consultar():
                 else:
                     qtd_meses_atraso = int(dias_atraso / 30)
 
-                print(
-                    f"[DEBUG] {contrato_ans.NU_CONTRATO} - De {data_inicio_penalidade} até {data_fim_penalidade} = {dias_atraso} dias, {meses_calculado:.2f} meses calculado, {qtd_meses_atraso} meses final")
+                print(f"[DEBUG] {contrato_ans.NU_CONTRATO} - De {data_inicio_penalidade} até {data_fim_penalidade} = {dias_atraso} dias, {meses_calculado:.2f} meses calculado, {qtd_meses_atraso} meses final")
 
                 # Calcular valor da penalidade
                 valor_penalidade = float(contrato_ans.VR_TARIFA) * qtd_meses_atraso

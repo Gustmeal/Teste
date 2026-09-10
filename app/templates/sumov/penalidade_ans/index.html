@@ -3,6 +3,7 @@
 {% block title %}Penalidades ANS - SUMOV{% endblock %}
 
 {% block content %}
+{% set tem_filtro = filtro_contrato or filtro_dt_ini or filtro_dt_fim %}
 <div class="container-fluid py-4">
     <!-- Cabeçalho -->
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -30,7 +31,7 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <p class="text-muted mb-1">Deliberações Salvas</p>
+                            <p class="text-muted mb-1">Deliberações {% if tem_filtro %}(filtradas){% else %}Salvas{% endif %}</p>
                             <h3 class="fw-bold mb-0">{{ deliberacoes|length }}</h3>
                         </div>
                         <div class="bg-primary bg-opacity-10 p-3 rounded">
@@ -62,7 +63,7 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <p class="text-muted mb-1">Valor Total Penalidades</p>
+                            <p class="text-muted mb-1">Valor Total {% if tem_filtro %}(filtrado){% else %}Penalidades{% endif %}</p>
                             <h3 class="fw-bold mb-0 text-danger">
                                 {% set total_valor = deliberacoes|sum(attribute='VR_ANS') %}
                                 R$ {{ "{:,.2f}".format(total_valor).replace(',', 'X').replace('.', ',').replace('X', '.') }}
@@ -74,6 +75,56 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Card de Filtros -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light py-3">
+            <h6 class="mb-0 fw-bold">
+                <i class="fas fa-filter me-2 text-primary"></i>Filtros
+            </h6>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('sumov.penalidade_ans_index') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="nu_contrato" class="form-label fw-bold">Nº Contrato</label>
+                        <input type="text"
+                               class="form-control"
+                               id="nu_contrato"
+                               name="nu_contrato"
+                               value="{{ filtro_contrato }}"
+                               placeholder="Digite o número (ou parte) do contrato">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="dt_estoque_ini" class="form-label fw-bold">Data Estoque (De)</label>
+                        <input type="date"
+                               class="form-control"
+                               id="dt_estoque_ini"
+                               name="dt_estoque_ini"
+                               value="{{ filtro_dt_ini }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="dt_estoque_fim" class="form-label fw-bold">Data Estoque (Até)</label>
+                        <input type="date"
+                               class="form-control"
+                               id="dt_estoque_fim"
+                               name="dt_estoque_fim"
+                               value="{{ filtro_dt_fim }}">
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search me-1"></i>Filtrar
+                        </button>
+                        {% if tem_filtro %}
+                        <a href="{{ url_for('sumov.penalidade_ans_index') }}" class="btn btn-outline-secondary" title="Limpar filtros">
+                            <i class="fas fa-eraser"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -92,9 +143,9 @@
                         <tr>
                             <th>Nº Contrato</th>
                             <th class="text-center">Data Estoque</th>
-                            <th class="text-center">S/Nº</th>
-                            <th class="text-center">03/2014</th>
-                            <th class="text-center">13/2019</th>
+                            <th class="text-center">S/Nº (86,81)</th>
+                            <th class="text-center">03/2014 (237,62)</th>
+                            <th class="text-center">13/2019 (587,12)</th>
                             <th class="text-end">Total ANS</th>
                             <th class="text-center" style="width: 100px;">Ações</th>
                         </tr>
@@ -149,12 +200,21 @@
             </div>
             {% else %}
             <div class="text-center py-5">
+                {% if tem_filtro %}
+                <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                <h5>Nenhuma deliberação encontrada</h5>
+                <p class="text-muted">Nenhum registro corresponde aos filtros aplicados.</p>
+                <a href="{{ url_for('sumov.penalidade_ans_index') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-eraser me-2"></i>Limpar Filtros
+                </a>
+                {% else %}
                 <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
                 <h5>Nenhuma deliberação salva</h5>
                 <p class="text-muted">Comece fazendo uma nova consulta e salvando os resultados.</p>
                 <a href="{{ url_for('sumov.penalidade_ans_consultar') }}" class="btn btn-success">
                     <i class="fas fa-calculator me-2"></i>Nova Consulta
                 </a>
+                {% endif %}
             </div>
             {% endif %}
         </div>
