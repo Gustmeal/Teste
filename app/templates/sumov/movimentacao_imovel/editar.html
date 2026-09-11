@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Movimentação de Imóvel - SUMOV{% endblock %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.movimentacao_imovel') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-edit text-warning me-2"></i> Editar Movimentação - Contrato {{ reg.nu_contrato }}
+        </h1>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-gradient-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-exchange-alt me-2"></i>Dados da Movimentação</h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="POST"
+                  action="{{ url_for('sumov.movimentacao_imovel_editar', nu_contrato=reg.nu_contrato) }}">
+
+                <!-- ===== Dados de identificação (somente leitura) ===== -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Nº Contrato</label>
+                        <input type="text" class="form-control bg-light" value="{{ reg.nu_contrato }}" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Responsável</label>
+                        <input type="text" class="form-control bg-light" value="{{ reg.responsavel }}" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Status RM</label>
+                        <input type="text" class="form-control bg-light" value="{{ reg.status_rm }}" readonly>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Envio GEADI/SUMOV</label>
+                        <input type="text" class="form-control bg-light"
+                               value="{{ reg.dt_envio_geadi_sumov_fmt }}" readonly>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Envio RESALE</label>
+                        <input type="text" class="form-control bg-light"
+                               value="{{ reg.dt_envio_resale_fmt }}" readonly>
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- ===== Campo liberado para Superintendente da SUMOV / admin / moderador ===== -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="dt_envio_sumov_geimo" class="form-label fw-bold">
+                            Data de Envio SUMOV → GEIMO
+                            {% if not pode_sumov %}
+                            <span class="badge bg-secondary ms-1"><i class="fas fa-lock"></i> Bloqueado</span>
+                            {% endif %}
+                        </label>
+                        <input type="date" class="form-control"
+                               id="dt_envio_sumov_geimo" name="dt_envio_sumov_geimo"
+                               value="{{ reg.dt_envio_sumov_geimo_iso }}"
+                               {% if not pode_sumov %}disabled{% endif %}>
+                        {% if not pode_sumov %}
+                        <small class="text-muted">Somente Superintendente da SUMOV, administrador ou moderador.</small>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <hr class="my-4">
+
+                <!-- ===== Campos liberados para GEIMO / admin / moderador ===== -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="dt_recebimento_geimo" class="form-label fw-bold">
+                            Data de Recebimento GEIMO
+                            {% if not pode_geimo %}
+                            <span class="badge bg-secondary ms-1"><i class="fas fa-lock"></i> Bloqueado</span>
+                            {% endif %}
+                        </label>
+                        <input type="date" class="form-control"
+                               id="dt_recebimento_geimo" name="dt_recebimento_geimo"
+                               value="{{ reg.dt_recebimento_geimo_iso }}"
+                               {% if not pode_geimo %}disabled{% endif %}>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="acao_id" class="form-label fw-bold">
+                            Ação GEIMO
+                            {% if not pode_geimo %}
+                            <span class="badge bg-secondary ms-1"><i class="fas fa-lock"></i> Bloqueado</span>
+                            {% endif %}
+                        </label>
+                        <select class="form-select" id="acao_id" name="acao_id"
+                                {% if not pode_geimo %}disabled{% endif %}>
+                            <option value="">Selecione a ação...</option>
+                            {% for a in acoes %}
+                            <option value="{{ a.id }}" {% if a.dsc == reg.acao_geimo %}selected{% endif %}>
+                                {{ a.dsc }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Data da Ação GEIMO (automática)</label>
+                        <input type="text" class="form-control bg-light"
+                               value="{{ reg.dt_acao_geimo_fmt }}" readonly>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label for="obs_geimo" class="form-label fw-bold">
+                            Observação GEIMO
+                            {% if not pode_geimo %}
+                            <span class="badge bg-secondary ms-1"><i class="fas fa-lock"></i> Bloqueado</span>
+                            {% endif %}
+                        </label>
+                        <textarea class="form-control" id="obs_geimo" name="obs_geimo" rows="3"
+                                  placeholder="Observação (opcional)"
+                                  {% if not pode_geimo %}disabled{% endif %}>{{ reg.obs_geimo }}</textarea>
+                    </div>
+                </div>
+
+                {% if not pode_sumov and not pode_geimo %}
+                <div class="alert alert-warning small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Você pode visualizar este registro, mas não tem permissão para alterar nenhum campo.
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{{ url_for('sumov.movimentacao_imovel') }}" class="btn btn-secondary">
+                        <i class="fas fa-times me-1"></i>Cancelar
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save me-1"></i>Salvar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

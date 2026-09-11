@@ -22,7 +22,7 @@ from app.utils.audit import registrar_log
 from datetime import datetime
 from decimal import Decimal
 from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
-
+from app.models.usuario import Empregado, Usuario
 
 sumov_bp = Blueprint('sumov', __name__, url_prefix='/sumov')
 
@@ -4734,3 +4734,439 @@ def despesas_pos_venda_salvar():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Erro ao salvar: {}'.format(str(e))}), 500
+
+
+# =============================================================================
+# ROTAS: MOVIMENTAÇÃO DE IMÓVEL
+# =============================================================================
+
+# ---- Helpers de permissão da Movimentação de Imóvel ----
+
+def _empregado_logado():
+    """Retorna o Empregado completo do usuário logado (com sgSetor), ou None."""
+    usuario = Usuario.query.get(current_user.id)
+    return usuario.empregado if usuario else None
+
+
+def _pode_editar_envio_sumov_geimo():
+    """Libera DT_ENVIO_SUMOV_GEIMO: Superintendente da SUMOV, admin ou moderador."""
+    if current_user.perfil in ('admin', 'moderador'):
+        return True
+    cargo = (current_user.cargo or '').upper()
+    area = (current_user.area or '').upper()
+    return 'SUPERINTENDENTE' in cargo and area == 'SUMOV'
+
+
+def _pode_editar_geimo():
+    """Libera do DT_RECEBIMENTO_GEIMO em diante: gerência GEIMO, admin ou moderador."""
+    if current_user.perfil in ('admin', 'moderador'):
+        return True
+    emp = _empregado_logado()
+    return bool(emp and (emp.sgSetor or '').upper() == 'GEIMO')
+
+
+def _parse_form_date(valor):
+    """Converte 'AAAA-MM-DD' (input date do HTML) em date, ou None."""
+    valor = (valor or '').strip()
+    if not valor:
+        return None
+    try:
+        return datetime.strptime(valor, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+@sumov_bp.route('/movimentacao-imovel')
+@login_required
+def movimentacao_imovel():
+    """
+    Lista os registros de Movimentação de Imóvel, com filtros.
+    Fonte: BDDASHBOARDBI.BDG.MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA
+    """
+    try:
+        # ===== Captura dos filtros =====
+        filtro_contrato = request.args.get('filtro_contrato', '').strip()
+        filtro_acao = request.args.get('filtro_acao', '').strip()
+        filtro_dt_geadi = request.args.get('filtro_dt_geadi', '').strip()
+        vazio_dt_geadi = request.args.get('vazio_dt_geadi')  # 'on' quando marcado
+        filtro_dt_sumov = request.args.get('filtro_dt_sumov', '').strip()
+        vazio_dt_sumov = request.args.get('vazio_dt_sumov')
+        filtro_dt_receb = request.args.get('filtro_dt_receb', '').strip()
+        vazio_dt_receb = request.args.get('vazio_dt_receb')
+
+        condicoes = []
+        params = {}
+
+        # Filtro por contrato (contém)
+        if filtro_contrato:
+            condicoes.append("[NU_CONTRATO] LIKE :contrato")
+            params['contrato'] = '%' + filtro_contrato + '%'
+
+        # Filtro por Ação GEIMO (igualdade exata pela descrição)
+        if filtro_acao:
+            condicoes.append("[ACAO_GEIMO] = :acao")
+            params['acao'] = filtro_acao
+
+        # Filtro DT_ENVIO_GEADI_SUMOV: "somente vazios" tem prioridade sobre a data exata
+        if vazio_dt_geadi:
+            condicoes.append("[DT_ENVIO_GEADI_SUMOV] IS NULL")
+        elif filtro_dt_geadi:
+            data = _parse_form_date(filtro_dt_geadi)
+            if data:
+                condicoes.append("CONVERT(date, [DT_ENVIO_GEADI_SUMOV]) = :dt_geadi")
+                params['dt_geadi'] = data
+
+        # Filtro DT_ENVIO_SUMOV_GEIMO
+        if vazio_dt_sumov:
+            condicoes.append("[DT_ENVIO_SUMOV_GEIMO] IS NULL")
+        elif filtro_dt_sumov:
+            data = _parse_form_date(filtro_dt_sumov)
+            if data:
+                condicoes.append("CONVERT(date, [DT_ENVIO_SUMOV_GEIMO]) = :dt_sumov")
+                params['dt_sumov'] = data
+
+        # Filtro DT_RECEBIMENTO_GEIMO
+        if vazio_dt_receb:
+            condicoes.append("[DT_RECEBIMENTO_GEIMO] IS NULL")
+        elif filtro_dt_receb:
+            data = _parse_form_date(filtro_dt_receb)
+            if data:
+                condicoes.append("CONVERT(date, [DT_RECEBIMENTO_GEIMO]) = :dt_receb")
+                params['dt_receb'] = data
+
+        where_sql = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
+
+        sql = text("""
+            SELECT
+                [NU_CONTRATO],
+                [RESPONSAVEL],
+                [DT_ENVIO_GEADI_SUMOV],
+                [DT_ENVIO_SUMOV_GEIMO],
+                [DT_RECEBIMENTO_GEIMO],
+                [ACAO_GEIMO],
+                [DT_ACAO_GEIMO],
+                [OBS_GEIMO],
+                [STATUS_RM],
+                [DT_ENVIO_RESALE]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            """ + where_sql + """
+            ORDER BY [DT_ENVIO_GEADI_SUMOV] DESC, [NU_CONTRATO]
+        """)
+        resultado = db.session.execute(sql, params).fetchall()
+
+        registros = []
+        for r in resultado:
+            registros.append({
+                'nu_contrato': r[0],
+                'responsavel': r[1],
+                'dt_envio_geadi_sumov': r[2].strftime('%d/%m/%Y') if r[2] else '',
+                'dt_envio_sumov_geimo': r[3].strftime('%d/%m/%Y') if r[3] else '',
+                'dt_recebimento_geimo': r[4].strftime('%d/%m/%Y') if r[4] else '',
+                'acao_geimo': r[5] or '',
+                'dt_acao_geimo': r[6].strftime('%d/%m/%Y') if r[6] else '',
+                'obs_geimo': r[7] or '',
+                'status_rm': r[8] or '',
+                'dt_envio_resale': r[9].strftime('%d/%m/%Y') if r[9] else '',
+            })
+
+        # Lista de ações para o filtro (MOV_TB057)
+        sql_acoes = text("""
+            SELECT [ID_TIPO_ACAO], [DSC_TIPO_ACAO]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB057_TIPO_ACAO_GEIMO]
+            ORDER BY [DSC_TIPO_ACAO]
+        """)
+        acoes = [a[1] for a in db.session.execute(sql_acoes).fetchall() if a[1]]
+
+        return render_template('sumov/movimentacao_imovel/index.html',
+                               registros=registros,
+                               acoes=acoes,
+                               filtro_contrato=filtro_contrato,
+                               filtro_acao=filtro_acao,
+                               filtro_dt_geadi=filtro_dt_geadi,
+                               vazio_dt_geadi=bool(vazio_dt_geadi),
+                               filtro_dt_sumov=filtro_dt_sumov,
+                               vazio_dt_sumov=bool(vazio_dt_sumov),
+                               filtro_dt_receb=filtro_dt_receb,
+                               vazio_dt_receb=bool(vazio_dt_receb))
+
+    except Exception as e:
+        flash(f'Erro ao carregar movimentações de imóvel: {str(e)}', 'danger')
+        return redirect(url_for('sumov.index'))
+
+
+@sumov_bp.route('/movimentacao-imovel/verificar-contrato', methods=['POST'])
+@login_required
+def movimentacao_imovel_verificar_contrato():
+    """
+    Verifica (via AJAX) se o contrato existe em HAB_TB001_CONTRATO (coluna NR_CONTRATO).
+    Usado enquanto o usuário digita o número do contrato na tela de inclusão.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        contrato = str(data.get('contrato', '')).strip()
+
+        if not contrato:
+            return jsonify({'existe': False, 'message': 'Informe o número do contrato.'})
+
+        sql = text("""
+            SELECT TOP 1 1
+            FROM [BDDASHBOARDBI].[BDG].[HAB_TB001_CONTRATO]
+            WHERE [NR_CONTRATO] = :contrato
+        """)
+        achou = db.session.execute(sql, {'contrato': contrato}).fetchone()
+
+        if achou:
+            return jsonify({'existe': True, 'message': 'Contrato encontrado.'})
+        return jsonify({'existe': False, 'message': 'Contrato não existente'})
+
+    except Exception as e:
+        return jsonify({'existe': False, 'message': f'Erro na verificação: {str(e)}'}), 500
+
+
+@sumov_bp.route('/movimentacao-imovel/nova', methods=['GET', 'POST'])
+@login_required
+def movimentacao_imovel_nova():
+    """
+    Inclusão de um novo registro de Movimentação de Imóvel.
+    - Valida a existência do contrato em HAB_TB001_CONTRATO.
+    - Preenche DT_ENVIO_GEADI_SUMOV com a data do dia.
+    - Preenche STATUS_RM automaticamente a partir de MOV_VW013_IMOVEIS_STATUS_RM
+      (ou 'Sem Status' quando o contrato não é encontrado na view).
+    """
+    if request.method == 'POST':
+        try:
+            nu_contrato = request.form.get('nu_contrato', '').strip()
+            responsavel = request.form.get('responsavel', '').strip()
+
+            # Validações dos campos obrigatórios
+            if not nu_contrato:
+                flash('Por favor, informe o número do contrato.', 'danger')
+                return redirect(url_for('sumov.movimentacao_imovel_nova'))
+
+            if not responsavel:
+                flash('Por favor, selecione o responsável.', 'danger')
+                return redirect(url_for('sumov.movimentacao_imovel_nova'))
+
+            # Revalidação no servidor: o contrato precisa existir em HAB_TB001_CONTRATO
+            sql_contrato = text("""
+                SELECT TOP 1 1
+                FROM [BDDASHBOARDBI].[BDG].[HAB_TB001_CONTRATO]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            existe_contrato = db.session.execute(
+                sql_contrato, {'contrato': nu_contrato}
+            ).fetchone()
+
+            if not existe_contrato:
+                flash('Contrato não existente', 'danger')
+                return redirect(url_for('sumov.movimentacao_imovel_nova'))
+
+            # STATUS_RM automático: busca o status do imóvel pela view
+            sql_status = text("""
+                SELECT TOP 1 [DSC_STATUS_IMOVEL]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_VW013_IMOVEIS_STATUS_RM]
+                WHERE [NR_CONTRATO] = :contrato
+            """)
+            row_status = db.session.execute(
+                sql_status, {'contrato': nu_contrato}
+            ).fetchone()
+
+            if row_status and row_status[0]:
+                status_rm = row_status[0]
+            else:
+                status_rm = 'Sem Status'
+
+            # Data de envio GEADI -> SUMOV = data do dia da inclusão
+            dt_envio_geadi_sumov = datetime.now().date()
+
+            # INSERT (apenas as colunas preenchidas nesta etapa; as demais ficam nulas)
+            sql_insert = text("""
+                INSERT INTO [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                    ([NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV], [STATUS_RM])
+                VALUES
+                    (:nu_contrato, :responsavel, :dt_envio, :status_rm)
+            """)
+            db.session.execute(sql_insert, {
+                'nu_contrato': nu_contrato,
+                'responsavel': responsavel,
+                'dt_envio': dt_envio_geadi_sumov,
+                'status_rm': status_rm
+            })
+            db.session.commit()
+
+            # Log de auditoria
+            registrar_log(
+                acao='criar',
+                entidade='movimentacao_imovel',
+                entidade_id=nu_contrato,
+                descricao=(
+                    f'Inclusão de movimentação de imóvel - Contrato {nu_contrato}, '
+                    f'Responsável {responsavel}, Status RM: {status_rm}'
+                )
+            )
+
+            flash('Movimentação de imóvel incluída com sucesso!', 'success')
+            return redirect(url_for('sumov.movimentacao_imovel'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao incluir movimentação: {str(e)}', 'danger')
+            return redirect(url_for('sumov.movimentacao_imovel_nova'))
+
+    # GET - Carrega a lista de responsáveis (empregados ativos da GEADI)
+    empregados_geadi = Empregado.query.filter(
+        Empregado.sgSetor == 'GEADI',
+        Empregado.fkStatus == 1  # Apenas ativos
+    ).order_by(Empregado.nmPessoa).all()
+
+    # Formata: só o primeiro nome, primeira letra maiúscula e o resto minúsculo.
+    # Remove duplicados e ordena.
+    responsaveis = set()
+    for emp in empregados_geadi:
+        if emp.nmPessoa and emp.nmPessoa.strip():
+            primeiro_nome = emp.nmPessoa.strip().split()[0].capitalize()
+            responsaveis.add(primeiro_nome)
+    lista_responsaveis = sorted(responsaveis)
+
+    return render_template('sumov/movimentacao_imovel/nova.html',
+                           lista_responsaveis=lista_responsaveis)
+
+@sumov_bp.route('/movimentacao-imovel/editar/<nu_contrato>', methods=['GET', 'POST'])
+@login_required
+def movimentacao_imovel_editar(nu_contrato):
+    """
+    Edição de um registro de Movimentação de Imóvel, respeitando as permissões:
+    - DT_ENVIO_SUMOV_GEIMO: Superintendente da SUMOV / admin / moderador.
+    - DT_RECEBIMENTO_GEIMO, ACAO_GEIMO, OBS_GEIMO: gerência GEIMO / admin / moderador.
+    - DT_ACAO_GEIMO: automática (data de hoje quando a ação muda).
+    - ID_TIPO_ACAO = 4: zera (NULL) as três datas do fluxo.
+    """
+    pode_sumov = _pode_editar_envio_sumov_geimo()
+    pode_geimo = _pode_editar_geimo()
+
+    # Busca o registro atual
+    sql_busca = text("""
+        SELECT
+            [NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV],
+            [DT_ENVIO_SUMOV_GEIMO], [DT_RECEBIMENTO_GEIMO], [ACAO_GEIMO],
+            [DT_ACAO_GEIMO], [OBS_GEIMO], [STATUS_RM], [DT_ENVIO_RESALE]
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+        WHERE [NU_CONTRATO] = :c
+    """)
+    row = db.session.execute(sql_busca, {'c': nu_contrato}).fetchone()
+
+    if not row:
+        flash('Registro de movimentação não encontrado.', 'warning')
+        return redirect(url_for('sumov.movimentacao_imovel'))
+
+    if request.method == 'POST':
+        try:
+            # Valores atuais (base): só serão trocados se o perfil permitir
+            novo_dt_geadi = row[2]
+            novo_dt_sumov = row[3]
+            novo_dt_receb = row[4]
+            novo_acao = row[5]
+            novo_dt_acao = row[6]
+            novo_obs = row[7]
+
+            acao_id = request.form.get('acao_id', '').strip()
+
+            # ===== Campos liberados para SUMOV (Superintendente) / admin / moderador =====
+            if pode_sumov:
+                novo_dt_sumov = _parse_form_date(request.form.get('dt_envio_sumov_geimo'))
+
+            # ===== Campos liberados para GEIMO / admin / moderador =====
+            if pode_geimo:
+                novo_dt_receb = _parse_form_date(request.form.get('dt_recebimento_geimo'))
+                novo_obs = (request.form.get('obs_geimo', '').strip() or None)
+
+                if acao_id:
+                    # Busca a descrição da ação escolhida
+                    sql_acao = text("""
+                        SELECT TOP 1 [DSC_TIPO_ACAO]
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB057_TIPO_ACAO_GEIMO]
+                        WHERE [ID_TIPO_ACAO] = :id
+                    """)
+                    acao_desc_row = db.session.execute(sql_acao, {'id': acao_id}).fetchone()
+                    acao_desc = acao_desc_row[0] if acao_desc_row else None
+
+                    # DT_ACAO_GEIMO recebe a data de hoje quando a ação muda
+                    if acao_desc and acao_desc != row[5]:
+                        novo_acao = acao_desc
+                        novo_dt_acao = datetime.now().date()
+                    elif acao_desc:
+                        novo_acao = acao_desc
+
+                    # Regra ID_TIPO_ACAO = 4: zera as três datas do fluxo
+                    try:
+                        if int(acao_id) == 4:
+                            novo_dt_geadi = None
+                            novo_dt_sumov = None
+                            novo_dt_receb = None
+                    except ValueError:
+                        pass
+
+            # ===== UPDATE =====
+            sql_update = text("""
+                UPDATE [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                SET
+                    [DT_ENVIO_GEADI_SUMOV] = :dt_geadi,
+                    [DT_ENVIO_SUMOV_GEIMO] = :dt_sumov,
+                    [DT_RECEBIMENTO_GEIMO] = :dt_receb,
+                    [ACAO_GEIMO] = :acao,
+                    [DT_ACAO_GEIMO] = :dt_acao,
+                    [OBS_GEIMO] = :obs
+                WHERE [NU_CONTRATO] = :c
+            """)
+            db.session.execute(sql_update, {
+                'dt_geadi': novo_dt_geadi,
+                'dt_sumov': novo_dt_sumov,
+                'dt_receb': novo_dt_receb,
+                'acao': novo_acao,
+                'dt_acao': novo_dt_acao,
+                'obs': novo_obs,
+                'c': nu_contrato
+            })
+            db.session.commit()
+
+            registrar_log(
+                acao='editar',
+                entidade='movimentacao_imovel',
+                entidade_id=nu_contrato,
+                descricao=f'Edição de movimentação de imóvel - Contrato {nu_contrato}'
+            )
+
+            flash('Movimentação atualizada com sucesso!', 'success')
+            return redirect(url_for('sumov.movimentacao_imovel'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao atualizar movimentação: {str(e)}', 'danger')
+            return redirect(url_for('sumov.movimentacao_imovel_editar', nu_contrato=nu_contrato))
+
+    # ===== GET: prepara dados para o formulário =====
+    reg = {
+        'nu_contrato': row[0],
+        'responsavel': row[1] or '',
+        'status_rm': row[8] or '',
+        'dt_envio_geadi_sumov_fmt': row[2].strftime('%d/%m/%Y') if row[2] else '',
+        'dt_envio_sumov_geimo_iso': row[3].strftime('%Y-%m-%d') if row[3] else '',
+        'dt_recebimento_geimo_iso': row[4].strftime('%Y-%m-%d') if row[4] else '',
+        'acao_geimo': row[5] or '',
+        'dt_acao_geimo_fmt': row[6].strftime('%d/%m/%Y') if row[6] else '',
+        'obs_geimo': row[7] or '',
+        'dt_envio_resale_fmt': row[9].strftime('%d/%m/%Y') if row[9] else '',
+    }
+
+    # Lista de ações (MOV_TB057)
+    sql_acoes = text("""
+        SELECT [ID_TIPO_ACAO], [DSC_TIPO_ACAO]
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB057_TIPO_ACAO_GEIMO]
+        ORDER BY [DSC_TIPO_ACAO]
+    """)
+    acoes = [{'id': a[0], 'dsc': a[1]} for a in db.session.execute(sql_acoes).fetchall()]
+
+    return render_template('sumov/movimentacao_imovel/editar.html',
+                           reg=reg,
+                           acoes=acoes,
+                           pode_sumov=pode_sumov,
+                           pode_geimo=pode_geimo)

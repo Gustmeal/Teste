@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .cf-container { max-width: 1100px; margin: 0 auto; }
+    .cf-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+               box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 1.5rem; }
+    .cf-head { background: #1e3a8a; color: #fff; padding: .8rem 1.2rem; border-radius: 12px 12px 0 0;
+               font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+    .cf-head small { opacity: .8; font-weight: 400; }
+    .cf-body { padding: 1.4rem; }
+    .cf-label { font-size: .8rem; font-weight: 600; color: #475569; }
+    .cf-ind { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .cf-bloco { border: 1px solid #e2e8f0; border-radius: 10px; padding: .9rem 1rem; margin-top: 1rem; background: #fbfdff; }
+    .cf-bloco-tit { font-weight: 700; color: #1e3a5c; margin-bottom: .6rem; }
+    .cf-mov summary { cursor: pointer; font-size: .85rem; color: #2563eb; font-weight: 600; }
+    .cf-tools { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin-bottom: 1.2rem; }
+</style>
+
+<div class="cf-container fade-in">
+    <a href="{{ url_for('cotas_fundos.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+
+    <h1 class="fw-bold header-with-back mb-4">Editar Cotas por Data</h1>
+
+    <div id="cfFeedback" class="mb-3" style="display:none;"></div>
+
+    <form method="get" class="cf-tools">
+        <div>
+            <label class="cf-label">Data</label>
+            <input type="date" class="form-control" name="dia" value="{{ dia }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fas fa-search me-2"></i>Buscar</button>
+    </form>
+
+    {% if tem_data %}
+        {% for f in fundos %}
+        <div class="cf-card">
+            <div class="cf-head">
+                <span>{{ f.label }}</span>
+                <small>{{ f.tabela }} · {{ dia_fmt }}</small>
+            </div>
+            <div class="cf-body">
+                {% if not f.existe %}
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Não há registro nesta data para este fundo.
+                    </div>
+                {% else %}
+                <form id="form-{{ f.chave }}" onsubmit="return false;">
+                    <input type="hidden" name="DATA" value="{{ dia }}">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="cf-label">VR_COTA <span class="text-danger">*</span></label>
+                            <input type="number" step="any" class="form-control"
+                                   name="VR_COTA" value="{{ f.valores.VR_COTA if f.valores.VR_COTA is not none else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="cf-label">IND_COTA</label>
+                            <input type="number" step="any" class="form-control cf-ind"
+                                   name="IND_COTA" value="{{ f.valores.IND_COTA if f.valores.IND_COTA is not none else '' }}">
+                        </div>
+                    </div>
+
+                    {% if f.multiplo %}
+                        {% for b in f.blocos %}
+                        <div class="cf-bloco">
+                            <div class="cf-bloco-tit">{{ b.label }}</div>
+                            <div class="row g-3">
+                                {% for (attr, label) in b.campos_saldo %}
+                                <div class="col-md-4">
+                                    <label class="cf-label">{{ label }}</label>
+                                    <input type="number" step="any" class="form-control" name="{{ attr }}"
+                                           value="{{ f.valores.get(attr) if f.valores.get(attr) is not none else '' }}">
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <details class="cf-mov mt-2">
+                                <summary>Movimentos (Aplicação / Resgate / IR / IOF)</summary>
+                                <div class="row g-3 mt-1">
+                                    {% for (attr, label) in b.campos_mov %}
+                                    <div class="col-md-3">
+                                        <label class="cf-label">{{ label }}</label>
+                                        <input type="number" step="any" class="form-control" name="{{ attr }}"
+                                               value="{{ f.valores.get(attr) if f.valores.get(attr) is not none else '' }}">
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="row g-3 mt-1">
+                            {% for (attr, label) in f.campos %}
+                            <div class="col-md-4">
+                                <label class="cf-label">{{ label }}</label>
+                                <input type="number" step="any" class="form-control" name="{{ attr }}"
+                                       value="{{ f.valores.get(attr) if f.valores.get(attr) is not none else '' }}">
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-primary" onclick="cfSalvarEdicao('{{ f.chave }}')">
+                            <i class="fas fa-save me-2"></i>Salvar alterações
+                        </button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">Escolha uma data e clique em Buscar.</div>
+    {% endif %}
+</div>
+
+<script>
+function cfFeedback(tipo, msg) {
+    var el = document.getElementById('cfFeedback');
+    el.style.display = 'block';
+    el.innerHTML = '<div class="alert alert-' + tipo + ' mb-0">' + msg + '</div>';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function cfSalvarEdicao(chave) {
+    var form = document.getElementById('form-' + chave);
+    fetch("{{ url_for('cotas_fundos.index') }}editar-data/salvar/" + chave, {
+        method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: new FormData(form)
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        if (d.success) { cfFeedback('success', '<i class="fas fa-check-circle me-2"></i>' + d.message); }
+        else { cfFeedback('danger', '<i class="fas fa-times-circle me-2"></i>' + d.message); }
+    })
+    .catch(function (e) { cfFeedback('danger', 'Erro de conexão: ' + e); });
+}
+</script>
+{% endblock %}

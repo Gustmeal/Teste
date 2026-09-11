@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Movimentação de Imóvel - SUMOV{% endblock %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao SUMOV
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="fw-bold header-with-back">
+            <i class="fas fa-exchange-alt text-primary me-2"></i> Movimentação de Imóvel
+        </h1>
+        <a href="{{ url_for('sumov.movimentacao_imovel_nova') }}" class="btn btn-success">
+            <i class="fas fa-plus me-2"></i>Incluir
+        </a>
+    </div>
+
+    <!-- Card de Filtros -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filtros de Pesquisa</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('sumov.movimentacao_imovel') }}">
+                <div class="row g-3">
+                    <!-- Nº Contrato -->
+                    <div class="col-md-3">
+                        <label for="filtro_contrato" class="form-label fw-bold">
+                            <i class="fas fa-file-contract text-primary me-1"></i>Nº Contrato
+                        </label>
+                        <input type="text" class="form-control" id="filtro_contrato"
+                               name="filtro_contrato" value="{{ filtro_contrato }}"
+                               placeholder="Digite o contrato">
+                    </div>
+
+                    <!-- DT_ENVIO_GEADI_SUMOV -->
+                    <div class="col-md-3">
+                        <label for="filtro_dt_geadi" class="form-label fw-bold">Envio GEADI/SUMOV</label>
+                        <input type="date" class="form-control filtro-data" id="filtro_dt_geadi"
+                               name="filtro_dt_geadi" value="{{ filtro_dt_geadi }}"
+                               {% if vazio_dt_geadi %}disabled{% endif %}>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input chk-vazio" type="checkbox"
+                                   id="vazio_dt_geadi" name="vazio_dt_geadi"
+                                   data-alvo="filtro_dt_geadi"
+                                   {% if vazio_dt_geadi %}checked{% endif %}>
+                            <label class="form-check-label small" for="vazio_dt_geadi">Somente vazios</label>
+                        </div>
+                    </div>
+
+                    <!-- DT_ENVIO_SUMOV_GEIMO -->
+                    <div class="col-md-3">
+                        <label for="filtro_dt_sumov" class="form-label fw-bold">Envio SUMOV/GEIMO</label>
+                        <input type="date" class="form-control filtro-data" id="filtro_dt_sumov"
+                               name="filtro_dt_sumov" value="{{ filtro_dt_sumov }}"
+                               {% if vazio_dt_sumov %}disabled{% endif %}>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input chk-vazio" type="checkbox"
+                                   id="vazio_dt_sumov" name="vazio_dt_sumov"
+                                   data-alvo="filtro_dt_sumov"
+                                   {% if vazio_dt_sumov %}checked{% endif %}>
+                            <label class="form-check-label small" for="vazio_dt_sumov">Somente vazios</label>
+                        </div>
+                    </div>
+
+                    <!-- DT_RECEBIMENTO_GEIMO -->
+                    <div class="col-md-3">
+                        <label for="filtro_dt_receb" class="form-label fw-bold">Recebimento GEIMO</label>
+                        <input type="date" class="form-control filtro-data" id="filtro_dt_receb"
+                               name="filtro_dt_receb" value="{{ filtro_dt_receb }}"
+                               {% if vazio_dt_receb %}disabled{% endif %}>
+                        <div class="form-check mt-1">
+                            <input class="form-check-input chk-vazio" type="checkbox"
+                                   id="vazio_dt_receb" name="vazio_dt_receb"
+                                   data-alvo="filtro_dt_receb"
+                                   {% if vazio_dt_receb %}checked{% endif %}>
+                            <label class="form-check-label small" for="vazio_dt_receb">Somente vazios</label>
+                        </div>
+                    </div>
+                                        <!-- Ação GEIMO -->
+                    <div class="col-md-3">
+                        <label for="filtro_acao" class="form-label fw-bold">
+                            <i class="fas fa-tasks text-primary me-1"></i>Ação GEIMO
+                        </label>
+                        <select class="form-select" id="filtro_acao" name="filtro_acao">
+                            <option value="">Todas</option>
+                            {% for acao in acoes %}
+                            <option value="{{ acao }}" {% if acao == filtro_acao %}selected{% endif %}>
+                                {{ acao }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>Filtrar
+                    </button>
+                    <a href="{{ url_for('sumov.movimentacao_imovel') }}" class="btn btn-secondary">
+                        <i class="fas fa-eraser me-1"></i>Limpar
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabela de Movimentações -->
+    <div class="card shadow">
+        <div class="card-body p-0">
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="table table-hover mb-0" id="movimentacaoTable">
+                    <thead>
+                        <tr>
+                            <th>Nº Contrato</th>
+                            <th>Responsável</th>
+                            <th>Envio GEADI/SUMOV</th>
+                            <th>Envio SUMOV/GEIMO</th>
+                            <th>Recebimento GEIMO</th>
+                            <th>Ação GEIMO</th>
+                            <th>Data Ação GEIMO</th>
+                            <th>Obs. GEIMO</th>
+                            <th>Status RM</th>
+                            <th>Envio RESALE</th>
+                            <th class="text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for reg in registros %}
+                        <tr>
+                            <td><strong>{{ reg.nu_contrato }}</strong></td>
+                            <td>{{ reg.responsavel }}</td>
+                            <td>{{ reg.dt_envio_geadi_sumov }}</td>
+                            <td>{{ reg.dt_envio_sumov_geimo }}</td>
+                            <td>{{ reg.dt_recebimento_geimo }}</td>
+                            <td>{{ reg.acao_geimo }}</td>
+                            <td>{{ reg.dt_acao_geimo }}</td>
+                            <td>{{ reg.obs_geimo }}</td>
+                            <td>{{ reg.status_rm }}</td>
+                            <td>{{ reg.dt_envio_resale }}</td>
+                            <td class="text-center">
+                                <a href="{{ url_for('sumov.movimentacao_imovel_editar', nu_contrato=reg.nu_contrato) }}"
+                                   class="btn btn-sm btn-primary" title="Editar">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="11" class="text-center text-muted py-4">
+                                Nenhum registro de movimentação encontrado.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h3 class="text-primary">{{ registros|length }}</h3>
+                    <p class="text-muted mb-0">Total de Registros</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Ao marcar "Somente vazios", desabilita o input de data correspondente.
+    document.querySelectorAll('.chk-vazio').forEach(function (chk) {
+        chk.addEventListener('change', function () {
+            var alvo = document.getElementById(this.dataset.alvo);
+            if (this.checked) {
+                alvo.value = '';
+                alvo.disabled = true;
+            } else {
+                alvo.disabled = false;
+            }
+        });
+    });
+</script>
+{% endblock %}

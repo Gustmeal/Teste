@@ -146,6 +146,25 @@
                 </div>
             </div>
         </div>
+                <!-- Movimentação de Imóvel (NOVO) -->
+        <div class="col-lg-4 col-md-6">
+            <div class="card module-card h-100 border-0">
+                <div class="card-body text-center p-5">
+                    <div class="icon-wrapper icon-orange mb-4">
+                        <i class="fas fa-exchange-alt fa-2x"></i>
+                    </div>
+                    <h5 class="card-title fw-bold mb-3">Movimentação de Imóvel</h5>
+                    <p class="card-text text-muted mb-4">
+                        Controle de regularização e movimentação de imóveis em venda entre GEADI, SUMOV e GEIMO
+                    </p>
+                    <a href="{{ url_for('sumov.movimentacao_imovel') }}"
+                       class="btn btn-orange btn-lg w-100 text-white">
+                        <i class="fas fa-arrow-right me-2"></i>Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Footer -->
@@ -424,6 +443,33 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    }
+        /* Movimentação de Imóvel - Laranja */
+    .icon-orange {
+        background: linear-gradient(135deg, #fd7e14 0%, #c85e02 100%);
+        color: white;
+        box-shadow: 0 8px 25px rgba(253, 126, 20, 0.35);
+    }
+
+    .btn-orange {
+        background: linear-gradient(135deg, #fd7e14 0%, #c85e02 100%);
+        border: none;
+        color: #ffffff;
+    }
+
+    .btn-orange:hover {
+        background: linear-gradient(135deg, #c85e02 0%, #9c4802 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(253, 126, 20, 0.4);
+        color: #ffffff;
+    }
+
+    .btn-orange:focus,
+    .btn-orange:active {
+        background: linear-gradient(135deg, #c85e02 0%, #9c4802 100%);
+        border-color: #c85e02;
+        color: #ffffff;
+        box-shadow: 0 0 0 0.25rem rgba(253, 126, 20, 0.5);
     }
 </style>
 

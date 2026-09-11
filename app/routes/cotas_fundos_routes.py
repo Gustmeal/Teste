@@ -497,3 +497,119 @@ def _rentabilidade_fundo(chave, cfg, dia):
         base['multiplo'] = False
         base.update(calc(cfg['sd_bruto'], 'VR_APLICACAO', 'VR_RESGATE', 'VR_IR', 'VR_IOF'))
         return base
+
+@cotas_fundos_bp.route('/editar-data')
+@login_required
+def editar_data():
+    """Página: escolhe uma data e edita os registros existentes dos 3 fundos."""
+    dia_str = (request.args.get('dia') or '').strip()
+    dia = None
+    if dia_str:
+        try:
+            dia = datetime.strptime(dia_str, '%Y-%m-%d').date()
+        except ValueError:
+            dia = None
+
+    fundos_ctx = []
+    if dia:
+        for chave, cfg in FUNDOS.items():
+            fundos_ctx.append(_montar_contexto_edicao(chave, cfg, dia))
+
+    return render_template(
+        'cotas_fundos/editar_data.html',
+        dia=dia_str,
+        dia_fmt=dia.strftime('%d/%m/%Y') if dia else '',
+        fundos=fundos_ctx,
+        tem_data=bool(dia),
+    )
+
+
+def _montar_contexto_edicao(chave, cfg, dia):
+    """Monta o card de edição de um fundo para a data escolhida."""
+    model = cfg['model']
+    registro = db.session.query(model).filter(model.DATA == dia).first()
+
+    # lista de atributos (blocos ou campos planos) + valores atuais
+    if cfg.get('multiplo'):
+        attrs = []
+        for b in cfg['blocos']:
+            for (attr, _l) in (b['campos_saldo'] + b['campos_mov']):
+                attrs.append(attr)
+    else:
+        attrs = [attr for (attr, _l) in cfg['campos']]
+
+    valores = {}
+    if registro is not None:
+        valores['VR_COTA'] = float(registro.VR_COTA) if registro.VR_COTA is not None else None
+        valores['IND_COTA'] = float(registro.IND_COTA) if registro.IND_COTA is not None else None
+        for attr in attrs:
+            v = getattr(registro, attr, None)
+            valores[attr] = float(v) if v is not None else None
+
+    return {
+        'chave': chave,
+        'label': cfg['label'],
+        'tabela': cfg['tabela'],
+        'campos': cfg.get('campos', []),
+        'multiplo': cfg.get('multiplo', False),
+        'blocos': cfg.get('blocos', []),
+        'existe': registro is not None,
+        'valores': valores,
+    }
+
+
+@cotas_fundos_bp.route('/editar-data/salvar/<chave>', methods=['POST'])
+@login_required
+def salvar_edicao_data(chave):
+    """Grava (UPDATE) a linha da DATA informada do fundo. Só valores, a DATA não muda."""
+    cfg = FUNDOS.get(chave)
+    if not cfg:
+        return jsonify({'success': False, 'message': 'Fundo inválido.'}), 400
+
+    dia_str = (request.form.get('DATA') or '').strip()
+    try:
+        dia = datetime.strptime(dia_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Data inválida.'}), 400
+
+    model = cfg['model']
+    registro = db.session.query(model).filter(model.DATA == dia).first()
+    if registro is None:
+        return jsonify({'success': False,
+                        'message': f'Não há registro em {dia.strftime("%d/%m/%Y")} para {cfg["label"]}.'}), 404
+
+    # atributos a atualizar
+    if cfg.get('multiplo'):
+        attrs = []
+        for b in cfg['blocos']:
+            for (attr, _l) in (b['campos_saldo'] + b['campos_mov']):
+                attrs.append(attr)
+    else:
+        attrs = [attr for (attr, _l) in cfg['campos']]
+
+    try:
+        vr_cota = _to_decimal(request.form.get('VR_COTA'))
+        if vr_cota is None:
+            return jsonify({'success': False, 'message': 'Informe o VR_COTA.'}), 400
+        registro.VR_COTA = vr_cota
+
+        ind = _to_decimal(request.form.get('IND_COTA'))
+        if ind is not None:
+            registro.IND_COTA = ind
+
+        for attr in attrs:
+            setattr(registro, attr, _to_decimal(request.form.get(attr)))
+
+        db.session.commit()
+
+        registrar_log(
+            acao='atualizacao', entidade='cotas_fundos', entidade_id=None,
+            descricao=f'Edição de cotas {cfg["label"]} — {dia.strftime("%d/%m/%Y")}',
+            dados_novos={'tabela': cfg['tabela'], 'DATA': dia.strftime('%Y-%m-%d'),
+                         'VR_COTA': str(registro.VR_COTA), 'IND_COTA': str(registro.IND_COTA)},
+        )
+        return jsonify({'success': True,
+                        'message': f'{cfg["label"]}: {dia.strftime("%d/%m/%Y")} atualizado.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Erro ao salvar: {str(e)}'}), 500
