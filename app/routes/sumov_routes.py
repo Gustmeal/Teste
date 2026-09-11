@@ -4780,12 +4780,13 @@ def _parse_form_date(valor):
 def movimentacao_imovel():
     """
     Lista os registros de Movimentação de Imóvel, com filtros.
-    Fonte: BDDASHBOARDBI.BDG.MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA
+    Fonte: BDDASHBOARDBI.BDG.MOV_TB56_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA
     """
     try:
         # ===== Captura dos filtros =====
         filtro_contrato = request.args.get('filtro_contrato', '').strip()
         filtro_acao = request.args.get('filtro_acao', '').strip()
+        filtro_status = request.args.get('filtro_status', '').strip()
         filtro_dt_geadi = request.args.get('filtro_dt_geadi', '').strip()
         vazio_dt_geadi = request.args.get('vazio_dt_geadi')  # 'on' quando marcado
         filtro_dt_sumov = request.args.get('filtro_dt_sumov', '').strip()
@@ -4805,6 +4806,13 @@ def movimentacao_imovel():
         if filtro_acao:
             condicoes.append("[ACAO_GEIMO] = :acao")
             params['acao'] = filtro_acao
+
+        # Filtro por Status RM: '__VAZIO__' traz os em branco; senão igualdade exata
+        if filtro_status == '__VAZIO__':
+            condicoes.append("([STATUS_RM] IS NULL OR LTRIM(RTRIM([STATUS_RM])) = '')")
+        elif filtro_status:
+            condicoes.append("[STATUS_RM] = :status")
+            params['status'] = filtro_status
 
         # Filtro DT_ENVIO_GEADI_SUMOV: "somente vazios" tem prioridade sobre a data exata
         if vazio_dt_geadi:
@@ -4876,11 +4884,22 @@ def movimentacao_imovel():
         """)
         acoes = [a[1] for a in db.session.execute(sql_acoes).fetchall() if a[1]]
 
+        # Lista de status distintos para o filtro (da própria tabela)
+        sql_status = text("""
+            SELECT DISTINCT [STATUS_RM]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            WHERE [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
+            ORDER BY [STATUS_RM]
+        """)
+        status_lista = [s[0] for s in db.session.execute(sql_status).fetchall()]
+
         return render_template('sumov/movimentacao_imovel/index.html',
                                registros=registros,
                                acoes=acoes,
+                               status_lista=status_lista,
                                filtro_contrato=filtro_contrato,
                                filtro_acao=filtro_acao,
+                               filtro_status=filtro_status,
                                filtro_dt_geadi=filtro_dt_geadi,
                                vazio_dt_geadi=bool(vazio_dt_geadi),
                                filtro_dt_sumov=filtro_dt_sumov,
