@@ -5055,7 +5055,7 @@ def movimentacao_imovel_editar(nu_contrato):
     """
     Edição de um registro de Movimentação de Imóvel, respeitando as permissões:
     - DT_ENVIO_SUMOV_GEIMO: Superintendente da SUMOV / admin / moderador.
-    - DT_RECEBIMENTO_GEIMO, ACAO_GEIMO, OBS_GEIMO: gerência GEIMO / admin / moderador.
+    - DT_RECEBIMENTO_GEIMO, ACAO_GEIMO, OBS_GEIMO, DT_ENVIO_RESALE: gerência GEIMO / admin / moderador.
     - DT_ACAO_GEIMO: automática (data de hoje quando a ação muda).
     - ID_TIPO_ACAO = 4: zera (NULL) as três datas do fluxo.
     """
@@ -5086,6 +5086,7 @@ def movimentacao_imovel_editar(nu_contrato):
             novo_acao = row[5]
             novo_dt_acao = row[6]
             novo_obs = row[7]
+            novo_dt_resale = row[9]
 
             acao_id = request.form.get('acao_id', '').strip()
 
@@ -5097,6 +5098,7 @@ def movimentacao_imovel_editar(nu_contrato):
             if pode_geimo:
                 novo_dt_receb = _parse_form_date(request.form.get('dt_recebimento_geimo'))
                 novo_obs = (request.form.get('obs_geimo', '').strip() or None)
+                novo_dt_resale = _parse_form_date(request.form.get('dt_envio_resale'))
 
                 if acao_id:
                     # Busca a descrição da ação escolhida
@@ -5133,7 +5135,8 @@ def movimentacao_imovel_editar(nu_contrato):
                     [DT_RECEBIMENTO_GEIMO] = :dt_receb,
                     [ACAO_GEIMO] = :acao,
                     [DT_ACAO_GEIMO] = :dt_acao,
-                    [OBS_GEIMO] = :obs
+                    [OBS_GEIMO] = :obs,
+                    [DT_ENVIO_RESALE] = :dt_resale
                 WHERE [NU_CONTRATO] = :c
             """)
             db.session.execute(sql_update, {
@@ -5143,6 +5146,7 @@ def movimentacao_imovel_editar(nu_contrato):
                 'acao': novo_acao,
                 'dt_acao': novo_dt_acao,
                 'obs': novo_obs,
+                'dt_resale': novo_dt_resale,
                 'c': nu_contrato
             })
             db.session.commit()
@@ -5173,7 +5177,7 @@ def movimentacao_imovel_editar(nu_contrato):
         'acao_geimo': row[5] or '',
         'dt_acao_geimo_fmt': row[6].strftime('%d/%m/%Y') if row[6] else '',
         'obs_geimo': row[7] or '',
-        'dt_envio_resale_fmt': row[9].strftime('%d/%m/%Y') if row[9] else '',
+        'dt_envio_resale_iso': row[9].strftime('%Y-%m-%d') if row[9] else '',
     }
 
     # Lista de ações (MOV_TB057)
