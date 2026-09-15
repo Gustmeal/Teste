@@ -79,7 +79,8 @@
                             <label class="form-check-label small" for="vazio_dt_receb">Somente vazios</label>
                         </div>
                     </div>
-                                        <!-- Ação GEIMO -->
+
+                    <!-- Ação GEIMO -->
                     <div class="col-md-3">
                         <label for="filtro_acao" class="form-label fw-bold">
                             <i class="fas fa-tasks text-primary me-1"></i>Ação GEIMO
@@ -93,7 +94,8 @@
                             {% endfor %}
                         </select>
                     </div>
-                                        <!-- Status RM -->
+
+                    <!-- Status RM -->
                     <div class="col-md-3">
                         <label for="filtro_status" class="form-label fw-bold">
                             <i class="fas fa-info-circle text-primary me-1"></i>Status RM
@@ -142,12 +144,13 @@
                             <th>Obs. GEIMO</th>
                             <th>Status RM</th>
                             <th>Envio RESALE</th>
-                            <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for reg in registros %}
-                        <tr>
+                        <tr class="linha-clicavel"
+                            style="cursor: pointer;"
+                            data-href="{{ url_for('sumov.movimentacao_imovel_editar', nu_contrato=reg.nu_contrato) }}">
                             <td><strong>{{ reg.nu_contrato }}</strong></td>
                             <td>{{ reg.responsavel }}</td>
                             <td>{{ reg.dt_envio_geadi_sumov }}</td>
@@ -158,16 +161,10 @@
                             <td>{{ reg.obs_geimo }}</td>
                             <td>{{ reg.status_rm }}</td>
                             <td>{{ reg.dt_envio_resale }}</td>
-                            <td class="text-center">
-                                <a href="{{ url_for('sumov.movimentacao_imovel_editar', nu_contrato=reg.nu_contrato) }}"
-                                   class="btn btn-sm btn-primary" title="Editar">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="11" class="text-center text-muted py-4">
+                            <td colspan="10" class="text-center text-muted py-4">
                                 Nenhum registro de movimentação encontrado.
                             </td>
                         </tr>
@@ -200,6 +197,16 @@
                 alvo.disabled = true;
             } else {
                 alvo.disabled = false;
+            }
+        });
+    });
+
+    // Clique em qualquer parte da linha leva para a página de edição.
+    document.querySelectorAll('#movimentacaoTable tbody tr.linha-clicavel').forEach(function (linha) {
+        linha.addEventListener('click', function () {
+            var destino = this.dataset.href;
+            if (destino) {
+                window.location.href = destino;
             }
         });
     });
