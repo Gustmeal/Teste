@@ -474,12 +474,16 @@
                         {% endif %}
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-4 d-flex gap-2">
                     <button type="submit"
-                            class="btn btn-primary w-100"
+                            class="btn btn-primary flex-fill"
                             {% if not meses_disponiveis %}disabled{% endif %}>
                         <i class="fas fa-filter me-2"></i>Filtrar
                     </button>
+                    <a href="{{ url_for('titulo_cvs.extrato_exportar', mes=mes_filtro.strftime('%Y-%m-%d')) if mes_filtro else url_for('titulo_cvs.extrato_exportar') }}"
+                       class="btn btn-success shadow-sm flex-fill">
+                        <i class="fas fa-file-excel me-2"></i>Exportar Excel
+                    </a>
                 </div>
             </form>
         </div>

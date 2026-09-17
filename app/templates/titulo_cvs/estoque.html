@@ -252,6 +252,174 @@
         </div>
     </div>
 
+    <!-- =============================================================== -->
+    <!-- FILTRO + EXPORTAÇÃO                                             -->
+    <!-- =============================================================== -->
+    <div class="card est-section-card mb-4">
+        <div class="est-section-header">
+            <h5><i class="fas fa-filter me-2"></i>Filtrar Posições</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET"
+                  action="{{ url_for('titulo_cvs.estoque_index') }}"
+                  id="formFiltroEstoque"
+                  class="row g-3 align-items-end">
+
+                <!-- Tipo de filtro -->
+                <div class="col-md-3">
+                    <label for="tipoFiltroEst" class="form-label small fw-semibold">Tipo de filtro</label>
+                    <select name="tipo_filtro" id="tipoFiltroEst" class="form-select">
+                        <option value="datas"     {% if filtro_ctx.tipo == 'datas' %}selected{% endif %}>Data(s) específica(s)</option>
+                        <option value="mensal"    {% if filtro_ctx.tipo == 'mensal' %}selected{% endif %}>Mensal</option>
+                        <option value="bimestral" {% if filtro_ctx.tipo == 'bimestral' %}selected{% endif %}>Bimestral</option>
+                        <option value="semestral" {% if filtro_ctx.tipo == 'semestral' %}selected{% endif %}>Semestral</option>
+                        <option value="anual"     {% if filtro_ctx.tipo == 'anual' %}selected{% endif %}>Anual</option>
+                    </select>
+                </div>
+
+                <!-- Mês -->
+                <div class="col-md-2 est-filtro-bloco" data-modo="mensal">
+                    <label for="selMesEst" class="form-label small fw-semibold">Mês</label>
+                    <select name="mes" id="selMesEst" class="form-select">
+                        {% set nomes_meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'] %}
+                        {% for m in range(1, 13) %}
+                        <option value="{{ m }}" {% if filtro_ctx.mes == m %}selected{% endif %}>{{ nomes_meses[m-1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Bimestre -->
+                <div class="col-md-2 est-filtro-bloco" data-modo="bimestral">
+                    <label for="selBimEst" class="form-label small fw-semibold">Bimestre</label>
+                    <select name="bimestre" id="selBimEst" class="form-select">
+                        {% for b in [1,2,3,4,5,6] %}
+                        <option value="{{ b }}" {% if filtro_ctx.bimestre == b %}selected{% endif %}>{{ b }}º bimestre</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Semestre -->
+                <div class="col-md-2 est-filtro-bloco" data-modo="semestral">
+                    <label for="selSemEst" class="form-label small fw-semibold">Semestre</label>
+                    <select name="semestre" id="selSemEst" class="form-select">
+                        <option value="1" {% if filtro_ctx.semestre == 1 %}selected{% endif %}>1º semestre</option>
+                        <option value="2" {% if filtro_ctx.semestre == 2 %}selected{% endif %}>2º semestre</option>
+                    </select>
+                </div>
+
+                <!-- Ano (Todos ou específico) - mensal/bimestral/semestral -->
+                <div class="col-md-2 est-filtro-bloco" data-modo="mensal bimestral semestral">
+                    <label for="selAnoEstOpc" class="form-label small fw-semibold">Ano</label>
+                    <select name="ano" id="selAnoEstOpc" class="form-select">
+                        <option value="" {% if filtro_ctx.tipo in ['mensal','bimestral','semestral'] and not filtro_ctx.ano %}selected{% endif %}>Todos os anos</option>
+                        {% for a in anos_disponiveis %}
+                        <option value="{{ a }}" {% if filtro_ctx.ano == a %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Ano (obrigatório) - anual -->
+                <div class="col-md-2 est-filtro-bloco" data-modo="anual">
+                    <label for="selAnoEstReq" class="form-label small fw-semibold">Ano</label>
+                    <select name="ano" id="selAnoEstReq" class="form-select">
+                        {% if anos_disponiveis %}
+                            {% for a in anos_disponiveis %}
+                            <option value="{{ a }}" {% if filtro_ctx.ano == a %}selected{% endif %}>{{ a }}</option>
+                            {% endfor %}
+                        {% else %}
+                            <option value="">—</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <!-- Botões -->
+                <div class="col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-outline-primary flex-fill"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-search me-2"></i>Filtrar
+                    </button>
+                    <button type="submit" class="btn btn-success flex-fill"
+                            formaction="{{ url_for('titulo_cvs.estoque_exportar') }}"
+                            formmethod="get"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-file-excel me-2"></i>Exportar
+                    </button>
+                    <a href="{{ url_for('titulo_cvs.estoque_index') }}"
+                       class="btn btn-outline-secondary flex-fill"
+                       title="Limpar filtros">
+                        <i class="fas fa-eraser me-2"></i>Limpar
+                    </a>
+                </div>
+
+                <!-- Datas específicas (caixa em fluxo, nunca é cortada) -->
+                <div class="col-12 est-filtro-bloco" data-modo="datas">
+                    <label class="form-label small fw-semibold d-flex justify-content-between align-items-center mb-1">
+                        <span>Datas (marque uma ou mais)</span>
+                        <span class="text-muted fw-normal" id="lblDatasEst"></span>
+                    </label>
+                    <div style="max-height:190px; overflow-y:auto; border:1px solid #d1d3e2;
+                                border-radius:8px; padding:0.6rem 0.85rem; background:#fff;">
+                        {% if datas_disponiveis %}
+                            <div style="display:grid;
+                                        grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+                                        gap:0.1rem 1rem;">
+                                {% for dt in datas_disponiveis %}
+                                <div class="form-check">
+                                    <input class="form-check-input chk-data-est" type="checkbox"
+                                           name="datas" value="{{ dt.strftime('%Y-%m-%d') }}"
+                                           id="datae_{{ dt.strftime('%Y%m%d') }}"
+                                           {% if dt in filtro_ctx.datas %}checked{% endif %}>
+                                    <label class="form-check-label" for="datae_{{ dt.strftime('%Y%m%d') }}"
+                                           style="font-variant-numeric:tabular-nums; cursor:pointer;">
+                                        {{ dt.strftime('%d/%m/%Y') }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div class="text-muted small">Sem posições disponíveis</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        const form = document.getElementById('formFiltroEstoque');
+        if (!form) return;
+        const tipo = document.getElementById('tipoFiltroEst');
+        const blocos = form.querySelectorAll('.est-filtro-bloco');
+        const lbl = document.getElementById('lblDatasEst');
+        const checks = form.querySelectorAll('.chk-data-est');
+
+        // Mostra só os blocos do modo atual e DESABILITA os escondidos
+        // (campo disabled não é enviado no GET -> evita filtro misturado).
+        function aplicarModo() {
+            const modo = tipo.value;
+            blocos.forEach(function (b) {
+                const modos = (b.getAttribute('data-modo') || '').split(' ');
+                const visivel = modos.indexOf(modo) !== -1;
+                b.style.display = visivel ? '' : 'none';
+                b.querySelectorAll('input, select').forEach(function (el) {
+                    el.disabled = !visivel;
+                });
+            });
+        }
+        function atualizarLbl() {
+            if (!lbl) return;
+            const n = form.querySelectorAll('.chk-data-est:checked').length;
+            lbl.textContent = n === 0 ? ''
+                : (n === 1 ? '1 data selecionada' : n + ' datas selecionadas');
+        }
+        tipo.addEventListener('change', aplicarModo);
+        checks.forEach(function (c) { c.addEventListener('change', atualizarLbl); });
+        aplicarModo();
+        atualizarLbl();
+    })();
+    </script>
+
     <!-- Tabela -->
     <div class="card est-section-card">
         <div class="est-section-header">

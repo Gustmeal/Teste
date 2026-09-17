@@ -358,7 +358,7 @@ class RecebimentoCVS(db.Model):
     HISTORICO = db.Column(db.String(30), primary_key=True, nullable=False)
 
     VR_ENTRADA = db.Column(db.Numeric(18, 4), nullable=True)
-
+    VR_IR = db.Column(db.Numeric(18, 4), nullable=True)
     def __repr__(self):
         return (f'<RecebimentoCVS {self.TIPO} - '
                 f'{self.DT_ATUALIZACAO} - {self.HISTORICO}>')

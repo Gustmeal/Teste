@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Tabela de Recebimento - Título CVS{% endblock %}
+
+{% block content %}
+<style>
+    .rt-section-card {
+        border: none !important;
+        border-radius: 14px !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+        overflow: hidden !important;
+        background: #fff !important;
+    }
+    .rt-section-header {
+        color: #fff !important;
+        padding: 1rem 1.25rem !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 1rem !important;
+        background: linear-gradient(135deg, #fd7e14 0%, #b85a00 100%) !important;
+    }
+    .rt-section-header h5 {
+        margin: 0 !important;
+        font-weight: 700 !important;
+        font-size: 1.05rem !important;
+        color: #fff !important;
+    }
+
+    .rt-form-label {
+        font-size: 0.75rem;
+        color: #5a5c69;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.35rem;
+    }
+    .rt-select {
+        height: 42px;
+        border: 1px solid #d1d3e2;
+        border-radius: 8px;
+        padding: 0 0.85rem;
+        font-size: 0.95rem;
+        background: #fff;
+        width: 100%;
+    }
+    .rt-select:focus {
+        outline: none;
+        border-color: #fd7e14;
+        box-shadow: 0 0 0 3px rgba(253, 126, 20, 0.15);
+    }
+    .rt-btn {
+        height: 42px;
+        padding: 0 1.25rem;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 0.9rem;
+        border: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        white-space: nowrap;
+        color: #fff;
+    }
+    .rt-btn-filtrar { background: linear-gradient(135deg, #fd7e14, #b85a00); }
+    .rt-btn-excel   { background: linear-gradient(135deg, #16a34a, #15803d); }
+    .rt-btn:hover   { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .rt-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+    /* Tabela no estilo verde da referência */
+    .rt-table-scroll { overflow-x: auto; max-height: 70vh; overflow-y: auto; }
+    .rt-table {
+        margin-bottom: 0;
+        min-width: 1000px;
+        border-collapse: collapse;
+        width: 100%;
+    }
+    .rt-table thead th {
+        background: #b6d94c;
+        color: #1f2937;
+        font-weight: 800;
+        font-size: 0.8rem;
+        text-align: center;
+        white-space: nowrap;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid #9dbf3f;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .rt-table tbody td {
+        padding: 0.55rem 0.85rem;
+        border: 1px solid #e3e6f0;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+    }
+    .rt-table tbody tr:nth-child(even) td { background: #fafcf3; }
+    .rt-num { text-align: right; }
+    .rt-neg { color: #b91c1c; }
+    .rt-table tfoot td {
+        background: #e4f0b0;
+        color: #1f2937;
+        font-weight: 800;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid #9dbf3f;
+        white-space: nowrap;
+    }
+
+    .rt-empty { text-align: center; padding: 3rem 1rem; color: #858796; }
+    .rt-empty i { font-size: 3rem; opacity: 0.4; display: block; margin-bottom: 1rem; }
+</style>
+
+{# ------ macro de formatação em R$ pt-BR (negativo como -R$ ...) ------ #}
+{% macro brl(v) -%}
+  {%- if v is none -%}—
+  {%- else -%}
+    {%- set n = v|float -%}
+    {%- set s = "{:,.2f}".format(n|abs).replace(',', 'X').replace('.', ',').replace('X', '.') -%}
+    <span class="{{ 'rt-neg' if n < 0 else '' }}">{{ '-' if n < 0 else '' }}R$ {{ s }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+<a href="{{ url_for('titulo_cvs.recebimento_index') }}" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Voltar ao Recebimento
+</a>
+
+<div class="editais-container fade-in">
+
+    <div class="page-title-bar mb-4">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-table me-2"></i>Tabela de Recebimento — Títulos CVS
+        </h1>
+        <p class="text-muted mb-0 mt-1">
+            Fonte: <code>FIN_VW012_RECEBIMENTO_TITULOS_CVS</code>.
+            Selecione uma data de previsão para montar a tabela.
+        </p>
+    </div>
+
+    <!-- FILTRO -->
+    <div class="card rt-section-card mb-4">
+        <div class="rt-section-header">
+            <h5><i class="fas fa-filter me-2"></i>Filtro por Data de Previsão</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET"
+                  action="{{ url_for('titulo_cvs.recebimento_tabela_index') }}"
+                  id="formTabelaRec"
+                  class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label for="selData" class="rt-form-label">
+                        Data de Previsão (DT_PREV_RECEBIMENTO)
+                    </label>
+                    <select name="dt" id="selData" class="rt-select"
+                            {% if not datas_disponiveis %}disabled{% endif %}
+                            onchange="document.getElementById('formTabelaRec').submit();">
+                        <option value="">Selecione uma data...</option>
+                        {% for d in datas_disponiveis %}
+                        <option value="{{ d.strftime('%Y-%m-%d') }}"
+                            {% if dt_selecionada and d == dt_selecionada %}selected{% endif %}>
+                            {{ d.strftime('%d/%m/%Y') }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="rt-btn rt-btn-filtrar flex-fill"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-search"></i>Filtrar
+                    </button>
+                    <button type="submit" class="rt-btn rt-btn-excel flex-fill"
+                            formaction="{{ url_for('titulo_cvs.recebimento_tabela_exportar') }}"
+                            formmethod="get"
+                            {% if not linhas %}disabled{% endif %}>
+                        <i class="fas fa-file-excel"></i>Exportar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TABELA -->
+    <div class="card rt-section-card">
+        <div class="rt-section-header">
+            <h5>
+                <i class="fas fa-list me-2"></i>
+                Recebimento de Títulos
+                {% if dt_selecionada %}
+                    <span style="font-size: 0.85rem; opacity: 0.9;">
+                        — {{ dt_selecionada.strftime('%d/%m/%Y') }}
+                    </span>
+                {% endif %}
+            </h5>
+        </div>
+
+        {% if linhas %}
+        <div class="rt-table-scroll">
+            <table class="rt-table">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Item</th>
+                        <th>Valor Bruto - Previsão</th>
+                        <th>IR</th>
+                        <th>Valor Líquido - Previsão</th>
+                        <th>IR Efetivo</th>
+                        <th>Recebido em Conta Corrente</th>
+                        <th>Diferença</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in linhas %}
+                    <tr>
+                        <td>{{ dt_selecionada.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ l.item }}</td>
+                        <td class="rt-num">{{ brl(l.valor_bruto) }}</td>
+                        <td class="rt-num">{{ brl(l.ir) }}</td>
+                        <td class="rt-num">{{ brl(l.previsao_liquida) }}</td>
+                        <td class="rt-num">{{ brl(l.ir_efet) }}</td>
+                        <td class="rt-num">{{ brl(l.recebido_cc) }}</td>
+                        <td class="rt-num">{{ brl(l.diferenca) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td>Total</td>
+                        <td></td>
+                        <td class="rt-num">{{ brl(totais.valor_bruto) }}</td>
+                        <td class="rt-num">{{ brl(totais.ir) }}</td>
+                        <td class="rt-num">{{ brl(totais.previsao_liquida) }}</td>
+                        <td class="rt-num">{{ brl(totais.ir_efet) }}</td>
+                        <td class="rt-num">{{ brl(totais.recebido_cc) }}</td>
+                        <td class="rt-num">{{ brl(totais.diferenca) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="rt-empty">
+            <i class="fas fa-calendar-day"></i>
+            <h5 class="text-muted mb-2">
+                {% if dt_selecionada %}
+                    Nenhum registro para {{ dt_selecionada.strftime('%d/%m/%Y') }}
+                {% else %}
+                    Selecione uma data acima
+                {% endif %}
+            </h5>
+            <p class="text-muted mb-0">
+                A tabela é montada a partir da data de previsão escolhida.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

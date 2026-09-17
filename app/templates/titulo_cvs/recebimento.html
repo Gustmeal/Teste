@@ -105,7 +105,7 @@
     }
     .rec-table {
         margin-bottom: 0;
-        min-width: 700px;
+        min-width: 820px;
     }
     .rec-table thead th {
         background: #f8f9fc;
@@ -167,6 +167,52 @@
         border-color: #dc2626;
     }
 
+    /* Botões de edição inline */
+    .rec-actions {
+        display: inline-flex;
+        gap: 0.35rem;
+        justify-content: center;
+    }
+    .rec-btn-editar {
+        background: #fff;
+        border: 1px solid #fed7aa;
+        color: #c2410c;
+        width: 32px; height: 32px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center; justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .rec-btn-editar:hover {
+        background: #fd7e14; color: #fff; border-color: #fd7e14;
+    }
+    .rec-btn-salvar-linha {
+        background: #16a34a; border: 1px solid #16a34a; color: #fff;
+        width: 32px; height: 32px; border-radius: 6px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.15s ease;
+    }
+    .rec-btn-salvar-linha:hover { background: #15803d; border-color: #15803d; }
+    .rec-btn-cancelar-linha {
+        background: #fff; border: 1px solid #d1d5db; color: #6b7280;
+        width: 32px; height: 32px; border-radius: 6px;
+        display: inline-flex; align-items: center; justify-content: center;
+        cursor: pointer; transition: all 0.15s ease;
+    }
+    .rec-btn-cancelar-linha:hover { background: #f3f4f6; }
+    .rec-edit-input {
+        width: 100%; height: 32px;
+        border: 1px solid #fd7e14; border-radius: 6px;
+        padding: 0 0.5rem; font-size: 0.9rem;
+        text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .rec-edit-input:focus {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(253, 126, 20, 0.15);
+    }
+    .rec-table tbody tr.em-edicao { background: #fff7ed; }
+
     .rec-empty {
         text-align: center;
         padding: 3rem 1rem;
@@ -216,14 +262,21 @@
 
 <div class="editais-container fade-in">
 
-    <div class="page-title-bar mb-4">
-        <h1 class="fw-bold header-with-back mb-0">
-            <i class="fas fa-hand-holding-usd me-2"></i>Recebimento CVS
-        </h1>
-        <p class="text-muted mb-0 mt-1">
-            Cadastro de recebimentos na tabela
-            <code>FIN_TB016_RECEBIMENTO</code>.
-        </p>
+    <div class="page-title-bar mb-4 d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div>
+            <h1 class="fw-bold header-with-back mb-0">
+                <i class="fas fa-hand-holding-usd me-2"></i>Recebimento CVS
+            </h1>
+            <p class="text-muted mb-0 mt-1">
+                Cadastro de recebimentos na tabela
+                <code>FIN_TB016_RECEBIMENTO</code>.
+            </p>
+        </div>
+        <a href="{{ url_for('titulo_cvs.recebimento_tabela_index') }}"
+           class="btn btn-lg shadow-sm text-white"
+           style="background: linear-gradient(135deg, #84cc16, #4d7c0f);">
+            <i class="fas fa-table me-2"></i>Gerar Tabela
+        </a>
     </div>
 
     <!-- Estatística -->
@@ -273,7 +326,7 @@
                     <div class="rec-form-hint" id="hintData"></div>
                 </div>
 
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label for="inputHistorico" class="rec-form-label">
                         Histórico *
                     </label>
@@ -286,7 +339,7 @@
                     </select>
                 </div>
 
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="inputVrEntrada" class="rec-form-label">
                         Vr Entrada
                     </label>
@@ -294,6 +347,17 @@
                            id="inputVrEntrada"
                            class="rec-form-input"
                            placeholder="Ex: 1234,5678">
+                    <div class="rec-form-hint">Opcional</div>
+                </div>
+
+                <div class="col-md-2">
+                    <label for="inputIr" class="rec-form-label">
+                        IR
+                    </label>
+                    <input type="text"
+                           id="inputIr"
+                           class="rec-form-input"
+                           placeholder="Ex: 12,3456">
                     <div class="rec-form-hint">Opcional</div>
                 </div>
 
@@ -336,30 +400,45 @@
                         <th>DT Atualização</th>
                         <th>Histórico</th>
                         <th class="text-end">Vr Entrada</th>
-                        <th class="text-center" style="width: 60px;">Ações</th>
+                        <th class="text-end">IR</th>
+                        <th class="text-center" style="width: 100px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for r in recebimentos %}
                     <tr data-tipo="{{ r.TIPO }}"
                         data-dt="{{ r.DT_ATUALIZACAO.strftime('%Y-%m-%d') }}"
-                        data-historico="{{ r.HISTORICO }}">
+                        data-historico="{{ r.HISTORICO }}"
+                        data-vr="{{ r.VR_ENTRADA if r.VR_ENTRADA is not none else '' }}"
+                        data-ir="{{ r.VR_IR if r.VR_IR is not none else '' }}">
                         <td>
                             <span class="rec-chip-tipo">{{ r.TIPO }}</span>
                         </td>
                         <td>{{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') }}</td>
                         <td>{{ r.HISTORICO }}</td>
-                        <td class="rec-num">
+                        <td class="rec-num rec-cell-vr">
                             {% if r.VR_ENTRADA is not none %}
                                 {{ "{:,.4f}".format(r.VR_ENTRADA|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
                             {% else %}—{% endif %}
                         </td>
-                        <td class="text-center">
-                            <button type="button"
-                                    class="rec-btn-excluir btn-excluir-item"
-                                    title="Excluir registro">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                        <td class="rec-num rec-cell-ir">
+                            {% if r.VR_IR is not none %}
+                                {{ "{:,.4f}".format(r.VR_IR|float).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="text-center rec-cell-acoes">
+                            <div class="rec-actions">
+                                <button type="button"
+                                        class="rec-btn-editar btn-editar-item"
+                                        title="Editar valores">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                                <button type="button"
+                                        class="rec-btn-excluir btn-excluir-item"
+                                        title="Excluir registro">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -386,6 +465,7 @@
     const inputData = document.getElementById('inputDataAtual');
     const inputHist = document.getElementById('inputHistorico');
     const inputVr   = document.getElementById('inputVrEntrada');
+    const inputIr   = document.getElementById('inputIr');
     const btnSalvar = document.getElementById('btnSalvar');
     const btnLimpar = document.getElementById('btnLimpar');
     const feedback  = document.getElementById('feedbackForm');
@@ -583,6 +663,7 @@
             dt_atualizacao: inputData.value.trim(),
             historico:      inputHist.value.trim(),
             vr_entrada:     inputVr.value.trim(),
+            vr_ir:          inputIr.value.trim(),
         };
 
         if (!dados.tipo || !dados.dt_atualizacao || !dados.historico) {
@@ -639,19 +720,117 @@
         tr.dataset.tipo      = item.tipo;
         tr.dataset.dt        = item.dt_atualizacao;
         tr.dataset.historico = item.historico;
+        tr.dataset.vr        = item.vr_entrada || '';
+        tr.dataset.ir        = item.vr_ir || '';
         tr.innerHTML =
             '<td><span class="rec-chip-tipo">' + escapeHtml(item.tipo) + '</span></td>' +
             '<td>' + formatarData(item.dt_atualizacao) + '</td>' +
             '<td>' + escapeHtml(item.historico) + '</td>' +
-            '<td class="rec-num">' + (item.vr_entrada ? formatarValor(item.vr_entrada) : '—') + '</td>' +
-            '<td class="text-center">' +
-            '  <button type="button" class="rec-btn-excluir btn-excluir-item" title="Excluir registro">' +
-            '    <i class="fas fa-trash"></i>' +
-            '  </button>' +
+            '<td class="rec-num rec-cell-vr">' + (item.vr_entrada ? formatarValor(item.vr_entrada) : '—') + '</td>' +
+            '<td class="rec-num rec-cell-ir">' + (item.vr_ir ? formatarValor(item.vr_ir) : '—') + '</td>' +
+            '<td class="text-center rec-cell-acoes">' +
+            '  <div class="rec-actions">' +
+            '    <button type="button" class="rec-btn-editar btn-editar-item" title="Editar valores">' +
+            '      <i class="fas fa-pen"></i>' +
+            '    </button>' +
+            '    <button type="button" class="rec-btn-excluir btn-excluir-item" title="Excluir registro">' +
+            '      <i class="fas fa-trash"></i>' +
+            '    </button>' +
+            '  </div>' +
             '</td>';
 
         tbody.insertBefore(tr, tbody.firstChild);
     }
+
+    // =====================================================================
+    // Editar valores (VR_ENTRADA e IR) inline na própria linha
+    // =====================================================================
+    function fmtParaInput(raw) {
+        // raw vem em ponto decimal ("1234.5678") ou vazio -> exibe com vírgula
+        if (!raw) return '';
+        return String(raw).replace('.', ',');
+    }
+
+    document.addEventListener('click', function (e) {
+        const btnEdit = e.target.closest('.btn-editar-item');
+        if (!btnEdit) return;
+
+        const tr = btnEdit.closest('tr');
+        if (!tr || tr.classList.contains('em-edicao')) return;
+        tr.classList.add('em-edicao');
+
+        const celVr = tr.querySelector('.rec-cell-vr');
+        const celIr = tr.querySelector('.rec-cell-ir');
+        const celAc = tr.querySelector('.rec-cell-acoes');
+
+        // Guarda o conteúdo original para o "cancelar"
+        const backup = { vr: celVr.innerHTML, ir: celIr.innerHTML, ac: celAc.innerHTML };
+
+        celVr.innerHTML = '<input type="text" class="rec-edit-input inp-edit-vr" ' +
+            'value="' + fmtParaInput(tr.dataset.vr) + '" placeholder="Vr Entrada">';
+        celIr.innerHTML = '<input type="text" class="rec-edit-input inp-edit-ir" ' +
+            'value="' + fmtParaInput(tr.dataset.ir) + '" placeholder="IR">';
+        celAc.innerHTML =
+            '<div class="rec-actions">' +
+            '  <button type="button" class="rec-btn-salvar-linha btn-salvar-edicao" title="Salvar"><i class="fas fa-check"></i></button>' +
+            '  <button type="button" class="rec-btn-cancelar-linha btn-cancelar-edicao" title="Cancelar"><i class="fas fa-times"></i></button>' +
+            '</div>';
+
+        const inpVr = celVr.querySelector('.inp-edit-vr');
+        const inpIr = celIr.querySelector('.inp-edit-ir');
+        if (inpVr) inpVr.focus();
+
+        function restaurar() {
+            celVr.innerHTML = backup.vr;
+            celIr.innerHTML = backup.ir;
+            celAc.innerHTML = backup.ac;
+            tr.classList.remove('em-edicao');
+        }
+
+        celAc.querySelector('.btn-cancelar-edicao').addEventListener('click', restaurar);
+
+        celAc.querySelector('.btn-salvar-edicao').addEventListener('click', function () {
+            const dados = {
+                tipo:           tr.dataset.tipo,
+                dt_atualizacao: tr.dataset.dt,
+                historico:      tr.dataset.historico,
+                vr_entrada:     (inpVr ? inpVr.value : '').trim(),
+                vr_ir:          (inpIr ? inpIr.value : '').trim(),
+            };
+
+            const btnSalvarLinha = celAc.querySelector('.btn-salvar-edicao');
+            btnSalvarLinha.disabled = true;
+            btnSalvarLinha.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            fetch("{{ url_for('titulo_cvs.recebimento_atualizar') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true' },
+                body: JSON.stringify(dados)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Atualiza os data-* e re-renderiza as células formatadas
+                    tr.dataset.vr = data.item.vr_entrada || '';
+                    tr.dataset.ir = data.item.vr_ir || '';
+                    celVr.innerHTML = tr.dataset.vr ? formatarValor(tr.dataset.vr) : '—';
+                    celIr.innerHTML = tr.dataset.ir ? formatarValor(tr.dataset.ir) : '—';
+                    celAc.innerHTML = backup.ac;
+                    tr.classList.remove('em-edicao');
+                    mostrarFeedback(data.message, 'success');
+                } else {
+                    btnSalvarLinha.disabled = false;
+                    btnSalvarLinha.innerHTML = '<i class="fas fa-check"></i>';
+                    mostrarFeedback(data.message || 'Erro ao atualizar.', 'danger');
+                }
+            })
+            .catch(err => {
+                btnSalvarLinha.disabled = false;
+                btnSalvarLinha.innerHTML = '<i class="fas fa-check"></i>';
+                mostrarFeedback('Erro de conexão: ' + err, 'danger');
+            });
+        });
+    });
 
     // =====================================================================
     // Excluir registro (delegação de eventos)

@@ -64,59 +64,201 @@ def inject_current_year():
 def index():
     """
     Página principal do módulo Título CVS.
-    Lista os registros já cadastrados em BDG.FIN_TB006_RESUMO_CVS.
+    Lista os registros de BDG.FIN_TB007_RESUMO_CVS aplicando o filtro
+    escolhido (uma/várias datas, ano, semestre ou bimestre).
     """
     db.session.expire_all()
 
-    # Filtro opcional por DT_ATUALIZACAO
-    dt_filtro_str = (request.args.get('dt_atualizacao') or '').strip()
-    dt_filtro = None
-    if dt_filtro_str:
-        try:
-            dt_filtro = datetime.strptime(dt_filtro_str, '%Y-%m-%d').date()
-        except ValueError:
-            dt_filtro = None
+    (registros, filtro_ctx,
+     datas_disponiveis, anos_disponiveis) = _coletar_filtro_resumo(request.args)
 
-    # Datas disponíveis para o dropdown
-    datas_disponiveis = ResumoCVS.listar_datas_atualizacao_distintas()
+    # Estatísticas gerais da tabela (independem do filtro)
+    total_registros = ResumoCVS.contar_registros()
+    total_contratos = ResumoCVS.contar_contratos_distintos()
+    total_cargas = len(datas_disponiveis)
 
-    # Se não passou filtro, usa a mais recente
-    if not dt_filtro and datas_disponiveis:
-        dt_filtro = datas_disponiveis[0]
+    # Última DT_ATUALIZACAO dos Índices do Dia 1 (FIN_TB015)
+    sql_ultima_dt_indice = text("""
+        SELECT MAX([DT_ATUALIZACAO])
+        FROM [BDG].[FIN_TB015_INDICES_DIA_1]
+    """)
+    ultima_dt_indice = db.session.execute(sql_ultima_dt_indice).scalar()
 
-    # Registros para exibir
-    registros = []
-    if dt_filtro:
-        registros = ResumoCVS.listar_por_data_atualizacao(dt_filtro)
-
-        # Estatísticas
-        total_registros = ResumoCVS.contar_registros()
-        total_contratos = ResumoCVS.contar_contratos_distintos()
-        total_cargas = len(datas_disponiveis)
-
-        # Última DT_ATUALIZACAO dos Índices do Dia 1 (FIN_TB015)
-        sql_ultima_dt_indice = text("""
-            SELECT MAX([DT_ATUALIZACAO])
-            FROM [BDG].[FIN_TB015_INDICES_DIA_1]
-        """)
-        ultima_dt_indice = db.session.execute(sql_ultima_dt_indice).scalar()
-
-        response = make_response(render_template(
-            'titulo_cvs/index.html',
-            registros=registros,
-            datas_disponiveis=datas_disponiveis,
-            dt_filtro=dt_filtro,
-            total_registros=total_registros,
-            total_contratos=total_contratos,
-            total_cargas=total_cargas,
-            ultima_dt_indice=ultima_dt_indice,
-        ))
+    response = make_response(render_template(
+        'titulo_cvs/index.html',
+        registros=registros,
+        datas_disponiveis=datas_disponiveis,
+        anos_disponiveis=anos_disponiveis,
+        filtro_ctx=filtro_ctx,
+        dt_filtro=filtro_ctx.get('dt_unica'),   # compat com a versão antiga
+        total_registros=total_registros,
+        total_contratos=total_contratos,
+        total_cargas=total_cargas,
+        ultima_dt_indice=ultima_dt_indice,
+    ))
     response.headers['Cache-Control'] = (
         'no-store, no-cache, must-revalidate, max-age=0'
     )
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '0'
     return response
+
+# =========================================================================
+# EXPORTAÇÃO PARA EXCEL (respeita o mesmo filtro do index)
+# =========================================================================
+@titulo_cvs_bp.route('/exportar')
+@login_required
+def exportar_excel():
+    """
+    Exporta para .xlsx os registros do Resumo CVS RESPEITANDO o mesmo
+    filtro do index (uma/várias datas, ano, semestre ou bimestre). O botão
+    "Exportar" da tela usa o mesmo <form> do filtro (formaction), então os
+    parâmetros chegam idênticos aqui.
+
+    A planilha é montada em memória com openpyxl (cabeçalho estilizado,
+    formatação pt-BR e linha de TOTAL com valores já somados) e devolvida
+    como download. Compatível com Python 3.9 e 3.12.
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    registros, filtro_ctx, _dts, _anos = _coletar_filtro_resumo(request.args)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Resumo CVS'
+    ws.sheet_view.showGridLines = False
+
+    AZUL, AZUL_ESC, CINZA, BORDA = '4E73DF', '2E4D99', 'F1F3F5', 'D9D9D9'
+    thin = Side(style='thin', color=BORDA)
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    colunas = [
+        ('DT Atualização', 14, 'data'), ('Contrato', 12, 'int'),
+        ('Evento', 9, 'txt'), ('Ativo', 15, 'txt'), ('Qtde', 13, 'int'),
+        ('VNA', 15, 'num8'), ('Financeiro', 15, 'num2'),
+        ('PU Retr. Juros', 15, 'num10'), ('Fin. Juros', 14, 'num2'),
+        ('PU Retr. Princ.', 15, 'num10'), ('Fin. Principal', 15, 'num2'),
+        ('Fin. Venc. a Pagar', 17, 'num2'), ('Total', 15, 'num2'),
+    ]
+    ncols = len(colunas)
+    ultima_col = get_column_letter(ncols)
+
+    # Faixa de título
+    ws.merge_cells('A1:%s1' % ultima_col)
+    c = ws['A1']
+    c.value = 'Resumo de Títulos CVS'
+    c.font = Font(name='Arial', size=15, bold=True, color='FFFFFF')
+    c.fill = PatternFill('solid', fgColor=AZUL_ESC)
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[1].height = 30
+
+    # Subtítulo com o filtro aplicado
+    ws.merge_cells('A2:%s2' % ultima_col)
+    c = ws['A2']
+    c.value = 'Filtro: %s   ·   %d linha(s)   ·   Gerado em %s' % (
+        filtro_ctx.get('label', '—'), len(registros),
+        datetime.now().strftime('%d/%m/%Y %H:%M'))
+    c.font = Font(name='Arial', size=10, italic=True, color=AZUL_ESC)
+    c.fill = PatternFill('solid', fgColor='EAF0FB')
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[2].height = 20
+
+    # Cabeçalho da tabela (linha 4)
+    linha_hdr = 4
+    for j, (titulo, larg, _tp) in enumerate(colunas, start=1):
+        cell = ws.cell(row=linha_hdr, column=j, value=titulo)
+        cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor=AZUL)
+        cell.alignment = Alignment(horizontal='center', vertical='center',
+                                   wrap_text=True)
+        cell.border = box
+        ws.column_dimensions[get_column_letter(j)].width = larg
+    ws.row_dimensions[linha_hdr].height = 28
+
+    FMT = {'int': '#,##0', 'num2': '#,##0.00', 'num8': '#,##0.00000000',
+           'num10': '#,##0.0000000000', 'data': 'DD/MM/YYYY'}
+
+    def _f(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    somaveis = {5, 7, 9, 11, 12, 13}   # Qtde + colunas financeiras totalizáveis
+    totais = {5: 0, 7: Decimal('0'), 9: Decimal('0'),
+              11: Decimal('0'), 12: Decimal('0'), 13: Decimal('0')}
+
+    linha = linha_hdr + 1
+    for i, r in enumerate(registros):
+        valores = [
+            r.DT_ATUALIZACAO, r.NU_CONTRATO, (r.EVENTO or '-'), r.ATIVO,
+            r.QTDE, _f(r.VNA), _f(r.FINANCEIRO), _f(r.PU_RETROATIVO_JUROS),
+            _f(r.FINANCEIRO_JUROS), _f(r.PU_RETROATIVO_PRINC),
+            _f(r.FINANCEIRO_PRINC), _f(r.FINANCEIRO_VENC_PAGAR), _f(r.TOTAL),
+        ]
+        fill = 'FFFFFF' if i % 2 == 0 else CINZA
+        for j, (titulo, larg, tp) in enumerate(colunas, start=1):
+            cell = ws.cell(row=linha, column=j, value=valores[j - 1])
+            cell.border = box
+            cell.fill = PatternFill('solid', fgColor=fill)
+            cell.font = Font(name='Arial', size=10)
+            if tp in ('int', 'num2', 'num8', 'num10'):
+                cell.number_format = FMT[tp]
+                cell.alignment = Alignment(horizontal='right')
+            elif tp == 'data':
+                cell.number_format = FMT['data']
+                cell.alignment = Alignment(horizontal='center')
+            else:
+                cell.alignment = Alignment(horizontal='center')
+        totais[5] += (r.QTDE or 0)
+        totais[7] += (r.FINANCEIRO or Decimal('0'))
+        totais[9] += (r.FINANCEIRO_JUROS or Decimal('0'))
+        totais[11] += (r.FINANCEIRO_PRINC or Decimal('0'))
+        totais[12] += (r.FINANCEIRO_VENC_PAGAR or Decimal('0'))
+        totais[13] += (r.TOTAL or Decimal('0'))
+        linha += 1
+
+    # Linha de TOTAL (valores literais já somados)
+    if registros:
+        for j in range(1, ncols + 1):
+            cc = ws.cell(row=linha, column=j)
+            cc.fill = PatternFill('solid', fgColor=AZUL_ESC)
+            cc.border = box
+        rot = ws.cell(row=linha, column=1, value='TOTAL')
+        rot.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        rot.alignment = Alignment(horizontal='left', indent=1)
+        for j in somaveis:
+            cell = ws.cell(row=linha, column=j,
+                           value=(int(totais[j]) if j == 5 else float(totais[j])))
+            cell.number_format = FMT['int'] if j == 5 else FMT['num2']
+            cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor=AZUL_ESC)
+            cell.alignment = Alignment(horizontal='right')
+            cell.border = box
+        ws.row_dimensions[linha].height = 22
+
+    ws.freeze_panes = 'A%d' % (linha_hdr + 1)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nome_base = re.sub(r'[^0-9A-Za-zÀ-ÿ]+', '_',
+                       filtro_ctx.get('label') or 'export').strip('_')
+    nome_arquivo = 'Resumo_CVS_%s.xlsx' % (nome_base or 'export')
+
+    resp = make_response(buffer.getvalue())
+    resp.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp.headers['Content-Disposition'] = (
+        'attachment; filename="%s"' % nome_arquivo)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 # =========================================================================
@@ -2242,42 +2384,20 @@ def extrato_indices_dia_1():
             'success': False,
             'message': f'Erro ao calcular índices: {str(e)}'
         }), 500
-# =========================================================================
-# ESTOQUE — PÁGINA PRINCIPAL
-# =========================================================================
+
 @titulo_cvs_bp.route('/estoque')
 @login_required
 def estoque_index():
     """
-    Página principal do Estoque CVS.
-
-    Lista todas as posições agrupadas por DT_POSICAO, mostrando
-    cada uma com uma linha TOTAL + uma linha por TIPO (A, B).
+    Lista as posições de estoque agrupadas por DT_POSICAO, em ordem
+    DECRESCENTE (mais nova primeiro), aplicando o filtro escolhido
+    (datas específicas, mensal, bimestral, semestral ou anual).
     """
     db.session.expire_all()
 
-    # Buscar todas as posições ordenadas
-    todas = PosicaoEstoqueCVS.listar_todos_ordenados()
+    (grupos_lista, filtro_ctx,
+     datas_disponiveis, anos_disponiveis) = _coletar_filtro_estoque(request.args)
 
-    # Agrupar por DT_POSICAO (mantendo ordem ASC)
-    # estrutura: lista de {dt, tipos: {'A': obj, 'B': obj, ...}, total_qtde, total_vr}
-    from collections import OrderedDict
-    grupos = OrderedDict()
-    for p in todas:
-        if p.DT_POSICAO not in grupos:
-            grupos[p.DT_POSICAO] = {
-                'dt': p.DT_POSICAO,
-                'tipos': {},
-                'total_vr': Decimal('0'),
-            }
-        grupos[p.DT_POSICAO]['tipos'][p.TIPO] = p
-        if p.VR_TOTAL is not None:
-            grupos[p.DT_POSICAO]['total_vr'] += p.VR_TOTAL
-
-    # Lista final pro template (em ordem ASC pela DT_POSICAO)
-    grupos_lista = list(grupos.values())
-
-    # Última DT_POSICAO para info do header
     ultima_dt = PosicaoEstoqueCVS.obter_ultima_dt_posicao()
     total_grupos = len(grupos_lista)
 
@@ -2286,6 +2406,9 @@ def estoque_index():
         grupos=grupos_lista,
         ultima_dt=ultima_dt,
         total_grupos=total_grupos,
+        filtro_ctx=filtro_ctx,
+        datas_disponiveis=datas_disponiveis,
+        anos_disponiveis=anos_disponiveis,
     ))
     response.headers['Cache-Control'] = (
         'no-store, no-cache, must-revalidate, max-age=0'
@@ -2595,6 +2718,122 @@ def recebimento_index():
     response.headers['Expires'] = '0'
     return response
 
+@titulo_cvs_bp.route('/recebimento/tabela')
+@login_required
+def recebimento_tabela_index():
+    """Página que monta a tabela de recebimento a partir da data escolhida."""
+    db.session.expire_all()
+
+    (datas_disponiveis, dt_selecionada,
+     linhas, totais) = _coletar_tabela_recebimento(request.args)
+
+    response = make_response(render_template(
+        'titulo_cvs/recebimento_tabela.html',
+        datas_disponiveis=datas_disponiveis,
+        dt_selecionada=dt_selecionada,
+        linhas=linhas,
+        totais=totais,
+    ))
+    response.headers['Cache-Control'] = (
+        'no-store, no-cache, must-revalidate, max-age=0')
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+
+@titulo_cvs_bp.route('/recebimento/tabela/exportar')
+@login_required
+def recebimento_tabela_exportar():
+    """Exporta a tabela de recebimento (respeitando a data) para Excel."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    (datas_disponiveis, dt_selecionada,
+     linhas, totais) = _coletar_tabela_recebimento(request.args)
+
+    def brl(v):
+        if v is None:
+            return '—'
+        n = float(v)
+        s = "{:,.2f}".format(abs(n)).replace(',', 'X').replace('.', ',').replace('X', '.')
+        return ('-' if n < 0 else '') + 'R$ ' + s
+
+    wb = Workbook(); ws = wb.active; ws.title = 'Recebimento'
+    ws.sheet_view.showGridLines = False
+    VERDE = 'B6D94C'; VERDE_BRD = '9DBF3F'; TOT = 'E4F0B0'
+    VERDE_ESC = '4D7C0F'; BRD = 'D9D9D9'; NEG = 'B91C1C'
+    thin = Side(style='thin', color=BRD); vbd = Side(style='thin', color=VERDE_BRD)
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    boxv = Border(left=vbd, right=vbd, top=vbd, bottom=vbd)
+
+    cols = [('Data', 13), ('Item', 24), ('Valor Bruto - Previsão', 20),
+            ('IR', 16), ('Valor Líquido - Previsão', 22), ('IR Efetivo', 16),
+            ('Recebido em Conta Corrente', 24), ('Diferença', 20)]
+    for i, (t, w) in enumerate(cols, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    titulo_dt = dt_selecionada.strftime('%d/%m/%Y') if dt_selecionada else '—'
+    ws.merge_cells('A1:H1'); c = ws['A1']
+    c.value = 'Recebimento de Títulos CVS — %s' % titulo_dt
+    c.font = Font(name='Arial', size=14, bold=True, color='FFFFFF')
+    c.fill = PatternFill('solid', fgColor=VERDE_ESC)
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[1].height = 28
+
+    hdr = 3
+    for j, (t, w) in enumerate(cols, 1):
+        cell = ws.cell(row=hdr, column=j, value=t)
+        cell.font = Font(name='Arial', size=10, bold=True, color='1F2937')
+        cell.fill = PatternFill('solid', fgColor=VERDE)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = boxv
+    ws.row_dimensions[hdr].height = 30
+
+    campos = ['valor_bruto', 'ir', 'previsao_liquida',
+              'ir_efet', 'recebido_cc', 'diferenca']
+    data_txt = dt_selecionada.strftime('%d/%m/%Y') if dt_selecionada else ''
+
+    r = hdr + 1
+    for i, l in enumerate(linhas):
+        vals = [data_txt, l['item']] + [brl(l[k]) for k in campos]
+        negs = [False, False] + [(l[k] is not None and l[k] < 0) for k in campos]
+        for j, (v, ng) in enumerate(zip(vals, negs), 1):
+            cell = ws.cell(row=r, column=j, value=v)
+            cell.border = box
+            cell.font = Font(name='Arial', size=10, color=(NEG if ng else '1F2937'))
+            cell.alignment = Alignment(horizontal=('left' if j <= 2 else 'right'))
+            if i % 2 == 1:
+                cell.fill = PatternFill('solid', fgColor='FAFCF3')
+        r += 1
+
+    if linhas:
+        vals = ['Total', ''] + [brl(totais[k]) for k in campos]
+        negs = [False, False] + [(totais[k] is not None and totais[k] < 0) for k in campos]
+        for j, (v, ng) in enumerate(zip(vals, negs), 1):
+            cell = ws.cell(row=r, column=j, value=v)
+            cell.fill = PatternFill('solid', fgColor=TOT)
+            cell.border = boxv
+            cell.font = Font(name='Arial', size=10, bold=True,
+                             color=(NEG if ng else '1F2937'))
+            cell.alignment = Alignment(horizontal=('left' if j <= 2 else 'right'))
+        ws.row_dimensions[r].height = 22
+
+    ws.freeze_panes = 'A%d' % (hdr + 1)
+
+    buffer = io.BytesIO(); wb.save(buffer); buffer.seek(0)
+    nome_dt = dt_selecionada.strftime('%Y-%m-%d') if dt_selecionada else 'sem-data'
+    nome_arquivo = 'Recebimento_Titulos_CVS_%s.xlsx' % nome_dt
+
+    resp = make_response(buffer.getvalue())
+    resp.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp.headers['Content-Disposition'] = (
+        'attachment; filename="%s"' % nome_arquivo)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
 
 # =========================================================================
 # RECEBIMENTO — SALVAR (POST AJAX)
@@ -2610,7 +2849,8 @@ def recebimento_salvar():
         "tipo": "A",                    (1 caractere)
         "dt_atualizacao": "YYYY-MM-DD",
         "historico": "texto até 30 chars",
-        "vr_entrada": "1234.5678"       (decimal, opcional)
+        "vr_entrada": "1234.5678",      (decimal, opcional)
+        "vr_ir": "12.3456"              (decimal, opcional) -> coluna VR_IR
       }
     """
     try:
@@ -2620,6 +2860,7 @@ def recebimento_salvar():
         dt_str = (dados.get('dt_atualizacao') or '').strip()
         historico = (dados.get('historico') or '').strip()
         vr_entrada_str = (dados.get('vr_entrada') or '').strip()
+        vr_ir_str = (dados.get('vr_ir') or '').strip()
 
         # ----- Validações -----
         if not tipo or len(tipo) != 1:
@@ -2658,13 +2899,22 @@ def recebimento_salvar():
         vr_entrada = None
         if vr_entrada_str:
             try:
-                # aceita ',' e '.' como separador decimal
-                vr_limpo = vr_entrada_str.replace(',', '.')
-                vr_entrada = Decimal(vr_limpo)
+                vr_entrada = Decimal(vr_entrada_str.replace(',', '.'))
             except (InvalidOperation, ValueError):
                 return jsonify({
                     'success': False,
                     'message': f'VR_ENTRADA inválido: {vr_entrada_str}.'
+                }), 400
+
+        # VR_IR é opcional, mesma regra do VR_ENTRADA
+        vr_ir = None
+        if vr_ir_str:
+            try:
+                vr_ir = Decimal(vr_ir_str.replace(',', '.'))
+            except (InvalidOperation, ValueError):
+                return jsonify({
+                    'success': False,
+                    'message': f'IR inválido: {vr_ir_str}.'
                 }), 400
 
         # ----- Já existe? -----
@@ -2685,6 +2935,7 @@ def recebimento_salvar():
             DT_ATUALIZACAO=dt_atualizacao,
             HISTORICO=historico,
             VR_ENTRADA=vr_entrada,
+            VR_IR=vr_ir,
         )
         db.session.add(novo)
         db.session.commit()
@@ -2703,7 +2954,8 @@ def recebimento_salvar():
                 'TIPO': tipo,
                 'DT_ATUALIZACAO': dt_str,
                 'HISTORICO': historico,
-                'VR_ENTRADA': str(vr_entrada) if vr_entrada else None,
+                'VR_ENTRADA': str(vr_entrada) if vr_entrada is not None else None,
+                'VR_IR': str(vr_ir) if vr_ir is not None else None,
             }
         )
 
@@ -2717,7 +2969,8 @@ def recebimento_salvar():
                 'tipo': tipo,
                 'dt_atualizacao': dt_str,
                 'historico': historico,
-                'vr_entrada': str(vr_entrada) if vr_entrada else None,
+                'vr_entrada': str(vr_entrada) if vr_entrada is not None else None,
+                'vr_ir': str(vr_ir) if vr_ir is not None else None,
             }
         })
 
@@ -2803,3 +3056,786 @@ def recebimento_excluir():
             'success': False,
             'message': f'Erro ao excluir: {str(e)}'
         }), 500
+
+@titulo_cvs_bp.route('/recebimento/atualizar', methods=['POST'])
+@login_required
+def recebimento_atualizar():
+    """
+    Atualiza os VALORES (VR_ENTRADA e VR_IR) de um Recebimento existente,
+    identificado pela PK (TIPO, DT_ATUALIZACAO, HISTORICO). As chaves não
+    mudam aqui; para trocar chave, exclua e cadastre de novo.
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+        tipo = (dados.get('tipo') or '').strip().upper()
+        dt_str = (dados.get('dt_atualizacao') or '').strip()
+        historico = (dados.get('historico') or '').strip()
+        vr_entrada_str = (dados.get('vr_entrada') or '').strip()
+        vr_ir_str = (dados.get('vr_ir') or '').strip()
+
+        if not tipo or not dt_str or not historico:
+            return jsonify({
+                'success': False,
+                'message': 'Parâmetros obrigatórios: tipo, dt_atualizacao, historico.'
+            }), 400
+
+        try:
+            dt_atualizacao = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'success': False,
+                            'message': f'Data inválida: {dt_str}.'}), 400
+
+        registro = RecebimentoCVS.obter(tipo, dt_atualizacao, historico)
+        if not registro:
+            return jsonify({'success': False,
+                            'message': 'Registro não encontrado.'}), 404
+
+        valor_antigo = {
+            'VR_ENTRADA': str(registro.VR_ENTRADA) if registro.VR_ENTRADA is not None else None,
+            'VR_IR': str(registro.VR_IR) if registro.VR_IR is not None else None,
+        }
+
+        vr_entrada = None
+        if vr_entrada_str:
+            try:
+                vr_entrada = Decimal(vr_entrada_str.replace(',', '.'))
+            except (InvalidOperation, ValueError):
+                return jsonify({'success': False,
+                                'message': f'VR_ENTRADA inválido: {vr_entrada_str}.'}), 400
+
+        vr_ir = None
+        if vr_ir_str:
+            try:
+                vr_ir = Decimal(vr_ir_str.replace(',', '.'))
+            except (InvalidOperation, ValueError):
+                return jsonify({'success': False,
+                                'message': f'IR inválido: {vr_ir_str}.'}), 400
+
+        registro.VR_ENTRADA = vr_entrada
+        registro.VR_IR = vr_ir
+        db.session.commit()
+
+        registrar_log(
+            acao='editar',
+            entidade='recebimento_cvs',
+            entidade_id=f'{tipo}/{dt_str}/{historico}',
+            descricao=(f'Edição de Recebimento - TIPO: {tipo}, '
+                       f'DT: {dt_atualizacao.strftime("%d/%m/%Y")}, HIST: {historico}'),
+            dados_antigos=valor_antigo,
+            dados_novos={
+                'VR_ENTRADA': str(vr_entrada) if vr_entrada is not None else None,
+                'VR_IR': str(vr_ir) if vr_ir is not None else None,
+            }
+        )
+
+        return jsonify({
+            'success': True,
+            'message': (f'Recebimento atualizado: {tipo} / '
+                        f'{dt_atualizacao.strftime("%d/%m/%Y")} / {historico}.'),
+            'item': {
+                'tipo': tipo, 'dt_atualizacao': dt_str, 'historico': historico,
+                'vr_entrada': str(vr_entrada) if vr_entrada is not None else None,
+                'vr_ir': str(vr_ir) if vr_ir is not None else None,
+            }
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False,
+                        'message': f'Erro ao atualizar: {str(e)}'}), 500
+
+
+def _coletar_tabela_recebimento(args):
+    """
+    Lê as datas da view FIN_VW012_RECEBIMENTO_TITULOS_CVS e, se uma data
+    (param 'dt') for escolhida, monta as linhas + totais.
+
+    Colunas da view: TIPO, ITEM, VALOR_BRUTO, IR, PREVISAO_LIQUIDA,
+    IR_EFET, RECEBIDO_CC.  Coluna calculada:
+        DIFERENCA = PREVISAO_LIQUIDA - RECEBIDO_CC
+    A view fica em outro banco (BDDASHBOARDBI) -> nome de 3 partes.
+    Compatível com Python 3.9 e 3.12.
+    """
+    def _d(v):
+        if v is None:
+            return None
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
+    sql_datas = text("""
+        SELECT DISTINCT [DT_PREV_RECEBIMENTO]
+        FROM [BDDASHBOARDBI].[BDG].[FIN_VW012_RECEBIMENTO_TITULOS_CVS]
+        ORDER BY [DT_PREV_RECEBIMENTO] DESC
+    """)
+    datas_disponiveis = [
+        r[0] for r in db.session.execute(sql_datas).all() if r[0] is not None
+    ]
+
+    dt_str = (args.get('dt') or '').strip()
+    dt_selecionada = None
+    if dt_str:
+        try:
+            dt_selecionada = datetime.strptime(dt_str, '%Y-%m-%d').date()
+        except ValueError:
+            dt_selecionada = None
+
+    linhas = []
+    totais = {
+        'valor_bruto': Decimal('0'), 'ir': Decimal('0'),
+        'previsao_liquida': Decimal('0'), 'ir_efet': Decimal('0'),
+        'recebido_cc': Decimal('0'), 'diferenca': Decimal('0'),
+    }
+
+    if dt_selecionada and dt_selecionada in datas_disponiveis:
+        sql_linhas = text("""
+            SELECT [TIPO], [ITEM], [VALOR_BRUTO], [IR],
+                   [PREVISAO_LIQUIDA], [IR_EFET], [RECEBIDO_CC]
+            FROM [BDDASHBOARDBI].[BDG].[FIN_VW012_RECEBIMENTO_TITULOS_CVS]
+            WHERE [DT_PREV_RECEBIMENTO] = :dt
+            ORDER BY [TIPO], [ITEM]
+        """)
+        rows = db.session.execute(sql_linhas, {'dt': dt_selecionada}).all()
+
+        for row in rows:
+            m = row._mapping
+            vb = _d(m['VALOR_BRUTO'])
+            ir = _d(m['IR'])
+            pl = _d(m['PREVISAO_LIQUIDA'])
+            ire = _d(m['IR_EFET'])
+            rc = _d(m['RECEBIDO_CC'])
+
+            if pl is None and rc is None:
+                dif = None
+            else:
+                dif = (pl or Decimal('0')) - (rc or Decimal('0'))
+
+            linhas.append({
+                'tipo': m['TIPO'],
+                'item': m['ITEM'],
+                'valor_bruto': vb,
+                'ir': ir,
+                'previsao_liquida': pl,
+                'ir_efet': ire,
+                'recebido_cc': rc,
+                'diferenca': dif,
+            })
+
+            totais['valor_bruto'] += vb or Decimal('0')
+            totais['ir'] += ir or Decimal('0')
+            totais['previsao_liquida'] += pl or Decimal('0')
+            totais['ir_efet'] += ire or Decimal('0')
+            totais['recebido_cc'] += rc or Decimal('0')
+            totais['diferenca'] += dif or Decimal('0')
+
+    return datas_disponiveis, dt_selecionada, linhas, totais
+
+
+
+# =========================================================================
+# HELPERS DE FILTRO DO RESUMO CVS (usado pelo index e pela exportação)
+# =========================================================================
+def _parse_int(valor):
+    """Converte para int com segurança; retorna None se inválido."""
+    try:
+        return int(str(valor).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _coletar_filtro_resumo(args):
+    """
+    Lê os parâmetros de filtro da querystring e devolve a tupla:
+        (registros, filtro_ctx, datas_disponiveis, anos_disponiveis)
+
+    Tipos de filtro (parâmetro 'tipo_filtro'):
+      - 'datas'    -> uma OU mais DT_ATUALIZACAO exatas (param repetido 'datas')
+      - 'ano'      -> todas as datas de um ano          (param 'ano')
+      - 'semestre' -> ano + semestre (1 ou 2)           (params 'ano' + 'semestre')
+      - 'bimestre' -> ano + bimestre (1 a 6)            (params 'ano' + 'bimestre')
+
+    Sem filtro válido, cai no padrão: a DT_ATUALIZACAO mais recente
+    (mesmo comportamento da versão anterior da tela).
+
+    A quebra ano/semestre/bimestre usa extract() -> DATEPART no SQL Server,
+    ou seja, o filtro roda no banco. Compatível com Python 3.9 e 3.12.
+    """
+    from sqlalchemy import extract
+
+    datas_disponiveis = ResumoCVS.listar_datas_atualizacao_distintas()
+    anos_disponiveis = sorted({d.year for d in datas_disponiveis}, reverse=True)
+
+    tipo = (args.get('tipo_filtro') or '').strip().lower()
+    filtro_ctx = {
+        'tipo': None, 'datas': [], 'ano': None, 'semestre': None,
+        'bimestre': None, 'label': '—', 'dt_unica': None,
+    }
+
+    q = ResumoCVS.query
+    filtro_valido = False
+
+    if tipo == 'datas':
+        datas = []
+        for s in args.getlist('datas'):
+            s = (s or '').strip()
+            if not s:
+                continue
+            try:
+                datas.append(datetime.strptime(s, '%Y-%m-%d').date())
+            except ValueError:
+                pass
+        if datas:
+            q = q.filter(ResumoCVS.DT_ATUALIZACAO.in_(datas))
+            filtro_ctx['tipo'] = 'datas'
+            filtro_ctx['datas'] = sorted(datas, reverse=True)
+            if len(datas) == 1:
+                filtro_ctx['dt_unica'] = datas[0]
+                filtro_ctx['label'] = datas[0].strftime('%d/%m/%Y')
+            else:
+                rotulo = ', '.join(d.strftime('%d/%m/%Y')
+                                   for d in filtro_ctx['datas'])
+                filtro_ctx['label'] = '{} datas ({})'.format(len(datas), rotulo)
+            filtro_valido = True
+
+    elif tipo in ('ano', 'semestre', 'bimestre'):
+        ano = _parse_int(args.get('ano'))
+        if ano:
+            q = q.filter(extract('year', ResumoCVS.DT_ATUALIZACAO) == ano)
+            filtro_ctx['ano'] = ano
+
+            if tipo == 'ano':
+                filtro_ctx['tipo'] = 'ano'
+                filtro_ctx['label'] = 'Ano de {}'.format(ano)
+                filtro_valido = True
+
+            elif tipo == 'semestre':
+                sem = _parse_int(args.get('semestre'))
+                if sem in (1, 2):
+                    ini, fim = (1, 6) if sem == 1 else (7, 12)
+                    q = q.filter(
+                        extract('month', ResumoCVS.DT_ATUALIZACAO)
+                        .between(ini, fim))
+                    filtro_ctx['tipo'] = 'semestre'
+                    filtro_ctx['semestre'] = sem
+                    filtro_ctx['label'] = '{}º semestre de {}'.format(sem, ano)
+                    filtro_valido = True
+
+            elif tipo == 'bimestre':
+                bi = _parse_int(args.get('bimestre'))
+                if bi in (1, 2, 3, 4, 5, 6):
+                    ini, fim = 2 * bi - 1, 2 * bi
+                    q = q.filter(
+                        extract('month', ResumoCVS.DT_ATUALIZACAO)
+                        .between(ini, fim))
+                    filtro_ctx['tipo'] = 'bimestre'
+                    filtro_ctx['bimestre'] = bi
+                    filtro_ctx['label'] = '{}º bimestre de {}'.format(bi, ano)
+                    filtro_valido = True
+
+    # Fallback: DT_ATUALIZACAO mais recente
+    if not filtro_valido:
+        if datas_disponiveis:
+            recente = datas_disponiveis[0]
+            q = ResumoCVS.query.filter(ResumoCVS.DT_ATUALIZACAO == recente)
+            filtro_ctx.update({
+                'tipo': 'datas', 'datas': [recente],
+                'dt_unica': recente, 'label': recente.strftime('%d/%m/%Y'),
+            })
+        else:
+            return [], filtro_ctx, datas_disponiveis, anos_disponiveis
+
+    registros = q.order_by(
+        ResumoCVS.DT_ATUALIZACAO.desc(),
+        ResumoCVS.NU_CONTRATO.asc(),
+        ResumoCVS.ATIVO.asc(),
+    ).all()
+
+    return registros, filtro_ctx, datas_disponiveis, anos_disponiveis
+# =========================================================================
+# HELPER DE FILTRO DO ESTOQUE (usado pela tela e pela exportação)
+# =========================================================================
+def _coletar_filtro_estoque(args):
+    """
+    Lê os parâmetros de filtro e devolve:
+        (grupos_lista, filtro_ctx, datas_disponiveis, anos_disponiveis)
+
+    Tipos (parâmetro 'tipo_filtro'):
+      - 'datas'     -> uma ou mais DT_POSICAO exatas (param repetido 'datas')
+      - 'mensal'    -> SOMENTE o último dia útil do mês (fechamento).
+                       Como toda DT_POSICAO já é dia útil, usa-se
+                       MAX(DT_POSICAO) por mês: mês fechado = último dia
+                       útil do mês; mês em andamento = último dia útil
+                       disponível. Ano opcional ('ano' vazio = todos os anos,
+                       trazendo o fechamento daquele mês em cada ano).
+      - 'bimestral' -> bimestre (1-6) + ano opcional
+      - 'semestral' -> semestre (1-2) + ano opcional
+      - 'anual'     -> ano (obrigatório)
+
+    Sem filtro válido -> todas as posições.
+    As posições saem AGRUPADAS por DT_POSICAO em ordem DECRESCENTE
+    (mais nova primeiro), cada grupo com linha TOTAL + linhas por TIPO.
+    Compatível com Python 3.9 e 3.12.
+    """
+    from sqlalchemy import extract, func
+    from collections import OrderedDict
+
+    def _pi(v):
+        try:
+            return int(str(v).strip())
+        except (TypeError, ValueError):
+            return None
+
+    MESES = {
+        1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+        5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+        9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro',
+    }
+
+    # DT_POSICAO distintas (desc) e anos disponíveis
+    datas_rows = db.session.query(
+        PosicaoEstoqueCVS.DT_POSICAO
+    ).distinct().order_by(PosicaoEstoqueCVS.DT_POSICAO.desc()).all()
+    datas_disponiveis = [r[0] for r in datas_rows if r[0] is not None]
+    anos_disponiveis = sorted({d.year for d in datas_disponiveis}, reverse=True)
+
+    tipo = (args.get('tipo_filtro') or '').strip().lower()
+    filtro_ctx = {
+        'tipo': None, 'datas': [], 'ano': None, 'mes': None,
+        'bimestre': None, 'semestre': None, 'label': 'Todas as posições',
+    }
+
+    q = PosicaoEstoqueCVS.query
+    ano = _pi(args.get('ano'))
+
+    if tipo == 'datas':
+        datas = []
+        for s in args.getlist('datas'):
+            s = (s or '').strip()
+            if not s:
+                continue
+            try:
+                datas.append(datetime.strptime(s, '%Y-%m-%d').date())
+            except ValueError:
+                pass
+        if datas:
+            q = q.filter(PosicaoEstoqueCVS.DT_POSICAO.in_(datas))
+            filtro_ctx['tipo'] = 'datas'
+            filtro_ctx['datas'] = sorted(datas, reverse=True)
+            filtro_ctx['label'] = (
+                datas[0].strftime('%d/%m/%Y') if len(datas) == 1
+                else '{} datas específicas'.format(len(datas))
+            )
+
+    elif tipo == 'mensal':
+        mes = _pi(args.get('mes'))
+        if mes in range(1, 13):
+            filtro_ctx['tipo'] = 'mensal'
+            filtro_ctx['mes'] = mes
+
+            # MAX(DT_POSICAO) por ANO daquele mês = último dia útil do mês
+            base = db.session.query(
+                func.max(PosicaoEstoqueCVS.DT_POSICAO).label('mx')
+            ).filter(
+                extract('month', PosicaoEstoqueCVS.DT_POSICAO) == mes
+            )
+            if ano:
+                base = base.filter(
+                    extract('year', PosicaoEstoqueCVS.DT_POSICAO) == ano)
+                filtro_ctx['ano'] = ano
+                filtro_ctx['label'] = (
+                    '{} de {} — último dia útil'.format(MESES[mes], ano))
+            else:
+                filtro_ctx['label'] = (
+                    '{} — último dia útil de cada ano'.format(MESES[mes]))
+
+            # agrupa por ano para pegar um fechamento por ano
+            base = base.group_by(extract('year', PosicaoEstoqueCVS.DT_POSICAO))
+            datas_fim = [r.mx for r in base.all() if r.mx is not None]
+
+            # se não houver nada, in_([]) devolve conjunto vazio (não traz tudo)
+            q = q.filter(PosicaoEstoqueCVS.DT_POSICAO.in_(datas_fim))
+
+    elif tipo == 'bimestral':
+        bi = _pi(args.get('bimestre'))
+        if bi in range(1, 7):
+            ini, fim = 2 * bi - 1, 2 * bi
+            q = q.filter(
+                extract('month', PosicaoEstoqueCVS.DT_POSICAO).between(ini, fim))
+            filtro_ctx['tipo'] = 'bimestral'
+            filtro_ctx['bimestre'] = bi
+            if ano:
+                q = q.filter(extract('year', PosicaoEstoqueCVS.DT_POSICAO) == ano)
+                filtro_ctx['ano'] = ano
+                filtro_ctx['label'] = '{}º bimestre de {}'.format(bi, ano)
+            else:
+                filtro_ctx['label'] = '{}º bimestre (todos os anos)'.format(bi)
+
+    elif tipo == 'semestral':
+        sem = _pi(args.get('semestre'))
+        if sem in (1, 2):
+            ini, fim = (1, 6) if sem == 1 else (7, 12)
+            q = q.filter(
+                extract('month', PosicaoEstoqueCVS.DT_POSICAO).between(ini, fim))
+            filtro_ctx['tipo'] = 'semestral'
+            filtro_ctx['semestre'] = sem
+            if ano:
+                q = q.filter(extract('year', PosicaoEstoqueCVS.DT_POSICAO) == ano)
+                filtro_ctx['ano'] = ano
+                filtro_ctx['label'] = '{}º semestre de {}'.format(sem, ano)
+            else:
+                filtro_ctx['label'] = '{}º semestre (todos os anos)'.format(sem)
+
+    elif tipo == 'anual':
+        if ano:
+            q = q.filter(extract('year', PosicaoEstoqueCVS.DT_POSICAO) == ano)
+            filtro_ctx['tipo'] = 'anual'
+            filtro_ctx['ano'] = ano
+            filtro_ctx['label'] = 'Ano de {}'.format(ano)
+
+    # ordena DECRESCENTE por data (e TIPO asc) e agrupa
+    posicoes = q.order_by(
+        PosicaoEstoqueCVS.DT_POSICAO.desc(),
+        PosicaoEstoqueCVS.TIPO.asc(),
+    ).all()
+
+    grupos = OrderedDict()
+    for p in posicoes:
+        if p.DT_POSICAO not in grupos:
+            grupos[p.DT_POSICAO] = {
+                'dt': p.DT_POSICAO, 'tipos': {}, 'total_vr': Decimal('0'),
+            }
+        grupos[p.DT_POSICAO]['tipos'][p.TIPO] = p
+        if p.VR_TOTAL is not None:
+            grupos[p.DT_POSICAO]['total_vr'] += p.VR_TOTAL
+
+    return list(grupos.values()), filtro_ctx, datas_disponiveis, anos_disponiveis
+
+# =========================================================================
+# ESTOQUE — EXPORTAR EXCEL (mesmas caixinhas da tela, respeita o filtro)
+# =========================================================================
+@titulo_cvs_bp.route('/estoque/exportar')
+@login_required
+def estoque_exportar():
+    """
+    Exporta as Posições Mensais para .xlsx replicando as 'caixinhas' da
+    tela: data mesclada à esquerda + linha TOTAL + linhas por TIPO, na
+    mesma ordem decrescente e respeitando o filtro atual.
+    Compatível com Python 3.9 e 3.12.
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    grupos_lista, filtro_ctx, _d, _a = _coletar_filtro_estoque(request.args)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Estoque CVS'
+    ws.sheet_view.showGridLines = False
+
+    AZUL, ROXO, LAV = '4E73DF', '4B258A', 'EDE7F6'
+    CYAN, CYAN_TXT = 'D1ECF1', '0C5460'
+    VERDE, VERDE_TXT, BORDA = 'E9F0D4', '55621F', 'D9D9D9'
+    thin = Side(style='thin', color=BORDA)
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for i, w in enumerate([16, 12, 16, 18, 20], 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    ws.merge_cells('A1:E1')
+    c = ws['A1']
+    c.value = 'Estoque CVS — Posições Mensais'
+    c.font = Font(name='Arial', size=15, bold=True, color='FFFFFF')
+    c.fill = PatternFill('solid', fgColor=ROXO)
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[1].height = 30
+
+    ws.merge_cells('A2:E2')
+    c = ws['A2']
+    c.value = 'Filtro: %s   ·   %d posição(ões)   ·   Gerado em %s' % (
+        filtro_ctx.get('label', '—'), len(grupos_lista),
+        datetime.now().strftime('%d/%m/%Y %H:%M'))
+    c.font = Font(name='Arial', size=10, italic=True, color=ROXO)
+    c.fill = PatternFill('solid', fgColor=LAV)
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[2].height = 20
+
+    hdr = 4
+    for j, t in enumerate(['DT Posição', 'Tipo', 'Qtde', 'Vr PU', 'Vr Total'], 1):
+        cell = ws.cell(row=hdr, column=j, value=t)
+        cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor=AZUL)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = box
+    ws.row_dimensions[hdr].height = 24
+
+    FMT_INT, FMT_2 = '#,##0', '#,##0.00'
+
+    def _f(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    linha = hdr + 1
+    grand_total = Decimal('0')
+    for g in grupos_lista:
+        tipos_ordenados = sorted(g['tipos'].items())
+        primeira = linha
+
+        # Linha TOTAL (cyan)
+        for j in range(2, 6):
+            cc = ws.cell(row=linha, column=j)
+            cc.fill = PatternFill('solid', fgColor=CYAN)
+            cc.border = box
+            cc.font = Font(name='Arial', size=10, bold=True, color=CYAN_TXT)
+        ws.cell(row=linha, column=2, value='TOTAL').alignment = \
+            Alignment(horizontal='left', indent=1)
+        c5 = ws.cell(row=linha, column=5)
+        if g['total_vr']:
+            c5.value = float(g['total_vr'])
+            c5.number_format = FMT_2
+            c5.alignment = Alignment(horizontal='right')
+            grand_total += g['total_vr']
+        else:
+            c5.value = '—'
+            c5.alignment = Alignment(horizontal='center')
+        linha += 1
+
+        # Linhas por TIPO
+        for tipo, p in tipos_ordenados:
+            for j in range(2, 6):
+                ws.cell(row=linha, column=j).border = box
+                ws.cell(row=linha, column=j).font = Font(name='Arial', size=10)
+            ws.cell(row=linha, column=2, value=tipo).alignment = \
+                Alignment(horizontal='left', indent=1)
+            cq = ws.cell(row=linha, column=3)
+            if p.QTDE is not None:
+                cq.value = p.QTDE
+                cq.number_format = FMT_INT
+                cq.alignment = Alignment(horizontal='right')
+            else:
+                cq.value = '—'
+                cq.alignment = Alignment(horizontal='center')
+            cpu = ws.cell(row=linha, column=4)
+            if p.VR_PU is not None:
+                cpu.value = _f(p.VR_PU)
+                cpu.number_format = FMT_2
+                cpu.alignment = Alignment(horizontal='right')
+            else:
+                cpu.value = '—'
+                cpu.alignment = Alignment(horizontal='center')
+            cvt = ws.cell(row=linha, column=5)
+            if p.VR_TOTAL is not None:
+                cvt.value = _f(p.VR_TOTAL)
+                cvt.number_format = FMT_2
+                cvt.alignment = Alignment(horizontal='right')
+            else:
+                cvt.value = '—'
+                cvt.alignment = Alignment(horizontal='center')
+            linha += 1
+
+        ultima = linha - 1
+        # Coluna A (data) mesclada verticalmente — estilizar ANTES de mesclar
+        for rr in range(primeira, ultima + 1):
+            ca = ws.cell(row=rr, column=1)
+            ca.fill = PatternFill('solid', fgColor=VERDE)
+            ca.border = box
+            ca.font = Font(name='Arial', size=10, bold=True, color=VERDE_TXT)
+        anchor = ws.cell(row=primeira, column=1, value=g['dt'])
+        anchor.number_format = 'DD/MM/YYYY'
+        anchor.alignment = Alignment(horizontal='center', vertical='center')
+        ws.merge_cells(start_row=primeira, start_column=1,
+                       end_row=ultima, end_column=1)
+
+    # Linha TOTAL GERAL (roxo)
+    if grupos_lista:
+        for j in range(1, 6):
+            cc = ws.cell(row=linha, column=j)
+            cc.fill = PatternFill('solid', fgColor=ROXO)
+            cc.border = box
+            cc.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        ws.cell(row=linha, column=1, value='TOTAL GERAL').alignment = \
+            Alignment(horizontal='left', indent=1)
+        cg = ws.cell(row=linha, column=5, value=float(grand_total))
+        cg.number_format = FMT_2
+        cg.alignment = Alignment(horizontal='right')
+        ws.merge_cells(start_row=linha, start_column=1,
+                       end_row=linha, end_column=4)
+        ws.row_dimensions[linha].height = 20
+
+    ws.freeze_panes = 'A%d' % (hdr + 1)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nome_base = re.sub(r'[^0-9A-Za-zÀ-ÿ]+', '_',
+                       filtro_ctx.get('label') or 'estoque').strip('_')
+    nome_arquivo = 'Estoque_CVS_%s.xlsx' % (nome_base or 'export')
+
+    resp = make_response(buffer.getvalue())
+    resp.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp.headers['Content-Disposition'] = (
+        'attachment; filename="%s"' % nome_arquivo)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+@titulo_cvs_bp.route('/extrato/exportar')
+@login_required
+def extrato_exportar():
+    """
+    Exporta o Extrato CVS do mês filtrado (mesmo parâmetro 'mes' da tela)
+    para .xlsx: cabeçalho estilizado, Provisão/Estorno destacados e valores
+    negativos em vermelho. Compatível com Python 3.9 e 3.12.
+    """
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    # Resolve o mês igual ao index (default = 1º dia do último mês com dados)
+    mes_str = (request.args.get('mes') or '').strip()
+    mes_filtro = None
+    if mes_str:
+        try:
+            mes_filtro = datetime.strptime(mes_str, '%Y-%m-%d').date()
+        except ValueError:
+            mes_filtro = None
+    if not mes_filtro:
+        ultima_data = ExtratoCVS.obter_ultima_data_movimentacao()
+        if ultima_data:
+            mes_filtro = ultima_data.replace(day=1)
+
+    movimentacoes = []
+    if mes_filtro:
+        movimentacoes = ExtratoCVS.listar_por_mes(
+            mes_filtro, _ultimo_dia_mes(mes_filtro))
+
+    wb = Workbook(); ws = wb.active; ws.title = 'Extrato'
+    ws.sheet_view.showGridLines = False
+    CYAN = '17A2B8'; CYAN_ESC = '117A8B'; PROV = 'E7F1FF'; EST = 'FFF3CD'
+    ZEBRA = 'F1F9FB'; BRD = 'D9D9D9'; NEG = 'B91C1C'; POS = '166534'
+    thin = Side(style='thin', color=BRD)
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    cols = [('DT Movimentação', 15, 'data'), ('Tipo', 8, 'txt'),
+            ('Ordem', 8, 'int'), ('Histórico', 38, 'txt'),
+            ('Período De', 13, 'data'), ('Período Até', 13, 'data'),
+            ('Vr Movimentação', 16, 'num'), ('Vr Saldo', 16, 'num'),
+            ('DT Carga', 13, 'data')]
+    for i, (t, w, tp) in enumerate(cols, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    titulo_mes = mes_filtro.strftime('%m/%Y') if mes_filtro else '—'
+    ws.merge_cells('A1:I1'); c = ws['A1']
+    c.value = 'Extrato CVS — %s' % titulo_mes
+    c.font = Font(name='Arial', size=14, bold=True, color='FFFFFF')
+    c.fill = PatternFill('solid', fgColor=CYAN_ESC)
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[1].height = 28
+
+    ws.merge_cells('A2:I2'); c = ws['A2']
+    c.value = '%d movimentação(ões)   ·   Gerado em %s' % (
+        len(movimentacoes), datetime.now().strftime('%d/%m/%Y %H:%M'))
+    c.font = Font(name='Arial', size=10, italic=True, color=CYAN_ESC)
+    c.fill = PatternFill('solid', fgColor='E3F5F8')
+    c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+    ws.row_dimensions[2].height = 20
+
+    hdr = 4
+    for j, (t, w, tp) in enumerate(cols, 1):
+        cell = ws.cell(row=hdr, column=j, value=t)
+        cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        cell.fill = PatternFill('solid', fgColor=CYAN)
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        cell.border = box
+    ws.row_dimensions[hdr].height = 26
+
+    FMT2 = '#,##0.00'
+
+    def _tint(h):
+        if not h:
+            return None
+        hl = h.lower()
+        if hl.startswith('provisão') or hl.startswith('provisao'):
+            return PROV
+        if hl.startswith('estorno'):
+            return EST
+        return None
+
+    r = hdr + 1
+    total_mov = Decimal('0')
+    for i, m in enumerate(movimentacoes):
+        linha_tint = _tint(m.HISTORICO)
+        base_fill = linha_tint or (ZEBRA if i % 2 else 'FFFFFF')
+        valores = [m.DT_MOVIMENTACAO, m.TIPO, m.ORDEM, m.HISTORICO,
+                   m.PERIODO_DE, m.PERIODO_ATE, m.VR_MOVIMENTACAO,
+                   m.VR_SALDO, m.DT_CARGA]
+        for j, (t, w, tp) in enumerate(cols, 1):
+            v = valores[j - 1]
+            cell = ws.cell(row=r, column=j)
+            cell.border = box
+            cell.fill = PatternFill('solid', fgColor=base_fill)
+            cor = '1F2937'
+            if tp == 'num' and v is not None:
+                cell.value = float(v)
+                cell.number_format = FMT2
+                cell.alignment = Alignment(horizontal='right')
+                if v < 0:
+                    cor = NEG
+                elif v > 0 and j == 7:
+                    cor = POS
+            elif tp == 'int' and v is not None:
+                cell.value = int(v)
+                cell.number_format = '#,##0'
+                cell.alignment = Alignment(horizontal='center')
+            elif tp == 'data':
+                if v is not None:
+                    cell.value = v
+                    cell.number_format = 'DD/MM/YYYY'
+                else:
+                    cell.value = '-'
+                cell.alignment = Alignment(horizontal='center')
+            else:
+                cell.value = v if v is not None else '-'
+                cell.alignment = Alignment(
+                    horizontal=('center' if j == 2 else 'left'))
+            negrito = (j == 4 and linha_tint is not None)
+            cell.font = Font(name='Arial', size=10, bold=negrito, color=cor)
+        if m.VR_MOVIMENTACAO is not None:
+            total_mov += m.VR_MOVIMENTACAO
+        r += 1
+
+    if movimentacoes:
+        for j in range(1, 10):
+            cc = ws.cell(row=r, column=j)
+            cc.fill = PatternFill('solid', fgColor=CYAN_ESC)
+            cc.border = box
+            cc.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+        ws.cell(row=r, column=1, value='TOTAL').alignment = \
+            Alignment(horizontal='left', indent=1)
+        ct = ws.cell(row=r, column=7, value=float(total_mov))
+        ct.number_format = FMT2
+        ct.alignment = Alignment(horizontal='right')
+        ct.font = Font(name='Arial', size=10, bold=True,
+                       color=('FFD9D9' if total_mov < 0 else 'FFFFFF'))
+        ws.row_dimensions[r].height = 20
+
+    ws.freeze_panes = 'A%d' % (hdr + 1)
+
+    buffer = io.BytesIO(); wb.save(buffer); buffer.seek(0)
+    nome_mes = mes_filtro.strftime('%Y-%m') if mes_filtro else 'sem-mes'
+    nome_arquivo = 'Extrato_CVS_%s.xlsx' % nome_mes
+
+    resp = make_response(buffer.getvalue())
+    resp.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    resp.headers['Content-Disposition'] = (
+        'attachment; filename="%s"' % nome_arquivo)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp

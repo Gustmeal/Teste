@@ -90,6 +90,16 @@
         font-weight: 700;
         font-family: 'Courier New', monospace;
     }
+    .cvs-badge-data {
+        display: inline-block;
+        background: #eafaf1;
+        color: #13855c;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
 
     .cvs-dropzone {
         border: 2px dashed #d1d3e2;
@@ -152,6 +162,30 @@
     .cvs-file-preview .file-size {
         font-size: 0.75rem;
         color: #858796;
+    }
+
+    /* Caixa de datas (multi-seleção) em FLUXO: fica dentro do card e cresce
+       junto com o conteúdo, então nunca é cortada por overflow de nenhum
+       elemento pai (o card apenas aumenta de altura). */
+    .cvs-datas-box {
+        border: 1px solid #d1d3e2;
+        border-radius: 8px;
+        padding: 0.6rem 0.85rem;
+        max-height: 190px;
+        overflow-y: auto;
+        background: #fff;
+    }
+    .cvs-datas-box::-webkit-scrollbar { width: 8px; }
+    .cvs-datas-box::-webkit-scrollbar-thumb { background: #c3cbe4; border-radius: 4px; }
+    .cvs-datas-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 0.1rem 1rem;
+    }
+    .cvs-datas-grid .form-check { margin-bottom: 0.1rem; }
+    .cvs-datas-grid .form-check-label {
+        font-variant-numeric: tabular-nums;
+        cursor: pointer;
     }
 </style>
 {% endblock %}
@@ -229,47 +263,168 @@
 
     <div id="feedbackIndicesDia1Index" class="mb-3" style="display: none;"></div>
 
-    <div class="card cvs-section-card mb-4">
+    <!-- =============================================================== -->
+    <!-- CARD DE FILTRO + EXPORTAÇÃO                                     -->
+    <!-- =============================================================== -->
+    <div class="card cvs-section-card cvs-filter-card mb-4">
         <div class="cvs-section-header">
             <h5><i class="fas fa-filter me-2"></i>Filtrar por Data de Atualização</h5>
         </div>
         <div class="card-body">
             <form method="GET" action="{{ url_for('titulo_cvs.index') }}"
-                  class="row g-3 align-items-end">
-                <div class="col-md-6">
-                    <label for="dt_atualizacao" class="form-label small fw-semibold">
-                        Data de Atualização (DT_ATUALIZACAO)
+                  id="formFiltroCVS" class="row g-3 align-items-end">
+
+                <!-- Tipo de filtro -->
+                <div class="col-md-3">
+                    <label for="tipoFiltro" class="form-label small fw-semibold">
+                        Tipo de filtro
                     </label>
-                    <select name="dt_atualizacao" id="dt_atualizacao" class="form-select">
-                        {% if not datas_disponiveis %}
-                            <option value="">— Sem dados —</option>
+                    <select name="tipo_filtro" id="tipoFiltro" class="form-select">
+                        <option value="datas"    {% if filtro_ctx.tipo == 'datas' %}selected{% endif %}>Datas específicas</option>
+                        <option value="ano"      {% if filtro_ctx.tipo == 'ano' %}selected{% endif %}>Ano inteiro</option>
+                        <option value="semestre" {% if filtro_ctx.tipo == 'semestre' %}selected{% endif %}>Semestre</option>
+                        <option value="bimestre" {% if filtro_ctx.tipo == 'bimestre' %}selected{% endif %}>Bimestre</option>
+                    </select>
+                </div>
+
+                <!-- BLOCO: Datas específicas (checklist em fluxo - nunca é cortado) -->
+                <div class="col-12 filtro-bloco" data-modo="datas">
+                    <label class="form-label small fw-semibold d-flex justify-content-between align-items-center mb-1">
+                        <span>Datas (marque uma ou mais)</span>
+                        <span class="text-muted fw-normal" id="lblDatasSelecionadas"></span>
+                    </label>
+                    <div class="cvs-datas-box"
+                         style="max-height:190px; overflow-y:auto; border:1px solid #d1d3e2;
+                                border-radius:8px; padding:0.6rem 0.85rem; background:#fff;">
+                        {% if datas_disponiveis %}
+                            <div class="cvs-datas-grid"
+                                 style="display:grid;
+                                        grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+                                        gap:0.1rem 1rem;">
+                                {% for dt in datas_disponiveis %}
+                                <div class="form-check">
+                                    <input class="form-check-input chk-data" type="checkbox"
+                                           name="datas"
+                                           value="{{ dt.strftime('%Y-%m-%d') }}"
+                                           id="data_{{ dt.strftime('%Y%m%d') }}"
+                                           {% if dt in filtro_ctx.datas %}checked{% endif %}>
+                                    <label class="form-check-label"
+                                           for="data_{{ dt.strftime('%Y%m%d') }}">
+                                        {{ dt.strftime('%d/%m/%Y') }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
                         {% else %}
-                            {% for dt in datas_disponiveis %}
-                                <option value="{{ dt.strftime('%Y-%m-%d') }}"
-                                    {% if dt_filtro and dt == dt_filtro %}selected{% endif %}>
-                                    {{ dt.strftime('%d/%m/%Y') }}
-                                </option>
+                            <div class="text-muted small">Sem datas disponíveis</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- BLOCO: Ano (usado em Ano / Semestre / Bimestre) -->
+                <div class="col-md-2 filtro-bloco" data-modo="ano semestre bimestre">
+                    <label for="selAno" class="form-label small fw-semibold">Ano</label>
+                    <select name="ano" id="selAno" class="form-select">
+                        {% if anos_disponiveis %}
+                            {% for a in anos_disponiveis %}
+                            <option value="{{ a }}"
+                                {% if filtro_ctx.ano == a %}selected{% endif %}>{{ a }}</option>
                             {% endfor %}
+                        {% else %}
+                            <option value="">—</option>
                         {% endif %}
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <button type="submit" class="btn btn-outline-primary w-100"
+
+                <!-- BLOCO: Semestre -->
+                <div class="col-md-2 filtro-bloco" data-modo="semestre">
+                    <label for="selSemestre" class="form-label small fw-semibold">Semestre</label>
+                    <select name="semestre" id="selSemestre" class="form-select">
+                        <option value="1" {% if filtro_ctx.semestre == 1 %}selected{% endif %}>1º semestre</option>
+                        <option value="2" {% if filtro_ctx.semestre == 2 %}selected{% endif %}>2º semestre</option>
+                    </select>
+                </div>
+
+                <!-- BLOCO: Bimestre -->
+                <div class="col-md-2 filtro-bloco" data-modo="bimestre">
+                    <label for="selBimestre" class="form-label small fw-semibold">Bimestre</label>
+                    <select name="bimestre" id="selBimestre" class="form-select">
+                        {% for b in [1, 2, 3, 4, 5, 6] %}
+                        <option value="{{ b }}" {% if filtro_ctx.bimestre == b %}selected{% endif %}>{{ b }}º bimestre</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Botões: Filtrar + Exportar + Limpar -->
+                <div class="col-md-4 d-flex gap-2">
+                    <button type="submit" class="btn btn-outline-primary flex-fill"
                             {% if not datas_disponiveis %}disabled{% endif %}>
                         <i class="fas fa-search me-2"></i>Filtrar
                     </button>
+                    <button type="submit" class="btn btn-success flex-fill"
+                            formaction="{{ url_for('titulo_cvs.exportar_excel') }}"
+                            formmethod="get"
+                            {% if not datas_disponiveis %}disabled{% endif %}>
+                        <i class="fas fa-file-excel me-2"></i>Exportar
+                    </button>
+                    <a href="{{ url_for('titulo_cvs.index') }}"
+                       class="btn btn-outline-secondary flex-fill"
+                       title="Limpar filtros">
+                        <i class="fas fa-eraser me-2"></i>Limpar
+                    </a>
                 </div>
             </form>
         </div>
     </div>
+
+    <script>
+    // =================================================================
+    // FILTRO CVS — alterna os campos por tipo e conta as datas marcadas
+    // =================================================================
+    (function () {
+        const form = document.getElementById('formFiltroCVS');
+        if (!form) return;
+        const tipo = document.getElementById('tipoFiltro');
+        const blocos = form.querySelectorAll('.filtro-bloco');
+        const lblDatas = document.getElementById('lblDatasSelecionadas');
+        const checks = form.querySelectorAll('.chk-data');
+
+        // Mostra só os blocos do modo atual e DESABILITA os escondidos
+        // (campo disabled não é enviado no GET -> evita filtro misturado).
+        function aplicarModo() {
+            const modo = tipo.value;
+            blocos.forEach(function (bloco) {
+                const modos = (bloco.getAttribute('data-modo') || '').split(' ');
+                const visivel = modos.indexOf(modo) !== -1;
+                bloco.style.display = visivel ? '' : 'none';
+                bloco.querySelectorAll('input, select').forEach(function (el) {
+                    el.disabled = !visivel;
+                });
+            });
+        }
+
+        // Rótulo com a contagem de datas marcadas (fica ao lado do título)
+        function atualizarLabelDatas() {
+            if (!lblDatas) return;
+            const n = form.querySelectorAll('.chk-data:checked').length;
+            lblDatas.textContent = n === 0
+                ? ''
+                : (n === 1 ? '1 data selecionada' : n + ' datas selecionadas');
+        }
+
+        tipo.addEventListener('change', aplicarModo);
+        checks.forEach(function (c) { c.addEventListener('change', atualizarLabelDatas); });
+        aplicarModo();
+        atualizarLabelDatas();
+    })();
+    </script>
 
     {% if registros %}
     <div class="card cvs-section-card" style="overflow: hidden;">
         <div class="cvs-section-header">
             <h5>
                 <i class="fas fa-table me-2"></i>
-                Registros - DT_ATUALIZACAO:
-                {{ dt_filtro.strftime('%d/%m/%Y') if dt_filtro else '—' }}
+                Registros — {{ filtro_ctx.label }}
                 ({{ registros|length }} linha{{ 's' if registros|length != 1 else '' }})
             </h5>
         </div>
@@ -277,9 +432,10 @@
              style="overflow-x: auto; overflow-y: hidden; width: 100%;
                     display: block; scrollbar-width: thin;
                     scrollbar-color: #4e73df #f1f3f5;">
-            <table class="table table-hover table-sm cvs-table mb-0" style="min-width: 1500px;">
+            <table class="table table-hover table-sm cvs-table mb-0" style="min-width: 1640px;">
                 <thead>
                     <tr>
+                        <th>DT Atualização</th>
                         <th>Contrato</th>
                         <th>Evento</th>
                         <th>Ativo</th>
@@ -297,6 +453,11 @@
                 <tbody>
                     {% for r in registros %}
                     <tr>
+                        <td>
+                            <span class="cvs-badge-data">
+                                {{ r.DT_ATUALIZACAO.strftime('%d/%m/%Y') if r.DT_ATUALIZACAO else '-' }}
+                            </span>
+                        </td>
                         <td><strong>{{ r.NU_CONTRATO }}</strong></td>
                         <td><span class="cvs-badge-ativo">{{ r.EVENTO if r.EVENTO else '-' }}</span></td>
                         <td><span class="cvs-badge-ativo">{{ r.ATIVO }}</span></td>
