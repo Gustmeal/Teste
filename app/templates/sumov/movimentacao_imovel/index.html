@@ -95,12 +95,13 @@
                         </select>
                     </div>
 
-                    <!-- Status RM -->
+                    <!-- Status RM (dependente da Ação GEIMO) -->
                     <div class="col-md-3">
                         <label for="filtro_status" class="form-label fw-bold">
                             <i class="fas fa-info-circle text-primary me-1"></i>Status RM
                         </label>
-                        <select class="form-select" id="filtro_status" name="filtro_status">
+                        <select class="form-select" id="filtro_status" name="filtro_status"
+                                data-selecionado="{{ filtro_status }}">
                             <option value="">Todos</option>
                             <option value="__VAZIO__" {% if filtro_status == '__VAZIO__' %}selected{% endif %}>
                                 (Em branco)
@@ -210,5 +211,48 @@
             }
         });
     });
+
+    // Status RM dependente da Ação GEIMO: ao trocar a ação, recarrega os status.
+    (function () {
+        var selAcao = document.getElementById('filtro_acao');
+        var selStatus = document.getElementById('filtro_status');
+        if (!selAcao || !selStatus) {
+            return;
+        }
+
+        selAcao.addEventListener('change', function () {
+            var acao = this.value;
+            var statusAtual = selStatus.value;
+
+            var url = '{{ url_for("sumov.movimentacao_imovel_status_por_acao") }}' +
+                      '?acao=' + encodeURIComponent(acao);
+
+            fetch(url, {
+                method: 'GET',
+                headers: { 'X-Silent-Request': 'true' }
+            })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                // Mantém as opções de controle "Todos" e "(Em branco)"
+                selStatus.innerHTML =
+                    '<option value="">Todos</option>' +
+                    '<option value="__VAZIO__">(Em branco)</option>';
+
+                (data.status || []).forEach(function (st) {
+                    var opt = document.createElement('option');
+                    opt.value = st;
+                    opt.textContent = st;
+                    selStatus.appendChild(opt);
+                });
+
+                // Preserva a seleção anterior se ela ainda existir na nova lista
+                var existe = Array.prototype.some.call(selStatus.options, function (o) {
+                    return o.value === statusAtual;
+                });
+                selStatus.value = existe ? statusAtual : '';
+            })
+            .catch(function () { /* silencioso */ });
+        });
+    })();
 </script>
 {% endblock %}

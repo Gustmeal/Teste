@@ -4884,14 +4884,25 @@ def movimentacao_imovel():
         """)
         acoes = [a[1] for a in db.session.execute(sql_acoes).fetchall() if a[1]]
 
-        # Lista de status distintos para o filtro (da própria tabela)
-        sql_status = text("""
-            SELECT DISTINCT [STATUS_RM]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
-            WHERE [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
-            ORDER BY [STATUS_RM]
-        """)
-        status_lista = [s[0] for s in db.session.execute(sql_status).fetchall()]
+        # Lista de status para o filtro — dependente da Ação GEIMO selecionada.
+        # Se há ação escolhida, só traz os status que existem em registros daquela ação.
+        if filtro_acao:
+            sql_status = text("""
+                SELECT DISTINCT [STATUS_RM]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                WHERE [ACAO_GEIMO] = :acao
+                  AND [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
+                ORDER BY [STATUS_RM]
+            """)
+            status_lista = [s[0] for s in db.session.execute(sql_status, {'acao': filtro_acao}).fetchall()]
+        else:
+            sql_status = text("""
+                SELECT DISTINCT [STATUS_RM]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                WHERE [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
+                ORDER BY [STATUS_RM]
+            """)
+            status_lista = [s[0] for s in db.session.execute(sql_status).fetchall()]
 
         return render_template('sumov/movimentacao_imovel/index.html',
                                registros=registros,
@@ -5193,3 +5204,39 @@ def movimentacao_imovel_editar(nu_contrato):
                            acoes=acoes,
                            pode_sumov=pode_sumov,
                            pode_geimo=pode_geimo)
+@sumov_bp.route('/movimentacao-imovel/status-por-acao')
+@login_required
+def movimentacao_imovel_status_por_acao():
+    """
+    Retorna (JSON) os valores distintos de STATUS_RM associados a uma Ação GEIMO,
+    para alimentar dinamicamente o dropdown de Status RM.
+    Sem ação informada, retorna todos os status.
+    """
+    try:
+        acao = request.args.get('acao', '').strip()
+
+        if acao:
+            sql = text("""
+                SELECT DISTINCT [STATUS_RM]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                WHERE [ACAO_GEIMO] = :acao
+                  AND [STATUS_RM] IS NOT NULL
+                  AND LTRIM(RTRIM([STATUS_RM])) <> ''
+                ORDER BY [STATUS_RM]
+            """)
+            resultado = db.session.execute(sql, {'acao': acao}).fetchall()
+        else:
+            sql = text("""
+                SELECT DISTINCT [STATUS_RM]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                WHERE [STATUS_RM] IS NOT NULL
+                  AND LTRIM(RTRIM([STATUS_RM])) <> ''
+                ORDER BY [STATUS_RM]
+            """)
+            resultado = db.session.execute(sql).fetchall()
+
+        status = [r[0] for r in resultado]
+        return jsonify({'status': status})
+
+    except Exception as e:
+        return jsonify({'status': [], 'erro': str(e)}), 500
