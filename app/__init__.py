@@ -62,6 +62,7 @@ def create_app():
         from app.models.cotas_fundos import CotasBBFae2, CotasBBExclusivo, CotasCaixaXXI
         from app.models.indices_anbima import IndiceAnbima
         from app.models.quadro_rentabilidade import QuadroRentabilidade
+        from app.models.doc_catalogo import Aplicativo, Subaplicativo, TabelaDoc
 
         db.create_all()
 
@@ -195,6 +196,9 @@ def create_app():
 
     from app.routes.composicao_fundos_routes import composicao_fundos_bp
     app.register_blueprint(composicao_fundos_bp)
+
+    from app.routes.doc_catalogo_routes import catalogo_dados_bp
+    app.register_blueprint(catalogo_dados_bp)
 
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')

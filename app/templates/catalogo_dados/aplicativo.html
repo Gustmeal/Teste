@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set cats = {'ENTRADA':'Entrada','SAIDA':'Saída','PARAMETRO':'Parâmetro','CONSULTA':'Consulta'} %}
+{% set ns = namespace(total=0) %}{% for g in grupos %}{% set ns.total = ns.total + g.tabelas|length %}{% endfor %}
+<style>
+  @property --mx { syntax: '<percentage>'; inherits: true; initial-value: 50%; }
+
+  .catx {
+    --bg: oklch(0.17 0.03 255);
+    --bg-2: oklch(0.215 0.035 255);
+    --panel: oklch(0.24 0.03 255);
+    --ink: oklch(0.96 0.01 250);
+    --muted: oklch(0.72 0.02 255);
+    --line: color-mix(in oklch, var(--ink) 12%, transparent);
+    --warn: oklch(0.78 0.15 70);
+
+    position: relative; margin: -0.5rem 0 0;
+    padding: clamp(1.5rem, 1rem + 3vw, 3.25rem);
+    border-radius: 26px; color: var(--ink); overflow: hidden; isolation: isolate;
+    background:
+      radial-gradient(120% 80% at 100% 0%, color-mix(in oklch, oklch(0.6 0.15 210) 15%, transparent), transparent 60%),
+      radial-gradient(90% 70% at 0% 100%, color-mix(in oklch, oklch(0.6 0.16 300) 12%, transparent), transparent 55%),
+      var(--bg);
+    border: 1px solid var(--line);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .catx::before {
+    content: ''; position: absolute; inset: 0; z-index: -1;
+    background-image:
+      linear-gradient(color-mix(in oklch, var(--ink) 4%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 4%, transparent) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(120% 100% at 50% -10%, #000, transparent 75%);
+  }
+
+  .catx a.catx-back {
+    display: inline-flex; align-items: center; gap: 0.5rem; color: var(--muted);
+    text-decoration: none; font-size: 0.9rem; padding: 0.4rem 0.75rem; border-radius: 999px;
+    border: 1px solid var(--line); background: color-mix(in oklch, var(--bg-2) 60%, transparent);
+    transition: color 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .catx a.catx-back:hover { color: var(--ink); border-color: color-mix(in oklch, var(--ink) 30%, transparent); transform: translateX(-2px); }
+
+  .catx-title { font-size: clamp(1.7rem, 1.1rem + 2.4vw, 2.6rem); font-weight: 760; letter-spacing: -0.03em; margin: 1.4rem 0 0; line-height: 1.04; }
+  .catx-desc { color: var(--muted); font-size: 1rem; line-height: 1.6; margin: 0.6rem 0 0; max-width: 68ch; }
+  .catx-meta { margin-top: 0.9rem; display: flex; gap: 1.2rem; color: var(--muted); font-size: 0.85rem; }
+  .catx-meta b { color: var(--ink); font-weight: 680; }
+
+  /* ===== Filtro por categoria — puro CSS via :has() ===== */
+  .catx-filter { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.8rem 0 0.4rem; }
+  .catx-filter input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .catx-filter label {
+    cursor: pointer; font-size: 0.85rem; padding: 0.4rem 0.9rem; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--muted);
+    background: color-mix(in oklch, var(--bg-2) 55%, transparent); transition: all 0.2s;
+  }
+  .catx-filter label:hover { color: var(--ink); }
+  .catx-filter input:focus-visible + label { outline: 2px solid oklch(0.75 0.12 210); outline-offset: 2px; }
+  #f-todas:checked    + label { color: var(--ink); border-color: color-mix(in oklch, var(--ink) 40%, transparent); background: color-mix(in oklch, var(--ink) 12%, transparent); }
+  #f-entrada:checked  + label { color: oklch(0.85 0.13 150); border-color: oklch(0.72 0.15 150); }
+  #f-saida:checked    + label { color: oklch(0.83 0.13 250); border-color: oklch(0.7 0.15 250); }
+  #f-param:checked    + label { color: oklch(0.9 0.02 255);  border-color: oklch(0.72 0.03 255); }
+  #f-consulta:checked + label { color: oklch(0.84 0.14 300); border-color: oklch(0.7 0.16 300); }
+
+  .catx:has(#f-entrada:checked)  .catx-tab:not([data-cat="ENTRADA"])   { display: none; }
+  .catx:has(#f-saida:checked)    .catx-tab:not([data-cat="SAIDA"])     { display: none; }
+  .catx:has(#f-param:checked)    .catx-tab:not([data-cat="PARAMETRO"]) { display: none; }
+  .catx:has(#f-consulta:checked) .catx-tab:not([data-cat="CONSULTA"])  { display: none; }
+  .catx:has(#f-entrada:checked)  .catx-group:not(:has([data-cat="ENTRADA"]))   { display: none; }
+  .catx:has(#f-saida:checked)    .catx-group:not(:has([data-cat="SAIDA"]))     { display: none; }
+  .catx:has(#f-param:checked)    .catx-group:not(:has([data-cat="PARAMETRO"])) { display: none; }
+  .catx:has(#f-consulta:checked) .catx-group:not(:has([data-cat="CONSULTA"]))  { display: none; }
+
+  /* ===== Grupos (subaplicativos) ===== */
+  .catx-group { margin-top: 2.2rem; }
+  .catx-group > h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; margin: 0; display: flex; align-items: center; gap: 0.6rem; }
+  .catx-group > h2::before { content: ''; width: 8px; height: 8px; border-radius: 3px; background: oklch(0.75 0.12 210); }
+  .catx-group > p { margin: 0.25rem 0 1rem 1.4rem; color: var(--muted); font-size: 0.85rem; }
+
+  /* ===== Cartão de tabela ===== */
+  .catx-tab {
+    --cat: oklch(0.72 0.03 255);
+    position: relative; border-radius: 16px; margin-bottom: 1rem; overflow: hidden;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, color-mix(in oklch, var(--panel) 92%, var(--cat) 8%), color-mix(in oklch, var(--bg) 90%, transparent));
+    transition: border-color 0.3s;
+  }
+  .catx-tab[data-cat="ENTRADA"]   { --cat: oklch(0.72 0.15 150); }
+  .catx-tab[data-cat="SAIDA"]     { --cat: oklch(0.7 0.15 250); }
+  .catx-tab[data-cat="PARAMETRO"] { --cat: oklch(0.72 0.03 255); }
+  .catx-tab[data-cat="CONSULTA"]  { --cat: oklch(0.7 0.16 300); }
+  .catx-tab::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(var(--cat), color-mix(in oklch, var(--cat) 30%, transparent)); }
+  .catx-tab:hover { border-color: color-mix(in oklch, var(--cat) 45%, transparent); }
+
+  .catx-tab-h { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--line); }
+  .catx-badge {
+    font-size: 0.72rem; padding: 0.2rem 0.65rem; border-radius: 999px; font-weight: 640;
+    color: var(--cat); border: 1px solid color-mix(in oklch, var(--cat) 55%, transparent);
+    background: color-mix(in oklch, var(--cat) 14%, transparent); white-space: nowrap;
+  }
+  .catx-tab-h code { font-size: 0.9rem; font-weight: 650; color: var(--ink); background: none; }
+  .catx-dot { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.76rem; color: var(--muted); }
+  .catx-dot i { font-size: 0.55rem; color: oklch(0.75 0.15 150); }
+  .catx-dot.miss i { color: var(--warn); }
+
+  .catx-tab-b { padding: 0.9rem 1.1rem 1.1rem; }
+  .catx-info { font-size: 0.88rem; color: var(--ink); margin: 0 0 0.4rem; line-height: 1.5; }
+  .catx-info span { color: var(--muted); }
+  .catx-info b { color: color-mix(in oklch, var(--cat) 70%, var(--ink)); font-weight: 640; }
+
+  /* ===== Tabela de colunas — cabeçalho sticky no scroll ===== */
+  .catx-cols-wrap { margin-top: 0.9rem; max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .catx-cols { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .catx-cols th, .catx-cols td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .catx-cols thead th {
+    position: sticky; top: 0; z-index: 1; color: var(--muted); font-weight: 600;
+    background: color-mix(in oklch, var(--panel) 92%, var(--bg)); backdrop-filter: blur(4px);
+  }
+  .catx-cols tbody tr:hover td { background: color-mix(in oklch, var(--cat) 8%, transparent); }
+  .catx-cols td.is-key { color: color-mix(in oklch, var(--warn) 55%, var(--ink)); font-weight: 620; }
+  .catx-key { color: var(--warn); display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 620; }
+  .catx-null { color: var(--muted); }
+
+  .catx-miss { margin-top: 0.9rem; padding: 0.7rem 0.95rem; border-radius: 10px; font-size: 0.83rem; color: color-mix(in oklch, var(--warn) 60%, var(--ink)); border: 1px solid color-mix(in oklch, var(--warn) 35%, transparent); background: color-mix(in oklch, var(--warn) 10%, transparent); }
+</style>
+
+<div class="catx">
+  <a href="{{ url_for('catalogo_dados.index') }}" class="catx-back">
+    <i class="fas fa-arrow-left"></i> Catálogo
+  </a>
+
+  <h1 class="catx-title">{{ app_obj.NO_APLICATIVO }}</h1>
+  {% if app_obj.DS_APLICATIVO %}<p class="catx-desc">{{ app_obj.DS_APLICATIVO }}</p>{% endif %}
+  <div class="catx-meta">
+    <span><b>{{ ns.total }}</b> {{ 'tabela' if ns.total == 1 else 'tabelas' }}</span>
+    <span><b>{{ grupos|length }}</b> {{ 'grupo' if grupos|length == 1 else 'grupos' }}</span>
+  </div>
+
+  <div class="catx-filter">
+    <input type="radio" id="f-todas" name="catxf" checked><label for="f-todas">Todas</label>
+    <input type="radio" id="f-entrada" name="catxf"><label for="f-entrada">Entrada</label>
+    <input type="radio" id="f-saida" name="catxf"><label for="f-saida">Saída</label>
+    <input type="radio" id="f-param" name="catxf"><label for="f-param">Parâmetro</label>
+    <input type="radio" id="f-consulta" name="catxf"><label for="f-consulta">Consulta</label>
+  </div>
+
+  {% for grupo in grupos %}
+  <div class="catx-group">
+    <h2>{{ grupo.sub.NO_SUBAPLICATIVO if grupo.sub else 'Outras tabelas' }}</h2>
+    {% if grupo.sub and grupo.sub.DS_SUBAPLICATIVO %}<p>{{ grupo.sub.DS_SUBAPLICATIVO }}</p>{% endif %}
+
+    {% for t in grupo.tabelas %}
+    <div class="catx-tab" data-cat="{{ t.TP_CATEGORIA }}">
+      <div class="catx-tab-h">
+        <span class="catx-badge">{{ cats.get(t.TP_CATEGORIA, t.TP_CATEGORIA) }}</span>
+        <code>{{ t.nome_completo }}</code>
+        {% if t.existe %}
+        <span class="catx-dot"><i class="fas fa-circle"></i> no banco</span>
+        {% else %}
+        <span class="catx-dot miss"><i class="fas fa-circle"></i> não localizada</span>
+        {% endif %}
+      </div>
+      <div class="catx-tab-b">
+        {% if t.DS_OBJETIVO %}<p class="catx-info"><b>Objetivo:</b> <span>{{ t.DS_OBJETIVO }}</span></p>{% endif %}
+        {% if t.DS_MOTIVO %}<p class="catx-info"><b>Por que existe:</b> <span>{{ t.DS_MOTIVO }}</span></p>{% endif %}
+        {% if t.DS_SERVE_PARA %}<p class="catx-info"><b>Serve para:</b> <span>{{ t.DS_SERVE_PARA }}</span></p>{% endif %}
+        {% if t.DS_OBSERVACAO %}<p class="catx-info"><b>Observação:</b> <span>{{ t.DS_OBSERVACAO }}</span></p>{% endif %}
+
+        {% if t.existe %}
+        <div class="catx-cols-wrap">
+          <table class="catx-cols">
+            <thead><tr><th>Coluna</th><th>Tipo</th><th>Aceita nulo?</th><th>Chave</th></tr></thead>
+            <tbody>
+              {% for c in t.colunas %}
+              <tr>
+                <td class="{{ 'is-key' if c.chave else '' }}">{{ c.nome }}</td>
+                <td>{{ c.tipo }}</td>
+                <td class="{{ 'catx-null' if c.nulo else '' }}">{{ 'Sim' if c.nulo else 'Não' }}</td>
+                <td>{% if c.chave %}<span class="catx-key"><i class="fas fa-key"></i> chave</span>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="catx-miss">
+          <i class="fas fa-triangle-exclamation"></i>
+          Estrutura não localizada no banco — confira o nome da tabela, o schema/banco (<code>{{ t.nome_completo }}</code>) ou a permissão de acesso.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

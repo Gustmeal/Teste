@@ -120,6 +120,7 @@ def novo():
     4. Se houver observação: inserir em PEN_TB005 e pegar ID
     5. Se houver especificação: inserir em PEN_TB006 e pegar ID
     6. Inserir registro principal com os IDs gerados
+    7. ID_CONTABILIZADO e NO_ARQUIVO_RETENCAO sempre NULL na inclusão
     """
     if request.method == 'POST':
         try:
@@ -184,11 +185,9 @@ def novo():
             # Campos básicos
             novo_registro.NU_CONTRATO = nu_contrato_decimal
             novo_registro.VR_FALHA = vr_falha_decimal
-            novo_registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get(
-                'id_ocorrencia') else None
+            novo_registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get('id_ocorrencia') else None
             novo_registro.ID_STATUS = int(request.form.get('id_status')) if request.form.get('id_status') else None
-            novo_registro.ID_CARTEIRA = int(request.form.get('id_carteira')) if request.form.get(
-                'id_carteira') else None
+            novo_registro.ID_CARTEIRA = int(request.form.get('id_carteira')) if request.form.get('id_carteira') else None
             novo_registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
 
             # NOVOS CAMPOS
@@ -235,6 +234,10 @@ def novo():
             novo_registro.NR_TICKET = int(request.form.get('nr_ticket')) if request.form.get('nr_ticket') else None
             novo_registro.DSC_DOCUMENTO = request.form.get('dsc_documento', '').strip() or None
             novo_registro.VR_ISS = Decimal(request.form.get('vr_iss')) if request.form.get('vr_iss') else None
+
+            # >>> NOVOS CAMPOS PEN_TB015: sempre NULL na inclusão <
+            novo_registro.ID_CONTABILIZADO = None       # só é preenchido na edição
+            novo_registro.NO_ARQUIVO_RETENCAO = None    # não editável pela tela; gravado por outro processo
 
             # Auditoria
             novo_registro.USUARIO_CRIACAO = current_user.nome
@@ -291,6 +294,8 @@ def editar(id):
     - Verifica duplicidade para outros registros
     - Atualiza INDICIO_DUPLIC automaticamente
     - ID_ACAO mantém como 0
+    - ID_CONTABILIZADO: passa a ser editável nesta tela
+    - NO_ARQUIVO_RETENCAO: NÃO é tocado (permanece o valor já gravado)
     """
     registro = CaixaEmgea.query.get_or_404(id)
 
@@ -329,8 +334,7 @@ def editar(id):
 
                         if registro.ID_ESPECIFICACAO:
                             result = db.session.execute(
-                                text(
-                                    "SELECT DSC_ESPECIFICACAO FROM BDG.PEN_TB006_ESPECIFICACAO_FALHA WHERE ID_ESPECIFICACAO = :id"),
+                                text("SELECT DSC_ESPECIFICACAO FROM BDG.PEN_TB006_ESPECIFICACAO_FALHA WHERE ID_ESPECIFICACAO = :id"),
                                 {'id': registro.ID_ESPECIFICACAO}
                             )
                             row = result.fetchone()
@@ -364,13 +368,11 @@ def editar(id):
             # Processar OBSERVAÇÃO (se houver nova)
             observacao_texto = request.form.get('observacao_texto', '').strip()
             if observacao_texto:
-                # Criar nova observação e atualizar o ID
                 registro.ID_OBSERVACAO = criar_observacao(observacao_texto, registro.ID_DETALHAMENTO)
 
             # Processar ESPECIFICAÇÃO (se houver nova)
             especificacao_texto = request.form.get('especificacao_texto', '').strip()
             if especificacao_texto:
-                # Criar nova especificação e atualizar o ID
                 registro.ID_ESPECIFICACAO = criar_especificacao(especificacao_texto, registro.ID_DETALHAMENTO)
 
             # Atualizar campos
@@ -385,8 +387,7 @@ def editar(id):
             else:
                 registro.VR_REAL = vr_falha_decimal
 
-            registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get(
-                'id_ocorrencia') else None
+            registro.ID_OCORRENCIA = int(request.form.get('id_ocorrencia')) if request.form.get('id_ocorrencia') else None
             registro.ID_STATUS = int(request.form.get('id_status')) if request.form.get('id_status') else None
             registro.ID_CARTEIRA = int(request.form.get('id_carteira')) if request.form.get('id_carteira') else None
             registro.NU_OFICIO = int(request.form.get('nu_oficio')) if request.form.get('nu_oficio') else None
@@ -424,6 +425,12 @@ def editar(id):
             registro.NR_TICKET = int(request.form.get('nr_ticket')) if request.form.get('nr_ticket') else None
             registro.DSC_DOCUMENTO = request.form.get('dsc_documento', '').strip() or None
             registro.VR_ISS = Decimal(request.form.get('vr_iss')) if request.form.get('vr_iss') else None
+
+            # >>> NOVO CAMPO PEN_TB015: ID_CONTABILIZADO é editável na edição <
+            id_contabilizado_str = request.form.get('id_contabilizado', '').strip()
+            registro.ID_CONTABILIZADO = int(id_contabilizado_str) if id_contabilizado_str else None
+
+            # >>> NO_ARQUIVO_RETENCAO NÃO é alterado aqui (permanece o valor já gravado no banco) <
 
             # Auditoria
             registro.USUARIO_ALTERACAO = current_user.nome

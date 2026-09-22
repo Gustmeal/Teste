@@ -207,6 +207,29 @@
                             </select>
                         </div>
 
+                        <!-- =========================================================
+                             NOVOS CAMPOS DA PEN_TB015_TABELA_COMPLETA
+                             Só aparecem na EDIÇÃO. Na INCLUSÃO ficam NULL no banco.
+                        ========================================================= -->
+                        {% if edit_mode %}
+                        <!-- ID_CONTABILIZADO: editável apenas na edição (na inclusão fica NULL) -->
+                        <div class="mb-3">
+                            <label for="id_contabilizado" class="form-label">ID Contabilizado</label>
+                            <input type="number" class="form-control" id="id_contabilizado" name="id_contabilizado"
+                                   placeholder="Informe o ID contabilizado"
+                                   value="{{ registro.ID_CONTABILIZADO if registro.ID_CONTABILIZADO is not none else '' }}">
+                            <small class="text-muted">Preenchido apenas na edição.</small>
+                        </div>
+
+                        <!-- NO_ARQUIVO_RETENCAO: somente leitura (não é editável e não é enviado no POST) -->
+                        <div class="mb-3">
+                            <label for="no_arquivo_retencao" class="form-label">Nome do Arquivo de Retenção</label>
+                            <input type="text" class="form-control" id="no_arquivo_retencao" readonly
+                                   value="{{ registro.NO_ARQUIVO_RETENCAO if registro.NO_ARQUIVO_RETENCAO is not none else '' }}">
+                            <small class="text-muted">Campo não editável — gravado por outro processo. Permanece inalterado.</small>
+                        </div>
+                        {% endif %}
+
                         {% if duplicidade %}
                         <div class="alert alert-warning">
                             <i class="fas fa-exclamation-triangle me-2"></i>

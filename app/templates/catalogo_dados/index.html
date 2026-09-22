@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  /* ===== CSS moderno (campo de testes) — tudo escopado em .catx ===== */
+
+  /* @property: registra props tipadas p/ animar (borda cônica + spotlight) */
+  @property --catx-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+  @property --mx { syntax: '<percentage>'; inherits: true; initial-value: 50%; }
+  @property --my { syntax: '<percentage>'; inherits: true; initial-value: 50%; }
+
+  .catx {
+    --bg: oklch(0.17 0.03 255);
+    --bg-2: oklch(0.21 0.035 255);
+    --ink: oklch(0.96 0.01 250);
+    --muted: oklch(0.72 0.02 255);
+    --line: color-mix(in oklch, var(--ink) 12%, transparent);
+
+    position: relative;
+    margin: -0.5rem 0 0;
+    padding: clamp(1.5rem, 1rem + 3vw, 3.5rem);
+    border-radius: 26px;
+    color: var(--ink);
+    background:
+      radial-gradient(120% 80% at 100% 0%, color-mix(in oklch, oklch(0.6 0.15 210) 16%, transparent), transparent 60%),
+      radial-gradient(90% 70% at 0% 100%, color-mix(in oklch, oklch(0.6 0.16 320) 14%, transparent), transparent 55%),
+      var(--bg);
+    border: 1px solid var(--line);
+    overflow: hidden;
+    isolation: isolate;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  /* Malha sutil de fundo (instrumento/console) */
+  .catx::before {
+    content: '';
+    position: absolute; inset: 0; z-index: -1;
+    background-image:
+      linear-gradient(color-mix(in oklch, var(--ink) 5%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in oklch, var(--ink) 5%, transparent) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(120% 100% at 50% -10%, #000, transparent 75%);
+  }
+
+  .catx a.catx-back {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    color: var(--muted); text-decoration: none; font-size: 0.9rem;
+    padding: 0.4rem 0.75rem; border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in oklch, var(--bg-2) 60%, transparent);
+    transition: color 0.2s, border-color 0.2s, transform 0.2s;
+  }
+  .catx a.catx-back:hover { color: var(--ink); border-color: color-mix(in oklch, var(--ink) 30%, transparent); transform: translateX(-2px); }
+
+  /* ===== Cabeçalho ===== */
+  .catx-head { margin: 1.6rem 0 0.4rem; max-width: 68ch; }
+  .catx-title {
+    font-size: clamp(1.9rem, 1.2rem + 2.6vw, 3rem);
+    font-weight: 760; line-height: 1.02; letter-spacing: -0.03em; margin: 0;
+    background: linear-gradient(180deg, var(--ink), color-mix(in oklch, var(--ink) 62%, var(--bg)));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .catx-sub { color: var(--muted); font-size: 1.02rem; line-height: 1.6; margin: 0.7rem 0 0; max-width: 60ch; }
+
+  .catx-count {
+    display: inline-flex; align-items: baseline; gap: 0.45rem; margin-top: 1.1rem;
+    padding: 0.45rem 0.9rem; border-radius: 999px;
+    border: 1px solid var(--line);
+    background: color-mix(in oklch, var(--bg-2) 70%, transparent);
+    backdrop-filter: blur(6px);
+  }
+  .catx-count b { font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+  .catx-count span { font-size: 0.82rem; color: var(--muted); }
+
+  /* Divisor com um único brilho que atravessa ao carregar (motion pontual) */
+  .catx-rule { position: relative; height: 1px; margin: 1.8rem 0 2rem; background: var(--line); overflow: hidden; }
+  .catx-rule::after {
+    content: ''; position: absolute; inset: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, color-mix(in oklch, oklch(0.75 0.16 210) 90%, transparent), transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .catx-rule::after { animation: catx-scan 2.4s cubic-bezier(.4,0,.2,1) 0.2s both; }
+    @keyframes catx-scan { from { transform: translateX(-100%); } to { transform: translateX(320%); } }
+  }
+
+  /* ===== Grade de módulos ===== */
+  .catx-grid {
+    display: grid; gap: 1.1rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+    container-type: inline-size;
+  }
+
+  .catx-tile {
+    --accent: oklch(0.74 0.14 calc(var(--i, 0) * 53deg + 200deg));
+    position: relative; display: block; padding: 1.4rem; border-radius: 18px;
+    text-decoration: none; color: inherit; isolation: isolate;
+    background:
+      linear-gradient(180deg,
+        color-mix(in oklch, var(--bg-2) 92%, var(--accent) 8%),
+        color-mix(in oklch, var(--bg) 88%, transparent));
+    border: 1px solid var(--line);
+    backdrop-filter: blur(10px);
+    transition: transform 0.35s cubic-bezier(.2,.7,.2,1), border-color 0.35s, opacity 0.35s, filter 0.35s;
+  }
+  .catx-tile:hover { transform: translateY(-4px); border-color: color-mix(in oklch, var(--accent) 45%, transparent); }
+  .catx-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+  /* Borda cônica animada (só no hover) via @property --catx-angle */
+  .catx-tile::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+    background: conic-gradient(from var(--catx-angle),
+      transparent 0 18%, var(--accent) 42% 58%, transparent 82% 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    opacity: 0; transition: opacity 0.4s; pointer-events: none;
+  }
+  .catx-tile:hover::before { opacity: 1; }
+  @media (prefers-reduced-motion: no-preference) {
+    .catx-tile:hover::before { animation: catx-spin 4.5s linear infinite; }
+    @keyframes catx-spin { to { --catx-angle: 360deg; } }
+  }
+
+  /* Spotlight que segue o cursor (variáveis --mx/--my vindas do JS) */
+  .catx-tile::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(340px circle at var(--mx) var(--my),
+      color-mix(in oklch, var(--accent) 22%, transparent), transparent 60%);
+    opacity: 0; transition: opacity 0.4s; z-index: -1;
+  }
+  .catx-tile:hover::after { opacity: 1; }
+
+  /* :has() — quando um módulo está em foco, os outros recuam */
+  .catx-grid:has(.catx-tile:hover) .catx-tile:not(:hover) { opacity: 0.5; filter: saturate(0.65); }
+
+  .catx-ico {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: grid; place-items: center; font-size: 1.35rem; color: oklch(0.99 0 0);
+    background: linear-gradient(140deg,
+      color-mix(in oklch, var(--accent) 92%, white 0%),
+      color-mix(in oklch, var(--accent) 60%, black 22%));
+    box-shadow: 0 6px 22px color-mix(in oklch, var(--accent) 40%, transparent);
+  }
+  .catx-tile h3 { margin: 1rem 0 0.35rem; font-size: 1.12rem; font-weight: 680; letter-spacing: -0.01em; }
+  .catx-tile p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.55; }
+
+  .catx-open {
+    margin-top: 1.15rem; display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.85rem; color: color-mix(in oklch, var(--accent) 75%, var(--ink));
+    opacity: 0.75; transition: gap 0.3s, opacity 0.3s;
+  }
+  .catx-tile:hover .catx-open { opacity: 1; gap: 0.7rem; }
+  .catx-open i { transition: transform 0.3s; }
+  .catx-tile:hover .catx-open i { transform: translateX(3px); }
+
+  /* Container query: em módulos estreitos, ícone e texto empilham mais compacto */
+  @container (max-width: 240px) {
+    .catx-tile { padding: 1.1rem; }
+    .catx-ico { width: 44px; height: 44px; font-size: 1.15rem; }
+  }
+
+  .catx-empty {
+    padding: 2.5rem; border-radius: 18px; border: 1px dashed var(--line);
+    background: color-mix(in oklch, var(--bg-2) 50%, transparent); color: var(--muted);
+  }
+  .catx-empty b { color: var(--ink); font-weight: 650; }
+</style>
+
+<div class="catx">
+  <a href="{{ url_for('main.geinc_index') }}" class="catx-back">
+    <i class="fas fa-arrow-left"></i> Portal
+  </a>
+
+  <div class="catx-head">
+    <h1 class="catx-title">Catálogo de Tabelas e Dados</h1>
+    <p class="catx-sub">
+      Documentação viva dos aplicativos do portal — objetivo, motivo e uso de cada
+      tabela, com a estrutura lida direto do banco. Acesso restrito a administradores e moderadores.
+    </p>
+    {% if aplicativos %}
+    <div class="catx-count">
+      <b>{{ aplicativos|length }}</b>
+      <span>{{ 'aplicativo catalogado' if aplicativos|length == 1 else 'aplicativos catalogados' }}</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="catx-rule"></div>
+
+  {% if aplicativos %}
+  <div class="catx-grid" id="catxGrid">
+    {% for app in aplicativos %}
+    <a class="catx-tile"
+       style="--i: {{ loop.index0 }}"
+       href="{{ url_for('catalogo_dados.aplicativo', chave=app.CHAVE) }}">
+      <div class="catx-ico"><i class="{{ app.ICONE or 'fas fa-database' }}"></i></div>
+      <h3>{{ app.NO_APLICATIVO }}</h3>
+      <p>{{ app.DS_APLICATIVO or 'Sem descrição cadastrada.' }}</p>
+      <span class="catx-open">Ver tabelas <i class="fas fa-arrow-right"></i></span>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="catx-empty">
+    <b>Nenhum aplicativo catalogado ainda.</b><br>
+    Rode a semente no banco para os aplicativos aparecerem aqui.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  // Único JS: alimenta o spotlight (--mx/--my) conforme o cursor sobre cada módulo.
+  (function () {
+    var grid = document.getElementById('catxGrid');
+    if (!grid) return;
+    grid.addEventListener('pointermove', function (e) {
+      var tile = e.target.closest('.catx-tile');
+      if (!tile) return;
+      var r = tile.getBoundingClientRect();
+      tile.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+      tile.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+    });
+  })();
+</script>
+{% endblock %}

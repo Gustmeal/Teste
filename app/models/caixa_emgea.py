@@ -8,13 +8,12 @@ class CaixaEmgea(db.Model):
     Modelo para a tabela PEN_TB013_TABELA_PRINCIPAL
     Controle de caixas EMGEA relacionadas a pendências e retenções
 
-    ATUALIZADO: Migrado de PEN_TB012_CAIXA_EMGEA para PEN_TB013_TABELA_PRINCIPAL
-    Schema alterado de DEV para BDG
+    ATUALIZADO: Migrado de PEN_TB013_TABELA_PRINCIPAL para PEN_TB015_TABELA_COMPLETA
 
     IMPORTANTE: Esta tabela é compartilhada com PenDetalhamento.
     ID_DETALHAMENTO é gerenciado manualmente (não autoincrement).
     """
-    __tablename__ = 'PEN_TB013_TABELA_PRINCIPAL'
+    __tablename__ = 'PEN_TB015_TABELA_COMPLETA'
     __table_args__ = {'schema': 'BDG', 'extend_existing': True}
 
     # Campos da tabela - ID_DETALHAMENTO SEM AUTOINCREMENT
@@ -44,6 +43,10 @@ class CaixaEmgea(db.Model):
     # NOVAS COLUNAS ADICIONADAS
     NU_MEMORANDO = db.Column(db.String(20), nullable=True, index=True)
     NR_PROCESSO_SEI = db.Column(db.String(50), nullable=True, index=True)
+
+    # >>> NOVAS COLUNAS DA PEN_TB015_TABELA_COMPLETA <
+    ID_CONTABILIZADO = db.Column(db.Integer, nullable=True)          # NULL na inclusão; preenchido só na edição
+    NO_ARQUIVO_RETENCAO = db.Column(db.String(255), nullable=True)   # NULL na inclusão; não editável pela tela
 
     # Campos de auditoria e usuário
     USUARIO_CRIACAO = db.Column(db.String(100), nullable=True)
