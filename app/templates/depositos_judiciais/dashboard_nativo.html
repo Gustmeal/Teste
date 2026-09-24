@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-page fade-in">
+
+    <!-- Cabeçalho -->
+    <div class="dashboard-topo">
+        <a
+            href="{{ url_for('depositos_judiciais.index') }}"
+            class="btn-back"
+        >
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+
+        <div class="dashboard-titulo">
+            <h1>Depósitos Judiciais</h1>
+            <p>
+                Dashboard gerado diretamente com os dados do sistema
+            </p>
+        </div>
+    </div>
+
+    <!-- Filtro de carteira -->
+    <div class="card shadow-sm dashboard-filtros">
+        <div class="card-body">
+            <form method="GET">
+    <div class="row g-3">
+
+        <!-- Carteira -->
+        <div class="col-md-4">
+            <label for="carteira" class="form-label">
+                <i class="fas fa-briefcase me-2"></i>
+                Carteira
+            </label>
+
+            <select
+                id="carteira"
+                name="carteira"
+                class="form-select"
+                onchange="this.form.submit()"
+            >
+                {% if carteira_selecionada == 'Todas' %}
+                    <option value="Todas" selected>
+                        Todas as carteiras
+                    </option>
+                {% else %}
+                    <option value="Todas">
+                        Todas as carteiras
+                    </option>
+                {% endif %}
+
+                {% for carteira in carteiras %}
+                    {% if carteira == carteira_selecionada %}
+                        <option value="{{ carteira }}" selected>
+                            {{ carteira }}
+                        </option>
+                    {% else %}
+                        <option value="{{ carteira }}">
+                            {{ carteira }}
+                        </option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Ano SISCOR -->
+        <div class="col-md-4">
+            <label for="ano" class="form-label">
+                <i class="fas fa-calendar-alt me-2"></i>
+                Ano SISCOR
+            </label>
+
+            <select
+                id="ano"
+                name="ano"
+                class="form-select"
+                onchange="this.form.submit()"
+            >
+                {% if ano_selecionado == 'Todos' %}
+                    <option value="Todos" selected>
+                        Todos os anos
+                    </option>
+                {% else %}
+                    <option value="Todos">
+                        Todos os anos
+                    </option>
+                {% endif %}
+
+                {% for ano in anos %}
+                    {% if ano == ano_selecionado %}
+                        <option value="{{ ano }}" selected>
+                            {{ ano }}
+                        </option>
+                    {% else %}
+                        <option value="{{ ano }}">
+                            {{ ano }}
+                        </option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Mês SISCOR -->
+        <div class="col-md-4">
+            <label for="mes" class="form-label">
+                <i class="fas fa-calendar-day me-2"></i>
+                Mês SISCOR
+            </label>
+
+            <select
+                id="mes"
+                name="mes"
+                class="form-select"
+                onchange="this.form.submit()"
+            >
+                {% if mes_selecionado == 'Todos' %}
+                    <option value="Todos" selected>
+                        Todos os meses
+                    </option>
+                {% else %}
+                    <option value="Todos">
+                        Todos os meses
+                    </option>
+                {% endif %}
+
+                {% for mes in meses %}
+                    {% if mes.numero == mes_selecionado %}
+                        <option value="{{ mes.numero }}" selected>
+                            {{ mes.nome }}
+                        </option>
+                    {% else %}
+                        <option value="{{ mes.numero }}">
+                            {{ mes.nome }}
+                        </option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+    </div>
+</form>
+                </select>
+            </form>
+        </div>
+    </div>
+
+    <!-- Indicadores -->
+    <div class="row g-4 mt-1">
+
+        <!-- Valor total -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card dashboard-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone azul">
+                        <i class="fas fa-dollar-sign"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Valor total
+                        </span>
+
+                        <h3>{{ valor_total }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quantidade -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card dashboard-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone roxo">
+                        <i class="fas fa-list-ol"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Registros
+                        </span>
+
+                        <h3>{{ quantidade_total }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Não identificados -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card dashboard-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone vermelho">
+                        <i class="fas fa-question-circle"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Não identificados
+                        </span>
+
+                        <h3>{{ valor_nao_identificado }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Não apropriados -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card dashboard-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone amarelo">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Não apropriados
+                        </span>
+
+                        <h3>{{ valor_nao_apropriado }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Gráficos -->
+    <div class="row g-4 mt-1">
+
+        <!-- Gráfico de valor por carteira -->
+        <div class="col-lg-8">
+            <div class="card dashboard-grafico shadow-sm">
+                <div class="card-header">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Valor por carteira
+                </div>
+
+                <div class="card-body">
+                    {{ grafico_carteiras | safe }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico de identificação -->
+        <div class="col-lg-4">
+            <div class="card dashboard-grafico shadow-sm">
+                <div class="card-header">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Situação da identificação
+                </div>
+
+                <div class="card-body">
+                    {{ grafico_identificacao | safe }}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+<!-- Evolução mensal -->
+<div class="row g-4 mt-1">
+    <div class="col-12">
+        <div class="card dashboard-grafico shadow-sm">
+            <div class="card-header">
+                <i class="fas fa-chart-line me-2"></i>
+                Evolução mensal do valor de rateio
+            </div>
+
+            <div class="card-body">
+                {{ grafico_mensal | safe }}
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    .dashboard-page {
+        width: 100%;
+        padding: 20px;
+    }
+
+    .dashboard-topo {
+        margin-bottom: 24px;
+    }
+
+    .dashboard-titulo {
+        margin-top: 20px;
+    }
+
+    .dashboard-titulo h1 {
+        margin-bottom: 4px;
+        color: var(--primary-color);
+        font-weight: 700;
+    }
+
+    .dashboard-titulo p {
+        margin: 0;
+        color: #6c757d;
+    }
+
+    .dashboard-filtros {
+        width: 100%;
+        margin-bottom: 20px;
+        border: none;
+        border-radius: 12px;
+    }
+
+    .dashboard-indicador {
+        height: 100%;
+        border: none;
+        border-radius: 12px;
+    }
+
+    .dashboard-indicador .card-body {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .dashboard-indicador h3 {
+    margin: 3px 0 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: inherit;
+    overflow-wrap: anywhere;
+    }
+
+    .indicador-label {
+    color: inherit;
+    opacity: 0.75;
+    font-size: 0.9rem;
+    }
+
+    .indicador-icone {
+        width: 48px;
+        height: 48px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        font-size: 1.3rem;
+    }
+
+    .indicador-icone.azul {
+        color: #0d6efd;
+        background: rgba(13, 110, 253, 0.12);
+    }
+
+    .indicador-icone.roxo {
+        color: #6f42c1;
+        background: rgba(111, 66, 193, 0.12);
+    }
+
+    .indicador-icone.vermelho {
+        color: #dc3545;
+        background: rgba(220, 53, 69, 0.12);
+    }
+
+    .indicador-icone.amarelo {
+        color: #d39e00;
+        background: rgba(255, 193, 7, 0.16);
+    }
+
+    .dashboard-grafico {
+        height: 100%;
+        border: none;
+        border-radius: 12px;
+    }
+
+    .dashboard-grafico .card-header {
+        padding: 16px 20px;
+        background: #ffffff;
+        color: var(--primary-color);
+        font-weight: 600;
+        border-bottom: 1px solid #eeeeee;
+    }
+
+    .dashboard-grafico .card-body {
+        min-height: 400px;
+        padding: 10px;
+        overflow: hidden;
+    }
+
+    .dashboard-grafico .plotly-graph-div {
+        width: 100% !important;
+    }
+
+    @media (max-width: 768px) {
+        .dashboard-page {
+            padding: 12px;
+        }
+
+        .dashboard-grafico .card-body {
+            min-height: 330px;
+        }
+    }
+</style>
+<script>
+    function atualizarTemaDosGraficos() {
+        if (typeof Plotly === 'undefined') {
+            return;
+        }
+
+        const dashboard = document.querySelector('.dashboard-page');
+        const corTexto = getComputedStyle(dashboard).color;
+
+        document.querySelectorAll('.plotly-graph-div').forEach(function (grafico) {
+            Plotly.relayout(grafico, {
+                'font.color': corTexto,
+
+                'xaxis.color': corTexto,
+                'xaxis.tickfont.color': corTexto,
+                'xaxis.title.font.color': corTexto,
+                'xaxis.gridcolor': 'rgba(128, 128, 128, 0.25)',
+
+                'yaxis.color': corTexto,
+                'yaxis.tickfont.color': corTexto,
+                'yaxis.title.font.color': corTexto,
+                'yaxis.gridcolor': 'rgba(128, 128, 128, 0.25)',
+
+                'legend.font.color': corTexto,
+
+                'paper_bgcolor': 'rgba(0, 0, 0, 0)',
+                'plot_bgcolor': 'rgba(0, 0, 0, 0)'
+            });
+        });
+    }
+
+    window.addEventListener('load', function () {
+        setTimeout(atualizarTemaDosGraficos, 200);
+    });
+
+    const observadorTema = new MutationObserver(function () {
+        setTimeout(atualizarTemaDosGraficos, 100);
+    });
+
+    observadorTema.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme']
+    });
+
+    observadorTema.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme']
+    });
+</script>
+{% endblock %}

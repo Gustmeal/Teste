@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="siscor-page fade-in">
+
+    <!-- Cabeçalho -->
+    <div class="siscor-topo">
+        <a
+            href="{{ url_for('depositos_judiciais.index') }}"
+            class="btn-back"
+        >
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+
+        <div class="siscor-titulo">
+            <h1>Conferência SISCOR</h1>
+
+            <p>
+                Comparação entre os valores do SISCOR e a base de
+                Depósitos Judiciais
+            </p>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card shadow-sm siscor-filtros">
+        <div class="card-body">
+            <form method="GET">
+                <div class="row g-3">
+
+                    <!-- Unidade -->
+                    <div class="col-md-4">
+                        <label for="unidade" class="form-label">
+                            <i class="fas fa-building me-2"></i>
+                            Unidade
+                        </label>
+
+                        <select
+                            id="unidade"
+                            name="unidade"
+                            class="form-select"
+                            onchange="this.form.submit()"
+                        >
+                            {% if unidade_selecionada == 'Todas' %}
+                                <option value="Todas" selected>
+                                    Todas as unidades
+                                </option>
+                            {% else %}
+                                <option value="Todas">
+                                    Todas as unidades
+                                </option>
+                            {% endif %}
+
+                            {% for unidade in unidades %}
+                                {% if unidade == unidade_selecionada %}
+                                    <option value="{{ unidade }}" selected>
+                                        {{ unidade }}
+                                    </option>
+                                {% else %}
+                                    <option value="{{ unidade }}">
+                                        {{ unidade }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Ano -->
+                    <div class="col-md-4">
+                        <label for="ano" class="form-label">
+                            <i class="fas fa-calendar-alt me-2"></i>
+                            Ano
+                        </label>
+
+                        <select
+                            id="ano"
+                            name="ano"
+                            class="form-select"
+                            onchange="this.form.submit()"
+                        >
+                            {% if ano_selecionado == 'Todos' %}
+                                <option value="Todos" selected>
+                                    Todos os anos
+                                </option>
+                            {% else %}
+                                <option value="Todos">
+                                    Todos os anos
+                                </option>
+                            {% endif %}
+
+                            {% for ano in anos %}
+                                {% if ano == ano_selecionado %}
+                                    <option value="{{ ano }}" selected>
+                                        {{ ano }}
+                                    </option>
+                                {% else %}
+                                    <option value="{{ ano }}">
+                                        {{ ano }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Mês -->
+                    <div class="col-md-4">
+                        <label for="mes" class="form-label">
+                            <i class="fas fa-calendar-day me-2"></i>
+                            Mês
+                        </label>
+
+                        <select
+                            id="mes"
+                            name="mes"
+                            class="form-select"
+                            onchange="this.form.submit()"
+                        >
+                            {% if mes_selecionado == 'Todos' %}
+                                <option value="Todos" selected>
+                                    Todos os meses
+                                </option>
+                            {% else %}
+                                <option value="Todos">
+                                    Todos os meses
+                                </option>
+                            {% endif %}
+
+                            {% for mes in meses %}
+                                {% if mes.numero == mes_selecionado %}
+                                    <option value="{{ mes.numero }}" selected>
+                                        {{ mes.nome }}
+                                    </option>
+                                {% else %}
+                                    <option value="{{ mes.numero }}">
+                                        {{ mes.nome }}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Indicadores -->
+    <div class="row g-4 mt-1">
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card siscor-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone azul">
+                        <i class="fas fa-database"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Total SISCOR
+                        </span>
+
+                        <h3>{{ total_siscor }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card siscor-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone roxo">
+                        <i class="fas fa-landmark"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Total Base DJ
+                        </span>
+
+                        <h3>{{ total_base_dj }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card siscor-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone vermelho">
+                        <i class="fas fa-not-equal"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Diferença
+                        </span>
+
+                        <h3>{{ diferenca_total }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <div class="card siscor-indicador shadow-sm">
+                <div class="card-body">
+                    <div class="indicador-icone amarelo">
+                        <i class="fas fa-list-ol"></i>
+                    </div>
+
+                    <div>
+                        <span class="indicador-label">
+                            Registros
+                        </span>
+
+                        <h3>{{ quantidade_registros }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+
+    <!-- Tabela -->
+    <div class="card siscor-tabela shadow-sm mt-4">
+        <div class="card-header">
+            <i class="fas fa-table me-2"></i>
+            Detalhamento da Conferência
+        </div>
+
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Unidade</th>
+                            <th>Competência</th>
+                            <th class="text-end">Valor SISCOR</th>
+                            <th class="text-end">Valor Base DJ</th>
+                            <th class="text-end">Diferença</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for registro in registros %}
+                            <tr>
+                                <td>{{ registro.unidade }}</td>
+                                <td>{{ registro.competencia }}</td>
+
+                                <td class="text-end">
+                                    {{ registro.valor_siscor }}
+                                </td>
+
+                                <td class="text-end">
+                                    {{ registro.valor_base_dj }}
+                                </td>
+
+                                <td class="text-end">
+                                    {{ registro.diferenca }}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">
+                                    Nenhum registro encontrado para os filtros.
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .siscor-page {
+        width: 100%;
+        padding: 20px;
+    }
+
+    .siscor-topo {
+        margin-bottom: 24px;
+    }
+
+    .siscor-titulo {
+        margin-top: 20px;
+    }
+
+    .siscor-titulo h1 {
+        margin-bottom: 4px;
+        color: var(--primary-color);
+        font-weight: 700;
+    }
+
+    .siscor-titulo p {
+        margin: 0;
+        color: inherit;
+        opacity: 0.75;
+    }
+
+    .siscor-filtros,
+    .siscor-indicador,
+    .siscor-grafico,
+    .siscor-tabela {
+        border: none;
+        border-radius: 12px;
+    }
+
+    .siscor-indicador {
+        height: 100%;
+    }
+
+    .siscor-indicador .card-body {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+    }
+
+    .siscor-indicador h3 {
+        margin: 3px 0 0;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: inherit;
+        overflow-wrap: anywhere;
+    }
+
+    .indicador-label {
+        color: inherit;
+        opacity: 0.75;
+        font-size: 0.9rem;
+    }
+
+    .indicador-icone {
+        width: 48px;
+        height: 48px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        font-size: 1.3rem;
+    }
+
+    .indicador-icone.azul {
+        color: #0d6efd;
+        background: rgba(13, 110, 253, 0.12);
+    }
+
+    .indicador-icone.roxo {
+        color: #6f42c1;
+        background: rgba(111, 66, 193, 0.12);
+    }
+
+    .indicador-icone.vermelho {
+        color: #dc3545;
+        background: rgba(220, 53, 69, 0.12);
+    }
+
+    .indicador-icone.amarelo {
+        color: #d39e00;
+        background: rgba(255, 193, 7, 0.16);
+    }
+
+    .siscor-grafico {
+        height: 100%;
+    }
+
+    .siscor-grafico .card-header,
+    .siscor-tabela .card-header {
+        padding: 16px 20px;
+        background: transparent;
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+
+    .siscor-grafico .card-body {
+        min-height: 400px;
+        padding: 10px;
+        overflow: hidden;
+    }
+
+    .siscor-grafico .plotly-graph-div {
+        width: 100% !important;
+    }
+</style>
+
+<script>
+    function atualizarTemaSiscor() {
+        if (typeof Plotly === 'undefined') {
+            return;
+        }
+
+        const pagina = document.querySelector('.siscor-page');
+        const corTexto = getComputedStyle(pagina).color;
+
+        document.querySelectorAll('.plotly-graph-div').forEach(
+            function (grafico) {
+                Plotly.relayout(grafico, {
+                    'font.color': corTexto,
+                    'xaxis.color': corTexto,
+                    'yaxis.color': corTexto,
+                    'legend.font.color': corTexto,
+                    'xaxis.gridcolor': 'rgba(128,128,128,0.25)',
+                    'yaxis.gridcolor': 'rgba(128,128,128,0.25)',
+                    'paper_bgcolor': 'rgba(0,0,0,0)',
+                    'plot_bgcolor': 'rgba(0,0,0,0)'
+                });
+            }
+        );
+    }
+
+    window.addEventListener('load', function () {
+        setTimeout(atualizarTemaSiscor, 200);
+    });
+
+    const observadorTemaSiscor = new MutationObserver(function () {
+        setTimeout(atualizarTemaSiscor, 100);
+    });
+
+    observadorTemaSiscor.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme']
+    });
+
+    observadorTemaSiscor.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'data-theme']
+    });
+</script>
+{% endblock %}

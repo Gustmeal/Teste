@@ -11,6 +11,9 @@
         <p class="text-muted">Sistema de gestão e controle de depósitos judiciais da SUFIN</p>
     </div>
 
+
+
+
     <!-- Cards de ações - Primeira linha -->
     <div class="row g-4 mt-4">
         <div class="col-md-4">
@@ -66,23 +69,140 @@
     </div>
 
     <!-- Cards de ações - Segunda linha -->
-    <div class="row g-4 mt-4">
+<div class="row g-4 mt-4">
+
+    <!-- Registros Excluídos -->
+    <div class="col-md-6">
         <div class="card shadow h-100">
-                <div class="card-body text-center p-5">
-                    <div class="mb-4">
-                        <i class="fas fa-exclamation-triangle fa-4x text-danger"></i>
-                    </div>
-                    <h3 class="card-title">Registros Excluídos</h3>
-                    <p class="text-muted mb-4">
-                        Visualizar depósitos institucionais que foram excluídos do sistema
-                    </p>
-                    <a href="{{ url_for('depositos_judiciais.excluidos') }}" class="btn btn-danger">
-                        <i class="fas fa-search me-2"></i> Visualizar Excluídos
-                    </a>
+            <div class="card-body text-center p-5">
+                <div class="mb-4">
+                    <i class="fas fa-exclamation-triangle fa-4x text-danger"></i>
+                </div>
+
+                <h3 class="card-title">Registros Excluídos</h3>
+
+                <p class="text-muted mb-4">
+                    Visualizar depósitos institucionais que foram excluídos do sistema
+                </p>
+
+                <a
+                    href="{{ url_for('depositos_judiciais.excluidos') }}"
+                    class="btn btn-danger"
+                >
+                    <i class="fas fa-search me-2"></i>
+                    Visualizar Excluídos
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Relatórios -->
+<div class="col-md-6">
+    <div class="card shadow h-100">
+        <div class="card-body text-center p-5">
+            <div class="mb-4">
+                <i class="fas fa-chart-bar fa-4x text-success"></i>
+            </div>
+
+            <h3 class="card-title">Relatórios</h3>
+
+            <p class="text-muted mb-4">
+                Acompanhar os relatórios gerenciais da SUFIN
+            </p>
+
+            <div class="dropdown">
+                <button
+                    class="btn btn-primary dropdown-toggle"
+                    type="button"
+                    id="dropdownRelatorios"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                >
+                    <i class="fas fa-chart-line me-2"></i>
+                    Acessar Relatórios
+                </button>
+
+                <ul
+                    class="dropdown-menu shadow"
+                    aria-labelledby="dropdownRelatorios"
+                >
+                    <li>
+                        <a
+                            class="dropdown-item"
+                            href="{{ url_for('depositos_judiciais.dashboard', aba='depositos') }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <i class="fas fa-landmark me-2 text-primary"></i>
+                            Depósitos Judiciais
+                        </a>
+                    </li>
+
+                    <li>
+                        <a
+                            class="dropdown-item"
+                            href="{{ url_for('depositos_judiciais.dashboard', aba='siscor') }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <i class="fas fa-balance-scale me-2 text-warning"></i>
+                            Conferência SISCOR
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+                    </button>
+
+                    <ul
+                        class="dropdown-menu shadow"
+                        aria-labelledby="dropdownDashboards"
+                    >
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="{{ url_for('depositos_judiciais.dashboard', aba='depositos') }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <i class="fas fa-landmark me-2 text-primary"></i>
+                                Depósitos Judiciais
+                            </a>
+                        </li>
+
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="{{ url_for('depositos_judiciais.dashboard', aba='seguros') }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <i class="fas fa-shield-alt me-2 text-success"></i>
+                                Seguro Habitacional
+                            </a>
+                        </li>
+
+                        <li>
+                            <a
+                                class="dropdown-item"
+                                href="{{ url_for('depositos_judiciais.dashboard', aba='siscor') }}"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <i class="fas fa-balance-scale me-2 text-warning"></i>
+                                Conferência SISCOR
+                            </a>
+                        </li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
+
+</div>
 
 
     <!-- Estatísticas -->

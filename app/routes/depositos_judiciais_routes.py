@@ -1,3 +1,4 @@
+import pandas as pd
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
@@ -32,7 +33,854 @@ def index():
     """Página principal do sistema de Depósitos Judiciais"""
     return render_template('depositos_judiciais/index.html')
 
+@depositos_judiciais_bp.route('/dashboard/<string:aba>')
+@login_required
+def dashboard(aba):
+    """Dashboard nativo, sem dependência do Power BI."""
 
+    import pandas as pd
+    import plotly.express as px
+
+    if aba == 'siscor':
+        try:
+            consulta_siscor = text("""
+                                   SELECT COR.UNIDADE,
+                                          COR.DT_EXECUCAO_ORCAMENTO                AS DT_SISCOR,
+                                          COR.VR_SISCOR,
+                                          ISNULL(DJ.VR_BASE_DJ, 0)                 AS VR_BASE_DJ,
+                                          COR.VR_SISCOR - ISNULL(DJ.VR_BASE_DJ, 0) AS DIFERENCA
+                                   FROM (SELECT CASE
+                                                    WHEN ID_ITEM = 1464
+                                                        THEN 'Indenização-Seguro'
+                                                    WHEN UNIDADE = 'SUCRE'
+                                                        THEN 'Sucre-DJ'
+                                                    WHEN UNIDADE = 'SUPEJ'
+                                                        THEN 'Supej'
+                                                    WHEN UNIDADE = 'SUPEC'
+                                                        THEN 'Supec'
+                                                    WHEN UNIDADE = 'SUMOV'
+                                                        THEN 'Sumov'
+                                                    ELSE UNIDADE
+                                                    END                    AS UNIDADE,
+
+                                                DT_EXECUCAO_ORCAMENTO,
+
+                                                SUM(VR_EXECUCAO_ORCAMENTO) AS VR_SISCOR
+
+                                         FROM [BDG].[COR_TB001_EXECUCAO_ORCAMENTARIA_SISCOR]
+
+                                         WHERE
+                                             ID_ITEM IN (
+                                             1432
+                                             , 1473
+                                             , 1471
+                                             , 1470
+                                             , 1472
+                                             , 1464
+                                             )
+                                           AND ID_NATUREZA = 3
+                                           AND VR_EXECUCAO_ORCAMENTO <> 0
+                                           AND UNIDADE NOT IN ('INSTIT')
+
+                                         GROUP BY
+                                             CASE
+                                             WHEN ID_ITEM = 1464
+                                             THEN 'Indenização-Seguro'
+                                             WHEN UNIDADE = 'SUCRE'
+                                             THEN 'Sucre-DJ'
+                                             WHEN UNIDADE = 'SUPEJ'
+                                             THEN 'Supej'
+                                             WHEN UNIDADE = 'SUPEC'
+                                             THEN 'Supec'
+                                             WHEN UNIDADE = 'SUMOV'
+                                             THEN 'Sumov'
+                                             ELSE UNIDADE
+                                             END,
+                                             DT_EXECUCAO_ORCAMENTO) AS COR
+
+                                            LEFT JOIN
+                                        (SELECT CASE
+                                                    WHEN ID_CENTRO = 2
+                                                        THEN 'Supec'
+                                                    WHEN ID_CENTRO = 3
+                                                        THEN 'Sucre-DJ'
+                                                    WHEN ID_CENTRO IN (1, 4)
+                                                        THEN 'Supej'
+                                                    WHEN ID_CENTRO = 5
+                                                        THEN 'Sumov'
+                                                    WHEN ID_CENTRO = 7
+                                                        THEN 'Indenização-Seguro'
+                                                    ELSE NULL
+                                                    END                                        AS UNIDADE,
+
+                                                CONCAT(
+                                                    YEAR(DT_SISCOR), RIGHT(
+                                '0' + CAST(MONTH(DT_SISCOR) AS VARCHAR(2)),
+                                2
+                            )
+                        ) AS DT_IDENT_SISCOR,
+
+                                                SUM(VR_RATEIO)                                 AS VR_BASE_DJ
+
+                                         FROM [BDG].[DPJ_TB004_DEPOSITOS_SUFIN]
+
+                                         WHERE
+                                             DT_SISCOR IS NOT NULL
+                                           AND ID_CENTRO IN (1
+                                             , 2
+                                             , 3
+                                             , 4
+                                             , 5
+                                             , 7)
+
+                                         GROUP BY
+                                             CASE
+                                             WHEN ID_CENTRO = 2
+                                             THEN 'Supec'
+                                             WHEN ID_CENTRO = 3
+                                             THEN 'Sucre-DJ'
+                                             WHEN ID_CENTRO IN (1, 4)
+                                             THEN 'Supej'
+                                             WHEN ID_CENTRO = 5
+                                             THEN 'Sumov'
+                                             WHEN ID_CENTRO = 7
+                                             THEN 'Indenização-Seguro'
+                                             ELSE NULL
+                                             END,
+                                             CONCAT(
+                                             YEAR (DT_SISCOR),
+                                             RIGHT (
+                                             '0' + CAST (MONTH (DT_SISCOR) AS VARCHAR (2)),
+                                             2
+                                             )
+                                             )) AS DJ
+                                        ON COR.DT_EXECUCAO_ORCAMENTO = DJ.DT_IDENT_SISCOR
+                                            AND COR.UNIDADE = DJ.UNIDADE
+
+                                   ORDER BY COR.UNIDADE,
+                                            COR.DT_EXECUCAO_ORCAMENTO
+                                   """)
+
+            dados_siscor = pd.read_sql_query(
+                consulta_siscor,
+                db.session.connection()
+            )
+
+            colunas_valores = [
+                'VR_SISCOR',
+                'VR_BASE_DJ',
+                'DIFERENCA'
+            ]
+
+            for coluna in colunas_valores:
+                dados_siscor[coluna] = pd.to_numeric(
+                    dados_siscor[coluna],
+                    errors='coerce'
+                ).fillna(0)
+
+            # Limpeza das unidades
+            dados_siscor['UNIDADE'] = (
+                dados_siscor['UNIDADE']
+                .fillna('Sem unidade')
+                .astype(str)
+                .str.strip()
+            )
+
+            # Converte a competência para uma data
+            competencia_texto = (
+                dados_siscor['DT_SISCOR']
+                .astype(str)
+                .str.replace(r'\D', '', regex=True)
+                .str[:6]
+            )
+
+            dados_siscor['DT_REFERENCIA'] = pd.to_datetime(
+                competencia_texto,
+                format='%Y%m',
+                errors='coerce'
+            )
+
+            dados_siscor['ANO'] = (
+                dados_siscor['DT_REFERENCIA'].dt.year
+            )
+
+            dados_siscor['MES'] = (
+                dados_siscor['DT_REFERENCIA'].dt.month
+            )
+
+            nomes_meses_siscor = {
+                1: 'Janeiro',
+                2: 'Fevereiro',
+                3: 'Março',
+                4: 'Abril',
+                5: 'Maio',
+                6: 'Junho',
+                7: 'Julho',
+                8: 'Agosto',
+                9: 'Setembro',
+                10: 'Outubro',
+                11: 'Novembro',
+                12: 'Dezembro'
+            }
+
+            # Opções dos filtros
+            unidades = sorted(
+                dados_siscor['UNIDADE'].unique().tolist()
+            )
+
+            anos = sorted(
+                [
+                    str(int(ano))
+                    for ano in dados_siscor['ANO']
+                .dropna()
+                .unique()
+                ],
+                reverse=True
+            )
+
+            meses_encontrados = sorted(
+                dados_siscor['MES']
+                .dropna()
+                .astype(int)
+                .unique()
+                .tolist()
+            )
+
+            meses = [
+                {
+                    'numero': str(numero),
+                    'nome': nomes_meses_siscor[numero]
+                }
+                for numero in meses_encontrados
+            ]
+
+            # Filtros recebidos pela URL
+            unidade_selecionada = request.args.get(
+                'unidade',
+                'Todas'
+            )
+
+            ano_selecionado = request.args.get(
+                'ano',
+                'Todos'
+            )
+
+            mes_selecionado = request.args.get(
+                'mes',
+                'Todos'
+            )
+
+            dados_filtrados = dados_siscor.copy()
+
+            # Filtro de unidade
+            if (
+                    unidade_selecionada != 'Todas'
+                    and unidade_selecionada in unidades
+            ):
+                dados_filtrados = dados_filtrados[
+                    dados_filtrados['UNIDADE']
+                    == unidade_selecionada
+                    ]
+            else:
+                unidade_selecionada = 'Todas'
+
+            # Filtro de ano
+            if ano_selecionado in anos:
+                dados_filtrados = dados_filtrados[
+                    dados_filtrados['ANO']
+                    == int(ano_selecionado)
+                    ]
+            else:
+                ano_selecionado = 'Todos'
+
+            # Filtro de mês
+            numeros_meses = [
+                mes['numero']
+                for mes in meses
+            ]
+
+            if mes_selecionado in numeros_meses:
+                dados_filtrados = dados_filtrados[
+                    dados_filtrados['MES']
+                    == int(mes_selecionado)
+                    ]
+            else:
+                mes_selecionado = 'Todos'
+
+            # Indicadores
+            total_siscor_valor = float(
+                dados_filtrados['VR_SISCOR'].sum()
+            )
+
+            total_base_dj_valor = float(
+                dados_filtrados['VR_BASE_DJ'].sum()
+            )
+
+            diferenca_total_valor = float(
+                dados_filtrados['DIFERENCA'].sum()
+            )
+
+            quantidade_registros = int(
+                len(dados_filtrados)
+            )
+
+            # Comparativo por unidade
+            resumo_unidades = (
+                dados_filtrados
+                .groupby('UNIDADE', as_index=False)
+                .agg(
+                    VR_SISCOR=('VR_SISCOR', 'sum'),
+                    VR_BASE_DJ=('VR_BASE_DJ', 'sum')
+                )
+            )
+
+            grafico_unidades_dados = resumo_unidades.melt(
+                id_vars='UNIDADE',
+                value_vars=[
+                    'VR_SISCOR',
+                    'VR_BASE_DJ'
+                ],
+                var_name='ORIGEM',
+                value_name='VALOR'
+            )
+
+            grafico_unidades_dados['ORIGEM'] = (
+                grafico_unidades_dados['ORIGEM']
+                .replace({
+                    'VR_SISCOR': 'SISCOR',
+                    'VR_BASE_DJ': 'Base DJ'
+                })
+            )
+
+            grafico_unidades = px.bar(
+                grafico_unidades_dados,
+                x='UNIDADE',
+                y='VALOR',
+                color='ORIGEM',
+                barmode='group',
+                labels={
+                    'UNIDADE': 'Unidade',
+                    'VALOR': 'Valor',
+                    'ORIGEM': 'Origem'
+                },
+                color_discrete_map={
+                    'SISCOR': '#0d6efd',
+                    'Base DJ': '#6f42c1'
+                }
+            )
+
+            grafico_unidades.update_layout(
+                margin=dict(l=20, r=20, t=20, b=20),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                legend_title_text=''
+            )
+
+            # Evolução mensal
+            resumo_mensal = (
+                dados_filtrados
+                .dropna(subset=['DT_REFERENCIA'])
+                .groupby('DT_REFERENCIA', as_index=False)
+                .agg(
+                    VR_SISCOR=('VR_SISCOR', 'sum'),
+                    VR_BASE_DJ=('VR_BASE_DJ', 'sum')
+                )
+                .sort_values('DT_REFERENCIA')
+            )
+
+            grafico_mensal_dados = resumo_mensal.melt(
+                id_vars='DT_REFERENCIA',
+                value_vars=[
+                    'VR_SISCOR',
+                    'VR_BASE_DJ'
+                ],
+                var_name='ORIGEM',
+                value_name='VALOR'
+            )
+
+            grafico_mensal_dados['ORIGEM'] = (
+                grafico_mensal_dados['ORIGEM']
+                .replace({
+                    'VR_SISCOR': 'SISCOR',
+                    'VR_BASE_DJ': 'Base DJ'
+                })
+            )
+
+            grafico_mensal = px.line(
+                grafico_mensal_dados,
+                x='DT_REFERENCIA',
+                y='VALOR',
+                color='ORIGEM',
+                markers=True,
+                labels={
+                    'DT_REFERENCIA': 'Competência',
+                    'VALOR': 'Valor',
+                    'ORIGEM': 'Origem'
+                },
+                color_discrete_map={
+                    'SISCOR': '#0d6efd',
+                    'Base DJ': '#6f42c1'
+                }
+            )
+
+            grafico_mensal.update_layout(
+                margin=dict(l=20, r=20, t=20, b=20),
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                legend_title_text='',
+                xaxis={
+                    'tickformat': '%m/%Y'
+                }
+            )
+
+            # Formatação monetária brasileira
+            def formatar_moeda_siscor(valor):
+                valor_formatado = f'{valor:,.2f}'
+
+                valor_formatado = (
+                    valor_formatado
+                    .replace(',', 'X')
+                    .replace('.', ',')
+                    .replace('X', '.')
+                )
+
+                return f'R$ {valor_formatado}'
+
+            # Registros da tabela
+            registros = []
+
+            dados_tabela = dados_filtrados.sort_values(
+                ['DT_REFERENCIA', 'UNIDADE'],
+                ascending=[False, True]
+            )
+
+            for linha in dados_tabela.itertuples(index=False):
+                if pd.notna(linha.DT_REFERENCIA):
+                    competencia = (
+                        linha.DT_REFERENCIA.strftime('%m/%Y')
+                    )
+                else:
+                    competencia = 'Não informada'
+
+                registros.append({
+                    'unidade': linha.UNIDADE,
+                    'competencia': competencia,
+                    'valor_siscor': formatar_moeda_siscor(
+                        float(linha.VR_SISCOR)
+                    ),
+                    'valor_base_dj': formatar_moeda_siscor(
+                        float(linha.VR_BASE_DJ)
+                    ),
+                    'diferenca': formatar_moeda_siscor(
+                        float(linha.DIFERENCA)
+                    )
+                })
+
+            return render_template(
+                'depositos_judiciais/dashboard_siscor.html',
+
+                unidades=unidades,
+                unidade_selecionada=unidade_selecionada,
+
+                anos=anos,
+                ano_selecionado=ano_selecionado,
+
+                meses=meses,
+                mes_selecionado=mes_selecionado,
+
+                total_siscor=formatar_moeda_siscor(
+                    total_siscor_valor
+                ),
+
+                total_base_dj=formatar_moeda_siscor(
+                    total_base_dj_valor
+                ),
+
+                diferenca_total=formatar_moeda_siscor(
+                    diferenca_total_valor
+                ),
+
+                quantidade_registros=(
+                    f'{quantidade_registros:,}'
+                    .replace(',', '.')
+                ),
+
+                grafico_unidades=grafico_unidades.to_html(
+                    full_html=False,
+                    include_plotlyjs=True
+                ),
+
+                grafico_mensal=grafico_mensal.to_html(
+                    full_html=False,
+                    include_plotlyjs=False
+                ),
+
+                registros=registros
+            )
+
+        except Exception as e:
+            return jsonify({
+                'sucesso': False,
+                'erro': str(e)
+            }), 500
+
+    if aba != 'depositos':
+        return redirect(url_for('depositos_judiciais.index'))
+
+    try:
+        consulta = (
+            db.session.query(
+                DepositosSufin.NU_LINHA.label('NU_LINHA'),
+                DepositosSufin.VR_RATEIO.label('VR_RATEIO'),
+                CentroResultado.NO_CARTEIRA.label('NO_CARTEIRA'),
+                DepositosSufin.IC_APROPRIADO.label('IC_APROPRIADO'),
+                DepositosSufin.DT_IDENTIFICACAO.label('DT_IDENTIFICACAO'),
+                DepositosSufin.DT_SISCOR.label('DT_SISCOR')
+            )
+            .join(
+                CentroResultado,
+                DepositosSufin.ID_CENTRO == CentroResultado.ID_CENTRO
+            )
+            .statement
+        )
+
+        dados = pd.read_sql_query(
+            consulta,
+            db.session.connection()
+        )
+
+        # Tratamento dos valores
+        dados['VR_RATEIO'] = pd.to_numeric(
+            dados['VR_RATEIO'],
+            errors='coerce'
+        ).fillna(0)
+
+        # Remove registros sem carteira
+        dados = dados[dados['NO_CARTEIRA'].notna()].copy()
+
+        # Remove espaços e quebras de linha
+        dados['NO_CARTEIRA'] = (
+            dados['NO_CARTEIRA']
+            .astype(str)
+            .str.strip()
+        )
+
+        # Opções disponíveis no filtro
+        carteiras = sorted(
+            dados['NO_CARTEIRA'].unique().tolist()
+        )
+
+        carteira_selecionada = request.args.get(
+            'carteira',
+            'Todas'
+        )
+
+        # Aplicação do filtro
+        if (
+            carteira_selecionada != 'Todas'
+            and carteira_selecionada in carteiras
+        ):
+            dados_filtrados = dados[
+                dados['NO_CARTEIRA'] == carteira_selecionada
+            ].copy()
+        else:
+            carteira_selecionada = 'Todas'
+            dados_filtrados = dados.copy()
+
+        # Indicadores
+        # Converte a data do SISCOR
+        dados['DT_SISCOR'] = pd.to_datetime(
+            dados['DT_SISCOR'],
+            errors='coerce'
+        )
+
+        dados['ANO_SISCOR'] = dados['DT_SISCOR'].dt.year
+        dados['MES_SISCOR'] = dados['DT_SISCOR'].dt.month
+
+        # Opções do filtro de carteira
+        carteiras = sorted(
+            dados['NO_CARTEIRA'].unique().tolist()
+        )
+
+        # Opções do filtro de ano
+        anos = sorted(
+            [
+                str(int(ano))
+                for ano in dados['ANO_SISCOR'].dropna().unique()
+            ],
+            reverse=True
+        )
+
+        nomes_meses = {
+            1: 'Janeiro',
+            2: 'Fevereiro',
+            3: 'Março',
+            4: 'Abril',
+            5: 'Maio',
+            6: 'Junho',
+            7: 'Julho',
+            8: 'Agosto',
+            9: 'Setembro',
+            10: 'Outubro',
+            11: 'Novembro',
+            12: 'Dezembro'
+        }
+
+        meses_encontrados = sorted(
+            dados['MES_SISCOR']
+            .dropna()
+            .astype(int)
+            .unique()
+            .tolist()
+        )
+
+        meses = [
+            {
+                'numero': str(numero),
+                'nome': nomes_meses[numero]
+            }
+            for numero in meses_encontrados
+        ]
+
+        # Valores recebidos pela URL
+        carteira_selecionada = request.args.get(
+            'carteira',
+            'Todas'
+        )
+
+        ano_selecionado = request.args.get(
+            'ano',
+            'Todos'
+        )
+
+        mes_selecionado = request.args.get(
+            'mes',
+            'Todos'
+        )
+
+        # Começa com todos os dados
+        dados_filtrados = dados.copy()
+
+        # Filtro de carteira
+        if (
+                carteira_selecionada != 'Todas'
+                and carteira_selecionada in carteiras
+        ):
+            dados_filtrados = dados_filtrados[
+                dados_filtrados['NO_CARTEIRA']
+                == carteira_selecionada
+                ]
+        else:
+            carteira_selecionada = 'Todas'
+
+        # Filtro de ano SISCOR
+        if ano_selecionado in anos:
+            dados_filtrados = dados_filtrados[
+                dados_filtrados['ANO_SISCOR']
+                == int(ano_selecionado)
+                ]
+        else:
+            ano_selecionado = 'Todos'
+
+        # Filtro de mês SISCOR
+        numeros_meses = [
+            mes['numero']
+            for mes in meses
+        ]
+
+        if mes_selecionado in numeros_meses:
+            dados_filtrados = dados_filtrados[
+                dados_filtrados['MES_SISCOR']
+                == int(mes_selecionado)
+                ]
+        else:
+            mes_selecionado = 'Todos'
+
+        # Dados do gráfico por carteira
+        resumo_carteiras = (
+            dados_filtrados
+            .groupby('NO_CARTEIRA', as_index=False)
+            .agg(valor_total=('VR_RATEIO', 'sum'))
+            .sort_values('valor_total', ascending=False)
+        )
+
+        grafico_carteiras = px.bar(
+            resumo_carteiras,
+            x='NO_CARTEIRA',
+            y='valor_total',
+            labels={
+                'NO_CARTEIRA': 'Carteira',
+                'valor_total': 'Valor total'
+            },
+            color='NO_CARTEIRA',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+
+        grafico_carteiras.update_layout(
+            showlegend=False,
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)'
+        )
+
+        # Dados do gráfico de identificação
+        dados_status = dados_filtrados.copy()
+
+        dados_status['STATUS_IDENTIFICACAO'] = 'Identificado'
+
+        dados_status.loc[
+            dados_status['DT_IDENTIFICACAO'].isna(),
+            'STATUS_IDENTIFICACAO'
+        ] = 'Não identificado'
+
+        resumo_status = (
+            dados_status
+            .groupby('STATUS_IDENTIFICACAO', as_index=False)
+            .agg(quantidade=('NU_LINHA', 'count'))
+        )
+
+        grafico_identificacao = px.pie(
+            resumo_status,
+            names='STATUS_IDENTIFICACAO',
+            values='quantidade',
+            hole=0.55,
+            color='STATUS_IDENTIFICACAO',
+            color_discrete_map={
+                'Identificado': '#198754',
+                'Não identificado': '#dc3545'
+            }
+        )
+
+        grafico_identificacao.update_layout(
+            margin=dict(l=10, r=10, t=20, b=10),
+            paper_bgcolor='rgba(0,0,0,0)',
+            legend_title_text=''
+        )
+        # Gráfico de evolução mensal
+        dados_mensais = dados_filtrados.dropna(
+            subset=['MES_SISCOR']
+        ).copy()
+
+        resumo_mensal = (
+            dados_mensais
+            .groupby('MES_SISCOR', as_index=False)
+            .agg(valor_total=('VR_RATEIO', 'sum'))
+            .sort_values('MES_SISCOR')
+        )
+
+        resumo_mensal['MES_NOME'] = (
+            resumo_mensal['MES_SISCOR']
+            .astype(int)
+            .map(nomes_meses)
+        )
+
+        grafico_mensal = px.line(
+            resumo_mensal,
+            x='MES_NOME',
+            y='valor_total',
+            markers=True,
+            labels={
+                'MES_NOME': 'Mês',
+                'valor_total': 'Valor total'
+            }
+        )
+
+        grafico_mensal.update_traces(
+            line={
+                'color': '#6c63ff',
+                'width': 3
+            },
+            marker={
+                'size': 9,
+                'color': '#6c63ff'
+            }
+        )
+
+        grafico_mensal.update_layout(
+            margin=dict(l=20, r=20, t=20, b=20),
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis={
+                'categoryorder': 'array',
+                'categoryarray': list(nomes_meses.values())
+            },
+            yaxis={
+                'tickprefix': 'R$ ',
+                'gridcolor': 'rgba(128,128,128,0.25)'
+            }
+        )
+        # Formatação brasileira dos valores
+        def formatar_moeda(valor):
+            valor_formatado = f'{valor:,.2f}'
+            valor_formatado = (
+                valor_formatado
+                .replace(',', 'X')
+                .replace('.', ',')
+                .replace('X', '.')
+            )
+            return f'R$ {valor_formatado}'
+
+        # Indicadores calculados após aplicar os filtros
+        valor_total = float(
+            dados_filtrados['VR_RATEIO'].sum()
+        )
+
+        quantidade_total = int(
+            len(dados_filtrados)
+        )
+
+        valor_nao_identificado = float(
+            dados_filtrados.loc[
+                dados_filtrados['DT_IDENTIFICACAO'].isna(),
+                'VR_RATEIO'
+            ].sum()
+        )
+
+        valor_nao_apropriado = float(
+            dados_filtrados.loc[
+                ~dados_filtrados['IC_APROPRIADO']
+                .fillna(False)
+                .astype(bool),
+                'VR_RATEIO'
+            ].sum()
+        )
+        return render_template(
+            'depositos_judiciais/dashboard_nativo.html',
+            carteiras=carteiras,
+            carteira_selecionada=carteira_selecionada,
+            anos=anos,
+            ano_selecionado=ano_selecionado,
+            meses=meses,
+            mes_selecionado=mes_selecionado,
+            valor_total=formatar_moeda(valor_total),
+            quantidade_total=f'{quantidade_total:,}'.replace(',', '.'),
+            valor_nao_identificado=formatar_moeda(
+                valor_nao_identificado
+            ),
+            valor_nao_apropriado=formatar_moeda(
+                valor_nao_apropriado
+            ),
+            grafico_carteiras=grafico_carteiras.to_html(
+                full_html=False,
+                include_plotlyjs=True
+            ),
+
+            grafico_identificacao=grafico_identificacao.to_html(
+                full_html=False,
+                include_plotlyjs=False
+            ),
+
+            grafico_mensal=grafico_mensal.to_html(
+                full_html=False,
+                include_plotlyjs=False
+            )
+        )
+
+    except Exception as e:
+        return jsonify({
+            'sucesso': False,
+            'erro': str(e)
+        }), 500
 @depositos_judiciais_bp.route('/inclusao', methods=['GET', 'POST'])
 @login_required
 def inclusao():
