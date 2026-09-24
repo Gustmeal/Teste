@@ -318,25 +318,47 @@ def _dados_composicao(dsc_fundo):
     ano = db.session.execute(text(
         "SELECT MAX(LEFT(ANO_MES,4)) FROM [BDG].[FIN_VW027_COMPOSICAO_FI] WHERE DSC_FUNDO = :f"
     ), {'f': dsc_fundo}).scalar()
+
     rows = []
     if ano is not None:
+        # IMPORTANTE: não selecionamos as colunas PC_* da view. Elas fazem
+        # volume/TOTAL e disparam "Divide by zero" quando algum mês vem com
+        # TOTAL = 0. O percentual é calculado abaixo, no Python, com proteção.
         rows = db.session.execute(text("""
-            SELECT ANO_MES, LFT, PC_LFT, [NTN-F], PC_NTN, OC, PC_OC, LTN, PC_LTN, TOTAL
+            SELECT ANO_MES, LFT, [NTN-F], OC, LTN, TOTAL
             FROM [BDG].[FIN_VW027_COMPOSICAO_FI]
-            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :a ORDER BY ANO_MES
+            WHERE DSC_FUNDO = :f AND LEFT(ANO_MES,4) = :a
+            ORDER BY ANO_MES
         """), {'f': dsc_fundo, 'a': ano}).fetchall()
+
     vol = lambda v: _fmt_br(Decimal(str(v)), 2) if v is not None else '-'
-    pc = lambda v: (_fmt_br(Decimal(str(v)), 2) + '%') if v is not None else '-'
+
+    def pc(v, tot):
+        # % do ativo sobre o TOTAL do mês; '-' quando não há valor ou TOTAL = 0
+        if v is None or tot is None:
+            return '-'
+        tot_d = Decimal(str(tot))
+        if tot_d == 0:
+            return '-'
+        return _fmt_br((Decimal(str(v)) / tot_d) * Decimal('100'), 2) + '%'
+
     linhas, labels, g = [], [], {'lft': [], 'ntn': [], 'oc': [], 'ltn': []}
     for r in rows:
-        linhas.append({'mes': _mes_abrev_de_anomes(r[0]),
-                       'lft': vol(r[1]), 'pc_lft': pc(r[2]), 'ntn': vol(r[3]), 'pc_ntn': pc(r[4]),
-                       'oc': vol(r[5]), 'pc_oc': pc(r[6]), 'ltn': vol(r[7]), 'pc_ltn': pc(r[8]),
-                       'total': vol(r[9])})
-        if r[9] is not None:
+        # r = (ANO_MES, LFT, NTN-F, OC, LTN, TOTAL)
+        total = r[5]
+        linhas.append({
+            'mes': _mes_abrev_de_anomes(r[0]),
+            'lft': vol(r[1]), 'pc_lft': pc(r[1], total),
+            'ntn': vol(r[2]), 'pc_ntn': pc(r[2], total),
+            'oc':  vol(r[3]), 'pc_oc':  pc(r[3], total),
+            'ltn': vol(r[4]), 'pc_ltn': pc(r[4], total),
+            'total': vol(total),
+        })
+        if total is not None:
             labels.append(_mes_abrev_de_anomes(r[0]))
-            g['lft'].append(float(r[1] or 0)); g['ntn'].append(float(r[3] or 0))
-            g['oc'].append(float(r[5] or 0)); g['ltn'].append(float(r[7] or 0))
+            g['lft'].append(float(r[1] or 0)); g['ntn'].append(float(r[2] or 0))
+            g['oc'].append(float(r[3] or 0)); g['ltn'].append(float(r[4] or 0))
+
     return {'linhas': linhas, 'grafico': {'labels': labels, 'datasets': [
         {'label': 'LFT', 'data': g['lft']}, {'label': 'NTN-F', 'data': g['ntn']},
         {'label': 'OC', 'data': g['oc']}, {'label': 'LTN', 'data': g['ltn']}]}}
@@ -530,6 +552,10 @@ def sumario_executivo():
     except Exception as e:
         grafico_saidas = {'labels': [], 'datasets': [], 'erro': str(e)}
 
+    # NOVO: considerações do mês (FIN_TB033_OBS_SUMARIO) na mesma competência do Sumário
+    ano_mes_ref = str(posicao)[:6] if posicao else ''          # NOVO
+    obs_sumario = _carregar_obs_sumario(ano_mes_ref)           # NOVO
+
     return render_template(
         'relatorio_gestao/sumario_executivo.html',
         blocos=blocos,
@@ -539,6 +565,9 @@ def sumario_executivo():
         grafico_ingressos=grafico_ingressos,
         grafico_saidas=grafico_saidas,
         quadro=_dados_quadro_comparativo(),
+        obs_sumario=obs_sumario,                                   # NOVO
+        ano_mes_ref=ano_mes_ref,                                   # NOVO (campo oculto do form)
+        pode_gerir_obs=(current_user.perfil in ['admin', 'moderador']),  # NOVO
     )
 
 
@@ -1020,17 +1049,10 @@ def titulos_consolidados_bb():
         sem_dados=(len(linhas) == 0),
     )
 
-@relatorio_gestao_bp.route('/completo')
-@login_required
-def relatorio_completo():
-    """Relatório inteiro em uma página, otimizado para impressão em PDF."""
-    # Trava: só libera se o Teste Siscor x Boletim passou (sessão) ou se for admin/moderador
-    if not (session.get('siscor_liberado') or current_user.perfil in ['admin', 'moderador']):
-        flash('Relatório bloqueado: rode o Teste Siscor x Boletim na Auditoria (sem diferença) para liberar.', 'warning')
-        return redirect(url_for('boletim_financeiro.index'))
-
+def _contexto_relatorio_completo():
+    """Monta TODO o contexto do Relatório de Gestão (usado pela versão paginada
+    e pela compacta). Não aplica a trava de acesso — isso fica em cada rota."""
     # Referência do relatório = mês mais recente da FIN_VW031 (mesma da tela).
-    # Fallback: competência do Sumário.
     ref_rf = db.session.execute(text("""
         SELECT TOP 1 ANO, MES
         FROM [BDG].[FIN_VW031_RELATORIO_GESTAO_RESULTADO_FINANCEIRO]
@@ -1049,13 +1071,19 @@ def relatorio_completo():
         ano_ref, mes_ref, mes_ref_cap = '—', '—', '—'
         ano_int, mes_num = None, 12
 
-    # Mapa do Sumário (frases) continua vindo da competência do Sumário
+    # Mapa do Sumário (frases) vem da competência do Sumário
     mapa = (RelatorioGestaoItem.carregar_mapa_id_vr(PAGINA_SUMARIO, posicao)
             if posicao and str(posicao)[:6].isdigit() else {})
-
     sumario_itens = renderizar_pagina(SUMARIO_EXECUTIVO, mapa, mes_ref, mes_ref_cap, ano_ref)
 
-    # Resultado Financeiro: mesmo mês da referência (FIN_VW031)
+    # Considerações do Sumário — MESMA competência usada para GRAVAR (MAX(POSICAO)),
+    # senão o ANO_MES lido não bate com o gravado e o bloco vem vazio.
+    posicao_obs = db.session.execute(text(
+        "SELECT MAX(POSICAO) FROM [BDG].[FIN_TB023_RG_SUMARIO]"
+    )).scalar()
+    ano_mes_obs = str(posicao_obs)[:6] if posicao_obs and str(posicao_obs)[:6].isdigit() else ''
+    obs_sumario = _carregar_obs_sumario(ano_mes_obs)
+
     resultado = _dados_resultado_financeiro(ano_int, mes_num)
 
     pos_c = RelatorioConsideracoesItem.obter_posicao_referencia()
@@ -1083,13 +1111,27 @@ def relatorio_completo():
         'g_comp_fae2':{'horizontal': False, 'stacked': True,  'percent': False, 'dados': comp_fae2['grafico']},
     }
 
-    return render_template(
-        'relatorio_gestao/relatorio_completo.html',
+    return dict(
         mes_ref_cap=mes_ref_cap, ano_ref=ano_ref,
         sumario_itens=sumario_itens, resultado=resultado, consideracoes=consideracoes,
         disp=disp, rent_bb=rent_bb, rent_xxi=rent_xxi, rent_fae2=rent_fae2,
         comp_bb=comp_bb, comp_xxi=comp_xxi, comp_fae2=comp_fae2,
-        titulos=titulos, graficos=graficos, quadro=_dados_quadro_comparativo())
+        titulos=titulos, graficos=graficos, quadro=_dados_quadro_comparativo(),
+        obs_sumario=obs_sumario,
+    )
+
+
+@relatorio_gestao_bp.route('/completo')
+@login_required
+def relatorio_completo():
+    """Relatório inteiro em versão paginada (uma folha A4 por seção), p/ PDF."""
+    if not (session.get('siscor_liberado') or current_user.perfil in ['admin', 'moderador']):
+        flash('Relatório bloqueado: rode o Teste Siscor x Boletim na Auditoria (sem diferença) para liberar.', 'warning')
+        return redirect(url_for('boletim_financeiro.index'))
+    return render_template('relatorio_gestao/relatorio_completo.html',
+                           **_contexto_relatorio_completo())
+
+
 
 
 @relatorio_gestao_bp.route('/teste-conferencia-saldo')
@@ -1426,3 +1468,115 @@ def auditoria_atualizacoes():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+def _carregar_obs_sumario(ano_mes):
+    """
+    Lê as considerações do Sumário (FIN_TB033_OBS_SUMARIO) da competência
+    informada (AAAAMM), ignorando as excluídas (soft delete).
+    Retorna lista pronta para o template e para o PDF.
+    """
+    if not ano_mes or not str(ano_mes)[:6].isdigit():
+        return []
+
+    rows = db.session.execute(text("""
+        SELECT [ID], [OBS], [RESPONSAVEL], [DT_INCLUSAO]
+        FROM [BDG].[FIN_TB033_OBS_SUMARIO]
+        WHERE [ANO_MES] = :am AND [DELETED_AT] IS NULL
+        ORDER BY [DT_INCLUSAO] ASC, [ID] ASC
+    """), {'am': str(ano_mes)[:6]}).fetchall()
+
+    itens = []
+    for r in rows:
+        dt = r[3]
+        itens.append({
+            'id': r[0],
+            'obs': (r[1] or '').strip(),
+            'responsavel': (r[2] or '').strip(),
+            'data': dt.strftime('%d/%m/%Y') if dt else '',
+        })
+    return itens
+@relatorio_gestao_bp.route('/sumario/obs/salvar', methods=['POST'])
+@login_required
+def salvar_obs_sumario():
+    """
+    Grava uma nova consideração do Sumário na FIN_TB033_OBS_SUMARIO.
+    ANO_MES  = competência do Sumário (a mesma exibida na tela, campo oculto).
+    RESPONSAVEL = nome completo do usuário logado (current_user.nome).
+    """
+    ano_mes = (flask_request.form.get('ano_mes') or '').strip()
+    obs = (flask_request.form.get('obs') or '').strip()
+
+    if len(ano_mes) < 6 or not ano_mes[:6].isdigit():
+        flash('Competência inválida para gravar a consideração.', 'warning')
+        return redirect(url_for('relatorio_gestao.sumario_executivo'))
+
+    if not obs:
+        flash('Digite o texto da consideração antes de salvar.', 'warning')
+        return redirect(url_for('relatorio_gestao.sumario_executivo'))
+
+    try:
+        db.session.execute(text("""
+            INSERT INTO [BDG].[FIN_TB033_OBS_SUMARIO]
+                ([ANO_MES], [OBS], [RESPONSAVEL], [DT_INCLUSAO])
+            VALUES (:am, :obs, :resp, GETDATE())
+        """), {
+            'am': ano_mes[:6],
+            'obs': obs,
+            'resp': (current_user.nome or '').strip(),
+        })
+        db.session.commit()
+
+        registrar_log(
+            acao='criar',
+            entidade='FIN_TB033_OBS_SUMARIO',
+            entidade_id=ano_mes[:6],
+            descricao=f'Consideração do Sumário incluída (competência {ano_mes[:6]})',
+            dados_novos={'ano_mes': ano_mes[:6], 'obs': obs}
+        )
+        flash('Consideração incluída com sucesso!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao salvar a consideração: {str(e)}', 'danger')
+
+    return redirect(url_for('relatorio_gestao.sumario_executivo'))
+
+
+@relatorio_gestao_bp.route('/sumario/obs/excluir/<int:obs_id>', methods=['POST'])
+@login_required
+def excluir_obs_sumario(obs_id):
+    """Exclui (soft delete) uma consideração do Sumário. Só o autor ou
+    admin/moderador podem excluir."""
+    try:
+        reg = db.session.execute(text("""
+            SELECT [RESPONSAVEL], [ANO_MES]
+            FROM [BDG].[FIN_TB033_OBS_SUMARIO]
+            WHERE [ID] = :id AND [DELETED_AT] IS NULL
+        """), {'id': obs_id}).fetchone()
+
+        if not reg:
+            flash('Consideração não encontrada.', 'warning')
+            return redirect(url_for('relatorio_gestao.sumario_executivo'))
+
+        eh_gestor = current_user.perfil in ['admin', 'moderador']
+        if not eh_gestor and (reg[0] or '').strip() != (current_user.nome or '').strip():
+            flash('Você só pode excluir considerações que você mesmo incluiu.', 'danger')
+            return redirect(url_for('relatorio_gestao.sumario_executivo'))
+
+        db.session.execute(text("""
+            UPDATE [BDG].[FIN_TB033_OBS_SUMARIO]
+            SET [DELETED_AT] = GETDATE()
+            WHERE [ID] = :id
+        """), {'id': obs_id})
+        db.session.commit()
+
+        registrar_log(
+            acao='excluir',
+            entidade='FIN_TB033_OBS_SUMARIO',
+            entidade_id=str(obs_id),
+            descricao=f'Consideração do Sumário excluída (competência {reg[1]})'
+        )
+        flash('Consideração excluída.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao excluir: {str(e)}', 'danger')
+
+    return redirect(url_for('relatorio_gestao.sumario_executivo'))

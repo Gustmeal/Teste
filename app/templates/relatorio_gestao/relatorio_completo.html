@@ -13,9 +13,13 @@
              padding: .6rem 1.2rem; display: flex; justify-content: space-between; align-items: center; }
     .barra .btn { font-weight: 600; }
 
-    .folha { width: 210mm; min-height: 297mm; background: #fff; margin: 12px auto;
-             padding: 14mm 14mm 10mm; box-shadow: 0 2px 10px rgba(0,0,0,.15);
+    /* Folha cresce conforme o conteúdo (como uma div). A altura de cada página
+       é definida por seção pelo script no final do arquivo. */
+    .folha { width: 210mm; background: #fff; margin: 12px auto;
+             padding: 14mm 14mm 12mm; box-shadow: 0 2px 10px rgba(0,0,0,.15);
              box-sizing: border-box; position: relative; }
+    .folha img, .folha canvas { max-width: 100%; }
+
     .cab { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #1e3a8a;
            padding-bottom: 8px; margin-bottom: 14px; }
     .cab img { height: 34px; }
@@ -59,7 +63,7 @@
 
     /* CAPA */
     .capa { display: flex; flex-direction: column; align-items: center; justify-content: center;
-            text-align: center; min-height: 270mm; }
+            text-align: center; min-height: 250mm; }
     .capa img { height: 90px; margin-bottom: 26px; }
     .capa .faixa { width: 70%; border-top: 3px solid #1e3a8a; border-bottom: 3px solid #1e3a8a;
                    padding: 22px 0; margin: 10px 0 28px; }
@@ -68,16 +72,42 @@
     .capa .orgs { margin-top: 40px; color: #475569; line-height: 1.9; font-size: 1rem; }
     .capa .orgs strong { color: #1e3a8a; }
 
-    @page { size: A4; margin: 0; }
+    /* Considerações do Mês (PDF) */
+    .obs-mes { margin-top: 1.4rem; }
+    .obs-mes-h {
+        display: flex; align-items: center; gap: .5rem;
+        color: #1e3a8a; font-weight: 700; font-size: 1.02rem;
+        border-bottom: 2px solid #e2e8f0; padding-bottom: .25rem; margin-bottom: .7rem;
+    }
+    .obs-mes-h .obs-pill {
+        background: #1e3a8a; color: #fff; border-radius: 999px;
+        font-size: .68rem; font-weight: 700; padding: .04rem .5rem;
+    }
+    .obs-card {
+        border: 1px solid #e2e8f0; border-left: 4px solid #1e3a8a; border-radius: 8px;
+        background: #f8fafc; padding: .65rem .9rem; margin-bottom: .55rem;
+    }
+    .obs-card .obs-texto {
+        text-align: justify; line-height: 1.55; color: #1f2937;
+        font-size: .84rem; margin: 0; white-space: pre-line;
+    }
+    .obs-card .obs-resp {
+        text-align: right; font-size: .72rem; color: #64748b;
+        margin: .4rem 0 0; font-style: italic;
+    }
+
+    /* A altura de cada página é definida pelo script (uma por seção) */
+    @page { margin: 0; }
     @media print {
-        body { background: #fff; }
+        html, body { background: #fff; margin: 0; padding: 0; }
         .no-print { display: none !important; }
-        .folha { margin: 0; box-shadow: none; width: 210mm; min-height: 297mm;
-                 page-break-after: always; }
-        .folha:last-child { page-break-after: auto; }
-        .chart-box { height: 280px; }
+        .folha { margin: 0; box-shadow: none; width: 210mm;
+                 padding: 14mm 14mm 12mm;
+                 break-after: page; page-break-after: always; }
+        .folha:last-child { break-after: auto; page-break-after: auto; }
         table.t tr { page-break-inside: avoid; }
         table.t thead { display: table-header-group; }
+        .obs-card { page-break-inside: avoid; }
     }
 </style>
 </head>
@@ -227,6 +257,7 @@
             <div class="chart-box horiz"><canvas id="g_sum_ing"></canvas></div>
             <div class="fonte">Fonte: Sistema RM Fluxus</div>
         {% elif item.tipo == 'grafico' and item.chave == 'saidas' %}
+            <br>
             <div class="chart-box horiz"><canvas id="g_sum_sai"></canvas></div>
             <div class="fonte">Fonte: Sistema RM Fluxus</div>
         {% elif item.tipo == 'tabela' %}
@@ -246,6 +277,22 @@
             </table>
         {% endif %}
     {% endfor %}
+
+    {% if obs_sumario %}
+    <div class="obs-mes">
+        <div class="obs-mes-h">
+            <i class="fas fa-comment-dots"></i>
+            <span>Considerações do Mês</span>
+            <span class="obs-pill">{{ obs_sumario|length }}</span>
+        </div>
+        {% for o in obs_sumario %}
+        <div class="obs-card">
+            <p class="obs-texto">{{ o.obs }}</p>
+            <p class="obs-resp">— {{ o.responsavel or '—' }}{% if o.data %} • {{ o.data }}{% endif %}</p>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>
 
 <!-- ===================== RESULTADO FINANCEIRO (Ingressos) ===================== -->
@@ -444,6 +491,36 @@
         var t = setInterval(function(){ if (typeof Chart !== 'undefined'){ clearInterval(t); render(); } }, 200);
         setTimeout(function(){ clearInterval(t); }, 6000);
     }
+})();
+</script>
+
+<!-- Cada seção vira uma página do tamanho exato do seu conteúdo -->
+<script>
+(function () {
+    var PX_TO_MM = 25.4 / 96;   // conversão pixel -> milímetro
+    var FOLGA_MM = 6;           // respiro extra p/ não cortar por arredondamento
+
+    function ajustarPaginas() {
+        var folhas = document.querySelectorAll('.folha');
+        if (!folhas.length) return;
+
+        var regras = '';
+        folhas.forEach(function (f, i) {
+            var nome = 'folha' + i;
+            // offsetHeight já inclui o padding (box-sizing: border-box)
+            var alturaMm = Math.ceil(f.offsetHeight * PX_TO_MM) + FOLGA_MM;
+            f.style.page = nome;                    // cada seção usa sua própria @page
+            regras += '@page ' + nome + ' { size: 210mm ' + alturaMm + 'mm; margin: 0; } ';
+        });
+
+        var id = 'paginas-dinamicas';
+        var style = document.getElementById(id);
+        if (!style) { style = document.createElement('style'); style.id = id; document.head.appendChild(style); }
+        style.textContent = regras;
+    }
+
+    window.addEventListener('load', function () { setTimeout(ajustarPaginas, 400); });
+    window.addEventListener('beforeprint', ajustarPaginas);
 })();
 </script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">

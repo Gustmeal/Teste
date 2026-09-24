@@ -23,6 +23,61 @@
     .rg-quadro td.l { text-align: left; font-weight: 600; }
     .rg-quadro tbody tr:nth-child(even) td { background: #f4f7fb; }
 
+    /* ===== Considerações do mês (FIN_TB033_OBS_SUMARIO) ===== */
+    .rg-obs-card { max-width: 900px; margin: 1.2rem auto 0; }
+    .rg-obs-head {
+        width: 100%; display: flex; align-items: center; justify-content: space-between;
+        background: #f1f5fb; border: 1px solid #dbe4f0; border-radius: 12px;
+        padding: .85rem 1.2rem; cursor: pointer; color: #1e3a8a; font-weight: 700;
+        font-size: 1rem; transition: background .15s;
+    }
+    .rg-obs-head:hover { background: #e7eefa; }
+    .rg-obs-head-l { display: flex; align-items: center; gap: .55rem; }
+    .rg-obs-badge {
+        background: #1e3a8a; color: #fff; border-radius: 999px; font-size: .75rem;
+        padding: .05rem .55rem; font-weight: 700; margin-left: .2rem;
+    }
+    .rg-obs-chevron { transition: transform .2s; color: #64748b; }
+    .rg-obs-card.is-open .rg-obs-chevron { transform: rotate(180deg); }
+    .rg-obs-body {
+        display: none; border: 1px solid #dbe4f0; border-top: none;
+        border-radius: 0 0 12px 12px; padding: 1.2rem 1.3rem; background: #fff; margin-top: -6px;
+    }
+    .rg-obs-card.is-open .rg-obs-body { display: block; }
+    .rg-obs-hint { font-size: .8rem; color: #94a3b8; margin: 0 0 1rem; }
+    .rg-obs-list { list-style: none; padding: 0; margin: 0 0 1.2rem; }
+    .rg-obs-item {
+        border: 1px solid #e2e8f0; border-left: 4px solid #1e3a8a; border-radius: 8px;
+        padding: .8rem 1rem; margin-bottom: .7rem; background: #fbfcfe;
+    }
+    .rg-obs-texto { color: #1f2937; line-height: 1.6; text-align: justify; white-space: pre-line; }
+    .rg-obs-meta { display: flex; align-items: center; gap: 1.1rem; margin-top: .55rem; font-size: .8rem; color: #64748b; }
+    .rg-obs-data { color: #94a3b8; }
+    .rg-obs-del-form { margin: 0 0 0 auto; }
+    .rg-obs-del { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: .1rem .3rem; transition: color .15s; }
+    .rg-obs-del:hover { color: #ef4444; }
+    .rg-obs-vazio {
+        text-align: center; color: #94a3b8; padding: 1.3rem; border: 2px dashed #e2e8f0;
+        border-radius: 10px; margin-bottom: 1.2rem; background: #f8fafc;
+    }
+    .rg-obs-vazio i { display: block; font-size: 1.4rem; margin-bottom: .4rem; }
+    .rg-obs-add { border-top: 1px dashed #e2e8f0; padding-top: 1rem; }
+    .rg-obs-label { font-weight: 600; color: #334155; font-size: .85rem; display: block; margin-bottom: .35rem; }
+    .rg-obs-textarea {
+        width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: .6rem .8rem;
+        font-size: .9rem; resize: vertical; font-family: inherit; color: #1f2937;
+    }
+    .rg-obs-textarea:focus { outline: none; border-color: #1e3a8a; box-shadow: 0 0 0 3px rgba(30,58,138,.12); }
+    .rg-obs-textarea:disabled { background: #f1f5f9; color: #94a3b8; }
+    .rg-obs-add-bar { display: flex; align-items: center; gap: 1rem; margin-top: .6rem; flex-wrap: wrap; }
+    .rg-obs-aviso { font-size: .78rem; color: #b45309; }
+    .rg-obs-aviso-ok { font-size: .78rem; color: #64748b; }
+    .rg-obs-salvar {
+        margin-left: auto; background: #1e3a8a; color: #fff; border: none; border-radius: 8px;
+        padding: .5rem 1.1rem; font-weight: 600; font-size: .88rem; cursor: pointer; transition: background .15s;
+    }
+    .rg-obs-salvar:hover { background: #17306e; }
+    .rg-obs-salvar:disabled { background: #cbd5e1; cursor: not-allowed; }
 </style>
 
 <div class="rg-container fade-in">
@@ -87,6 +142,82 @@
             dezembro de 2027.
         </p>
     </div>
+
+    <!-- ===== Considerações do mês (FIN_TB033_OBS_SUMARIO) ===== -->
+    <div class="rg-obs-card" id="rgObsCard">
+        <button type="button" id="btnToggleObs" class="rg-obs-head js-ignore-loading"
+                aria-expanded="false" aria-controls="rgObsBody"
+                title="Mostrar/ocultar as considerações do mês">
+            <span class="rg-obs-head-l">
+                <i class="fas fa-comment-dots"></i>
+                Destaques do mês
+                {% if obs_sumario %}<span class="rg-obs-badge">{{ obs_sumario|length }}</span>{% endif %}
+            </span>
+            <i class="fas fa-chevron-down rg-obs-chevron"></i>
+        </button>
+
+        <div id="rgObsBody" class="rg-obs-body">
+            <p class="rg-obs-hint">
+                Destaques específicos do Sumário. Eles <strong>sempre saem no PDF</strong> do
+                relatório, mesmo quando este painel está oculto na tela.
+            </p>
+
+            {% if obs_sumario %}
+                <ul class="rg-obs-list">
+                    {% for o in obs_sumario %}
+                    <li class="rg-obs-item">
+                        <div class="rg-obs-texto">{{ o.obs }}</div>
+                        <div class="rg-obs-meta">
+                            <span><i class="fas fa-user me-1"></i>{{ o.responsavel or '—' }}</span>
+                            {% if o.data %}<span class="rg-obs-data"><i class="far fa-calendar me-1"></i>{{ o.data }}</span>{% endif %}
+                            {% if pode_gerir_obs or (o.responsavel and current_user.is_authenticated and o.responsavel == current_user.nome) %}
+                            <form method="post"
+                                  action="{{ url_for('relatorio_gestao.excluir_obs_sumario', obs_id=o.id) }}"
+                                  class="rg-obs-del-form"
+                                  onsubmit="return confirm('Excluir esta consideração?');">
+                                <button type="submit" class="rg-obs-del" title="Excluir consideração">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="rg-obs-vazio">
+                    <i class="far fa-comment"></i>
+                    Nenhuma Destaque registrado para {{ mes_ref_cap }} - {{ ano_ref }}.
+                </div>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('relatorio_gestao.salvar_obs_sumario') }}" class="rg-obs-add">
+                <input type="hidden" name="ano_mes" value="{{ ano_mes_ref }}">
+                <label for="obsNova" class="rg-obs-label">Nova Destaques</label>
+                <textarea id="obsNova" name="obs" rows="3" maxlength="4000"
+                          class="rg-obs-textarea"
+                          placeholder="Digite o Destaque deste mês..."
+                          {% if not ano_mes_ref %}disabled{% endif %}></textarea>
+                <div class="rg-obs-add-bar">
+                    {% if not ano_mes_ref %}
+                        <span class="rg-obs-aviso">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            Competência indefinida — não há dados no Sumário para gravar.
+                        </span>
+                    {% else %}
+                        <span class="rg-obs-aviso-ok">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Será registrada em <strong>{{ mes_ref_cap }} - {{ ano_ref }}</strong> no seu nome.
+                        </span>
+                    {% endif %}
+                    <button type="submit" class="rg-obs-salvar" {% if not ano_mes_ref %}disabled{% endif %}>
+                        <i class="fas fa-plus me-1"></i>Adicionar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div style="text-align:center; margin-top:1.4rem;">
             <a href="{{ url_for('relatorio_gestao.resultado_financeiro') }}"
                title="Ir para Resultado Financeiro"
@@ -260,6 +391,19 @@
         } else {
             initGraficosSumario();
         }
+    });
+})();
+</script>
+
+<!-- Abre/fecha o painel de Considerações (sem fetch, não aciona o auto-loading) -->
+<script>
+(function () {
+    var card = document.getElementById('rgObsCard');
+    var btn = document.getElementById('btnToggleObs');
+    if (!card || !btn) return;
+    btn.addEventListener('click', function () {
+        var aberto = card.classList.toggle('is-open');
+        btn.setAttribute('aria-expanded', aberto ? 'true' : 'false');
     });
 })();
 </script>
