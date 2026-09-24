@@ -6,9 +6,11 @@
     .bd-tools { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin-bottom: 1.2rem; }
     .bd-card { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px;
                margin-bottom: 1.4rem; overflow: hidden; box-shadow: 0 2px 6px rgba(0,0,0,.06); }
-    .bd-l1 { display: flex; justify-content: space-between; background: #1f4e79; color: #fff;
+    .bd-l1 { display: flex; justify-content: space-between; gap: .8rem; background: #1f4e79; color: #fff;
              padding: .6rem .9rem; font-weight: 700; }
-    .bd-l1 .bd-sit { color: #ffe4b5; font-weight: 700; }
+    .bd-l1 .bd-sit { color: #ffe4b5; font-weight: 700; text-align: right; }
+    .bd-l2 { background: #2b5f8f; color: #fff; padding: .45rem .9rem; font-weight: 600; font-size: .88rem;
+             border-top: 1px solid rgba(255,255,255,.15); }
     .bd-body { padding: .8rem .9rem; background: #ffffff; }
     .bd-proc { font-size: .88rem; margin-bottom: .6rem; color: #1f2937; }
     .bd-ordem { font-weight: 700; color: #1f4e79; }
@@ -43,16 +45,26 @@
         {% if cartoes %}
             {% for c in cartoes %}
             <div class="bd-card">
+                <!-- Linha do bloqueio: data + memo (SISDOC ou SEI, definido no backend) -->
                 <div class="bd-l1">
-                    <span>Data do Bloqueio: {{ c.dt_bloqueio }} - Memo</span>
+                    <span>
+                        Data do Bloqueio: {{ c.dt_bloqueio }}
+                        {% if c.memo_valor %} - {{ c.memo_label }}: {{ c.memo_valor }}{% endif %}
+                    </span>
                     <span class="bd-sit">{{ c.situacao }}</span>
                 </div>
+                <!-- Linha do desbloqueio: só quando houve desbloqueio na data -->
+                {% if c.situacao %}
+                <div class="bd-l2">
+                    Data do Desbloqueio: {{ c.dt_transf }}
+                    {% if c.memo_desb %} - Memo SEI do Desbloqueio: {{ c.memo_desb }}{% endif %}
+                </div>
+                {% endif %}
                 <div class="bd-body">
                     <div class="bd-proc">
                         <strong>Processo:</strong> {{ c.processo }}
                         {% if c.vara %}&nbsp;&nbsp;<strong>Vara:</strong> {{ c.vara }}{% endif %}
                         {% if c.autor %}&nbsp;&nbsp;<strong>Autor:</strong> {{ c.autor }}{% endif %}
-                        {% if c.memo_sei %}&nbsp;&nbsp;<strong>Memo SEI:</strong> {{ c.memo_sei }}{% endif %}
                         <div>Valor da ordem: <span class="bd-ordem">{{ c.total_fmt }}</span></div>
                     </div>
                     <table class="bd-t">

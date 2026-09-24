@@ -228,7 +228,9 @@
                                         data-vara="{{ b.vara }}" data-autor="{{ b.autor }}"
                                         data-desb="{{ b.dt_desbloqueio_iso }}"
                                         data-exce="{{ b.exce_str }}" data-evento="{{ b.evento }}"
-                                        data-memo="{{ b.memo_sei }}">
+                                        data-memo="{{ b.memo_sei }}"
+                                        data-memo-desb="{{ b.memo_sei_desbloqueio }}"
+                                        data-memo-sisdoc="{{ b.memo_sisdoc }}">
                                         <i class="fas fa-pen"></i>
                                     </button>
                                     {% if not b.dt_desbloqueio %}
@@ -291,6 +293,21 @@
                     <input type="text" class="form-control" name="AUTOR" id="e_autor">
                 </div>
                 <div class="col-md-6">
+                    <label class="bj-label">Data do Desbloqueio</label>
+                    <input type="date" class="form-control" name="DT_DESBLOQUEIO" id="e_desb" onchange="bjToggleEvento('e')">
+                </div>
+
+                <!-- Caixinha: marcada = bloqueia o Memo SEI e libera o Memo SISDOC -->
+                <div class="col-md-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="USA_SISDOC" value="1"
+                               id="e_usa_sisdoc" onchange="bjToggleSisdoc()">
+                        <label class="form-check-label bj-label" for="e_usa_sisdoc">
+                            Usar Memo SISDOC (bloqueia o Memo SEI)
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
                     <label class="bj-label">Memo SEI</label>
                     <div class="input-group">
                         <input type="text" class="form-control" name="MEMO_SEI" id="e_memo" placeholder="Ex: 715/2026">
@@ -298,9 +315,14 @@
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <label class="bj-label">Data do Desbloqueio</label>
-                    <input type="date" class="form-control" name="DT_DESBLOQUEIO" id="e_desb" onchange="bjToggleEvento('e')">
+                    <label class="bj-label">Memo SISDOC</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="MEMO_SISDOC" id="e_memo_sisdoc"
+                               placeholder="Ex: 715/2026" disabled>
+                        <span class="input-group-text">/Gefin/Sufin/Difin</span>
+                    </div>
                 </div>
+
                 <div class="col-md-6">
                     <label class="bj-label">Excedente</label>
                     <select class="form-select" name="EXCE" id="e_exce">
@@ -317,6 +339,14 @@
                         <option value="T">T</option>
                         <option value="D/T">D/T</option>
                     </select>
+                </div>
+                <!-- Memo SEI do Desbloqueio: só aparece quando há Data do Desbloqueio -->
+                <div class="col-md-6" id="e_memo_desb_wrap" style="display:none;">
+                    <label class="bj-label">Memo SEI do Desbloqueio</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="MEMO_SEI_DESBLOQUEIO" id="e_memo_desb" placeholder="Ex: 715/2026">
+                        <span class="input-group-text">/Gefin/Sufin/Difin</span>
+                    </div>
                 </div>
             </div>
 
@@ -395,13 +425,32 @@
 </div>
 
 <script>
+// Mostra/oculta os campos que só fazem sentido quando há desbloqueio
+// (Evento e Memo SEI do Desbloqueio). Ao ocultar, limpa os valores.
 function bjToggleEvento(pref) {
     var desb = document.getElementById(pref + '_desb');
-    var wrap = document.getElementById(pref + '_evento_wrap');
-    if (!wrap) return;
     var temDesb = desb && desb.value;
-    wrap.style.display = temDesb ? '' : 'none';
-    if (!temDesb) { var ev = document.getElementById(pref + '_evento'); if (ev) ev.value = ''; }
+
+    var wrap = document.getElementById(pref + '_evento_wrap');
+    if (wrap) {
+        wrap.style.display = temDesb ? '' : 'none';
+        if (!temDesb) { var ev = document.getElementById(pref + '_evento'); if (ev) ev.value = ''; }
+    }
+
+    var wrapMemo = document.getElementById(pref + '_memo_desb_wrap');
+    if (wrapMemo) {
+        wrapMemo.style.display = temDesb ? '' : 'none';
+        if (!temDesb) { var md = document.getElementById(pref + '_memo_desb'); if (md) md.value = ''; }
+    }
+}
+// Caixinha SISDOC: marcada -> bloqueia Memo SEI e libera Memo SISDOC; desmarcada -> o contrário.
+// Os valores ficam visíveis; quem decide o que grava é o backend (flag USA_SISDOC).
+function bjToggleSisdoc() {
+    var chk = document.getElementById('e_usa_sisdoc');
+    var usa = chk && chk.checked;
+    document.getElementById('e_memo').disabled = usa;
+    document.getElementById('e_memo_sisdoc').disabled = !usa;
+    if (usa) document.getElementById('e_memo_sisdoc').focus();
 }
 function bjFeedback(tipo, msg) {
     var el = document.getElementById('bjFeedback');
@@ -439,6 +488,13 @@ function bjEditar(btn) {
     document.getElementById('e_desb').value = btn.dataset.desb;
     document.getElementById('e_exce').value = btn.dataset.exce || '';
     document.getElementById('e_evento').value = btn.dataset.evento || '';
+    // pré-preenche o Memo SEI do Desbloqueio vindo do banco (sem o sufixo)
+    document.getElementById('e_memo_desb').value = bjTiraSufixoMemo(btn.dataset.memoDesb || '');
+    // pré-preenche o Memo SISDOC; se existir no banco, a caixinha já vem marcada
+    var sisdoc = btn.dataset.memoSisdoc || '';
+    document.getElementById('e_memo_sisdoc').value = bjTiraSufixoMemo(sisdoc);
+    document.getElementById('e_usa_sisdoc').checked = sisdoc.trim() !== '';
+    bjToggleSisdoc();
     bjToggleEvento('e');
     document.getElementById('o_dep').value = btn.dataset.dep;
     document.getElementById('o_vr').value = btn.dataset.vr;

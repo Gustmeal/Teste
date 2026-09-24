@@ -4509,11 +4509,32 @@ def _situacoes_venda_lista():
         traceback.print_exc()
         return []
 
+# Situações de acerto que entram NEGATIVAS apenas no Resumo por Situação.
+# A comparação é feita sem acento e em maiúsculas, para não depender de
+# como a descrição está gravada na PAR_TB032.
+SITUACOES_NEGATIVAS_RESUMO_DPV = ('DEVOLVIDO', 'PERDA')
+
+
+def _normalizar_texto_dpv(texto):
+    """Remove acentos, espaços extras e deixa em maiúsculas (para comparação)."""
+    import unicodedata
+    if texto is None:
+        return ''
+    t = unicodedata.normalize('NFKD', str(texto))
+    t = ''.join(c for c in t if not unicodedata.combining(c))
+    return t.strip().upper()
+
+
 def _resumo_situacoes_despesas_pos_venda(filtros):
     """
     Resumo por situação de acerto (respeita os filtros ativos):
     quantidade, soma de VR_DESPESA e soma de VR_VENDA.
     NULL (sem classificação) vira a linha 'Não classificadas'.
+
+    Regra do resumo: as situações 'Devolvido' e 'Perda' são exibidas com
+    valor NEGATIVO, e o TOTAL GERAL já considera esse sinal.
+    Isso vale SOMENTE para este resumo. Listagem, cards e salvamento
+    continuam com os valores originais do banco.
     """
     from sqlalchemy import text
     where, params = _where_despesas_pos_venda(filtros)
@@ -4545,6 +4566,12 @@ def _resumo_situacoes_despesas_pos_venda(filtros):
         vr_desp = float(l.VR_DESPESA) if l.VR_DESPESA is not None else 0.0
         vr_vnd = float(l.VR_VENDA) if l.VR_VENDA is not None else 0.0
 
+        # Devolvido / Perda entram negativos (somente no resumo)
+        negativa = classificada and \
+            _normalizar_texto_dpv(l.DSC_SITUACAO) in SITUACOES_NEGATIVAS_RESUMO_DPV
+        if negativa:
+            vr_desp = -abs(vr_desp)
+
         total_qtd += qtd
         total_despesa += vr_desp
         total_venda += vr_vnd
@@ -4553,6 +4580,7 @@ def _resumo_situacoes_despesas_pos_venda(filtros):
             'classificada': classificada,
             'dsc': l.DSC_SITUACAO if classificada else 'Não classificadas',
             'qtd': qtd,
+            'negativa': negativa,
             'vr_despesa_fmt': _fmt_moeda_br(vr_desp),
             'vr_venda_fmt': _fmt_moeda_br(vr_vnd),
         })

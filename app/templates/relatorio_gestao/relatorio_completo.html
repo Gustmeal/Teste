@@ -288,7 +288,7 @@
         {% for o in obs_sumario %}
         <div class="obs-card">
             <p class="obs-texto">{{ o.obs }}</p>
-            <p class="obs-resp">— {{ o.responsavel or '—' }}{% if o.data %} • {{ o.data }}{% endif %}</p>
+            <p class="obs-resp no-print">— {{ o.responsavel or '—' }}{% if o.data %} • {{ o.data }}{% endif %}</p>
         </div>
         {% endfor %}
     </div>

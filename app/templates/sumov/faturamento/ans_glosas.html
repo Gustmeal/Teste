@@ -105,14 +105,99 @@
     </div>
     {% endif %}
 
-    <!-- Estatísticas -->
-    <div class="row mb-4">
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#4e73df,#224abe);"><i class="fas fa-list-ol text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.total if stats else 0 }}</h4><small class="text-muted">Total</small></div></div></div>
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#f6c23e,#dda20a);"><i class="fas fa-hourglass-half text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.pendentes if stats else 0 }}</h4><small class="text-muted">Pendentes</small></div></div></div>
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#1cc88a,#13855c);"><i class="fas fa-check-circle text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.analisadas if stats else 0 }}</h4><small class="text-muted">Analisadas</small></div></div></div>
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#36b9cc,#258391);"><i class="fas fa-thumbs-up text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.aceitas if stats else 0 }}</h4><small class="text-muted">Aceitas</small></div></div></div>
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#e74a3b,#be2617);"><i class="fas fa-thumbs-down text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.rejeitadas if stats else 0 }}</h4><small class="text-muted">Rejeitadas</small></div></div></div>
-        <div class="col-lg-2 col-md-4 col-sm-6 mb-3"><div class="card border-0 shadow-sm h-100"><div class="card-body text-center p-3"><div class="d-flex align-items-center justify-content-center mb-2"><div class="rounded-circle d-flex align-items-center justify-content-center" style="width:45px;height:45px;background:linear-gradient(135deg,#858796,#60616f);"><i class="fas fa-clock text-white"></i></div></div><h4 class="fw-bold mb-0">{{ stats.dentro_prazo if stats else 0 }}<small class="text-success fs-6"><i class="fas fa-check"></i></small> / {{ stats.fora_prazo if stats else 0 }}<small class="text-danger fs-6"><i class="fas fa-times"></i></small></h4><small class="text-muted">Prazo</small></div></div></div>
+    <!-- Estatísticas (todos os quadros em uma única linha) -->
+    {% set kpi_total = (stats.total or 0) if stats else 0 %}
+    {% set kpi_analisadas = (stats.analisadas or 0) if stats else 0 %}
+    {% set kpi_pct = ((kpi_analisadas / kpi_total) * 100) if kpi_total > 0 else 0 %}
+
+    <style>
+        .ans-kpi-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:.75rem;margin-bottom:1.5rem}
+        @media (max-width:1399.98px){.ans-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+        @media (max-width:767.98px){.ans-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        .ans-kpi{background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.06);padding:.85rem .6rem;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;transition:transform .15s ease,box-shadow .15s ease}
+        .ans-kpi:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.09)}
+        .ans-kpi-icon{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.95rem;margin-bottom:.45rem;flex-shrink:0}
+        .ans-kpi-valor{font-size:1.3rem;font-weight:700;line-height:1.15;color:#2e2f37;white-space:nowrap;font-variant-numeric:tabular-nums}
+        .ans-kpi-valor .ans-kpi-sep{color:#b7b9cc;font-weight:400;margin:0 .15rem}
+        .ans-kpi-valor small{font-size:.8rem}
+        .ans-kpi-label{font-size:.72rem;color:#858796;text-transform:uppercase;letter-spacing:.4px;margin-top:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+        .ans-kpi-progress{width:100%;height:5px;background:#eaecf4;border-radius:3px;overflow:hidden;margin-top:.45rem}
+        .ans-kpi-progress > div{height:100%;background:linear-gradient(90deg,#1cc88a,#13855c);border-radius:3px;transition:width .4s ease}
+        .ans-kpi-pct{font-size:.68rem;color:#13855c;font-weight:600;margin-top:.15rem}
+        .ans-bg-blue{background:linear-gradient(135deg,#4e73df,#224abe)}
+        .ans-bg-yellow{background:linear-gradient(135deg,#f6c23e,#dda20a)}
+        .ans-bg-cyan{background:linear-gradient(135deg,#36b9cc,#258391)}
+        .ans-bg-red{background:linear-gradient(135deg,#e74a3b,#be2617)}
+        .ans-bg-gray{background:linear-gradient(135deg,#858796,#60616f)}
+        .ans-bg-crimson{background:linear-gradient(135deg,#c0392b,#7b1d14)}
+        .ans-bg-orange{background:linear-gradient(135deg,#fd7e14,#c85f07)}
+        .ans-bg-dark{background:linear-gradient(135deg,#5a5c69,#2b2d36)}
+    </style>
+
+    <div class="ans-kpi-grid">
+        <!-- Analisadas / Total (com barra de progresso) -->
+        <div class="ans-kpi" title="Analisadas / Total">
+            <div class="ans-kpi-icon ans-bg-blue"><i class="fas fa-tasks"></i></div>
+            <div class="ans-kpi-valor">
+                <span class="text-success">{{ kpi_analisadas }}</span><span class="ans-kpi-sep">/</span>{{ kpi_total }}
+            </div>
+            <div class="ans-kpi-label">Analisadas / Total</div>
+            <div class="ans-kpi-progress"><div style="width:{{ '%.1f'|format(kpi_pct) }}%;"></div></div>
+            <div class="ans-kpi-pct">{{ '%.0f'|format(kpi_pct) }}% concluído</div>
+        </div>
+
+        <!-- Pendentes -->
+        <div class="ans-kpi">
+            <div class="ans-kpi-icon ans-bg-yellow"><i class="fas fa-hourglass-half"></i></div>
+            <div class="ans-kpi-valor">{{ (stats.pendentes or 0) if stats else 0 }}</div>
+            <div class="ans-kpi-label">Pendentes</div>
+        </div>
+
+        <!-- Aceitas -->
+        <div class="ans-kpi">
+            <div class="ans-kpi-icon ans-bg-cyan"><i class="fas fa-thumbs-up"></i></div>
+            <div class="ans-kpi-valor">{{ (stats.aceitas or 0) if stats else 0 }}</div>
+            <div class="ans-kpi-label">Aceitas</div>
+        </div>
+
+        <!-- Rejeitadas -->
+        <div class="ans-kpi">
+            <div class="ans-kpi-icon ans-bg-red"><i class="fas fa-thumbs-down"></i></div>
+            <div class="ans-kpi-valor">{{ (stats.rejeitadas or 0) if stats else 0 }}</div>
+            <div class="ans-kpi-label">Rejeitadas</div>
+        </div>
+
+        <!-- Prazo -->
+        <div class="ans-kpi" title="Dentro do prazo / Fora do prazo">
+            <div class="ans-kpi-icon ans-bg-gray"><i class="fas fa-clock"></i></div>
+            <div class="ans-kpi-valor">
+                {{ (stats.dentro_prazo or 0) if stats else 0 }}<small class="text-success"><i class="fas fa-check"></i></small>
+                <span class="ans-kpi-sep">/</span>
+                {{ (stats.fora_prazo or 0) if stats else 0 }}<small class="text-danger"><i class="fas fa-times"></i></small>
+            </div>
+            <div class="ans-kpi-label">Prazo</div>
+        </div>
+
+        <!-- Advertências do mês -->
+        <div class="ans-kpi" title="Advertências nesta apuração">
+            <div class="ans-kpi-icon ans-bg-crimson"><i class="fas fa-gavel"></i></div>
+            <div class="ans-kpi-valor">{{ verificacao.total_advertencias if verificacao else 0 }}</div>
+            <div class="ans-kpi-label">Advertências</div>
+        </div>
+
+        <!-- Reincidências do mês -->
+        <div class="ans-kpi" title="Reincidências nesta apuração">
+            <div class="ans-kpi-icon ans-bg-orange"><i class="fas fa-redo"></i></div>
+            <div class="ans-kpi-valor">{{ verificacao.total_reincidencias if verificacao else 0 }}</div>
+            <div class="ans-kpi-label">Reincidências</div>
+        </div>
+
+        <!-- Reiterações do mês -->
+        <div class="ans-kpi" title="Reiterações nesta apuração">
+            <div class="ans-kpi-icon ans-bg-dark"><i class="fas fa-exclamation-circle"></i></div>
+            <div class="ans-kpi-valor">{{ verificacao.total_reiteracoes if verificacao else 0 }}</div>
+            <div class="ans-kpi-label">Reiterações</div>
+        </div>
     </div>
 
     <!-- Grupos (FECHADOS por padrão) -->

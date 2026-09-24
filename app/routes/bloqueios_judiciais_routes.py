@@ -161,9 +161,10 @@ def index():
         params['p_vrex'] = f_vr_exato
     where = ("WHERE " + " AND ".join(condicoes)) if condicoes else ""
 
+    # MEMO_SEI_DESBLOQUEIO e MEMO_SISDOC entram no SELECT pra já virem preenchidos na edição
     sql = text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO,
-               EXCE, EVENTO, MEMO_SEI
+               EXCE, EVENTO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC
         FROM {_TB} {where}
         ORDER BY DT_DEPOSITO DESC, PROCESSO
     """)
@@ -183,6 +184,8 @@ def index():
             'exce_lbl': ('Sim' if exce == 1 else ('Não' if exce == 0 else '—')),
             'evento': (r[8] or ''),
             'memo_sei': (r[9] or ''),
+            'memo_sei_desbloqueio': (r[10] or ''),
+            'memo_sisdoc': (r[11] or ''),
         })
 
     # ===== Totais sensíveis aos filtros (calculados sobre a lista já filtrada) =====
@@ -276,11 +279,28 @@ def editar():
     dt_desb = _parse_data(request.form.get('DT_DESBLOQUEIO'))  # pode ser None
     exce = _parse_bit(request.form.get('EXCE'))
     evento = _parse_evento(request.form.get('EVENTO')) if dt_desb else None  # só se desbloqueado
-    memo_sei = _montar_memo_sei(request.form.get('MEMO_SEI'))  # monta o valor completo (idempotente)
+
+    # Caixinha "Usar Memo SISDOC": quem manda é a flag, não os inputs
+    # (input desabilitado não é enviado pelo FormData).
+    # Marcada   -> grava MEMO_SISDOC e zera MEMO_SEI
+    # Desmarcada -> grava MEMO_SEI e zera MEMO_SISDOC
+    usa_sisdoc = _parse_bit(request.form.get('USA_SISDOC')) == 1
+    if usa_sisdoc:
+        memo_sisdoc = _montar_memo_sei(request.form.get('MEMO_SISDOC'))  # mesmo sufixo/regra
+        memo_sei = None
+    else:
+        memo_sei = _montar_memo_sei(request.form.get('MEMO_SEI'))  # monta o valor completo (idempotente)
+        memo_sisdoc = None
+
+    # Memo SEI do desbloqueio: só é gravado quando o registro está desbloqueado (igual ao EVENTO)
+    memo_sei_desb = _montar_memo_sei(request.form.get('MEMO_SEI_DESBLOQUEIO')) if dt_desb else None
 
     if not dt_dep or vr is None or not conta or not processo:
         return jsonify({'success': False,
                         'message': 'Data do depósito, valor, conta e processo são obrigatórios.'}), 400
+    if usa_sisdoc and not memo_sisdoc:
+        return jsonify({'success': False,
+                        'message': 'Informe o Memo SISDOC ou desmarque a opção "Usar Memo SISDOC".'}), 400
 
     o_dep = _parse_data(request.form.get('o_DT_DEPOSITO'))
     o_vr = _parse_decimal(request.form.get('o_VR_BLOQUEADO'))
@@ -289,6 +309,8 @@ def editar():
         'dt_dep': dt_dep, 'vr': vr, 'conta': conta, 'processo': processo,
         'vara': vara, 'autor': autor, 'dt_desb': dt_desb, 'exce': exce, 'evento': evento,
         'memo': (memo_sei or None),
+        'memo_desb': (memo_sei_desb or None),
+        'memo_sisdoc': (memo_sisdoc or None),
         'o_dep': o_dep.strftime('%Y%m%d') if o_dep else '',
         'o_vr': o_vr,
         'o_conta': (request.form.get('o_CONTA') or '').strip(),
@@ -304,7 +326,8 @@ def editar():
             SET DT_DEPOSITO = :dt_dep, VR_BLOQUEADO = :vr, CONTA = :conta,
                 PROCESSO = :processo, VARA = :vara, AUTOR = :autor,
                 DT_DESBLOQUEIO = :dt_desb, EXCE = :exce, EVENTO = :evento,
-                MEMO_SEI = :memo
+                MEMO_SEI = :memo, MEMO_SEI_DESBLOQUEIO = :memo_desb,
+                MEMO_SISDOC = :memo_sisdoc
             WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :o_dep
               AND ROUND(VR_BLOQUEADO, 2) = ROUND(:o_vr, 2)
               AND RTRIM(ISNULL(CONTA, '')) = RTRIM(:o_conta)
@@ -324,7 +347,9 @@ def editar():
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
                          'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
                          'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d') if dt_desb else None,
-                         'EXCE': exce, 'EVENTO': evento, 'MEMO_SEI': memo_sei},
+                         'EXCE': exce, 'EVENTO': evento, 'MEMO_SEI': memo_sei,
+                         'MEMO_SEI_DESBLOQUEIO': memo_sei_desb,
+                         'MEMO_SISDOC': memo_sisdoc},
         )
         aviso = '' if result.rowcount == 1 else f' ({result.rowcount} linhas idênticas atualizadas)'
         return jsonify({'success': True, 'message': f'Bloqueio atualizado.{aviso}'})
@@ -668,13 +693,17 @@ def _fmt_data_ponto(d):
 
 def _dados_bloqueio_diario(dia):
     """Registros com DEPÓSITO = dia OU DESBLOQUEIO = dia, AGRUPADOS por
-    (processo, vara, autor, memo_sei, data do depósito). Cada grupo = um cartão
-    com várias contas e o total somado. Situação aparece quando há desbloqueio na data."""
+    (processo, vara, autor, memo_sei, memo_sisdoc, data do depósito). Cada grupo = um cartão
+    com várias contas e o total somado. Situação aparece quando há desbloqueio na data.
+
+    Memos exibidos:
+      - na linha do bloqueio: Memo SISDOC (se houver) OU Memo SEI — nunca os dois;
+      - na linha do desbloqueio: Memo SEI do Desbloqueio das linhas desbloqueadas na data."""
     from collections import OrderedDict
     dia_112 = dia.strftime('%Y%m%d')
     rows = db.session.execute(text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
-               DT_DESBLOQUEIO, MEMO_SEI
+               DT_DESBLOQUEIO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC
         FROM {_TB}
         WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
            OR CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :d
@@ -683,13 +712,19 @@ def _dados_bloqueio_diario(dia):
 
     grupos = OrderedDict()
     for r in rows:
-        dep, vr, conta, proc, vara, autor, desb, memo = r
+        dep, vr, conta, proc, vara, autor, desb, memo, memo_desb, memo_sisdoc = r
         dep_d = dep.date() if hasattr(dep, 'date') else dep
         desb_d = desb.date() if (desb and hasattr(desb, 'date')) else desb
 
+        memo = (memo or '').strip()
+        memo_desb = (memo_desb or '').strip()
+        memo_sisdoc = (memo_sisdoc or '').strip()
+
+        # MEMO_SISDOC entra na chave junto com o MEMO_SEI: quando é SISDOC o SEI fica
+        # vazio, e sem isso SISDOCs diferentes cairiam no mesmo cartão
         chave = (
             (proc or '').strip(), (vara or '').strip(),
-            (autor or '').strip(), (memo or '').strip(),
+            (autor or '').strip(), memo, memo_sisdoc,
             dep_d.strftime('%Y%m%d') if dep_d else '',
         )
 
@@ -697,7 +732,9 @@ def _dados_bloqueio_diario(dia):
             grupos[chave] = {
                 'dt_bloqueio': _fmt_data_ponto(dep_d),
                 'processo': (proc or ''), 'vara': (vara or ''),
-                'autor': (autor or ''), 'memo_sei': (memo or ''),
+                'autor': (autor or ''),
+                'memo_sei': memo, 'memo_sisdoc': memo_sisdoc,
+                'memos_desb': [],
                 'contas': [], 'total': Decimal('0'),
                 'desb_na_data': False, 'dt_transf': '',
             }
@@ -710,16 +747,31 @@ def _dados_bloqueio_diario(dia):
         if desb_d and desb_d.strftime('%Y%m%d') == dia_112:
             g['desb_na_data'] = True
             g['dt_transf'] = _fmt_data_ponto(desb_d)
+            # memo do desbloqueio: só das linhas desbloqueadas na data, sem repetir
+            if memo_desb and memo_desb not in g['memos_desb']:
+                g['memos_desb'].append(memo_desb)
 
     cartoes = []
     for g in grupos.values():
         situacao = ''
         if g['desb_na_data']:
             situacao = f"Desbloqueados e Transferidos em {g['dt_transf']}"
+
+        # SISDOC tem prioridade: quando existe, o Memo SEI não aparece
+        if g['memo_sisdoc']:
+            memo_label, memo_valor = 'Memo SISDOC', g['memo_sisdoc']
+        elif g['memo_sei']:
+            memo_label, memo_valor = 'Memo SEI', g['memo_sei']
+        else:
+            memo_label, memo_valor = '', ''
+
         cartoes.append({
             'dt_bloqueio': g['dt_bloqueio'], 'dt_transf': g['dt_transf'],
             'processo': g['processo'], 'vara': g['vara'],
-            'autor': g['autor'], 'memo_sei': g['memo_sei'],
+            'autor': g['autor'],
+            'memo_sei': g['memo_sei'], 'memo_sisdoc': g['memo_sisdoc'],
+            'memo_label': memo_label, 'memo_valor': memo_valor,
+            'memo_desb': ', '.join(g['memos_desb']),
             'contas': g['contas'],
             'total_fmt': _fmt_vr(g['total']), 'total_valor': g['total'],
             'situacao': situacao,
@@ -745,7 +797,8 @@ def bloqueio_diario():
 @login_required
 def bloqueio_diario_excel():
     """Excel do dia (uma aba = a data), agrupado por processo/vara/autor/memo/data.
-    Várias contas somando o total; Situação vertical à direita."""
+    Várias contas somando o total; Situação vertical à direita.
+    Memos nas faixas de data: bloqueio (SISDOC ou SEI) e desbloqueio (Memo SEI do Desbloqueio)."""
     from openpyxl.styles import PatternFill
     dia = _parse_data((request.args.get('dia') or '').strip())
     if not dia:
@@ -778,29 +831,41 @@ def bloqueio_diario_excel():
     t.font = Font(bold=True, size=15, color='1F3A5F'); t.alignment = center
     ws.row_dimensions[1].height = 26
 
+    def faixa_data(linha, texto):
+        """Faixa azul de data mesclada em A:B; aumenta a altura se o texto for longo."""
+        ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=2)
+        cel = ws.cell(linha, 1, texto)
+        cel.font = branco_b; cel.fill = azul_hdr; cel.alignment = left
+        ws.cell(linha, 2).fill = azul_hdr
+        if len(texto) > 60:
+            ws.row_dimensions[linha].height = 32
+
     lin = 3
     for c in cartoes:
         tem_desb = bool(c.get('situacao'))
         n_datas = 2 if tem_desb else 1
 
-        # Topo: datas (A:B) em faixa azul
-        ws.cell(lin, 1, f"Data do Bloqueio: {c['dt_bloqueio']}")
-        ws.cell(lin, 1).font = branco_b; ws.cell(lin, 1).fill = azul_hdr; ws.cell(lin, 1).alignment = left
-        ws.cell(lin, 2).fill = azul_hdr
+        # Topo: data do bloqueio + memo (SISDOC ou SEI)
+        txt_bloq = f"Data do Bloqueio: {c['dt_bloqueio']}"
+        if c['memo_valor']:
+            txt_bloq += f" - {c['memo_label']}: {c['memo_valor']}"
+        faixa_data(lin, txt_bloq)
+
+        # Data do desbloqueio + Memo SEI do Desbloqueio (se houver)
         if tem_desb:
-            ws.cell(lin + 1, 1, f"Data dos Desbloqueios/Transferências: {c['dt_transf']}")
-            ws.cell(lin + 1, 1).font = branco_b; ws.cell(lin + 1, 1).fill = azul_hdr; ws.cell(lin + 1, 1).alignment = left
-            ws.cell(lin + 1, 2).fill = azul_hdr
+            txt_desb = f"Data dos Desbloqueios/Transferências: {c['dt_transf']}"
+            if c['memo_desb']:
+                txt_desb += f" - Memo SEI do Desbloqueio: {c['memo_desb']}"
+            faixa_data(lin + 1, txt_desb)
 
         ini_bloco = lin
         base = lin + n_datas
 
-        # Processo/Vara/Autor/Memo SEI (memo ao lado do autor)
+        # Processo/Vara/Autor (o memo agora fica nas faixas de data)
         ws.merge_cells(start_row=base, start_column=1, end_row=base, end_column=2)
         linha_proc = (f"Processo: {c['processo']}"
                       + (f"   ·   Vara: {c['vara']}" if c['vara'] else "")
-                      + (f"   ·   Autor: {c['autor']}" if c['autor'] else "")
-                      + (f"   ·   Memo SEI: {c['memo_sei']}" if c['memo_sei'] else ""))
+                      + (f"   ·   Autor: {c['autor']}" if c['autor'] else ""))
         ws.cell(base, 1, linha_proc).alignment = left
 
         # Valor da ordem = total
