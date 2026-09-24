@@ -96,7 +96,7 @@
         </div>
     </div>
 
-    <!-- Relatórios -->
+ <!-- Relatórios -->
 <div class="col-md-6">
     <div class="card shadow h-100">
         <div class="card-body text-center p-5">
@@ -155,77 +155,39 @@
     </div>
 </div>
 
-                    </button>
+</div> <!-- fecha a linha de Registros Excluídos e Relatórios -->
 
-                    <ul
-                        class="dropdown-menu shadow"
-                        aria-labelledby="dropdownDashboards"
-                    >
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="{{ url_for('depositos_judiciais.dashboard', aba='depositos') }}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <i class="fas fa-landmark me-2 text-primary"></i>
-                                Depósitos Judiciais
-                            </a>
-                        </li>
 
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="{{ url_for('depositos_judiciais.dashboard', aba='seguros') }}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <i class="fas fa-shield-alt me-2 text-success"></i>
-                                Seguro Habitacional
-                            </a>
-                        </li>
 
-                        <li>
-                            <a
-                                class="dropdown-item"
-                                href="{{ url_for('depositos_judiciais.dashboard', aba='siscor') }}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <i class="fas fa-balance-scale me-2 text-warning"></i>
-                                Conferência SISCOR
-                            </a>
-                        </li>
-                    </ul>
+
+   <!-- Informações do Sistema -->
+<div class="row g-4 mt-3">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-body text-center p-4">
+                <div class="mb-3">
+                    <i class="fas fa-info-circle fa-2x text-primary"></i>
                 </div>
-            </div>
-        </div>
-    </div>
 
-</div>
+                <h5 class="card-title mb-3">
+                    Informações do Sistema
+                </h5>
 
-
-    <!-- Estatísticas -->
-    <div class="row g-4 mt-5">
-        <div class="col-md-12">
-            <div class="card shadow">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">
-                        <i class="fas fa-info-circle me-2"></i>
-                        Informações do Sistema
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <p class="mb-0">
-                        Este sistema permite o gerenciamento completo dos depósitos judiciais da SUFIN,
-                        incluindo o controle de lançamentos, valores de rateio, memorandos e
-                        acompanhamento de áreas e centros de resultado.
-                    </p>
-                </div>
+                <p class="text-muted mb-0">
+                    Este sistema permite o gerenciamento completo dos depósitos judiciais da SUFIN,
+                    incluindo o controle de lançamentos, valores de rateio, memorandos e
+                    acompanhamento de áreas e centros de resultado.
+                </p>
             </div>
         </div>
     </div>
 </div>
+
+</div> <!-- fecha editais-container -->
+
+
+
+
 
 <!-- Modal de Loading -->
 <div class="modal fade" id="loadingModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">

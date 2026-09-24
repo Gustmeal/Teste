@@ -311,3 +311,5 @@
 2026-09-24 11:12:25,670 - ERROR - [MainThread] - Waitress não encontrado. Usando servidor Werkzeug em modo threaded.
 2026-09-24 11:19:33,691 - ERROR - [MainThread] - Waitress não encontrado. Usando servidor Werkzeug em modo threaded.
 2026-09-24 11:40:07,854 - ERROR - [MainThread] - Waitress não encontrado. Usando servidor Werkzeug em modo threaded.
+2026-09-24 12:51:36,575 - ERROR - [MainThread] - Waitress não encontrado. Usando servidor Werkzeug em modo threaded.
+2026-09-24 13:31:25,739 - ERROR - [MainThread] - Waitress não encontrado. Usando servidor Werkzeug em modo threaded.
