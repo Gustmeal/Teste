@@ -123,6 +123,10 @@
                     <a href="{{ url_for('sumov.movimentacao_imovel') }}" class="btn btn-secondary">
                         <i class="fas fa-eraser me-1"></i>Limpar
                     </a>
+                    <button type="submit" class="btn btn-success js-ignore-loading"
+                            formaction="{{ url_for('sumov.movimentacao_imovel_exportar') }}">
+                        <i class="fas fa-file-excel me-1"></i>Exportar Excel
+                    </button>
                 </div>
             </form>
         </div>

@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required, current_user
 from app import db
 from app.models.relacao_imovel_contrato import RelacaoImovelContratoParcelamento
@@ -5268,3 +5269,223 @@ def movimentacao_imovel_status_por_acao():
 
     except Exception as e:
         return jsonify({'status': [], 'erro': str(e)}), 500
+
+@sumov_bp.route('/movimentacao-imovel/exportar')
+@login_required
+def movimentacao_imovel_exportar():
+    """
+    Exporta a lista de Movimentação de Imóvel para Excel (.xlsx) estilizado,
+    respeitando os mesmos filtros da tela.
+    Compatível com Python 3.9 e 3.12.
+    """
+    try:
+        import io
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        # ===== Mesmos filtros da listagem =====
+        filtro_contrato = request.args.get('filtro_contrato', '').strip()
+        filtro_acao = request.args.get('filtro_acao', '').strip()
+        filtro_status = request.args.get('filtro_status', '').strip()
+        filtro_dt_geadi = request.args.get('filtro_dt_geadi', '').strip()
+        vazio_dt_geadi = request.args.get('vazio_dt_geadi')
+        filtro_dt_sumov = request.args.get('filtro_dt_sumov', '').strip()
+        vazio_dt_sumov = request.args.get('vazio_dt_sumov')
+        filtro_dt_receb = request.args.get('filtro_dt_receb', '').strip()
+        vazio_dt_receb = request.args.get('vazio_dt_receb')
+
+        condicoes = []
+        params = {}
+
+        if filtro_contrato:
+            condicoes.append("[NU_CONTRATO] LIKE :contrato")
+            params['contrato'] = '%' + filtro_contrato + '%'
+        if filtro_acao:
+            condicoes.append("[ACAO_GEIMO] = :acao")
+            params['acao'] = filtro_acao
+        if filtro_status == '__VAZIO__':
+            condicoes.append("([STATUS_RM] IS NULL OR LTRIM(RTRIM([STATUS_RM])) = '')")
+        elif filtro_status:
+            condicoes.append("[STATUS_RM] = :status")
+            params['status'] = filtro_status
+        if vazio_dt_geadi:
+            condicoes.append("[DT_ENVIO_GEADI_SUMOV] IS NULL")
+        elif filtro_dt_geadi:
+            data = _parse_form_date(filtro_dt_geadi)
+            if data:
+                condicoes.append("CONVERT(date, [DT_ENVIO_GEADI_SUMOV]) = :dt_geadi")
+                params['dt_geadi'] = data
+        if vazio_dt_sumov:
+            condicoes.append("[DT_ENVIO_SUMOV_GEIMO] IS NULL")
+        elif filtro_dt_sumov:
+            data = _parse_form_date(filtro_dt_sumov)
+            if data:
+                condicoes.append("CONVERT(date, [DT_ENVIO_SUMOV_GEIMO]) = :dt_sumov")
+                params['dt_sumov'] = data
+        if vazio_dt_receb:
+            condicoes.append("[DT_RECEBIMENTO_GEIMO] IS NULL")
+        elif filtro_dt_receb:
+            data = _parse_form_date(filtro_dt_receb)
+            if data:
+                condicoes.append("CONVERT(date, [DT_RECEBIMENTO_GEIMO]) = :dt_receb")
+                params['dt_receb'] = data
+
+        where_sql = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
+
+        sql = text("""
+            SELECT
+                [NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV],
+                [DT_ENVIO_SUMOV_GEIMO], [DT_RECEBIMENTO_GEIMO], [ACAO_GEIMO],
+                [DT_ACAO_GEIMO], [OBS_GEIMO], [STATUS_RM], [DT_ENVIO_RESALE]
+            FROM [BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            """ + where_sql + """
+            ORDER BY [DT_ENVIO_GEADI_SUMOV] DESC, [NU_CONTRATO]
+        """)
+        linhas = db.session.execute(sql, params).fetchall()
+
+        # ===== Monta o Excel =====
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Movimentação de Imóvel'
+        ws.sheet_view.showGridLines = False
+
+        # Paleta do portal
+        AZUL = '4E73DF'
+        AZUL_ESC = '224ABE'
+        LAVANDA = 'EDE7F6'
+        ROXO = '4B258A'
+        ZEBRA = 'F5F7FF'
+        BORDA = 'D9D9D9'
+        AMBAR = 'FFF3CD'   # destaque "Sem Status"
+        VERDE = 'E8F5E9'   # destaque status preenchido
+
+        thin = Side(style='thin', color=BORDA)
+        box = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        colunas = [
+            'Nº Contrato', 'Responsável', 'Envio GEADI/SUMOV', 'Envio SUMOV/GEIMO',
+            'Recebimento GEIMO', 'Ação GEIMO', 'Data Ação GEIMO', 'Obs. GEIMO',
+            'Status RM', 'Envio RESALE'
+        ]
+        larguras = [16, 18, 18, 18, 18, 28, 16, 40, 22, 16]
+        for i, w in enumerate(larguras, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+
+        ult_col = len(colunas)
+        ult_col_letra = get_column_letter(ult_col)
+
+        # Título
+        ws.merge_cells('A1:%s1' % ult_col_letra)
+        c = ws['A1']
+        c.value = 'Movimentação de Imóvel — SUMOV'
+        c.font = Font(name='Arial', size=15, bold=True, color='FFFFFF')
+        c.fill = PatternFill('solid', fgColor=AZUL_ESC)
+        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws.row_dimensions[1].height = 30
+
+        # Subtítulo (contexto + data de geração)
+        ws.merge_cells('A2:%s2' % ult_col_letra)
+        c = ws['A2']
+        c.value = '%d registro(s)   ·   Gerado em %s' % (
+            len(linhas), datetime.now().strftime('%d/%m/%Y %H:%M'))
+        c.font = Font(name='Arial', size=10, italic=True, color=ROXO)
+        c.fill = PatternFill('solid', fgColor=LAVANDA)
+        c.alignment = Alignment(horizontal='left', vertical='center', indent=1)
+        ws.row_dimensions[2].height = 20
+
+        # Cabeçalho (linha 4)
+        hdr = 4
+        for j, titulo in enumerate(colunas, 1):
+            cell = ws.cell(row=hdr, column=j, value=titulo)
+            cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFF')
+            cell.fill = PatternFill('solid', fgColor=AZUL)
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.border = box
+        ws.row_dimensions[hdr].height = 24
+
+        def fmt_data(valor):
+            return valor.strftime('%d/%m/%Y') if valor else ''
+
+        # Dados
+        linha_atual = hdr + 1
+        for idx, r in enumerate(linhas):
+            valores = [
+                r[0],                 # Nº Contrato
+                r[1] or '',           # Responsável
+                fmt_data(r[2]),       # Envio GEADI/SUMOV
+                fmt_data(r[3]),       # Envio SUMOV/GEIMO
+                fmt_data(r[4]),       # Recebimento GEIMO
+                r[5] or '',           # Ação GEIMO
+                fmt_data(r[6]),       # Data Ação GEIMO
+                r[7] or '',           # Obs. GEIMO
+                r[8] or '',           # Status RM
+                fmt_data(r[9]),       # Envio RESALE
+            ]
+
+            fill_zebra = PatternFill('solid', fgColor=ZEBRA) if (idx % 2 == 1) else None
+
+            for j, val in enumerate(valores, 1):
+                cell = ws.cell(row=linha_atual, column=j, value=val)
+                cell.border = box
+                cell.font = Font(name='Arial', size=10)
+
+                if j == 1:  # contrato em negrito
+                    cell.font = Font(name='Arial', size=10, bold=True)
+
+                # Centraliza contrato e todas as datas
+                if j in (1, 3, 4, 5, 7, 10):
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                else:
+                    cell.alignment = Alignment(horizontal='left', vertical='center',
+                                               wrap_text=(j == 8), indent=1)
+
+                # Zebra padrão
+                if fill_zebra:
+                    cell.fill = fill_zebra
+
+                # Destaque da coluna Status RM
+                if j == 9:
+                    texto = (val or '').strip().upper()
+                    if texto == 'SEM STATUS' or texto == '':
+                        cell.fill = PatternFill('solid', fgColor=AMBAR)
+                    else:
+                        cell.fill = PatternFill('solid', fgColor=VERDE)
+
+            ws.row_dimensions[linha_atual].height = 18
+            linha_atual += 1
+
+        # Autofiltro e congelamento
+        ws.auto_filter.ref = 'A%d:%s%d' % (hdr, ult_col_letra, max(linha_atual - 1, hdr))
+        ws.freeze_panes = 'A%d' % (hdr + 1)
+
+        # Rodapé com total
+        rod = linha_atual + 1
+        ws.merge_cells('A%d:%s%d' % (rod, ult_col_letra, rod))
+        cell = ws.cell(row=rod, column=1, value='Total de registros: %d' % len(linhas))
+        cell.font = Font(name='Arial', size=10, bold=True, color=ROXO)
+        cell.alignment = Alignment(horizontal='right', indent=1)
+
+        # ===== Gera e envia =====
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        registrar_log(
+            acao='exportar',
+            entidade='movimentacao_imovel',
+            entidade_id=None,
+            descricao='Exportação Excel de Movimentação de Imóvel - %d registros' % len(linhas)
+        )
+
+        nome_arquivo = 'movimentacao_imovel_%s.xlsx' % datetime.now().strftime('%Y%m%d_%H%M%S')
+        return send_file(
+            buffer,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=nome_arquivo
+        )
+
+    except Exception as e:
+        flash('Erro ao exportar Excel: %s' % str(e), 'danger')
+        return redirect(url_for('sumov.movimentacao_imovel'))
