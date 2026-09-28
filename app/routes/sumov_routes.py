@@ -5338,7 +5338,7 @@ def movimentacao_imovel_exportar():
                 [NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV],
                 [DT_ENVIO_SUMOV_GEIMO], [DT_RECEBIMENTO_GEIMO], [ACAO_GEIMO],
                 [DT_ACAO_GEIMO], [OBS_GEIMO], [STATUS_RM], [DT_ENVIO_RESALE]
-            FROM [BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            FROM [BDG].[MOV_TB0'56_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
             """ + where_sql + """
             ORDER BY [DT_ENVIO_GEADI_SUMOV] DESC, [NU_CONTRATO]
         """)

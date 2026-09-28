@@ -89,7 +89,7 @@ def _parse_bit(s):
 def _parse_evento(s):
     """Aceita apenas 'D', 'T', 'D/T'. Caso contrário, None."""
     s = (s or '').strip().upper()
-    return s if s in ('D', 'T', 'D/T') else None
+    return s if s in ('D', 'T') else None
 
 _MEMO_SUFIXO = '/Gefin/Sufin/Difin'
 
