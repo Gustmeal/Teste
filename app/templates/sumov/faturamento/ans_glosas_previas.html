@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.ans_glosas', dt_apuracao=dt_selecionada) if dt_selecionada else url_for('sumov.ans_glosas') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar à ANS Glosas
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-binoculars text-info me-2"></i> Prévias ANS Glosas
+        </h1>
+        {% if dt_selecionada and registros %}
+        {% set args_exp = dict(filtros_url) %}{% set _ = args_exp.update({'dt_apuracao': dt_selecionada}) %}
+        <a href="{{ url_for('sumov.ans_glosas_previas_exportar', **args_exp) }}" class="btn btn-success btn-sm js-ignore-loading">
+            <i class="fas fa-file-excel me-1"></i>Exportar para Excel
+        </a>
+        {% endif %}
+    </div>
+
+    {% if not datas %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-2"></i>Ainda não há prévias carregadas na tabela de prévias ANS.
+    </div>
+    {% else %}
+
+    <!-- ================= FILTROS ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body py-3">
+            <form method="get" action="{{ url_for('sumov.ans_glosas_previas') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1"><i class="fas fa-calendar-alt me-1 text-primary"></i>Data de apuração</label>
+                        <select name="dt_apuracao" class="form-select form-select-sm" onchange="this.form.submit()">
+                            {% for d in datas %}
+                            <option value="{{ d.valor }}" {% if d.valor == dt_selecionada %}selected{% endif %}>{{ d.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Grupo</label>
+                        <select name="grupo" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            {% for g in opcoes.grupos %}
+                            <option value="{{ g.valor }}" {% if filtros_url.get('grupo') == g.valor|string %}selected{% endif %}>{{ g.rotulo }} ({{ g.qtde|mil }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Prévia</label>
+                        <select name="previa" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            {% for p in opcoes.previas %}{% if p.valor %}
+                            <option value="{{ p.valor }}" {% if filtros_url.get('previa') == p.valor %}selected{% endif %}>{{ p.rotulo }} ({{ p.qtde|mil }})</option>
+                            {% endif %}{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-1">
+                        <label class="form-label fw-bold small mb-1">No prazo</label>
+                        <select name="no_prazo" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            <option value="1" {% if filtros_url.get('no_prazo') == '1' %}selected{% endif %}>Sim</option>
+                            <option value="0" {% if filtros_url.get('no_prazo') == '0' %}selected{% endif %}>Não</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Nº ocorrência</label>
+                        <input type="number" name="nr_ocorrencia" class="form-control form-control-sm" value="{{ filtros_url.get('nr_ocorrencia', '') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Contrato</label>
+                        <input type="text" name="nr_contrato" class="form-control form-control-sm" value="{{ filtros_url.get('nr_contrato', '') }}">
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <a href="{{ url_for('sumov.ans_glosas_previas', dt_apuracao=dt_selecionada) }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-eraser me-1"></i>Limpar filtros
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search me-1"></i>Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if resumo %}
+    <!-- ================= RESUMO (contado pela coluna PREVIA) ================= -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-4 col-xl">
+            <div class="card shadow-sm h-100" style="border-left:4px solid #2c3e6b;"><div class="card-body py-3">
+                <small class="text-muted">Ocorrências</small>
+                <h4 class="fw-bold mb-0">{{ resumo.total|mil }}</h4>
+                <small class="text-muted">{{ resumo.grupos }} grupo(s)</small>
+            </div></div>
+        </div>
+        {% for p in resumo.colunas_previa %}
+        <div class="col-6 col-md-4 col-xl">
+            <div class="card shadow-sm h-100" style="border-left:4px solid {{ p.cor }};"><div class="card-body py-3">
+                <small class="text-muted">{{ p.rotulo }}</small>
+                <h4 class="fw-bold mb-0" style="color:{{ p.cor }};">{{ p.qtde|mil }}</h4>
+            </div></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ================= REGISTROS ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-table me-2"></i>Registros da prévia <span class="badge bg-secondary ms-1" id="contadorPrevia">{{ registros|length }}</span></h6>
+            <input type="text" id="buscaPrevia" class="form-control form-control-sm" style="max-width:280px;"
+                   placeholder="Buscar em todas as colunas" oninput="filtrarTabelaPrevia()">
+        </div>
+        <div class="card-body p-0">
+            {% if registros %}
+            <div class="table-responsive" style="max-height:70vh;overflow:auto;">
+                <table class="table table-sm table-hover table-bordered mb-0 previa-tabela" id="tabelaPrevia">
+                    <thead class="table-light" style="position:sticky;top:0;z-index:2;">
+                        <tr>
+                            {% for rotulo, coluna in cabecalhos %}
+                            <th class="text-nowrap">{{ rotulo }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in registros %}
+                        <tr>
+                            {% for rotulo, coluna in cabecalhos %}
+                            {% set v = r[coluna] %}
+                            {% if coluna == 'DSC_JUSTIFICATIVA' %}
+                            <td class="previa-descricao" title="{{ v }}">{{ v }}</td>
+                            {% elif coluna in ['NO_PRAZO', 'ADVERTENCIA', 'REINCIDENCIA', 'REITERACAO'] %}
+                            <td class="text-center">
+                                {% if v == 'Sim' %}<span class="badge {% if coluna == 'NO_PRAZO' %}bg-success{% else %}bg-danger{% endif %}">Sim</span>
+                                {% elif v == 'Não' %}<span class="badge {% if coluna == 'NO_PRAZO' %}bg-danger{% else %}bg-light text-dark border{% endif %}">Não</span>
+                                {% else %}{{ v }}{% endif %}
+                            </td>
+                            {% else %}
+                            <td class="text-nowrap">{{ v }}</td>
+                            {% endif %}
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                Nenhum registro de prévia para os filtros selecionados.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    .previa-tabela th{font-size:.76rem}
+    .previa-tabela td{font-size:.8rem;vertical-align:middle}
+    .previa-descricao{min-width:260px;max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .previa-chevron{transition:transform .2s}
+    .previa-chevron.rotated{transform:rotate(-90deg)}
+</style>
+
+<script>
+function toggleSecaoPrevia(id, cabecalho) {
+    var corpo = document.getElementById(id);
+    if (!corpo) return;
+    var seta = cabecalho.querySelector('.previa-chevron');
+    if (corpo.style.display === 'none') {
+        corpo.style.display = '';
+        if (seta) seta.classList.remove('rotated');
+    } else {
+        corpo.style.display = 'none';
+        if (seta) seta.classList.add('rotated');
+    }
+}
+
+// Busca rápida: só esconde/mostra linhas que já vieram do backend
+function filtrarTabelaPrevia() {
+    var termo = (document.getElementById('buscaPrevia').value || '').toLowerCase().trim();
+    var tabela = document.getElementById('tabelaPrevia');
+    if (!tabela) return;
+    var visiveis = 0;
+    tabela.querySelectorAll('tbody tr').forEach(function(tr) {
+        var mostra = !termo || tr.textContent.toLowerCase().indexOf(termo) !== -1;
+        tr.style.display = mostra ? '' : 'none';
+        if (mostra) visiveis++;
+    });
+    document.getElementById('contadorPrevia').textContent = visiveis;
+}
+</script>
+{% endblock %}

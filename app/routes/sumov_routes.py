@@ -3837,6 +3837,7 @@ def inserir_tabela_final_faturamento():
 @login_required
 def ans_glosas():
     from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
+    from app.utils.ans_auditoria import registrar_evento_simples, pode_ver_auditoria  # [AUDITORIA]
     datas_disponiveis = AnsApuracao.obter_datas_apuracao()
     dt_param = request.args.get('dt_apuracao', '')
     if dt_param:
@@ -3845,6 +3846,11 @@ def ans_glosas():
         dt_apuracao = str(datas_disponiveis[0])
     else:
         dt_apuracao = '2025-12-31'
+
+    # [AUDITORIA] registra quem abriu a tela, qual apuração e quando (nunca derruba a página)
+    registrar_evento_simples('ACESSO_PAGINA', dt_apuracao=dt_apuracao,
+                             mensagem='Acesso à tela ANS Glosas',
+                             parametros={'dt_apuracao': dt_apuracao})
 
     pendentes_por_grupo = AnsApuracao.listar_por_grupo(dt_apuracao)
     analisadas_por_grupo = AnsApuracao.listar_analisadas_por_grupo(dt_apuracao)
@@ -3874,7 +3880,8 @@ def ans_glosas():
                            dt_apuracao=dt_apuracao,
                            verificacao=verificacao,
                            conclusao_existente=conclusao_existente,
-                           dt_aplicacao_glosa=dt_aplicacao_glosa)
+                           dt_aplicacao_glosa=dt_aplicacao_glosa,
+                           pode_ver_auditoria=pode_ver_auditoria())  # [AUDITORIA]
 
 
 @sumov_bp.route('/faturamento/ans-glosas/salvar', methods=['POST'])
@@ -3882,23 +3889,38 @@ def ans_glosas():
 def ans_glosas_salvar():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dt = request.form.get('dt_apuracao', '2025-12-31')
         nr = request.form.get('nr_ocorrencia', type=int)
         ja = request.form.get('just_aceita', type=int)
         if nr is None or ja is None:
+            registrar_evento_simples('ANALISE_INDIVIDUAL', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Dados incompletos.',
+                                     parametros={'dt_apuracao': dt, 'nr_ocorrencia': nr, 'just_aceita': ja})
             return jsonify({'success': False, 'message': 'Dados incompletos.'}), 400
+
+        # [AUDITORIA] foto da ocorrência ANTES da análise
+        aud = AuditoriaAns('ANALISE_INDIVIDUAL', dt_apuracao=dt, nrs=[nr], tabelas=[TB045],
+                           parametros={'dt_apuracao': dt, 'nr_ocorrencia': nr, 'just_aceita': ja})
+
         ok, res = AnsApuracao.salvar_analise(dt, nr, ja)
         if ok:
             registrar_log(acao='editar', entidade='ans_apuracao', entidade_id=nr,
                           descricao=f'ANS - Oc {nr}: Just {"Aceita" if ja == 1 else "Rejeitada"}, Dias={res["qtde_dias"]}, Prazo={"Sim" if res["no_prazo"] == 1 else "Não"}')
-            return jsonify({'success': True,
-                            'message': f'Ocorrência {nr} analisada! Just {"aceita" if ja == 1 else "rejeitada"}. Dias: {res["qtde_dias"]}. {"Dentro" if res["no_prazo"] == 1 else "Fora"} do prazo ({res["prazo"]} dias).'})
+            msg = f'Ocorrência {nr} analisada! Just {"aceita" if ja == 1 else "rejeitada"}. Dias: {res["qtde_dias"]}. {"Dentro" if res["no_prazo"] == 1 else "Fora"} do prazo ({res["prazo"]} dias).'
+            aud.finalizar(True, msg)  # [AUDITORIA] foto DEPOIS + diferenças
+            return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA] garante que nada pendente seja gravado junto com a auditoria
+        aud.finalizar(False, str(res))  # [AUDITORIA]
         return jsonify({'success': False, 'message': str(res)}), 400
     except Exception as e:
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -3907,17 +3929,31 @@ def ans_glosas_salvar():
 def ans_glosas_salvar_lote():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         if not dados or 'analises' not in dados:
+            registrar_evento_simples('ANALISE_LOTE', sucesso=False, mensagem='Dados inválidos')  # [AUDITORIA]
             return jsonify({'success': False, 'message': 'Dados inválidos'}), 400
         dt = dados.get('dt_apuracao', '2025-12-31')
         analises = dados.get('analises', [])
         if not analises:
+            registrar_evento_simples('ANALISE_LOTE', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Nenhuma análise', parametros=dados)
             return jsonify({'success': False, 'message': 'Nenhuma análise'}), 400
+
+        # [AUDITORIA] foto de todas as ocorrências do lote ANTES
+        nrs_lote = [a.get('nr_ocorrencia') for a in analises if isinstance(a, dict) and a.get('nr_ocorrencia') is not None]
+        aud = AuditoriaAns('ANALISE_LOTE', dt_apuracao=dt, nrs=nrs_lote, tabelas=[TB045], parametros=dados)
+
         sc, ec, errs = AnsApuracao.salvar_analise_lote(dt, analises)
         registrar_log(acao='editar', entidade='ans_lote', entidade_id='batch',
                       descricao=f'ANS Lote: {sc} ok, {ec} erros')
+
+        # [AUDITORIA] foto DEPOIS; erros individuais ficam na mensagem do evento
+        aud.finalizar(ec == 0, f'{sc} ocorrência(s) analisada(s).' + (f' {ec} erro(s): ' + '; '.join(errs) if ec else ''))
+
         return jsonify(
             {'success': True, 'message': f'{sc} ocorrência(s) analisada(s).', 'sucesso_count': sc, 'erro_count': ec,
              'erros': errs})
@@ -3925,6 +3961,8 @@ def ans_glosas_salvar_lote():
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -3933,21 +3971,35 @@ def ans_glosas_salvar_lote():
 def ans_glosas_aplicar_advertencia():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045, TB049  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt = dados.get('dt_apuracao', '2025-12-31')
         grupo = dados.get('grupo')
-        if grupo is None: return jsonify({'success': False, 'message': 'Grupo não informado'}), 400
+        if grupo is None:
+            registrar_evento_simples('ADVERTENCIA', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Grupo não informado', parametros=dados)
+            return jsonify({'success': False, 'message': 'Grupo não informado'}), 400
+
+        # [AUDITORIA] foto do GRUPO inteiro (TB045) + penalidades do grupo (TB049) ANTES
+        aud = AuditoriaAns('ADVERTENCIA', dt_apuracao=dt, grupo=grupo, tabelas=[TB045, TB049], parametros=dados)
+
         ok, res = AnsApuracao.aplicar_advertencia_grupo(dt, grupo)
         if ok:
             msg = f'Grupo {grupo}: Advertência {"APLICADA" if res["sera_advertido"] else "não aplicada"} ({res["percentual"]}%)'
             registrar_log(acao='editar', entidade='ans_advertencia', entidade_id=grupo, descricao=msg)
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg, 'resumo': res})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, str(res))  # [AUDITORIA]
         return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -3956,21 +4008,35 @@ def ans_glosas_aplicar_advertencia():
 def ans_glosas_aplicar_reincidencia():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045, TB049  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt = dados.get('dt_apuracao')
         grupo = dados.get('grupo')
-        if not dt or grupo is None: return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        if not dt or grupo is None:
+            registrar_evento_simples('REINCIDENCIA', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Parâmetros incompletos', parametros=dados)
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        # [AUDITORIA] foto do grupo ANTES
+        aud = AuditoriaAns('REINCIDENCIA', dt_apuracao=dt, grupo=grupo, tabelas=[TB045, TB049], parametros=dados)
+
         ok, res = AnsApuracao.aplicar_reincidencia_grupo(dt, grupo)
         if ok:
             msg = f'Grupo {grupo}: Reincidência processada! {res.get("reinc_marcadas_resultado", 0)} marcada(s). (Anterior: {res.get("dt_anterior", "N/A")})'
             registrar_log(acao='editar', entidade='ans_reincidencia', entidade_id=grupo, descricao=msg)
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, str(res))  # [AUDITORIA]
         return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -3979,21 +4045,35 @@ def ans_glosas_aplicar_reincidencia():
 def ans_glosas_aplicar_reiteracao():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045, TB049  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt = dados.get('dt_apuracao')
         grupo = dados.get('grupo')
-        if not dt or grupo is None: return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+        if not dt or grupo is None:
+            registrar_evento_simples('REITERACAO', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Parâmetros incompletos', parametros=dados)
+            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        # [AUDITORIA] foto do grupo ANTES
+        aud = AuditoriaAns('REITERACAO', dt_apuracao=dt, grupo=grupo, tabelas=[TB045, TB049], parametros=dados)
+
         ok, res = AnsApuracao.aplicar_reiteracao_grupo(dt, grupo)
         if ok:
             msg = f'Grupo {grupo}: Reiteração processada! {res.get("reit_marcadas_resultado", 0)} marcada(s). (Anterior: {res.get("dt_anterior", "N/A")})'
             registrar_log(acao='editar', entidade='ans_reiteracao', entidade_id=grupo, descricao=msg)
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, str(res))  # [AUDITORIA]
         return jsonify({'success': False, 'message': res}), 400
     except Exception as e:
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -4002,6 +4082,8 @@ def ans_glosas_aplicar_reiteracao():
 def ans_glosas_editar_campo():
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB045, TB049  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt = dados.get('dt_apuracao')
@@ -4009,17 +4091,29 @@ def ans_glosas_editar_campo():
         campo = dados.get('campo')
         valor = dados.get('valor')
         if not all([dt, nr is not None, campo, valor is not None]):
+            registrar_evento_simples('EDICAO_MANUAL', dt_apuracao=dt, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Parâmetros incompletos', parametros=dados)
             return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        # [AUDITORIA] ocorrência (TB045) + badge do grupo (TB049) ANTES.
+        # É aqui que fica gravado o "Sim -> Não" / "Não -> Sim" manual.
+        aud = AuditoriaAns('EDICAO_MANUAL', dt_apuracao=dt, nrs=[nr], tabelas=[TB045, TB049], parametros=dados)
+
         ok, msg = AnsApuracao.editar_campo_individual(dt, int(nr), campo, int(valor))
         if ok:
             registrar_log(acao='editar', entidade='ans_edicao_manual', entidade_id=nr,
                           descricao=f'ANS Edição: Oc {nr}, {campo}={"Sim" if valor == 1 else "Não"}')
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, msg)  # [AUDITORIA]
         return jsonify({'success': False, 'message': msg}), 400
     except Exception as e:
         db.session.rollback()
         import traceback;
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -4029,20 +4123,29 @@ def ans_glosas_concluir():
     """Conclui a apuração ANS — pode ser acionado a qualquer momento."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB046  # [AUDITORIA]
 
     # ── Garante que veio JSON ──
     dados = request.get_json(silent=True)
     if not dados:
+        registrar_evento_simples('CONCLUSAO', sucesso=False, mensagem='Requisição inválida (JSON ausente)')  # [AUDITORIA]
         return jsonify({'success': False, 'message': 'Requisição inválida (JSON ausente)'}), 400
 
+    aud = None  # [AUDITORIA]
     try:
         dt_apuracao = dados.get('dt_apuracao')
         if not dt_apuracao:
+            registrar_evento_simples('CONCLUSAO', sucesso=False, mensagem='Data de apuração não informada',  # [AUDITORIA]
+                                     parametros=dados)
             return jsonify({'success': False, 'message': 'Data de apuração não informada'}), 400
+
+        # [AUDITORIA] foto da TB046 ANTES
+        aud = AuditoriaAns('CONCLUSAO', dt_apuracao=dt_apuracao, tabelas=[TB046], parametros=dados)
 
         # Verificar se já foi concluída
         existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
         if existente:
+            aud.finalizar(False, 'Esta apuração já foi concluída anteriormente.')  # [AUDITORIA]
             return jsonify({'success': False, 'message': 'Esta apuração já foi concluída anteriormente.'}), 400
 
         # Buscar totais atuais
@@ -4087,6 +4190,11 @@ def ans_glosas_concluir():
         except Exception:
             pass  # log falhar não pode derrubar a resposta
 
+        # [AUDITORIA] foto DEPOIS (a nova linha da TB046 vira INCLUSAO)
+        aud.finalizar(True, (f'Apuração {dt_apuracao} concluída: {params["toc"]} ocorrências, '
+                             f'{params["tgr"]} grupos, {params["tadv"]} adv, '
+                             f'{params["treinc"]} reinc, {params["treit"]} reit'))
+
         return jsonify({
             'success': True,
             'message': (
@@ -4103,6 +4211,8 @@ def ans_glosas_concluir():
         db.session.rollback()
         import traceback
         traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro ao concluir: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro ao concluir: {str(e)}'}), 500
 
 
@@ -4112,6 +4222,8 @@ def ans_glosas_salvar_justificativa_prestadora():
     """Salva o retorno da prestadora na TB048 (PK: DT_APURACAO + nrOcorrencia)."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB048  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt = dados.get('dt_apuracao')
@@ -4119,14 +4231,23 @@ def ans_glosas_salvar_justificativa_prestadora():
         retorno = (dados.get('retorno_prest') or '').strip()
         manifestacao = (dados.get('manifestacao_geadi') or '').strip()
 
+        # [AUDITORIA] mesmas validações de antes; a recusa também fica registrada
+        erro_validacao = None
         if not dt or nr is None:
-            return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
-        if not retorno:
-            return jsonify({'success': False, 'message': 'O retorno da prestadora não pode ficar vazio.'}), 400
-        if len(retorno) > 500:
-            return jsonify({'success': False, 'message': 'O retorno excede 500 caracteres.'}), 400
-        if len(manifestacao) > 500:
-            return jsonify({'success': False, 'message': 'A manifestação GEADI excede 500 caracteres.'}), 400
+            erro_validacao = 'Parâmetros incompletos'
+        elif not retorno:
+            erro_validacao = 'O retorno da prestadora não pode ficar vazio.'
+        elif len(retorno) > 500:
+            erro_validacao = 'O retorno excede 500 caracteres.'
+        elif len(manifestacao) > 500:
+            erro_validacao = 'A manifestação GEADI excede 500 caracteres.'
+        if erro_validacao:
+            registrar_evento_simples('JUST_PRESTADORA', dt_apuracao=dt, sucesso=False,
+                                     mensagem=erro_validacao, parametros=dados, nr_ocorrencia=nr)
+            return jsonify({'success': False, 'message': erro_validacao}), 400
+
+        # [AUDITORIA] foto da TB048 da ocorrência ANTES
+        aud = AuditoriaAns('JUST_PRESTADORA', dt_apuracao=dt, nrs=[nr], tabelas=[TB048], parametros=dados)
 
         ok, msg = AnsApuracao.salvar_justificativa_prestadora(
             dt, int(nr), retorno, manifestacao if manifestacao else None
@@ -4138,12 +4259,17 @@ def ans_glosas_salvar_justificativa_prestadora():
                 entidade_id=nr,
                 descricao=f'ANS Justif. Prestadora: Oc {nr} - {retorno[:100]}'
             )
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, msg)  # [AUDITORIA]
         return jsonify({'success': False, 'message': msg}), 400
 
     except Exception as e:
         db.session.rollback()
         import traceback; traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
 
 
@@ -4153,23 +4279,326 @@ def ans_glosas_salvar_dt_aplicacao():
     """Upsert da Data de Aplicação da Glosa na TB053 (PK: DT_APURACAO)."""
     from app.models.ans_apuracao import AnsApuracao
     from app.utils.audit import registrar_log
+    from app.utils.ans_auditoria import AuditoriaAns, registrar_evento_simples, TB053  # [AUDITORIA]
+    aud = None  # [AUDITORIA]
     try:
         dados = request.get_json()
         dt_apuracao = dados.get('dt_apuracao')
         dt_aplicacao = dados.get('dt_aplicacao')
         if not dt_apuracao or not dt_aplicacao:
+            registrar_evento_simples('DT_APLICACAO', dt_apuracao=dt_apuracao, sucesso=False,  # [AUDITORIA]
+                                     mensagem='Parâmetros incompletos', parametros=dados)
             return jsonify({'success': False, 'message': 'Parâmetros incompletos'}), 400
+
+        # [AUDITORIA] foto da TB053 ANTES (mostra a data antiga -> data nova)
+        aud = AuditoriaAns('DT_APLICACAO', dt_apuracao=dt_apuracao, tabelas=[TB053], parametros=dados)
 
         ok, msg = AnsApuracao.salvar_dt_aplicacao(dt_apuracao, dt_aplicacao)
         if ok:
             registrar_log(acao='editar', entidade='ans_dt_aplicacao', entidade_id=str(dt_apuracao),
                           descricao=f'ANS Data Aplicação: apuração {dt_apuracao} → aplicação {dt_aplicacao}')
+            aud.finalizar(True, msg)  # [AUDITORIA]
             return jsonify({'success': True, 'message': msg})
+        db.session.rollback()  # [AUDITORIA]
+        aud.finalizar(False, msg)  # [AUDITORIA]
         return jsonify({'success': False, 'message': msg}), 400
     except Exception as e:
         db.session.rollback()
         import traceback; traceback.print_exc()
+        if aud:
+            aud.finalizar(False, f'Erro: {str(e)}')  # [AUDITORIA]
         return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+# =====================================================
+# ANS GLOSAS - AUDITORIA (somente admin / moderador)  — FUNÇÕES NOVAS
+# =====================================================
+
+from app.utils.ans_auditoria import auditoria_ans_required
+
+
+@sumov_bp.route('/faturamento/ans-glosas/auditoria')
+@login_required
+@auditoria_ans_required
+def ans_glosas_auditoria():
+    from app.models.ans_auditoria import AnsAuditoria
+    from app.utils.ans_auditoria import (registrar_evento_simples, ACOES, ORIGENS,
+                                         TIPOS_ALTERACAO, TIPOS_VERSAO)
+
+    filtros = AnsAuditoria.ler_filtros(request.args)
+    filtros_url = AnsAuditoria.filtros_para_url(filtros)
+
+    aba = request.args.get('aba', 'eventos')
+    if aba not in ('eventos', 'alteracoes', 'versoes', 'usuarios'):
+        aba = 'eventos'
+    pg_ev = request.args.get('pg_ev', 1, type=int) or 1
+    pg_alt = request.args.get('pg_alt', 1, type=int) or 1
+
+    # A própria consulta à auditoria também é auditada
+    registrar_evento_simples('ACESSO_AUDITORIA', dt_apuracao=filtros.get('dt_apuracao'),
+                             mensagem='Consulta à auditoria (aba: {})'.format(aba),
+                             parametros=filtros_url)
+
+    try:
+        eventos, pag_eventos = AnsAuditoria.listar_eventos(filtros, pg_ev)
+        alteracoes, pag_alteracoes = AnsAuditoria.listar_alteracoes(filtros, pg_alt)
+        estatisticas = AnsAuditoria.estatisticas(filtros)
+        por_usuario = AnsAuditoria.resumo_por_usuario(filtros)
+        opcoes = AnsAuditoria.opcoes_filtro()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar a auditoria: {str(e)}', 'danger')
+        return redirect(url_for('sumov.ans_glosas'))
+
+    return render_template('sumov/faturamento/ans_glosas_auditoria.html',
+                           filtros=filtros,
+                           filtros_url=filtros_url,
+                           aba=aba,
+                           eventos=eventos,
+                           pag_eventos=pag_eventos,
+                           alteracoes=alteracoes,
+                           pag_alteracoes=pag_alteracoes,
+                           estatisticas=estatisticas,
+                           por_usuario=por_usuario,
+                           opcoes=opcoes,
+                           rotulos_acoes=ACOES,
+                           rotulos_origens=ORIGENS,
+                           rotulos_tipos=TIPOS_ALTERACAO,
+                           rotulos_versoes=TIPOS_VERSAO)
+
+
+@sumov_bp.route('/faturamento/ans-glosas/auditoria/evento/<int:id_evento>')
+@login_required
+@auditoria_ans_required
+def ans_glosas_auditoria_evento(id_evento):
+    from app.models.ans_auditoria import AnsAuditoria
+    try:
+        evento = AnsAuditoria.obter_evento(id_evento)
+        if not evento:
+            return jsonify({'success': False, 'message': 'Evento não encontrado.'}), 404
+        return jsonify({'success': True, 'evento': evento})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/auditoria/versoes')
+@login_required
+@auditoria_ans_required
+def ans_glosas_auditoria_versoes():
+    from app.models.ans_auditoria import AnsAuditoria
+    from app.utils.ans_auditoria import converter_data, registrar_evento_simples
+
+    dt = converter_data(request.args.get('dt_apuracao'))
+    nr = request.args.get('nr_ocorrencia', type=int)
+    if not dt or nr is None:
+        return jsonify({'success': False, 'message': 'Informe a data de apuração e o nº da ocorrência.'}), 400
+    try:
+        historico = AnsAuditoria.historico_versoes(dt, nr)
+        registrar_evento_simples('ACESSO_AUDITORIA', dt_apuracao=dt, nr_ocorrencia=nr,
+                                 mensagem='Consulta ao histórico de versões da ocorrência {}'.format(nr),
+                                 parametros={'dt_apuracao': dt.strftime('%Y-%m-%d'), 'nr_ocorrencia': nr})
+        return jsonify({'success': True, 'historico': historico})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro: {str(e)}'}), 500
+
+
+@sumov_bp.route('/faturamento/ans-glosas/auditoria/exportar')
+@login_required
+@auditoria_ans_required
+def ans_glosas_auditoria_exportar():
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from app.models.ans_auditoria import AnsAuditoria
+    from app.utils.ans_auditoria import registrar_evento_simples
+
+    filtros = AnsAuditoria.ler_filtros(request.args)
+    filtros_url = AnsAuditoria.filtros_para_url(filtros)
+    try:
+        eventos, alteracoes = AnsAuditoria.exportar(filtros)
+
+        wb = Workbook()
+        cabecalho_fonte = Font(bold=True, color='FFFFFF')
+        cabecalho_fundo = PatternFill('solid', fgColor='2C3E6B')
+
+        def montar_aba(ws, colunas, linhas):
+            ws.append([c[0] for c in colunas])
+            for cel in ws[1]:
+                cel.font = cabecalho_fonte
+                cel.fill = cabecalho_fundo
+                cel.alignment = Alignment(horizontal='center', vertical='center')
+            for item in linhas:
+                ws.append([item.get(c[1]) for c in colunas])
+            for idx, coluna in enumerate(colunas, start=1):
+                letra = ws.cell(row=1, column=idx).column_letter
+                ws.column_dimensions[letra].width = coluna[2]
+            ws.freeze_panes = 'A2'
+            ws.auto_filter.ref = ws.dimensions
+
+        ws_ev = wb.active
+        ws_ev.title = 'Eventos'
+        montar_aba(ws_ev, [
+            ('ID Evento', 'id_evento', 11), ('Data/Hora', 'dt_evento', 20),
+            ('Usuário', 'usuario_nome', 28), ('E-mail', 'usuario_email', 30),
+            ('Perfil', 'usuario_perfil', 12), ('Ação', 'acao_rotulo', 32),
+            ('Origem', 'origem_rotulo', 24), ('Apuração', 'dt_apuracao', 12),
+            ('Grupo', 'grupo', 8), ('Ocorrência', 'nr_ocorrencia', 12),
+            ('Sucesso', 'sucesso', 9), ('Registros afetados', 'qtde_registros', 12),
+            ('Campos alterados', 'qtde_campos', 12), ('Mensagem', 'mensagem', 60),
+            ('IP', 'ip', 16), ('Rota', 'rota', 40), ('Duração (ms)', 'duracao_ms', 12),
+        ], [dict(e, sucesso='Sim' if e['sucesso'] else 'Não') for e in eventos])
+
+        ws_alt = wb.create_sheet('Alterações')
+        montar_aba(ws_alt, [
+            ('ID Alteração', 'id_alteracao', 12), ('ID Evento', 'id_evento', 11),
+            ('Data/Hora', 'dt_alteracao', 20), ('Usuário', 'usuario_nome', 28),
+            ('Ação', 'acao_rotulo', 32), ('Origem', 'origem_rotulo', 24),
+            ('Tabela', 'tabela_rotulo', 30), ('Apuração', 'dt_apuracao', 12),
+            ('Grupo', 'grupo', 8), ('Ocorrência', 'nr_ocorrencia', 12),
+            ('Operação', 'operacao', 10), ('Campo', 'campo', 22),
+            ('Valor anterior', 'valor_anterior', 30), ('Valor novo', 'valor_novo', 30),
+            ('Tipo de alteração', 'tipo_rotulo', 20),
+        ], alteracoes)
+
+        saida = BytesIO()
+        wb.save(saida)
+        saida.seek(0)
+
+        registrar_evento_simples('EXPORTACAO_AUDITORIA', dt_apuracao=filtros.get('dt_apuracao'),
+                                 mensagem='Exportação: {} eventos e {} alterações'.format(len(eventos), len(alteracoes)),
+                                 parametros=filtros_url)
+
+        nome = 'auditoria_ans_glosas_{}.xlsx'.format(datetime.now().strftime('%Y%m%d_%H%M%S'))
+        return send_file(saida,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        registrar_evento_simples('EXPORTACAO_AUDITORIA', dt_apuracao=filtros.get('dt_apuracao'),
+                                 sucesso=False, mensagem=f'Erro: {str(e)}', parametros=filtros_url)
+        flash(f'Erro ao exportar a auditoria: {str(e)}', 'danger')
+        return redirect(url_for('sumov.ans_glosas_auditoria', **filtros_url))
+
+
+# =====================================================
+# ANS GLOSAS - PRÉVIAS (MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO) — FUNÇÕES NOVAS
+# =====================================================
+
+@sumov_bp.route('/faturamento/ans-glosas/previas')
+@login_required
+def ans_glosas_previas():
+    from app.models.ans_previas import AnsPrevias, CABECALHOS
+    from app.utils.ans_auditoria import registrar_evento_simples, converter_data
+
+    try:
+        datas = AnsPrevias.obter_datas()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash(f'Erro ao carregar as prévias: {str(e)}', 'danger')
+        return redirect(url_for('sumov.ans_glosas'))
+
+    datas_iso = [d.strftime('%Y-%m-%d') for d in datas]
+
+    # Data escolhida: a do filtro; se não existir nas prévias, usa a mais recente
+    dt_param = converter_data(request.args.get('dt_apuracao'))
+    dt_selecionada = dt_param.strftime('%Y-%m-%d') if dt_param else ''
+    if dt_selecionada not in datas_iso:
+        dt_selecionada = datas_iso[0] if datas_iso else ''
+
+    filtros = AnsPrevias.ler_filtros(request.args)
+    filtros_url = {k: str(v) for k, v in filtros.items() if v is not None and v != ''}
+
+    registros, resumo, opcoes = [], None, {'grupos': [], 'previas': []}
+    if dt_selecionada:
+        try:
+            registros = AnsPrevias.listar(dt_selecionada, filtros)
+            resumo = AnsPrevias.resumo(dt_selecionada, filtros)
+            opcoes = AnsPrevias.obter_opcoes(dt_selecionada)
+        except Exception as e:
+            db.session.rollback()
+            import traceback
+            traceback.print_exc()
+            flash(f'Erro ao consultar as prévias: {str(e)}', 'danger')
+
+    registrar_evento_simples('ACESSO_PREVIAS', dt_apuracao=dt_selecionada or None,
+                             mensagem='Consulta às prévias ANS ({} registros)'.format(len(registros)),
+                             parametros=dict(filtros_url, dt_apuracao=dt_selecionada))
+
+    return render_template('sumov/faturamento/ans_glosas_previas.html',
+                           datas=[{'valor': d.strftime('%Y-%m-%d'), 'rotulo': d.strftime('%d/%m/%Y')} for d in datas],
+                           dt_selecionada=dt_selecionada,
+                           filtros_url=filtros_url,
+                           registros=registros,
+                           resumo=resumo,
+                           opcoes=opcoes,
+                           cabecalhos=CABECALHOS)
+
+
+@sumov_bp.route('/faturamento/ans-glosas/previas/exportar')
+@login_required
+def ans_glosas_previas_exportar():
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from app.models.ans_previas import AnsPrevias, CABECALHOS
+    from app.utils.ans_auditoria import registrar_evento_simples, converter_data
+
+    dt = converter_data(request.args.get('dt_apuracao'))
+    filtros = AnsPrevias.ler_filtros(request.args)
+    filtros_url = {k: str(v) for k, v in filtros.items() if v is not None and v != ''}
+    if not dt:
+        flash('Selecione a data de apuração para exportar.', 'warning')
+        return redirect(url_for('sumov.ans_glosas_previas', **filtros_url))
+
+    dt_iso = dt.strftime('%Y-%m-%d')
+    try:
+        registros = AnsPrevias.listar(dt_iso, filtros)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Prévias ANS'
+        ws.append([c[0] for c in CABECALHOS])
+        for cel in ws[1]:
+            cel.font = Font(bold=True, color='FFFFFF')
+            cel.fill = PatternFill('solid', fgColor='2C3E6B')
+            cel.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        for r in registros:
+            ws.append([r.get(c[1]) for c in CABECALHOS])
+        for idx, (rotulo, coluna) in enumerate(CABECALHOS, start=1):
+            letra = ws.cell(row=1, column=idx).column_letter
+            ws.column_dimensions[letra].width = 60 if coluna == 'DSC_JUSTIFICATIVA' else max(12, len(rotulo) + 2)
+        ws.freeze_panes = 'A2'
+        ws.auto_filter.ref = ws.dimensions
+
+        saida = BytesIO()
+        wb.save(saida)
+        saida.seek(0)
+
+        registrar_evento_simples('EXPORTACAO_PREVIAS', dt_apuracao=dt_iso,
+                                 mensagem='Exportação das prévias: {} registros'.format(len(registros)),
+                                 parametros=dict(filtros_url, dt_apuracao=dt_iso))
+
+        nome = 'previas_ans_glosas_{}_{}.xlsx'.format(dt.strftime('%Y%m%d'), datetime.now().strftime('%Y%m%d_%H%M%S'))
+        return send_file(saida,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome)
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        registrar_evento_simples('EXPORTACAO_PREVIAS', dt_apuracao=dt_iso, sucesso=False,
+                                 mensagem=f'Erro: {str(e)}', parametros=dict(filtros_url, dt_apuracao=dt_iso))
+        flash(f'Erro ao exportar as prévias: {str(e)}', 'danger')
+        return redirect(url_for('sumov.ans_glosas_previas', dt_apuracao=dt_iso, **filtros_url))
 
 
 
@@ -5357,7 +5786,7 @@ def movimentacao_imovel_exportar():
         ROXO = '4B258A'
         ZEBRA = 'F5F7FF'
         BORDA = 'D9D9D9'
-        AMBAR = 'FFF3CD'   # destaque "Sem Status"
+        AMBAR = 'FFF3CD'   #   "
         VERDE = 'E8F5E9'   # destaque status preenchido
 
         thin = Side(style='thin', color=BORDA)

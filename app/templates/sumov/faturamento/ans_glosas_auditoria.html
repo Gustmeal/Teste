@@ -1,0 +1,644 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% macro paginacao(pag, chave, aba_alvo, filtros_url) %}
+{% if pag.total_paginas > 1 %}
+<nav class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
+    <small class="text-muted">Página {{ pag.pagina }} de {{ pag.total_paginas }} ({{ pag.total|mil }} registros)</small>
+    <ul class="pagination pagination-sm mb-0">
+        {% set args_ant = dict(filtros_url) %}{% set _ = args_ant.update({chave: pag.pagina - 1, 'aba': aba_alvo}) %}
+        <li class="page-item {% if not pag.tem_anterior %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('sumov.ans_glosas_auditoria', **args_ant) if pag.tem_anterior else '#' }}">Anterior</a>
+        </li>
+        {% for n in pag.paginas %}
+        {% set args_n = dict(filtros_url) %}{% set _ = args_n.update({chave: n, 'aba': aba_alvo}) %}
+        <li class="page-item {% if n == pag.pagina %}active{% endif %}">
+            <a class="page-link" href="{{ url_for('sumov.ans_glosas_auditoria', **args_n) }}">{{ n }}</a>
+        </li>
+        {% endfor %}
+        {% set args_prox = dict(filtros_url) %}{% set _ = args_prox.update({chave: pag.pagina + 1, 'aba': aba_alvo}) %}
+        <li class="page-item {% if not pag.tem_proxima %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('sumov.ans_glosas_auditoria', **args_prox) if pag.tem_proxima else '#' }}">Próxima</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+{% endmacro %}
+
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.ans_glosas', dt_apuracao=filtros_url.get('dt_apuracao')) if filtros_url.get('dt_apuracao') else url_for('sumov.ans_glosas') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar à ANS Glosas
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h1 class="fw-bold header-with-back mb-0">
+            <i class="fas fa-user-shield text-danger me-2"></i> Auditoria ANS Glosas
+        </h1>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-danger px-3 py-2"><i class="fas fa-lock me-1"></i>Acesso restrito: admin e moderador</span>
+            <a href="{{ url_for('sumov.ans_glosas_auditoria_exportar', **filtros_url) }}"
+               class="btn btn-success btn-sm js-ignore-loading">
+                <i class="fas fa-file-excel me-1"></i>Exportar para Excel
+            </a>
+        </div>
+    </div>
+
+    <!-- ================= FILTROS ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light py-2">
+            <h6 class="mb-0 fw-bold"><i class="fas fa-filter me-2"></i>Filtros</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" action="{{ url_for('sumov.ans_glosas_auditoria') }}" id="formFiltros">
+                <input type="hidden" name="aba" id="campoAba" value="{{ aba }}">
+                <div class="row g-3">
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Data de apuração</label>
+                        <select name="dt_apuracao" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            {% for d in opcoes.datas %}
+                            <option value="{{ d.valor }}" {% if filtros_url.get('dt_apuracao') == d.valor %}selected{% endif %}>{{ d.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Evento de</label>
+                        <input type="date" name="dt_inicio" class="form-control form-control-sm" value="{{ filtros_url.get('dt_inicio', '') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Evento até</label>
+                        <input type="date" name="dt_fim" class="form-control form-control-sm" value="{{ filtros_url.get('dt_fim', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Usuário</label>
+                        <select name="usuario_id" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            {% for u in opcoes.usuarios %}
+                            <option value="{{ u.id }}" {% if filtros_url.get('usuario_id') == u.id|string %}selected{% endif %}>{{ u.nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Ação</label>
+                        <select name="acao" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            {% for a in opcoes.acoes %}
+                            <option value="{{ a.valor }}" {% if filtros_url.get('acao') == a.valor %}selected{% endif %}>{{ a.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Grupo</label>
+                        <select name="grupo" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            {% for g in opcoes.grupos %}
+                            <option value="{{ g }}" {% if filtros_url.get('grupo') == g|string %}selected{% endif %}>Grupo {{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Nº ocorrência</label>
+                        <input type="number" name="nr_ocorrencia" class="form-control form-control-sm" value="{{ filtros_url.get('nr_ocorrencia', '') }}">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Campo alterado</label>
+                        <select name="campo" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            {% for c in opcoes.campos %}
+                            <option value="{{ c }}" {% if filtros_url.get('campo') == c %}selected{% endif %}>{{ c }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Tipo de alteração</label>
+                        <select name="tipo_alteracao" class="form-select form-select-sm">
+                            <option value="">Todos</option>
+                            {% for t in opcoes.tipos %}
+                            <option value="{{ t.valor }}" {% if filtros_url.get('tipo_alteracao') == t.valor %}selected{% endif %}>{{ t.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Origem</label>
+                        <select name="origem" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            {% for o in opcoes.origens %}
+                            <option value="{{ o.valor }}" {% if filtros_url.get('origem') == o.valor %}selected{% endif %}>{{ o.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label fw-bold small mb-1">Situação</label>
+                        <select name="sucesso" class="form-select form-select-sm">
+                            <option value="">Todas</option>
+                            <option value="1" {% if filtros_url.get('sucesso') == '1' %}selected{% endif %}>Com sucesso</option>
+                            <option value="0" {% if filtros_url.get('sucesso') == '0' %}selected{% endif %}>Com falha</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <a href="{{ url_for('sumov.ans_glosas_auditoria', aba=aba) }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-eraser me-1"></i>Limpar filtros
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-search me-1"></i>Filtrar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ================= ESTATÍSTICAS ================= -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #2c3e6b;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Eventos</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.total_eventos|mil }}</h4>
+                    <small class="text-muted">{{ estatisticas.consultas|mil }} consultas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #4e73df;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Campos alterados</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.total_alteracoes|mil }}</h4>
+                    <small class="text-muted">{{ estatisticas.ocorrencias|mil }} ocorrências</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #36b9cc;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Alterações manuais</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.manuais|mil }}</h4>
+                    <small class="text-muted">decididas pelo usuário</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #0d6efd;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Não → Sim</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.nao_para_sim|mil }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #f6c23e;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Sim → Não</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.sim_para_nao|mil }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card shadow-sm h-100 aud-stat" style="border-left:4px solid #e74a3b;">
+                <div class="card-body py-3">
+                    <small class="text-muted">Falhas</small>
+                    <h4 class="fw-bold mb-0">{{ estatisticas.falhas|mil }}</h4>
+                    <small class="text-muted">{{ estatisticas.usuarios|mil }} usuário(s)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% if estatisticas.ultimo_evento %}
+    <p class="text-muted small mb-3"><i class="fas fa-clock me-1"></i>Último evento no filtro: {{ estatisticas.ultimo_evento }}</p>
+    {% endif %}
+
+    <!-- ================= ABAS ================= -->
+    <ul class="nav nav-tabs mb-0" id="abasAuditoria">
+        <li class="nav-item">
+            <span class="nav-link aud-aba {% if aba == 'eventos' %}active{% endif %}" data-aba="eventos" style="cursor:pointer;">
+                <i class="fas fa-stream me-1"></i>Linha do tempo <span class="badge bg-secondary ms-1">{{ pag_eventos.total|mil }}</span>
+            </span>
+        </li>
+        <li class="nav-item">
+            <span class="nav-link aud-aba {% if aba == 'alteracoes' %}active{% endif %}" data-aba="alteracoes" style="cursor:pointer;">
+                <i class="fas fa-exchange-alt me-1"></i>Alterações campo a campo <span class="badge bg-secondary ms-1">{{ pag_alteracoes.total|mil }}</span>
+            </span>
+        </li>
+        <li class="nav-item">
+            <span class="nav-link aud-aba {% if aba == 'versoes' %}active{% endif %}" data-aba="versoes" style="cursor:pointer;">
+                <i class="fas fa-code-branch me-1"></i>Histórico de versões
+            </span>
+        </li>
+        <li class="nav-item">
+            <span class="nav-link aud-aba {% if aba == 'usuarios' %}active{% endif %}" data-aba="usuarios" style="cursor:pointer;">
+                <i class="fas fa-users me-1"></i>Por usuário <span class="badge bg-secondary ms-1">{{ por_usuario|length }}</span>
+            </span>
+        </li>
+    </ul>
+
+    <div class="card shadow-sm border-top-0 mb-4" style="border-top-left-radius:0;border-top-right-radius:0;">
+        <div class="card-body">
+
+            <!-- ===== ABA: LINHA DO TEMPO (EVENTOS) ===== -->
+            <div class="aud-painel" id="painel-eventos" style="{% if aba != 'eventos' %}display:none;{% endif %}">
+                {% if eventos %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0 aud-tabela">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data/hora</th>
+                                <th>Usuário</th>
+                                <th>Ação</th>
+                                <th>Origem</th>
+                                <th class="text-center">Apuração</th>
+                                <th class="text-center">Grupo</th>
+                                <th class="text-center">Ocorrência</th>
+                                <th class="text-center">Registros</th>
+                                <th class="text-center">Campos</th>
+                                <th class="text-center">Situação</th>
+                                <th>Mensagem</th>
+                                <th class="text-center">Detalhes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for e in eventos %}
+                            <tr class="{% if not e.sucesso %}table-danger{% endif %}">
+                                <td class="text-nowrap">{{ e.dt_evento }}</td>
+                                <td>
+                                    <div class="fw-semibold">{{ e.usuario_nome }}</div>
+                                    <small class="text-muted">{{ e.usuario_perfil }}{% if e.ip %} | {{ e.ip }}{% endif %}</small>
+                                </td>
+                                <td><span class="badge {{ e.acao_cor }}"><i class="fas {{ e.acao_icone }} me-1"></i>{{ e.acao_rotulo }}</span></td>
+                                <td><span class="badge {{ e.origem_cor }}">{{ e.origem_rotulo }}</span></td>
+                                <td class="text-center text-nowrap">{{ e.dt_apuracao or '-' }}</td>
+                                <td class="text-center">{{ e.grupo if e.grupo is not none else '-' }}</td>
+                                <td class="text-center">{{ e.nr_ocorrencia if e.nr_ocorrencia is not none else '-' }}</td>
+                                <td class="text-center">{{ e.qtde_registros }}</td>
+                                <td class="text-center">
+                                    {% if e.qtde_campos > 0 %}<span class="badge bg-primary">{{ e.qtde_campos }}</span>{% else %}0{% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if e.sucesso %}<span class="badge bg-success">Sucesso</span>{% else %}<span class="badge bg-danger">Falha</span>{% endif %}
+                                </td>
+                                <td class="aud-mensagem" title="{{ e.mensagem }}">{{ e.mensagem }}</td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-outline-primary btn-sm js-ignore-loading"
+                                            onclick="abrirDetalheEvento(event, {{ e.id_evento }})">
+                                        <i class="fas fa-search-plus"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {{ paginacao(pag_eventos, 'pg_ev', 'eventos', filtros_url) }}
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                    Nenhum evento para os filtros selecionados. Ajuste os filtros ou limpe-os para ver todo o histórico.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ===== ABA: ALTERAÇÕES CAMPO A CAMPO ===== -->
+            <div class="aud-painel" id="painel-alteracoes" style="{% if aba != 'alteracoes' %}display:none;{% endif %}">
+                {% if alteracoes %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0 aud-tabela">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data/hora</th>
+                                <th>Usuário</th>
+                                <th>Ação</th>
+                                <th>Origem</th>
+                                <th class="text-center">Apuração</th>
+                                <th class="text-center">Grupo</th>
+                                <th class="text-center">Ocorrência</th>
+                                <th>Tabela</th>
+                                <th>Campo</th>
+                                <th>Antes</th>
+                                <th>Depois</th>
+                                <th>Tipo</th>
+                                <th class="text-center">Evento</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in alteracoes %}
+                            <tr>
+                                <td class="text-nowrap">{{ a.dt_alteracao }}</td>
+                                <td>{{ a.usuario_nome }}</td>
+                                <td><span class="badge {{ a.acao_cor }}">{{ a.acao_rotulo }}</span></td>
+                                <td><span class="badge {{ a.origem_cor }}">{{ a.origem_rotulo }}</span></td>
+                                <td class="text-center text-nowrap">{{ a.dt_apuracao or '-' }}</td>
+                                <td class="text-center">{{ a.grupo if a.grupo is not none else '-' }}</td>
+                                <td class="text-center">{{ a.nr_ocorrencia if a.nr_ocorrencia is not none else '-' }}</td>
+                                <td><small>{{ a.tabela_rotulo }}</small></td>
+                                <td class="fw-semibold">{{ a.campo }}</td>
+                                <td><span class="aud-valor-antes">{{ a.valor_anterior }}</span></td>
+                                <td><span class="aud-valor-depois">{{ a.valor_novo }}</span></td>
+                                <td><span class="badge {{ a.tipo_cor }}">{{ a.tipo_rotulo }}</span></td>
+                                <td class="text-center">
+                                    <button type="button" class="btn btn-link btn-sm p-0 js-ignore-loading"
+                                            onclick="abrirDetalheEvento(event, {{ a.id_evento }})">#{{ a.id_evento }}</button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {{ paginacao(pag_alteracoes, 'pg_alt', 'alteracoes', filtros_url) }}
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                    Nenhuma alteração de dados para os filtros selecionados.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ===== ABA: HISTÓRICO DE VERSÕES ===== -->
+            <div class="aud-painel" id="painel-versoes" style="{% if aba != 'versoes' %}display:none;{% endif %}">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Data de apuração</label>
+                        <select id="versaoDt" class="form-select form-select-sm">
+                            {% for d in opcoes.datas %}
+                            <option value="{{ d.valor }}" {% if filtros_url.get('dt_apuracao') == d.valor %}selected{% endif %}>{{ d.rotulo }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small mb-1">Nº ocorrência</label>
+                        <input type="number" id="versaoNr" class="form-control form-control-sm" value="{{ filtros_url.get('nr_ocorrencia', '') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-primary btn-sm js-ignore-loading" onclick="carregarVersoes(event)">
+                            <i class="fas fa-code-branch me-1"></i>Ver versões
+                        </button>
+                    </div>
+                </div>
+                <p class="text-muted small mb-3">
+                    Cada alteração gera uma nova versão; as anteriores nunca são modificadas. Campos destacados mudaram em relação à versão anterior.
+                </p>
+                <div id="versoesConteudo">
+                    <div class="text-center text-muted py-4">Informe a data de apuração e o nº da ocorrência para ver o histórico.</div>
+                </div>
+            </div>
+
+            <!-- ===== ABA: POR USUÁRIO ===== -->
+            <div class="aud-painel" id="painel-usuarios" style="{% if aba != 'usuarios' %}display:none;{% endif %}">
+                {% if por_usuario %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0 aud-tabela">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Usuário</th>
+                                <th>Perfil</th>
+                                <th class="text-center">Eventos</th>
+                                <th class="text-center">Falhas</th>
+                                <th class="text-center">Campos alterados</th>
+                                <th class="text-center">Manuais</th>
+                                <th class="text-center">Não → Sim</th>
+                                <th class="text-center">Sim → Não</th>
+                                <th class="text-center">Advertência</th>
+                                <th class="text-center">Reincidência</th>
+                                <th class="text-center">Reiteração</th>
+                                <th>Primeiro evento</th>
+                                <th>Último evento</th>
+                                <th class="text-center">Filtrar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in por_usuario %}
+                            <tr>
+                                <td class="fw-semibold">{{ u.usuario_nome }}</td>
+                                <td>{{ u.usuario_perfil }}</td>
+                                <td class="text-center">{{ u.eventos|mil }}</td>
+                                <td class="text-center">{% if u.falhas %}<span class="badge bg-danger">{{ u.falhas }}</span>{% else %}0{% endif %}</td>
+                                <td class="text-center">{{ u.campos|mil }}</td>
+                                <td class="text-center">{{ u.manuais|mil }}</td>
+                                <td class="text-center">{{ u.nao_para_sim|mil }}</td>
+                                <td class="text-center">{{ u.sim_para_nao|mil }}</td>
+                                <td class="text-center">{{ u.adv|mil }}</td>
+                                <td class="text-center">{{ u.reinc|mil }}</td>
+                                <td class="text-center">{{ u.reit|mil }}</td>
+                                <td class="text-nowrap"><small>{{ u.primeiro }}</small></td>
+                                <td class="text-nowrap"><small>{{ u.ultimo }}</small></td>
+                                <td class="text-center">
+                                    {% if u.usuario_id is not none %}
+                                    {% set args_u = dict(filtros_url) %}{% set _ = args_u.update({'usuario_id': u.usuario_id, 'aba': 'eventos'}) %}
+                                    <a href="{{ url_for('sumov.ans_glosas_auditoria', **args_u) }}" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fas fa-filter"></i>
+                                    </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                    Nenhum usuário com eventos para os filtros selecionados.
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ================= MODAL DETALHE DO EVENTO ================= -->
+    <div class="modal fade" id="modalDetalheEvento" tabindex="-1" style="display:none;">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:linear-gradient(135deg,#2c3e6b 0%,#1a2744 100%);">
+                    <h5 class="modal-title text-white"><i class="fas fa-search-plus me-2"></i><span id="detalheTitulo">Detalhe do evento</span></h5>
+                    <button type="button" class="btn-close btn-close-white js-ignore-loading" onclick="fecharDetalheEvento(event)"></button>
+                </div>
+                <div class="modal-body" id="detalheCorpo">
+                    <div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary js-ignore-loading" onclick="fecharDetalheEvento(event)">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Dados vindos do backend (nada fixo no front) -->
+<script type="application/json" id="dadosAuditoria">{{ {
+    'url_evento': url_for('sumov.ans_glosas_auditoria_evento', id_evento=0),
+    'url_versoes': url_for('sumov.ans_glosas_auditoria_versoes'),
+    'carregar_versoes': (aba == 'versoes' and filtros_url.get('nr_ocorrencia') and filtros_url.get('dt_apuracao')) and true or false
+} | tojson }}</script>
+
+<style>
+    .aud-tabela th{font-size:.78rem;white-space:nowrap}
+    .aud-tabela td{font-size:.82rem}
+    .aud-mensagem{max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .aud-valor-antes{background:#fdecea;color:#842029;padding:2px 6px;border-radius:4px;text-decoration:line-through;text-decoration-color:rgba(132,32,41,.35)}
+    .aud-valor-depois{background:#e7f5ec;color:#0f5132;padding:2px 6px;border-radius:4px;font-weight:600}
+    .aud-versao-card{border-left:4px solid #2c3e6b}
+    .aud-campo-mudou{background:#fff3cd !important;font-weight:700}
+    .aud-json{background:#f8f9fc;border:1px solid #e3e6f0;border-radius:6px;padding:10px;font-size:.78rem;max-height:220px;overflow:auto;white-space:pre-wrap}
+    .aud-grade-versao{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}
+    .aud-grade-versao div{background:#f8f9fc;border:1px solid #e3e6f0;border-radius:4px;padding:4px 8px;font-size:.78rem}
+</style>
+
+<script>
+var DADOS_AUD = JSON.parse(document.getElementById('dadosAuditoria').textContent);
+
+function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ---------------- ABAS ----------------
+document.querySelectorAll('.aud-aba').forEach(function(el) {
+    el.addEventListener('click', function() {
+        var alvo = el.getAttribute('data-aba');
+        document.querySelectorAll('.aud-aba').forEach(function(a){ a.classList.remove('active'); });
+        el.classList.add('active');
+        document.querySelectorAll('.aud-painel').forEach(function(p){ p.style.display = 'none'; });
+        var painel = document.getElementById('painel-' + alvo);
+        if (painel) painel.style.display = '';
+        var campoAba = document.getElementById('campoAba');
+        if (campoAba) campoAba.value = alvo;
+    });
+});
+
+// ---------------- MODAL (sem bootstrap.Modal) ----------------
+function abrirModal() {
+    var m = document.getElementById('modalDetalheEvento');
+    m.style.display = 'block';
+    m.classList.add('show');
+    document.body.classList.add('modal-open');
+    if (!document.getElementById('backdropDetalheEvento')) {
+        var bd = document.createElement('div');
+        bd.className = 'modal-backdrop fade show';
+        bd.id = 'backdropDetalheEvento';
+        document.body.appendChild(bd);
+    }
+}
+
+function fecharDetalheEvento(ev) {
+    if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+    var m = document.getElementById('modalDetalheEvento');
+    m.style.display = 'none';
+    m.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('backdropDetalheEvento');
+    if (bd) bd.remove();
+}
+
+function abrirDetalheEvento(ev, idEvento) {
+    if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+    document.getElementById('detalheTitulo').textContent = 'Evento #' + idEvento;
+    document.getElementById('detalheCorpo').innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>';
+    abrirModal();
+    var url = DADOS_AUD.url_evento.replace(/\/0$/, '/' + idEvento);
+    fetch(url, {headers: {'X-Silent-Request': 'true'}})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (!d.success) {
+                document.getElementById('detalheCorpo').innerHTML = '<div class="alert alert-danger">' + esc(d.message) + '</div>';
+                return;
+            }
+            document.getElementById('detalheCorpo').innerHTML = montarDetalhe(d.evento);
+        })
+        .catch(function(e){
+            document.getElementById('detalheCorpo').innerHTML = '<div class="alert alert-danger">Erro ao carregar: ' + esc(e) + '</div>';
+        });
+}
+
+function montarDetalhe(e) {
+    var h = '';
+    h += '<div class="row g-3 mb-3">';
+    h += '<div class="col-md-6"><table class="table table-sm table-bordered mb-0">';
+    h += '<tr><th style="width:38%">Data/hora</th><td>' + esc(e.dt_evento) + '</td></tr>';
+    h += '<tr><th>Usuário</th><td>' + esc(e.usuario_nome) + '<br><small class="text-muted">' + esc(e.usuario_email) + '</small></td></tr>';
+    h += '<tr><th>Perfil</th><td>' + esc(e.usuario_perfil) + '</td></tr>';
+    h += '<tr><th>Ação</th><td><span class="badge ' + esc(e.acao_cor) + '">' + esc(e.acao_rotulo) + '</span></td></tr>';
+    h += '<tr><th>Origem</th><td><span class="badge ' + esc(e.origem_cor) + '">' + esc(e.origem_rotulo) + '</span></td></tr>';
+    h += '<tr><th>Situação</th><td>' + (e.sucesso ? '<span class="badge bg-success">Sucesso</span>' : '<span class="badge bg-danger">Falha</span>') + '</td></tr>';
+    h += '</table></div>';
+    h += '<div class="col-md-6"><table class="table table-sm table-bordered mb-0">';
+    h += '<tr><th style="width:38%">Apuração</th><td>' + esc(e.dt_apuracao || '-') + '</td></tr>';
+    h += '<tr><th>Grupo</th><td>' + esc(e.grupo !== null ? e.grupo : '-') + '</td></tr>';
+    h += '<tr><th>Ocorrência</th><td>' + esc(e.nr_ocorrencia !== null ? e.nr_ocorrencia : '-') + '</td></tr>';
+    h += '<tr><th>IP / Rota</th><td>' + esc(e.ip) + '<br><small class="text-muted">' + esc(e.metodo) + ' ' + esc(e.rota) + '</small></td></tr>';
+    h += '<tr><th>Duração</th><td>' + esc(e.duracao_ms) + ' ms</td></tr>';
+    h += '<tr><th>Navegador</th><td><small>' + esc(e.user_agent) + '</small></td></tr>';
+    h += '</table></div></div>';
+
+    h += '<div class="mb-3"><h6 class="fw-bold">Mensagem</h6><div class="aud-json">' + esc(e.mensagem || '-') + '</div></div>';
+
+    if (e.parametros) {
+        h += '<div class="mb-3"><h6 class="fw-bold">Dados enviados pelo usuário</h6><div class="aud-json">' + esc(JSON.stringify(e.parametros, null, 2)) + '</div></div>';
+    }
+
+    h += '<h6 class="fw-bold">Campos alterados (' + e.alteracoes.length + ')</h6>';
+    if (!e.alteracoes.length) {
+        h += '<p class="text-muted small">Este evento não alterou dados.</p>';
+    } else {
+        h += '<div class="table-responsive"><table class="table table-sm table-hover aud-tabela"><thead class="table-light"><tr>';
+        h += '<th>Tabela</th><th class="text-center">Grupo</th><th class="text-center">Ocorrência</th><th>Campo</th><th>Antes</th><th>Depois</th><th>Tipo</th></tr></thead><tbody>';
+        e.alteracoes.forEach(function(a){
+            h += '<tr><td><small>' + esc(a.tabela_rotulo) + '</small></td>';
+            h += '<td class="text-center">' + esc(a.grupo !== null ? a.grupo : '-') + '</td>';
+            h += '<td class="text-center">' + esc(a.nr_ocorrencia !== null ? a.nr_ocorrencia : '-') + '</td>';
+            h += '<td class="fw-semibold">' + esc(a.campo) + '</td>';
+            h += '<td><span class="aud-valor-antes">' + esc(a.valor_anterior) + '</span></td>';
+            h += '<td><span class="aud-valor-depois">' + esc(a.valor_novo) + '</span></td>';
+            h += '<td><span class="badge ' + esc(a.tipo_cor) + '">' + esc(a.tipo_rotulo) + '</span></td></tr>';
+        });
+        h += '</tbody></table></div>';
+    }
+
+    if (e.versoes && e.versoes.length) {
+        h += '<h6 class="fw-bold mt-3">Versões geradas (' + e.versoes.length + ')</h6><div class="d-flex flex-wrap gap-2">';
+        e.versoes.forEach(function(v){
+            h += '<span class="badge ' + esc(v.tipo_cor) + ' p-2">' + esc(v.tabela_rotulo) + ' | ' + esc(v.chave) + ' | v' + esc(v.nu_versao) + ' (' + esc(v.tipo_rotulo) + ')</span>';
+        });
+        h += '</div>';
+    }
+    return h;
+}
+
+// ---------------- HISTÓRICO DE VERSÕES ----------------
+function carregarVersoes(ev) {
+    if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+    var dt = document.getElementById('versaoDt').value;
+    var nr = document.getElementById('versaoNr').value;
+    var alvo = document.getElementById('versoesConteudo');
+    if (!dt || !nr) { alert('Informe a data de apuração e o nº da ocorrência.'); return; }
+    alvo.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>';
+    var url = DADOS_AUD.url_versoes + '?dt_apuracao=' + encodeURIComponent(dt) + '&nr_ocorrencia=' + encodeURIComponent(nr);
+    fetch(url, {headers: {'X-Silent-Request': 'true'}})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if (!d.success) { alvo.innerHTML = '<div class="alert alert-danger">' + esc(d.message) + '</div>'; return; }
+            if (!d.historico.length) {
+                alvo.innerHTML = '<div class="text-center text-muted py-4">Esta ocorrência ainda não tem versões registradas. As versões começam a ser gravadas a partir da primeira alteração feita depois da implantação da auditoria.</div>';
+                return;
+            }
+            var h = '';
+            d.historico.forEach(function(t){
+                h += '<h6 class="fw-bold mt-2 mb-2"><i class="fas fa-table me-1"></i>' + esc(t.tabela_rotulo) + ' <span class="badge bg-secondary">' + t.versoes.length + ' versão(ões)</span></h6>';
+                t.versoes.slice().reverse().forEach(function(v){
+                    h += '<div class="card mb-2 aud-versao-card"><div class="card-body py-2">';
+                    h += '<div class="d-flex justify-content-between flex-wrap gap-2 mb-2">';
+                    h += '<div><span class="badge bg-dark me-1">v' + esc(v.nu_versao) + '</span><span class="badge ' + esc(v.tipo_cor) + ' me-1">' + esc(v.tipo_rotulo) + '</span><strong>' + esc(v.acao_rotulo) + '</strong></div>';
+                    h += '<div class="small text-muted">' + esc(v.dt_versao) + ' | ' + esc(v.usuario_nome) + ' | <button type="button" class="btn btn-link btn-sm p-0 js-ignore-loading" onclick="abrirDetalheEvento(event,' + v.id_evento + ')">evento #' + v.id_evento + '</button></div>';
+                    h += '</div><div class="aud-grade-versao">';
+                    v.campos.forEach(function(c){
+                        h += '<div class="' + (c.mudou ? 'aud-campo-mudou' : '') + '"><small class="text-muted d-block">' + esc(c.campo) + '</small>' + esc(c.valor) + '</div>';
+                    });
+                    h += '</div></div></div>';
+                });
+            });
+            alvo.innerHTML = h;
+        })
+        .catch(function(e){ alvo.innerHTML = '<div class="alert alert-danger">Erro ao carregar: ' + esc(e) + '</div>'; });
+}
+
+if (DADOS_AUD.carregar_versoes) { carregarVersoes(null); }
+</script>
+{% endblock %}

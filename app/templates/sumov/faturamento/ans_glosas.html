@@ -6,6 +6,15 @@
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="fw-bold header-with-back"><i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas</h1>
+
+        <a href="{{ url_for('sumov.ans_glosas_previas', dt_apuracao=dt_apuracao) }}" class="btn btn-info text-white">
+            <i class="fas fa-binoculars me-1"></i>Prévias ANS Glosas
+        </a>
+        {% if pode_ver_auditoria %}
+        <a href="{{ url_for('sumov.ans_glosas_auditoria', dt_apuracao=dt_apuracao) }}" class="btn btn-danger">
+            <i class="fas fa-user-shield me-1"></i>Auditoria
+        </a>
+        {% endif %}
     </div>
 
     <!-- Seletor de Data -->
