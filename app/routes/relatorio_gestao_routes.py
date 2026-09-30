@@ -1354,21 +1354,38 @@ def vinculo_orfaos():
 @relatorio_gestao_bp.route('/vinculo-salvar', methods=['POST'])
 @login_required
 def vinculo_salvar():
-    """Grava os vínculos em FIN_TB018, sem violar a PK (ANO_MES + ID_ITEM)."""
+    """
+    Atualiza os vínculos já existentes em FIN_TB018 (ANO_MES + ID_ITEM).
+
+    Não insere linhas: apenas preenche NU_LINHA e NO_LINHA
+    das linhas que já estão na tabela.
+    """
     dados = flask_request.get_json(silent=True) or {}
     vinculos = dados.get('vinculos', [])
     if not vinculos:
         return jsonify({'success': False, 'message': 'Nenhum vínculo enviado.'}), 400
 
-    inseridos, ignorados, erros = 0, 0, []
+    atualizados, nao_encontrados, repetidos = 0, 0, 0
+    processados = set()  # (ano_mes, id_item) já tratados neste envio
+
     try:
         for v in vinculos:
             ano_mes = str(v.get('ano_mes', '')).strip()
             id_item = v.get('id_item')
             nu_linha = v.get('nu_linha')
-            descricao = (v.get('descricao') or '').strip()
+
             if not (ano_mes and id_item is not None and nu_linha not in (None, '', 'null')):
                 continue
+
+            id_item = int(id_item)
+            nu_linha = int(nu_linha)
+
+            # Mesmo ANO_MES + ID_ITEM repetido no envio: vale só o 1º
+            chave = (ano_mes, id_item)
+            if chave in processados:
+                repetidos += 1
+                continue
+            processados.add(chave)
 
             # NATUREZA (NO_LINHA) correspondente ao NU_LINHA escolhido
             nat = db.session.execute(text("""
@@ -1376,37 +1393,49 @@ def vinculo_salvar():
                 WHERE NU_LINHA = :nu
             """), {'nu': nu_linha}).scalar()
 
-            # Insere só se ainda não existir (protege a PK)
+            # Apenas UPDATE nos campos preenchidos pela tela
             res = db.session.execute(text("""
-                INSERT INTO [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO]
-                    (ANO_MES, ID_ITEM, DSC_ITEM_ORCAMENTO, NU_LINHA, NO_LINHA)
-                SELECT :am, :id, :dsc, :nu, :no
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO]
-                    WHERE ANO_MES = :am AND ID_ITEM = :id
-                )
-            """), {'am': ano_mes, 'id': id_item, 'dsc': descricao,
+                UPDATE [BDG].[FIN_TB018_VINCULO_ITEM_BOLETIM_FINANCEIRO]
+                   SET NU_LINHA = :nu,
+                       NO_LINHA = :no
+                 WHERE ANO_MES = :am
+                   AND ID_ITEM = :id
+            """), {'am': ano_mes, 'id': id_item,
                    'nu': nu_linha, 'no': (nat or '').strip()})
 
             if res.rowcount and res.rowcount > 0:
-                inseridos += 1
+                atualizados += 1
             else:
-                ignorados += 1
+                nao_encontrados += 1
 
         db.session.commit()
+
         registrar_log(acao='vinculo', entidade='FIN_TB018',
                       entidade_id=None,
-                      descricao=f'Vínculo de itens SISCOR ({inseridos} inserido(s), {ignorados} já existentes)',
-                      dados_novos={'inseridos': inseridos, 'ignorados': ignorados})
+                      descricao=(f'Vínculo de itens SISCOR ({atualizados} atualizado(s), '
+                                 f'{nao_encontrados} não encontrado(s), {repetidos} repetido(s))'),
+                      dados_novos={'atualizados': atualizados,
+                                   'nao_encontrados': nao_encontrados,
+                                   'repetidos': repetidos})
 
-        msg = f'{inseridos} vínculo(s) salvo(s).'
-        if ignorados:
-            msg += f' {ignorados} já existiam (ignorados).'
-        return jsonify({'success': True, 'message': msg,
-                        'inseridos': inseridos, 'ignorados': ignorados})
+        partes = []
+        if atualizados:
+            partes.append(f'{atualizados} vínculo(s) atualizado(s)')
+        if nao_encontrados:
+            partes.append(f'{nao_encontrados} item(ns) não encontrado(s) na FIN_TB018')
+        if repetidos:
+            partes.append(f'{repetidos} repetido(s) do mesmo ID_ITEM (vale só o 1º)')
+        msg = ('; '.join(partes) + '.') if partes else 'Nada foi alterado.'
+
+        return jsonify({'success': atualizados > 0 or not nao_encontrados,
+                        'message': msg,
+                        'atualizados': atualizados,
+                        'nao_encontrados': nao_encontrados,
+                        'repetidos': repetidos})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro ao salvar: {str(e)}'}), 500
+
 
 def _mes_referencia_boletim():
     """Máximo MES_EXECUCAO do Boletim (mesma referência do Siscor x Boletim)."""
