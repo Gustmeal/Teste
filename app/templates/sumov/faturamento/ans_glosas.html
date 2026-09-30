@@ -4,18 +4,25 @@
 <div class="container-fluid fade-in">
     <a href="{{ url_for('sumov.faturamento_index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Voltar ao Faturamento</a>
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="fw-bold header-with-back"><i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas</h1>
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h1 class="fw-bold header-with-back"><i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas</h1>
 
-        <a href="{{ url_for('sumov.ans_glosas_previas', dt_apuracao=dt_apuracao) }}" class="btn btn-info text-white">
-            <i class="fas fa-binoculars me-1"></i>Prévias ANS Glosas
-        </a>
-        {% if pode_ver_auditoria %}
-        <a href="{{ url_for('sumov.ans_glosas_auditoria', dt_apuracao=dt_apuracao) }}" class="btn btn-danger">
-            <i class="fas fa-user-shield me-1"></i>Auditoria
-        </a>
-        {% endif %}
-    </div>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('sumov.ans_glosas_exportar_penalidades', dt_apuracao=dt_apuracao) }}"
+                   class="btn btn-success js-ignore-loading"
+                   title="Advertências, reincidências e reiterações da apuração selecionada, com valores">
+                    <i class="fas fa-file-excel me-1"></i>Exportar Penalidades
+                </a>
+                <a href="{{ url_for('sumov.ans_glosas_previas', dt_apuracao=dt_apuracao) }}" class="btn btn-info text-white">
+                    <i class="fas fa-binoculars me-1"></i>Prévias ANS Glosas
+                </a>
+                {% if pode_ver_auditoria %}
+                <a href="{{ url_for('sumov.ans_glosas_auditoria', dt_apuracao=dt_apuracao) }}" class="btn btn-danger">
+                    <i class="fas fa-user-shield me-1"></i>Auditoria
+                </a>
+                {% endif %}
+            </div>
+        </div>
 
     <!-- Seletor de Data -->
     <div class="card shadow-sm mb-4"><div class="card-body py-3"><div class="row align-items-center">

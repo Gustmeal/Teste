@@ -564,34 +564,55 @@ class AnsApuracao(db.Model):
     # JUSTIFICATIVA DA PRESTADORA (TB048)
     # ==================================================================
 
+    # ==================================================================
+    # JUSTIFICATIVA DA PRESTADORA (TB048)
+    # ==================================================================
+
     @staticmethod
     def salvar_justificativa_prestadora(dt_apuracao, nr_ocorrencia, retorno_prest, manifestacao_geadi=None):
         """
-        Salva o retorno da prestadora na TB048.
-        Se já existir registro com a mesma PK (DT_APURACAO + nrOcorrencia),
-        retorna erro informando que já foi incluído anteriormente.
+        Salva o retorno da prestadora na TB048 (PK: DT_APURACAO + nrOcorrencia).
+
+        Regras:
+          - Não existe linha para a PK -> INSERT
+          - Já existe linha para a PK  -> UPDATE (substitui os textos antigos pelos novos)
+
         manifestacao_geadi é opcional (VARCHAR 500) — pode vir None/vazio.
         """
         sql_check = text("""
-                SELECT COUNT(*) AS qtd 
+                SELECT COUNT(*) AS qtd
                 FROM BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
                 WHERE DT_APURACAO = :dt AND nrOcorrencia = :nr
             """)
         row = db.session.execute(sql_check, {'dt': dt_apuracao, 'nr': nr_ocorrencia}).fetchone()
-        if row and row.qtd > 0:
-            return False, f'Já existe uma justificativa cadastrada para a ocorrência {nr_ocorrencia} nesta apuração.'
+        ja_existe = bool(row and row.qtd > 0)
 
+        params = {
+            'dt': dt_apuracao,
+            'nr': nr_ocorrencia,
+            'ret': retorno_prest,
+            'manif': manifestacao_geadi
+        }
+
+        if ja_existe:
+            # Mesma data + mesma ocorrência -> substitui os valores antigos pelos novos
+            sql_update = text("""
+                    UPDATE BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
+                    SET RETORNO_PREST = :ret,
+                        MANIFESTACAO_GEADI = :manif
+                    WHERE DT_APURACAO = :dt AND nrOcorrencia = :nr
+                """)
+            db.session.execute(sql_update, params)
+            db.session.commit()
+            return True, f'Retorno da prestadora atualizado com sucesso para a ocorrência {nr_ocorrencia}.'
+
+        # Não existe -> cria
         sql_insert = text("""
                 INSERT INTO BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA
                 (DT_APURACAO, nrOcorrencia, RETORNO_PREST, MANIFESTACAO_GEADI)
                 VALUES (:dt, :nr, :ret, :manif)
             """)
-        db.session.execute(sql_insert, {
-            'dt': dt_apuracao,
-            'nr': nr_ocorrencia,
-            'ret': retorno_prest,
-            'manif': manifestacao_geadi
-        })
+        db.session.execute(sql_insert, params)
         db.session.commit()
         return True, f'Retorno da prestadora salvo com sucesso para a ocorrência {nr_ocorrencia}.'
 
@@ -722,6 +743,140 @@ class AnsApuracao(db.Model):
             traceback.print_exc()
             db.session.rollback()
             return None
+
+    # ==================================================================
+    # EXPORTAÇÃO — PENALIDADES DA APURAÇÃO (ADV / REINC / REIT) COM VALORES
+    # ==================================================================
+
+    @staticmethod
+    def listar_penalidades_exportacao(dt_apuracao):
+        """
+        Retorna as ocorrências que receberam ADVERTENCIA, REINCIDENCIA ou
+        REITERACAO NO MÊS DA APURAÇÃO (dados 100% da TB045), SEM as
+        justificativas (não lê DSC_JUSTIFICATIVA, DT_JUSTIFICATIVA,
+        JUST_ACEITA nem a TB048).
+
+        Regra do mês: a TB045 de cada apuração pode trazer ocorrências que já
+        estavam com o campo = 1 de meses anteriores (a data da penalidade é
+        preservada pelo app). Por isso a penalidade só conta quando o campo = 1
+        E a data da penalidade (DT_ADVERTENCIA / DT_REINCIDENCIA /
+        DT_REITERACAO) é igual à DT_APURACAO filtrada — mesmo critério que o
+        app usa para contar as NOVAS de cada rodada.
+
+        Valores por ocorrência:
+          - Advertência  -> sem valor financeiro
+          - Reincidência -> 10% do valor base
+          - Reiteração   -> 25% do valor base
+        """
+        from decimal import Decimal, ROUND_HALF_UP
+
+        # Parâmetros de cálculo da glosa (regra de negócio — backend)
+        valor_base_glosa = '247.78'
+        perc_reincidencia = '0.10'
+        perc_reiteracao = '0.25'
+
+        centavo = Decimal('0.01')
+        zero = Decimal('0.00')
+        base = Decimal(valor_base_glosa)
+        perc_reinc = Decimal(perc_reincidencia)
+        perc_reit = Decimal(perc_reiteracao)
+        valor_reinc = (base * perc_reinc).quantize(centavo, rounding=ROUND_HALF_UP)
+        valor_reit = (base * perc_reit).quantize(centavo, rounding=ROUND_HALF_UP)
+
+        sql = text("""
+            SELECT A.DT_APURACAO, A.nrOcorrencia, C.NR_CONTRATO,
+                   A.GRUPO, B.NO_GRUPO, B.itemServico, B.PRAZO,
+                   A.DT_ABERTURA, A.DT_ANDAMENTO, A.DT_EFETIVACAO, A.DT_DEFERIDO,
+                   A.QTDE_DIAS, A.NO_PRAZO,
+                   CASE WHEN A.ADVERTENCIA = 1 AND A.DT_ADVERTENCIA = A.DT_APURACAO
+                        THEN 1 ELSE 0 END AS ADVERTENCIA,
+                   A.DT_ADVERTENCIA,
+                   CASE WHEN A.REINCIDENCIA = 1 AND A.DT_REINCIDENCIA = A.DT_APURACAO
+                        THEN 1 ELSE 0 END AS REINCIDENCIA,
+                   A.DT_REINCIDENCIA,
+                   CASE WHEN A.REITERACAO = 1 AND A.DT_REITERACAO = A.DT_APURACAO
+                        THEN 1 ELSE 0 END AS REITERACAO,
+                   A.DT_REITERACAO
+            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A
+            OUTER APPLY (
+                SELECT TOP 1 X.itemServico, X.PRAZO, X.NO_GRUPO
+                FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X
+                WHERE X.GRUPO = A.GRUPO
+            ) B
+            OUTER APPLY (
+                SELECT TOP 1 P.NR_CONTRATO
+                FROM BDDASHBOARDBI.BDG.MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO P
+                WHERE P.DT_APURACAO = A.DT_APURACAO AND P.nrOcorrencia = A.nrOcorrencia
+            ) C
+            WHERE A.DT_APURACAO = :dt
+              AND (
+                    (A.ADVERTENCIA  = 1 AND A.DT_ADVERTENCIA  = A.DT_APURACAO)
+                 OR (A.REINCIDENCIA = 1 AND A.DT_REINCIDENCIA = A.DT_APURACAO)
+                 OR (A.REITERACAO   = 1 AND A.DT_REITERACAO   = A.DT_APURACAO)
+              )
+            ORDER BY A.GRUPO, A.nrOcorrencia
+        """)
+        rows = db.session.execute(sql, {'dt': dt_apuracao}).fetchall()
+
+        registros = []
+        por_grupo = {}
+        totais = {
+            'qt_ocorrencias': 0, 'qt_advertencia': 0, 'qt_reincidencia': 0, 'qt_reiteracao': 0,
+            'vr_reincidencia': zero, 'vr_reiteracao': zero, 'vr_total': zero,
+        }
+
+        for row in rows:
+            m = dict(row._mapping)
+            adv = 1 if m.get('ADVERTENCIA') == 1 else 0
+            reinc = 1 if m.get('REINCIDENCIA') == 1 else 0
+            reit = 1 if m.get('REITERACAO') == 1 else 0
+
+            vr_reinc = valor_reinc if reinc else zero
+            vr_reit = valor_reit if reit else zero
+            m['VR_REINCIDENCIA'] = vr_reinc
+            m['VR_REITERACAO'] = vr_reit
+            m['VR_TOTAL'] = vr_reinc + vr_reit
+            registros.append(m)
+
+            # Consolidação por grupo (as linhas já vêm ordenadas por GRUPO)
+            g = por_grupo.get(m['GRUPO'])
+            if g is None:
+                g = {
+                    'GRUPO': m['GRUPO'], 'NO_GRUPO': m.get('NO_GRUPO'),
+                    'QT_OCORRENCIAS': 0, 'QT_ADVERTENCIA': 0,
+                    'QT_REINCIDENCIA': 0, 'VR_REINCIDENCIA': zero,
+                    'QT_REITERACAO': 0, 'VR_REITERACAO': zero, 'VR_TOTAL': zero,
+                }
+                por_grupo[m['GRUPO']] = g
+            g['QT_OCORRENCIAS'] += 1
+            g['QT_ADVERTENCIA'] += adv
+            g['QT_REINCIDENCIA'] += reinc
+            g['VR_REINCIDENCIA'] += vr_reinc
+            g['QT_REITERACAO'] += reit
+            g['VR_REITERACAO'] += vr_reit
+            g['VR_TOTAL'] += m['VR_TOTAL']
+
+            # Totais da apuração
+            totais['qt_ocorrencias'] += 1
+            totais['qt_advertencia'] += adv
+            totais['qt_reincidencia'] += reinc
+            totais['qt_reiteracao'] += reit
+            totais['vr_reincidencia'] += vr_reinc
+            totais['vr_reiteracao'] += vr_reit
+            totais['vr_total'] += m['VR_TOTAL']
+
+        return {
+            'registros': registros,
+            'por_grupo': list(por_grupo.values()),
+            'totais': totais,
+            'parametros': {
+                'valor_base': base,
+                'perc_reincidencia': perc_reinc,
+                'valor_reincidencia': valor_reinc,
+                'perc_reiteracao': perc_reit,
+                'valor_reiteracao': valor_reit,
+            },
+        }
 
 
 class AnsItensFaturamento(db.Model):

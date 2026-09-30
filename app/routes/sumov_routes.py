@@ -5918,3 +5918,308 @@ def movimentacao_imovel_exportar():
     except Exception as e:
         flash('Erro ao exportar Excel: %s' % str(e), 'danger')
         return redirect(url_for('sumov.movimentacao_imovel'))
+
+
+@sumov_bp.route('/faturamento/ans-glosas/exportar-penalidades')
+@login_required
+def ans_glosas_exportar_penalidades():
+    """
+    Exporta para Excel as ocorrências da apuração selecionada que receberam
+    Advertência, Reincidência e/ou Reiteração, com os valores de glosa.
+    Não inclui justificativas.
+    """
+    from io import BytesIO
+    from datetime import datetime
+    from decimal import Decimal
+    from flask import send_file
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    dt_param = (request.args.get('dt_apuracao') or '').strip()
+    try:
+        dt_obj = datetime.strptime(dt_param[:10], '%Y-%m-%d').date()
+    except ValueError:
+        flash('Data de apuração inválida para exportação.', 'warning')
+        return redirect(url_for('sumov.ans_glosas'))
+    dt_iso = dt_obj.strftime('%Y-%m-%d')
+    dt_br = dt_obj.strftime('%d/%m/%Y')
+
+    try:
+        dados = AnsApuracao.listar_penalidades_exportacao(dt_iso)
+        registros = dados['registros']
+        if not registros:
+            flash('Não há ocorrências com advertência, reincidência ou reiteração na apuração de %s.' % dt_br, 'info')
+            return redirect(url_for('sumov.ans_glosas', dt_apuracao=dt_iso))
+
+        par = dados['parametros']
+        tot = dados['totais']
+
+        # ===================== Estilos =====================
+        AZUL = '2C3E6B'
+        AZUL_CLARO = 'E8EDF7'
+        ZEBRA = 'F5F7FB'
+        CINZA_BORDA = 'D0D7E5'
+        DESTAQUE = {'ADVERTENCIA': 'FFF3CD', 'REINCIDENCIA': 'FFE0B2', 'REITERACAO': 'F8D7DA'}
+        FMT_MOEDA = '"R$" #,##0.00'
+        FMT_DATA = 'DD/MM/YYYY'
+        FMT_PERC = '0%'
+
+        lado = Side(style='thin', color=CINZA_BORDA)
+        borda = Border(left=lado, right=lado, top=lado, bottom=lado)
+        fonte_padrao = Font(name='Calibri', size=10)
+        fonte_cab = Font(name='Calibri', size=10, bold=True, color='FFFFFF')
+        fonte_titulo = Font(name='Calibri', size=16, bold=True, color=AZUL)
+        fonte_sub = Font(name='Calibri', size=10, italic=True, color='6C757D')
+        fonte_total = Font(name='Calibri', size=10, bold=True, color=AZUL)
+        fill_cab = PatternFill('solid', fgColor=AZUL)
+        fill_total = PatternFill('solid', fgColor=AZUL_CLARO)
+        fill_zebra = PatternFill('solid', fgColor=ZEBRA)
+        centro = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        esquerda = Alignment(horizontal='left', vertical='center', wrap_text=True, indent=1)
+        direita = Alignment(horizontal='right', vertical='center', indent=1)
+        gerado_em = datetime.now().strftime('%d/%m/%Y às %H:%M')
+
+        def valor_celula(valor, tipo):
+            if valor is None:
+                return None
+            if tipo == 'simnao':
+                return 'Sim' if str(valor) in ('1', 'True') else 'Não'
+            if tipo == 'moeda':
+                return float(valor)
+            if tipo == 'data' and isinstance(valor, datetime):
+                return valor.date()
+            if isinstance(valor, Decimal):
+                return int(valor) if valor == valor.to_integral_value() else float(valor)
+            return valor
+
+        def cabecalho_aba(ws, titulo, qtde_colunas):
+            ult = get_column_letter(max(qtde_colunas, 1))
+            ws.sheet_view.showGridLines = False
+            ws.merge_cells('A1:%s1' % ult)
+            ws['A1'] = titulo
+            ws['A1'].font = fonte_titulo
+            ws['A1'].alignment = Alignment(horizontal='left', vertical='center')
+            ws.row_dimensions[1].height = 30
+            ws.merge_cells('A2:%s2' % ult)
+            ws['A2'] = 'Apuração: %s   |   Gerado em %s' % (dt_br, gerado_em)
+            ws['A2'].font = fonte_sub
+            ws.page_setup.orientation = 'landscape'
+            ws.page_setup.fitToWidth = 1
+            ws.page_setup.fitToHeight = 0
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+        def escrever_tabela(ws, titulo, colunas, linhas):
+            """colunas = [(rótulo, chave, tipo, largura)] | tipo: texto, num, qtd, data, simnao, moeda"""
+            cabecalho_aba(ws, titulo, len(colunas))
+            hdr = 4
+            for j, (rotulo, chave, tipo, largura) in enumerate(colunas, 1):
+                cel = ws.cell(row=hdr, column=j, value=rotulo)
+                cel.font = fonte_cab
+                cel.fill = fill_cab
+                cel.alignment = centro
+                cel.border = borda
+                ws.column_dimensions[get_column_letter(j)].width = largura
+            ws.row_dimensions[hdr].height = 32
+
+            lin = hdr + 1
+            for i, reg in enumerate(linhas):
+                for j, (rotulo, chave, tipo, largura) in enumerate(colunas, 1):
+                    val = valor_celula(reg.get(chave), tipo)
+                    cel = ws.cell(row=lin, column=j, value=val)
+                    cel.font = fonte_padrao
+                    cel.border = borda
+                    if tipo == 'texto':
+                        cel.alignment = esquerda
+                    elif tipo == 'moeda':
+                        cel.number_format = FMT_MOEDA
+                        cel.alignment = direita
+                    else:
+                        cel.alignment = centro
+                    if tipo == 'data':
+                        cel.number_format = FMT_DATA
+                    if i % 2 == 1:
+                        cel.fill = fill_zebra
+                    if tipo == 'simnao' and val == 'Sim' and chave in DESTAQUE:
+                        cel.fill = PatternFill('solid', fgColor=DESTAQUE[chave])
+                        cel.font = Font(name='Calibri', size=10, bold=True)
+                ws.row_dimensions[lin].height = 18
+                lin += 1
+
+            # Linha de total
+            primeira, ultima = hdr + 1, lin - 1
+            for j, (rotulo, chave, tipo, largura) in enumerate(colunas, 1):
+                letra = get_column_letter(j)
+                cel = ws.cell(row=lin, column=j)
+                if j == 1:
+                    cel.value = 'TOTAL (%d)' % len(linhas)
+                elif tipo in ('moeda', 'qtd'):
+                    cel.value = '=SUM(%s%d:%s%d)' % (letra, primeira, letra, ultima)
+                elif tipo == 'simnao' and chave in DESTAQUE:
+                    cel.value = '=COUNTIF(%s%d:%s%d,"Sim")' % (letra, primeira, letra, ultima)
+                cel.font = fonte_total
+                cel.fill = fill_total
+                cel.border = borda
+                cel.alignment = direita if tipo == 'moeda' else centro
+                if tipo == 'moeda':
+                    cel.number_format = FMT_MOEDA
+            ws.row_dimensions[lin].height = 22
+
+            ult = get_column_letter(len(colunas))
+            ws.freeze_panes = 'C%d' % (hdr + 1)
+            ws.auto_filter.ref = 'A%d:%s%d' % (hdr, ult, max(ultima, hdr))
+
+        COLUNAS_OCORRENCIAS = [
+            ('Apuração', 'DT_APURACAO', 'data', 12),
+            ('Ocorrência', 'nrOcorrencia', 'num', 12),
+            ('Contrato', 'NR_CONTRATO', 'num', 16),
+            ('Grupo', 'GRUPO', 'num', 8),
+            ('Nome do grupo', 'NO_GRUPO', 'texto', 30),
+            ('Item de serviço', 'itemServico', 'texto', 30),
+            ('Prazo (dias)', 'PRAZO', 'num', 10),
+            ('Abertura', 'DT_ABERTURA', 'data', 12),
+            ('Andamento', 'DT_ANDAMENTO', 'data', 12),
+            ('Efetivação', 'DT_EFETIVACAO', 'data', 12),
+            ('Deferido', 'DT_DEFERIDO', 'data', 12),
+            ('Qtde dias', 'QTDE_DIAS', 'num', 10),
+            ('No prazo', 'NO_PRAZO', 'simnao', 10),
+            ('Advertência', 'ADVERTENCIA', 'simnao', 12),
+            ('Dt advertência', 'DT_ADVERTENCIA', 'data', 13),
+            ('Reincidência', 'REINCIDENCIA', 'simnao', 12),
+            ('Dt reincidência', 'DT_REINCIDENCIA', 'data', 14),
+            ('Valor reincidência', 'VR_REINCIDENCIA', 'moeda', 16),
+            ('Reiteração', 'REITERACAO', 'simnao', 11),
+            ('Dt reiteração', 'DT_REITERACAO', 'data', 13),
+            ('Valor reiteração', 'VR_REITERACAO', 'moeda', 16),
+            ('Valor total glosa', 'VR_TOTAL', 'moeda', 17),
+        ]
+
+        COLUNAS_GRUPO = [
+            ('Grupo', 'GRUPO', 'num', 8),
+            ('Nome do grupo', 'NO_GRUPO', 'texto', 34),
+            ('Ocorrências', 'QT_OCORRENCIAS', 'qtd', 12),
+            ('Advertências', 'QT_ADVERTENCIA', 'qtd', 13),
+            ('Reincidências', 'QT_REINCIDENCIA', 'qtd', 13),
+            ('Valor reincidências', 'VR_REINCIDENCIA', 'moeda', 18),
+            ('Reiterações', 'QT_REITERACAO', 'qtd', 12),
+            ('Valor reiterações', 'VR_REITERACAO', 'moeda', 18),
+            ('Valor total glosa', 'VR_TOTAL', 'moeda', 18),
+        ]
+
+        wb = Workbook()
+
+        # ===================== Aba RESUMO =====================
+        ws = wb.active
+        ws.title = 'Resumo'
+        cabecalho_aba(ws, 'ANS Glosas — Penalidades da Apuração', 3)
+        ws.column_dimensions['A'].width = 40
+        ws.column_dimensions['B'].width = 16
+        ws.column_dimensions['C'].width = 22
+
+        def titulo_secao(linha, texto, colunas_txt):
+            for j, txt in enumerate(colunas_txt, 1):
+                cel = ws.cell(row=linha, column=j, value=txt if j > 1 else texto)
+                cel.font = fonte_cab
+                cel.fill = fill_cab
+                cel.border = borda
+                cel.alignment = esquerda if j == 1 else centro
+            ws.row_dimensions[linha].height = 22
+
+        def linha_resumo(linha, valores, formatos, negrito=False, destaque=None):
+            for j, (val, fmt) in enumerate(zip(valores, formatos), 1):
+                cel = ws.cell(row=linha, column=j, value=val)
+                cel.font = fonte_total if negrito else fonte_padrao
+                cel.border = borda
+                cel.alignment = esquerda if j == 1 else (direita if fmt == FMT_MOEDA else centro)
+                if fmt:
+                    cel.number_format = fmt
+                if negrito:
+                    cel.fill = fill_total
+                elif destaque:
+                    cel.fill = PatternFill('solid', fgColor=destaque)
+            ws.row_dimensions[linha].height = 18
+
+        # Parâmetros
+        titulo_secao(4, 'Parâmetros de cálculo', ['', 'Valor', ''])
+        ws.merge_cells('B4:C4')
+        parametros = [
+            ('Valor base da glosa', float(par['valor_base']), FMT_MOEDA),
+            ('Percentual por reincidência', float(par['perc_reincidencia']), FMT_PERC),
+            ('Valor unitário por reincidência', float(par['valor_reincidencia']), FMT_MOEDA),
+            ('Percentual por reiteração', float(par['perc_reiteracao']), FMT_PERC),
+            ('Valor unitário por reiteração', float(par['valor_reiteracao']), FMT_MOEDA),
+        ]
+        linha = 5
+        for rot, val, fmt in parametros:
+            ws.merge_cells('B%d:C%d' % (linha, linha))
+            linha_resumo(linha, [rot, val], [None, fmt])
+            ws.cell(row=linha, column=3).border = borda
+            linha += 1
+
+        # Totais
+        linha += 1
+        titulo_secao(linha, 'Totais da apuração', ['', 'Quantidade', 'Valor'])
+        linha += 1
+        linha_resumo(linha, ['Advertências', tot['qt_advertencia'], 'Sem valor financeiro'],
+                     [None, None, None], destaque=DESTAQUE['ADVERTENCIA'])
+        linha += 1
+        linha_resumo(linha, ['Reincidências', tot['qt_reincidencia'], float(tot['vr_reincidencia'])],
+                     [None, None, FMT_MOEDA], destaque=DESTAQUE['REINCIDENCIA'])
+        linha += 1
+        linha_resumo(linha, ['Reiterações', tot['qt_reiteracao'], float(tot['vr_reiteracao'])],
+                     [None, None, FMT_MOEDA], destaque=DESTAQUE['REITERACAO'])
+        linha += 1
+        linha_resumo(linha, ['Total geral (%d ocorrências)' % tot['qt_ocorrencias'],
+                             tot['qt_advertencia'] + tot['qt_reincidencia'] + tot['qt_reiteracao'],
+                             float(tot['vr_total'])],
+                     [None, None, FMT_MOEDA], negrito=True)
+
+        linha += 2
+        ws.merge_cells('A%d:C%d' % (linha, linha))
+        ws.cell(row=linha, column=1,
+                value='Obs.: relatório sem justificativas. Valores calculados por ocorrência '
+                      '(reincidência = %s%% e reiteração = %s%% do valor base).'
+                      % (int(par['perc_reincidencia'] * 100), int(par['perc_reiteracao'] * 100))).font = fonte_sub
+
+        # ===================== Demais abas =====================
+        escrever_tabela(wb.create_sheet('Por grupo'), 'Consolidado por grupo', COLUNAS_GRUPO, dados['por_grupo'])
+        escrever_tabela(wb.create_sheet('Ocorrências'), 'Todas as ocorrências penalizadas',
+                        COLUNAS_OCORRENCIAS, registros)
+
+        abas_penalidade = [
+            ('Advertências', 'ADVERTENCIA'),
+            ('Reincidências', 'REINCIDENCIA'),
+            ('Reiterações', 'REITERACAO'),
+        ]
+        for nome_aba, campo in abas_penalidade:
+            filtradas = [r for r in registros if r.get(campo) == 1]
+            if filtradas:
+                escrever_tabela(wb.create_sheet(nome_aba), 'Ocorrências com %s' % nome_aba.lower(),
+                                COLUNAS_OCORRENCIAS, filtradas)
+
+        saida = BytesIO()
+        wb.save(saida)
+        saida.seek(0)
+
+        registrar_log(
+            acao='exportar',
+            entidade='ans_penalidades_excel',
+            entidade_id=None,
+            descricao='Exportação penalidades ANS %s - %d ocorrências, total R$ %s'
+                      % (dt_br, tot['qt_ocorrencias'], tot['vr_total'])
+        )
+
+        nome = 'ans_penalidades_%s_%s.xlsx' % (dt_obj.strftime('%Y%m%d'), datetime.now().strftime('%Y%m%d_%H%M%S'))
+        return send_file(saida,
+                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                         as_attachment=True,
+                         download_name=nome)
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        flash('Erro ao exportar penalidades: %s' % str(e), 'danger')
+        return redirect(url_for('sumov.ans_glosas', dt_apuracao=dt_iso))
