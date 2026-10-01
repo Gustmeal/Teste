@@ -6242,3 +6242,77 @@ def ans_glosas_exportar_penalidades():
         traceback.print_exc()
         flash('Erro ao exportar penalidades: %s' % str(e), 'danger')
         return redirect(url_for('sumov.ans_glosas', dt_apuracao=dt_iso))
+
+@sumov_bp.route('/faturamento/ans-glosas/tarifa', methods=['GET'])
+@login_required
+def ans_glosas_obter_tarifa():
+    """Retorna a última data e o valor da tarifa do prestador (TB061)."""
+    from flask import jsonify
+    from app.models.ans_apuracao import AnsApuracao
+
+    try:
+        tarifa = AnsApuracao.obter_ultima_tarifa()
+        if tarifa is None:
+            return jsonify({'success': False, 'message': 'Não há tarifa cadastrada na TB061.'})
+
+        dt = tarifa['dt_apuracao']
+        return jsonify({
+            'success': True,
+            'dt_apuracao': str(dt)[:10],
+            'dt_br': dt.strftime('%d/%m/%Y') if hasattr(dt, 'strftime') else str(dt)[:10],
+            'vr_tarifa': float(tarifa['vr_tarifa']) if tarifa['vr_tarifa'] is not None else 0.0
+        })
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao consultar a tarifa: {}'.format(str(e))})
+
+
+@sumov_bp.route('/faturamento/ans-glosas/tarifa/alterar', methods=['POST'])
+@login_required
+def ans_glosas_alterar_tarifa():
+    """Altera o VR_TARIFA da última data da TB061."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    from flask import jsonify
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.audit import registrar_log
+
+    dados = request.get_json(silent=True) or {}
+    dt_apuracao = str(dados.get('dt_apuracao') or '').strip()[:10]
+    valor_txt = str(dados.get('vr_tarifa') or '').strip().replace('R$', '').replace(' ', '')
+
+    if not dt_apuracao:
+        return jsonify({'success': False, 'message': 'Data da tarifa não informada.'})
+
+    # Aceita "258,66", "1.258,66" ou "258.66"
+    if ',' in valor_txt:
+        valor_txt = valor_txt.replace('.', '').replace(',', '.')
+    try:
+        novo_valor = Decimal(valor_txt).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError):
+        return jsonify({'success': False, 'message': 'Valor de tarifa inválido.'})
+
+    if novo_valor <= 0:
+        return jsonify({'success': False, 'message': 'A tarifa deve ser maior que zero.'})
+    if novo_valor > Decimal('99999.99'):
+        return jsonify({'success': False, 'message': 'Valor de tarifa acima do permitido.'})
+
+    try:
+        ok, msg, info = AnsApuracao.alterar_ultima_tarifa(dt_apuracao, novo_valor)
+        if not ok:
+            return jsonify({'success': False, 'message': msg})
+
+        registrar_log(
+            acao='editar',
+            entidade='ans_tarifa_prestador',
+            entidade_id=None,
+            descricao='Tarifa TB061 da data {}: de R$ {} para R$ {}'.format(
+                info['dt_apuracao'], info['vr_anterior'], info['vr_novo'])
+        )
+        return jsonify({'success': True, 'message': msg})
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao alterar a tarifa: {}'.format(str(e))})

@@ -8,6 +8,10 @@
             <h1 class="fw-bold header-with-back"><i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas</h1>
 
             <div class="d-flex flex-wrap gap-2">
+                <span class="btn btn-warning js-ignore-loading" onclick="abrirModalTarifa()" style="cursor:pointer;"
+                      title="Alterar a tarifa da última data cadastrada (TB061)">
+                    <i class="fas fa-dollar-sign me-1"></i>Alterar Tarifa
+                </span>
                 <a href="{{ url_for('sumov.ans_glosas_exportar_penalidades', dt_apuracao=dt_apuracao) }}"
                    class="btn btn-success js-ignore-loading"
                    title="Advertências, reincidências e reiterações da apuração selecionada, com valores">
@@ -391,6 +395,50 @@
     </div>
     {% endfor %}
 
+    <!-- Modal: Alterar Tarifa do Prestador (TB061) -->
+    <div class="modal fade" id="modalTarifa" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-dollar-sign me-2"></i>Alterar Tarifa</h5>
+                    <button type="button" class="btn-close" onclick="fecharModalTarifa()" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Atenção:</strong> altere a tarifa <strong>somente quando houver mudança de tarifa</strong>.
+                        <strong>Não é necessário alterar todo mês</strong> — a rotina repete automaticamente a última
+                        tarifa nos meses seguintes até que ela seja alterada novamente.
+                    </div>
+                    <div id="tarifaCarregando" class="text-center text-muted py-3">
+                        <i class="fas fa-spinner fa-spin me-2"></i>Carregando tarifa atual...
+                    </div>
+                    <div id="tarifaConteudo" style="display:none;">
+                        <div class="row g-3 mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-bold mb-1">Última data cadastrada</label>
+                                <div class="form-control bg-light" id="tarifaDataAtual">-</div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold mb-1">Tarifa atual</label>
+                                <div class="form-control bg-light" id="tarifaValorAtual">-</div>
+                            </div>
+                        </div>
+                        <label for="txtNovaTarifa" class="form-label fw-bold">Nova tarifa (R$) <span class="text-danger">*</span></label>
+                        <input type="text" id="txtNovaTarifa" class="form-control" inputmode="decimal" autocomplete="off"
+                               placeholder="Ex.: 258,66">
+                        <small class="text-muted">O novo valor substitui a tarifa da última data cadastrada.</small>
+                    </div>
+                    <div id="tarifaErro" class="alert alert-warning py-2 mt-3 mb-0" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <span class="btn btn-secondary js-ignore-loading" onclick="fecharModalTarifa()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Cancelar</span>
+                    <span id="btnSalvarTarifa" class="btn btn-warning fw-bold js-ignore-loading" onclick="salvarTarifa()" style="cursor:pointer;"><i class="fas fa-save me-1"></i>Salvar Tarifa</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Retorno da Prestadora -->
     <div class="modal fade" id="modalRetornoPrestadora" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -495,10 +543,120 @@ var URL_REITERACAO="{{ url_for('sumov.ans_glosas_aplicar_reiteracao') }}";
 var URL_EDITAR_CAMPO="{{ url_for('sumov.ans_glosas_editar_campo') }}";
 var URL_CONCLUIR="{{ url_for('sumov.ans_glosas_concluir') }}";
 var URL_JUST_PRESTADORA="{{ url_for('sumov.ans_glosas_salvar_justificativa_prestadora') }}";
+var URL_TARIFA="{{ url_for('sumov.ans_glosas_obter_tarifa') }}";
+var URL_ALTERAR_TARIFA="{{ url_for('sumov.ans_glosas_alterar_tarifa') }}";
 var URL_DT_APLICACAO="{{ url_for('sumov.ans_glosas_salvar_dt_aplicacao') }}";
 var DT_APURACAO="{{ dt_apuracao }}";
 
 function trocarDataApuracao(dt){window.location.href="{{ url_for('sumov.ans_glosas') }}?dt_apuracao="+dt;}
+
+// =========================================================================
+// ALTERAR TARIFA DO PRESTADOR (TB061)
+// Busca no backend a última data/valor da TB061 e altera só essa posição.
+// =========================================================================
+var tarifaAtual = null;
+
+function formatarMoedaBR(v) {
+    return Number(v).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+}
+
+function abrirModalTarifa() {
+    tarifaAtual = null;
+    document.getElementById('tarifaCarregando').style.display = '';
+    document.getElementById('tarifaConteudo').style.display = 'none';
+    document.getElementById('tarifaErro').style.display = 'none';
+    document.getElementById('txtNovaTarifa').value = '';
+    document.getElementById('btnSalvarTarifa').style.display = '';
+
+    var m = document.getElementById('modalTarifa');
+    m.style.display = 'block';
+    m.classList.add('show');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    bd.id = 'modalBackdropTarifa';
+    document.body.appendChild(bd);
+
+    fetch(URL_TARIFA, {headers: {'X-Silent-Request': 'true'}})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            document.getElementById('tarifaCarregando').style.display = 'none';
+            if (!d.success) { erroTarifa(d.message); document.getElementById('btnSalvarTarifa').style.display = 'none'; return; }
+            tarifaAtual = d;
+            document.getElementById('tarifaDataAtual').textContent = d.dt_br;
+            document.getElementById('tarifaValorAtual').textContent = formatarMoedaBR(d.vr_tarifa);
+            document.getElementById('tarifaConteudo').style.display = '';
+            document.getElementById('txtNovaTarifa').focus();
+        })
+        .catch(function(e){
+            document.getElementById('tarifaCarregando').style.display = 'none';
+            erroTarifa('Erro ao carregar a tarifa: ' + e);
+        });
+}
+
+function erroTarifa(msg) {
+    var el = document.getElementById('tarifaErro');
+    el.innerHTML = '<i class="fas fa-exclamation-circle me-1"></i>' + msg;
+    el.style.display = '';
+}
+
+function fecharModalTarifa() {
+    var m = document.getElementById('modalTarifa');
+    m.style.display = 'none';
+    m.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('modalBackdropTarifa');
+    if (bd) bd.remove();
+    tarifaAtual = null;
+}
+
+// Aceita "258,66", "1.258,66" ou "258.66"
+function converterValorBR(txt) {
+    txt = (txt || '').trim().replace(/[R$\s]/g, '');
+    if (txt.indexOf(',') >= 0) txt = txt.replace(/\./g, '').replace(',', '.');
+    var n = Number(txt);
+    return isFinite(n) ? n : NaN;
+}
+
+function salvarTarifa() {
+    if (!tarifaAtual) return;
+    document.getElementById('tarifaErro').style.display = 'none';
+
+    var valor = converterValorBR(document.getElementById('txtNovaTarifa').value);
+    if (isNaN(valor) || valor <= 0) { erroTarifa('Informe um valor de tarifa válido (maior que zero).'); return; }
+    if (Math.abs(valor - Number(tarifaAtual.vr_tarifa)) < 0.005) { erroTarifa('O valor informado é igual à tarifa atual.'); return; }
+
+    if (!confirm('Confirma a alteração da tarifa de ' + tarifaAtual.dt_br + '?\n\n' +
+                 'De: ' + formatarMoedaBR(tarifaAtual.vr_tarifa) + '\nPara: ' + formatarMoedaBR(valor) + '\n\n' +
+                 'Lembre-se: só altere quando houver mudança de tarifa. A rotina repete este valor nos próximos meses.')) return;
+
+    var btn = document.getElementById('btnSalvarTarifa');
+    var htmlOriginal = btn.innerHTML;
+    if (btn.getAttribute('data-ocupado') === '1') return;
+    btn.setAttribute('data-ocupado', '1');
+    btn.style.pointerEvents = 'none';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
+
+    function liberar() {
+        btn.removeAttribute('data-ocupado');
+        btn.style.pointerEvents = '';
+        btn.innerHTML = htmlOriginal;
+    }
+
+    fetch(URL_ALTERAR_TARIFA, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({dt_apuracao: tarifaAtual.dt_apuracao, vr_tarifa: valor.toFixed(2)})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        liberar();
+        if (!d.success) { erroTarifa(d.message); return; }
+        fecharModalTarifa();
+        avisoAns(d.message, 'success');
+    })
+    .catch(function(e){ liberar(); erroTarifa('Erro: ' + e); });
+}
 
 // =========================================================================
 // LOCALIZAR OCORRÊNCIA NO MÊS

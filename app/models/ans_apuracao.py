@@ -765,19 +765,27 @@ class AnsApuracao(db.Model):
 
         Valores por ocorrência:
           - Advertência  -> sem valor financeiro
-          - Reincidência -> 10% do valor base
-          - Reiteração   -> 25% do valor base
+          - Reincidência -> 10% da tarifa
+          - Reiteração   -> 25% da tarifa
+
+        Tarifa: vem da TB061 (MOV_TB061_TARIFA_PRESTADOR) pela DT_APURACAO.
+        Se não existir linha exatamente na data, usa a última tarifa anterior.
         """
         from decimal import Decimal, ROUND_HALF_UP
 
-        # Parâmetros de cálculo da glosa (regra de negócio — backend)
-        valor_base_glosa = '247.78'
+        # Tarifa do prestador (TB061) — nada fixo no código
+        tarifa = AnsApuracao.obter_tarifa_vigente(dt_apuracao)
+        if tarifa is None:
+            raise ValueError('Não há tarifa cadastrada na TB061 (MOV_TB061_TARIFA_PRESTADOR) '
+                             'para a apuração {} ou datas anteriores.'.format(dt_apuracao))
+
+        # Percentuais da glosa (regra de negócio — backend)
         perc_reincidencia = '0.10'
         perc_reiteracao = '0.25'
 
         centavo = Decimal('0.01')
         zero = Decimal('0.00')
-        base = Decimal(valor_base_glosa)
+        base = Decimal(str(tarifa['vr_tarifa'])).quantize(centavo, rounding=ROUND_HALF_UP)
         perc_reinc = Decimal(perc_reincidencia)
         perc_reit = Decimal(perc_reiteracao)
         valor_reinc = (base * perc_reinc).quantize(centavo, rounding=ROUND_HALF_UP)
@@ -871,12 +879,80 @@ class AnsApuracao(db.Model):
             'totais': totais,
             'parametros': {
                 'valor_base': base,
+                'dt_tarifa': tarifa['dt_apuracao'],
                 'perc_reincidencia': perc_reinc,
                 'valor_reincidencia': valor_reinc,
                 'perc_reiteracao': perc_reit,
                 'valor_reiteracao': valor_reit,
             },
         }
+
+    # ==================================================================
+    # TARIFA DO PRESTADOR (TB061)
+    # ==================================================================
+
+    @staticmethod
+    def obter_tarifa_vigente(dt_apuracao):
+        """
+        Tarifa da TB061 para a data de apuração. Se não houver linha exatamente
+        nessa data, devolve a última tarifa anterior (a rotina repete a última).
+        Retorna {'dt_apuracao': date, 'vr_tarifa': Decimal} ou None.
+        """
+        sql = text("""
+            SELECT TOP 1 DT_APURACAO, VR_TARIFA
+            FROM BDDASHBOARDBI.BDG.MOV_TB061_TARIFA_PRESTADOR
+            WHERE DT_APURACAO <= :dt AND VR_TARIFA IS NOT NULL
+            ORDER BY DT_APURACAO DESC
+        """)
+        row = db.session.execute(sql, {'dt': dt_apuracao}).fetchone()
+        if not row:
+            return None
+        return {'dt_apuracao': row.DT_APURACAO, 'vr_tarifa': row.VR_TARIFA}
+
+    @staticmethod
+    def obter_ultima_tarifa():
+        """
+        Última posição da TB061 (maior DT_APURACAO).
+        Retorna {'dt_apuracao': date, 'vr_tarifa': Decimal} ou None.
+        """
+        sql = text("""
+            SELECT TOP 1 DT_APURACAO, VR_TARIFA
+            FROM BDDASHBOARDBI.BDG.MOV_TB061_TARIFA_PRESTADOR
+            ORDER BY DT_APURACAO DESC
+        """)
+        row = db.session.execute(sql).fetchone()
+        if not row:
+            return None
+        return {'dt_apuracao': row.DT_APURACAO, 'vr_tarifa': row.VR_TARIFA}
+
+    @staticmethod
+    def alterar_ultima_tarifa(dt_apuracao, novo_valor):
+        """
+        Altera o VR_TARIFA da ÚLTIMA data da TB061.
+        dt_apuracao = data que o usuário viu no modal; só grava se ela ainda for
+        a última da tabela (evita alterar a linha errada se a rotina tiver
+        inserido um mês novo enquanto o modal estava aberto).
+        Retorna (ok, mensagem, info) — info: {'dt_apuracao', 'vr_anterior', 'vr_novo'}.
+        """
+        ultima = AnsApuracao.obter_ultima_tarifa()
+        if ultima is None:
+            return False, 'Não há tarifa cadastrada na TB061.', None
+
+        dt_ultima = str(ultima['dt_apuracao'])[:10]
+        if str(dt_apuracao)[:10] != dt_ultima:
+            return False, ('A última data da tarifa mudou para {}. Feche e abra novamente '
+                           'o "Alterar Tarifa".'.format(dt_ultima)), None
+
+        sql = text("""
+            UPDATE BDDASHBOARDBI.BDG.MOV_TB061_TARIFA_PRESTADOR
+            SET VR_TARIFA = :vr
+            WHERE DT_APURACAO = :dt
+        """)
+        db.session.execute(sql, {'vr': novo_valor, 'dt': dt_ultima})
+        db.session.commit()
+
+        info = {'dt_apuracao': dt_ultima, 'vr_anterior': ultima['vr_tarifa'], 'vr_novo': novo_valor}
+        return True, 'Tarifa da data {} alterada com sucesso.'.format(dt_ultima), info
 
 
 class AnsItensFaturamento(db.Model):
