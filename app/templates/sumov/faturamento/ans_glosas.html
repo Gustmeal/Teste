@@ -13,7 +13,7 @@
                    title="Advertências, reincidências e reiterações da apuração selecionada, com valores">
                     <i class="fas fa-file-excel me-1"></i>Exportar Penalidades
                 </a>
-                <a href="{{ url_for('sumov.ans_glosas_previas', dt_apuracao=dt_apuracao) }}" class="btn btn-info text-white">
+                <a href="{{ url_for('sumov.ans_glosas_previas') }}" class="btn btn-info text-white">
                     <i class="fas fa-binoculars me-1"></i>Prévias ANS Glosas
                 </a>
                 {% if pode_ver_auditoria %}
@@ -39,6 +39,24 @@
             {% endif %}
         </div>
     </div></div></div>
+
+    <!-- ================= LOCALIZAR OCORRÊNCIA (card próprio) ================= -->
+    <div id="cardBuscaOcorrencia" class="card shadow-sm mb-4" style="display:block !important;">
+        <div class="card-body py-3" style="display:block !important;">
+            <div style="display:flex !important;flex-wrap:wrap;align-items:center;gap:12px;">
+                <label for="buscaOcorrencia" class="fw-bold mb-0" style="min-width:200px;">
+                    <i class="fas fa-search me-2 text-primary"></i>Localizar Ocorrência
+                </label>
+                <div style="display:flex !important;flex:1 1 320px;max-width:520px;gap:6px;">
+                    <input type="text" id="buscaOcorrencia" class="form-control" inputmode="numeric" autocomplete="off"
+                           placeholder="Digite o nº da ocorrência e tecle Enter" style="display:block !important;">
+                    <span class="btn btn-primary js-ignore-loading" onclick="buscarOcorrencia()" style="cursor:pointer;white-space:nowrap;" title="Localizar"><i class="fas fa-search me-1"></i></span>
+                    <span class="btn btn-outline-secondary js-ignore-loading" onclick="limparBuscaOcorrencia()" style="cursor:pointer;" title="Limpar"><i class="fas fa-times"></i></span>
+                </div>
+                <small id="buscaOcorrenciaMsg" class="text-muted"></small>
+            </div>
+        </div>
+    </div>
 
     <!-- Painel de Conclusão -->
     {% if conclusao_existente %}
@@ -316,7 +334,7 @@
                                 <th class="text-center" style="width:90px;">Reinc.</th>
                                 <th class="text-center" style="width:85px;">Reit.</th>
                             </tr></thead>
-                            <tbody>{% for oc in analisadas %}<tr>
+                            <tbody>{% for oc in analisadas %}<tr id="row-an-{{ grupo }}-{{ oc.nrOcorrencia }}" data-nr-ocorrencia="{{ oc.nrOcorrencia }}" data-grupo="{{ grupo }}" data-situacao="analisada">
                                 <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
                                 <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_EFETIVACAO.strftime('%d/%m/%Y') if oc.DT_EFETIVACAO else '-' }}</td>
@@ -403,7 +421,7 @@
                 </div>
                 <div class="modal-footer">
                     <span class="btn btn-secondary" onclick="fecharModalRetorno()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Cancelar</span>
-                    <span class="btn btn-success" onclick="confirmarRetornoPrestadora()" style="cursor:pointer;"><i class="fas fa-save me-1"></i>Salvar e Alterar</span>
+                    <span id="btnSalvarRetorno" class="btn btn-success js-ignore-loading" onclick="confirmarRetornoPrestadora()" style="cursor:pointer;"><i class="fas fa-save me-1"></i>Salvar e Alterar</span>
                 </div>
             </div>
         </div>
@@ -482,6 +500,89 @@ var DT_APURACAO="{{ dt_apuracao }}";
 
 function trocarDataApuracao(dt){window.location.href="{{ url_for('sumov.ans_glosas') }}?dt_apuracao="+dt;}
 
+// =========================================================================
+// LOCALIZAR OCORRÊNCIA NO MÊS
+// Procura nas linhas renderizadas pelo backend (pendentes e analisadas),
+// abre o grupo e a sub-seção onde ela está, rola até a linha e destaca.
+// =========================================================================
+var ultimaLinhaDestacada = null;
+
+function abrirSecao(id) {
+    var corpo = document.getElementById(id);
+    if (!corpo || corpo.style.display !== 'none') return;
+    corpo.style.display = '';
+    var cabecalho = document.querySelector('[onclick*="toggleSecao(\'' + id + '\'"]');
+    var chevron = cabecalho ? cabecalho.querySelector('.secao-chevron') : null;
+    if (chevron) chevron.classList.remove('rotated');
+}
+
+function removerDestaqueOcorrencia() {
+    if (!ultimaLinhaDestacada) return;
+    ultimaLinhaDestacada.style.outline = '';
+    ultimaLinhaDestacada.style.backgroundColor = '';
+    ultimaLinhaDestacada = null;
+}
+
+function mensagemBusca(texto, tipo) {
+    var el = document.getElementById('buscaOcorrenciaMsg');
+    if (!el) return;
+    el.className = tipo === 'erro' ? 'text-danger fw-bold' : (tipo === 'ok' ? 'text-success fw-bold' : 'text-muted');
+    el.innerHTML = texto;
+}
+
+function buscarOcorrencia() {
+    var campo = document.getElementById('buscaOcorrencia');
+    var nr = (campo.value || '').replace(/\D/g, '');
+    removerDestaqueOcorrencia();
+
+    if (!nr) { mensagemBusca('Informe o número da ocorrência.', 'erro'); campo.focus(); return; }
+
+    var linha = document.querySelector('tr[data-nr-ocorrencia="' + nr + '"]');
+    if (!linha) {
+        mensagemBusca('<i class="fas fa-exclamation-circle me-1"></i>Ocorrência ' + nr + ' não encontrada na apuração ' + DT_APURACAO + '.', 'erro');
+        return;
+    }
+
+    // Abre todas as seções onde a linha está (grupo -> pendentes/analisadas)
+    var secoes = [];
+    var el = linha.parentElement;
+    while (el && el !== document.body) {
+        if (el.classList && el.classList.contains('secao-corpo') && el.id) secoes.unshift(el.id);
+        el = el.parentElement;
+    }
+    secoes.forEach(abrirSecao);
+
+    var grupo = linha.getAttribute('data-grupo');
+    var situacao = linha.getAttribute('data-situacao') === 'analisada' ? 'Analisadas' : 'Pendentes';
+    mensagemBusca('<i class="fas fa-check-circle me-1"></i>Ocorrência ' + nr + ' — Grupo ' + grupo + ' (' + situacao + ').', 'ok');
+
+    // Rola até a linha e destaca
+    setTimeout(function () {
+        linha.scrollIntoView({behavior: 'smooth', block: 'center'});
+        linha.style.transition = 'background-color .4s ease';
+        linha.style.outline = '3px solid #0d6efd';
+        linha.style.backgroundColor = '#cfe2ff';
+        ultimaLinhaDestacada = linha;
+        setTimeout(function () { if (ultimaLinhaDestacada === linha) linha.style.backgroundColor = ''; }, 2500);
+    }, 50);
+}
+
+function limparBuscaOcorrencia() {
+    var campo = document.getElementById('buscaOcorrencia');
+    if (campo) campo.value = '';
+    removerDestaqueOcorrencia();
+    mensagemBusca('', '');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var campo = document.getElementById('buscaOcorrencia');
+    if (campo) {
+        campo.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); buscarOcorrencia(); }
+        });
+    }
+});
+
 function toggleSecao(id,h){var c=document.getElementById(id);if(!c)return;var ch=h.querySelector('.secao-chevron');if(c.style.display==='none'){c.style.display='';if(ch)ch.classList.remove('rotated');}else{c.style.display='none';if(ch)ch.classList.add('rotated');}}
 
 function handleRadioClick(g,nr,v){var k=g+'-'+nr;if(debounceTimers[k])clearTimeout(debounceTimers[k]);debounceTimers[k]=setTimeout(function(){var s=document.getElementById('just_sim_'+g+'_'+nr),n=document.getElementById('just_nao_'+g+'_'+nr),r=document.getElementById('row-'+k),a=estadoSelecao[k];if(a!==undefined&&a===v){if(s)s.checked=false;if(n)n.checked=false;delete estadoSelecao[k];if(r)r.classList.remove('row-selecionada');return;}estadoSelecao[k]=v;if(r)r.classList.add('row-selecionada');},100);}
@@ -497,12 +598,73 @@ function aplicarReincidencia(g){if(!confirm('Aplicar REINCIDÊNCIA no Grupo '+g+
 function aplicarReiteracao(g){if(!confirm('Aplicar REITERAÇÃO no Grupo '+g+'?'))return;fetch(URL_REITERACAO,{method:'POST',headers:{'Content-Type':'application/json','X-Silent-Request':'true'},body:JSON.stringify({dt_apuracao:DT_APURACAO,grupo:g})}).then(function(r){return r.json();}).then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: '+d.message);}).catch(function(e){alert('Erro: '+e);});}
 
 // =========================================================================
-// EDIÇÃO MANUAL DE CAMPO (Adv/Reinc/Reit)
-// Quando alterar para SIM, abre modal de retorno da prestadora
+// EDIÇÃO MANUAL DE CAMPO (Adv/Reinc/Reit) — SEM RECARREGAR A PÁGINA
+// Sim -> Não: abre modal de retorno da prestadora (grava TB048 + TB045)
+// Não -> Sim: confirma e grava direto na TB045
+// Depois de salvar, só o badge da linha é atualizado (a seção fica aberta).
 // =========================================================================
 var editandoCampo = null;
+var NOMES_CAMPO = {ADVERTENCIA: 'Advertência', REINCIDENCIA: 'Reincidência', REITERACAO: 'Reiteração'};
+
+// Localiza o badge clicável da ocorrência/campo na tabela de analisadas
+function localizarBadgeCampo(nr, campo) {
+    return document.querySelector('span.badge-edit[onclick^="editarCampo(' + nr + ',\'' + campo + '\',"]');
+}
+
+// Atualiza o badge (cor, texto e próximo valor do clique) com animação suave
+function atualizarBadgeCampo(nr, campo, valor) {
+    var badge = localizarBadgeCampo(nr, campo);
+    if (!badge) return;
+
+    badge.classList.remove('bg-danger', 'bg-secondary');
+    badge.classList.add(valor === 1 ? 'bg-danger' : 'bg-secondary');
+    badge.innerHTML = (valor === 1 ? 'Sim' : 'Não') + ' <i class="fas fa-pen ms-1" style="font-size:0.6rem;"></i>';
+    badge.setAttribute('onclick', 'editarCampo(' + nr + ',\'' + campo + '\',' + (valor === 1 ? 0 : 1) + ')');
+    badge.removeAttribute('data-ocupado');
+
+    // Pulso no badge
+    badge.style.transition = 'transform .25s ease';
+    badge.style.transform = 'scale(1.2)';
+    setTimeout(function(){ badge.style.transform = 'scale(1)'; }, 250);
+
+    // Destaque suave na linha
+    var linha = badge.closest('tr');
+    if (linha) {
+        linha.style.transition = 'background-color 1.5s ease';
+        linha.style.backgroundColor = valor === 1 ? '#f8d7da' : '#d1e7dd';
+        setTimeout(function(){ linha.style.backgroundColor = ''; }, 1500);
+    }
+}
+
+// Aviso discreto no canto da tela (some sozinho)
+function avisoAns(mensagem, tipo) {
+    var cores = {success: '#198754', danger: '#dc3545'};
+    var div = document.createElement('div');
+    div.textContent = mensagem;
+    div.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2000;padding:10px 16px;border-radius:8px;' +
+        'color:#fff;font-size:0.9rem;box-shadow:0 4px 12px rgba(0,0,0,.2);opacity:0;transition:opacity .3s ease;' +
+        'background:' + (cores[tipo] || cores.success) + ';';
+    document.body.appendChild(div);
+    requestAnimationFrame(function(){ div.style.opacity = '1'; });
+    setTimeout(function(){
+        div.style.opacity = '0';
+        setTimeout(function(){ div.remove(); }, 300);
+    }, 3000);
+}
+
+// Envia a edição do campo para o backend (TB045 / TB049)
+function enviarEdicaoCampo(nr, campo, valor) {
+    return fetch(URL_EDITAR_CAMPO, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({dt_apuracao: DT_APURACAO, nr_ocorrencia: nr, campo: campo, valor: valor})
+    }).then(function(r){ return r.json(); });
+}
 
 function editarCampo(nr, campo, novoValor) {
+    var badge = localizarBadgeCampo(nr, campo);
+    if (badge && badge.getAttribute('data-ocupado') === '1') return;  // evita clique duplo
+
     if (novoValor === 0) {
         editandoCampo = { nr: nr, campo: campo, novoValor: novoValor };
         document.getElementById('modalNrOcorrencia').textContent = nr;
@@ -521,15 +683,28 @@ function editarCampo(nr, campo, novoValor) {
         document.body.appendChild(bd);
         return;
     }
+
     if (!confirm('Alterar ' + campo + ' da ocorrência ' + nr + ' para Sim?')) return;
-    fetch(URL_EDITAR_CAMPO, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
-        body: JSON.stringify({dt_apuracao: DT_APURACAO, nr_ocorrencia: nr, campo: campo, valor: novoValor})
-    })
-    .then(function(r){return r.json();})
-    .then(function(d){if(d.success){window.location.reload();}else alert('Erro: ' + d.message);})
-    .catch(function(e){alert('Erro: ' + e);});
+
+    if (badge) {
+        badge.setAttribute('data-ocupado', '1');
+        badge.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+
+    enviarEdicaoCampo(nr, campo, novoValor)
+        .then(function(d){
+            if (d.success) {
+                atualizarBadgeCampo(nr, campo, 1);
+                avisoAns((NOMES_CAMPO[campo] || campo) + ' da ocorrência ' + nr + ' alterada para Sim.', 'success');
+            } else {
+                atualizarBadgeCampo(nr, campo, 0);  // volta ao estado anterior
+                alert('Erro: ' + d.message);
+            }
+        })
+        .catch(function(e){
+            atualizarBadgeCampo(nr, campo, 0);
+            alert('Erro: ' + e);
+        });
 }
 
 function fecharModalRetorno() {
@@ -548,40 +723,51 @@ function confirmarRetornoPrestadora() {
     var manifestacao = document.getElementById('txtManifestacaoGeadi').value.trim();
     if (!retorno) { alert('Por favor, digite o retorno da prestadora antes de salvar.'); return; }
 
+    // Cópia local: fecharModalRetorno() zera o editandoCampo
+    var edicao = { nr: editandoCampo.nr, campo: editandoCampo.campo, novoValor: editandoCampo.novoValor };
+
+    var btn = document.getElementById('btnSalvarRetorno');
+    var htmlOriginal = btn ? btn.innerHTML : '';
+    if (btn) {
+        if (btn.getAttribute('data-ocupado') === '1') return;  // evita clique duplo
+        btn.setAttribute('data-ocupado', '1');
+        btn.style.pointerEvents = 'none';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Salvando...';
+    }
+
+    function liberarBotao() {
+        if (!btn) return;
+        btn.removeAttribute('data-ocupado');
+        btn.style.pointerEvents = '';
+        btn.innerHTML = htmlOriginal;
+    }
+
     fetch(URL_JUST_PRESTADORA, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
         body: JSON.stringify({
             dt_apuracao: DT_APURACAO,
-            nr_ocorrencia: editandoCampo.nr,
+            nr_ocorrencia: edicao.nr,
             retorno_prest: retorno,
             manifestacao_geadi: manifestacao
         })
     })
-    .then(function(r){return r.json();})
+    .then(function(r){ return r.json(); })
     .then(function(d){
-        if (!d.success) { alert('Erro: ' + d.message); return; }
-        fetch(URL_EDITAR_CAMPO, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
-            body: JSON.stringify({
-                dt_apuracao: DT_APURACAO,
-                nr_ocorrencia: editandoCampo.nr,
-                campo: editandoCampo.campo,
-                valor: editandoCampo.novoValor
-            })
-        })
-        .then(function(r){return r.json();})
-        .then(function(d2){
-            if (d2.success) {
-                fecharModalRetorno();
-                window.location.reload();
-            } else {
-                alert('Erro ao atualizar campo: ' + d2.message);
-            }
-        });
+        if (!d.success) { liberarBotao(); alert('Erro: ' + d.message); return; }
+        return enviarEdicaoCampo(edicao.nr, edicao.campo, edicao.novoValor)
+            .then(function(d2){
+                liberarBotao();
+                if (d2.success) {
+                    fecharModalRetorno();
+                    atualizarBadgeCampo(edicao.nr, edicao.campo, 0);
+                    avisoAns((NOMES_CAMPO[edicao.campo] || edicao.campo) + ' da ocorrência ' + edicao.nr + ' alterada para Não.', 'success');
+                } else {
+                    alert('Erro ao atualizar campo: ' + d2.message);
+                }
+            });
     })
-    .catch(function(e){alert('Erro: ' + e);});
+    .catch(function(e){ liberarBotao(); alert('Erro: ' + e); });
 }
 
 // Contador de caracteres dos textareas

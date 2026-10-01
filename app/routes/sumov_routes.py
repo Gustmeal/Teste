@@ -3836,16 +3836,29 @@ def inserir_tabela_final_faturamento():
 @sumov_bp.route('/faturamento/ans-glosas')
 @login_required
 def ans_glosas():
+    from flask import session
     from app.models.ans_apuracao import AnsApuracao, AnsItensFaturamento
     from app.utils.ans_auditoria import registrar_evento_simples, pode_ver_auditoria  # [AUDITORIA]
+
+    CHAVE_SESSAO_DT = 'ans_glosas_dt_apuracao'   # data própria da tela ANS (independente das prévias)
+
     datas_disponiveis = AnsApuracao.obter_datas_apuracao()
-    dt_param = request.args.get('dt_apuracao', '')
+    datas_iso = [str(d)[:10] for d in datas_disponiveis]
+
+    # Prioridade: 1) data da URL  2) última data usada NESTA tela  3) data mais recente
+    dt_param = (request.args.get('dt_apuracao') or '').strip()[:10]
+    dt_sessao = (session.get(CHAVE_SESSAO_DT) or '').strip()[:10]
+
     if dt_param:
         dt_apuracao = dt_param
-    elif datas_disponiveis:
-        dt_apuracao = str(datas_disponiveis[0])
+    elif dt_sessao and dt_sessao in datas_iso:
+        dt_apuracao = dt_sessao
+    elif datas_iso:
+        dt_apuracao = datas_iso[0]
     else:
         dt_apuracao = '2025-12-31'
+
+    session[CHAVE_SESSAO_DT] = dt_apuracao
 
     # [AUDITORIA] registra quem abriu a tela, qual apuração e quando (nunca derruba a página)
     registrar_evento_simples('ACESSO_PAGINA', dt_apuracao=dt_apuracao,
@@ -3866,8 +3879,6 @@ def ans_glosas():
     conclusao_existente = AnsApuracao.verificar_conclusao_existente(dt_apuracao)
 
     # Data de Aplicação da Glosa (TB053) — só existe após a apuração ser concluída.
-    # Busca pela PK DT_APURACAO; se ainda não houver registro, fica None e o
-    # template exibe o botão para informar a data.
     dt_aplicacao_glosa = AnsApuracao.obter_dt_aplicacao(dt_apuracao)
 
     return render_template('sumov/faturamento/ans_glosas.html',
@@ -4494,8 +4505,11 @@ def ans_glosas_auditoria_exportar():
 @sumov_bp.route('/faturamento/ans-glosas/previas')
 @login_required
 def ans_glosas_previas():
+    from flask import session
     from app.models.ans_previas import AnsPrevias, CABECALHOS
     from app.utils.ans_auditoria import registrar_evento_simples, converter_data
+
+    CHAVE_SESSAO_DT = 'ans_previas_dt_apuracao'   # data própria da tela de Prévias (independente da ANS)
 
     try:
         datas = AnsPrevias.obter_datas()
@@ -4507,11 +4521,16 @@ def ans_glosas_previas():
 
     datas_iso = [d.strftime('%Y-%m-%d') for d in datas]
 
-    # Data escolhida: a do filtro; se não existir nas prévias, usa a mais recente
+    # Prioridade: 1) data da URL  2) última data usada NESTA tela  3) data mais recente
     dt_param = converter_data(request.args.get('dt_apuracao'))
     dt_selecionada = dt_param.strftime('%Y-%m-%d') if dt_param else ''
+    if not dt_selecionada:
+        dt_selecionada = (session.get(CHAVE_SESSAO_DT) or '').strip()[:10]
     if dt_selecionada not in datas_iso:
         dt_selecionada = datas_iso[0] if datas_iso else ''
+
+    if dt_selecionada:
+        session[CHAVE_SESSAO_DT] = dt_selecionada
 
     filtros = AnsPrevias.ler_filtros(request.args)
     filtros_url = {k: str(v) for k, v in filtros.items() if v is not None and v != ''}
