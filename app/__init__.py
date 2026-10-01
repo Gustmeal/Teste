@@ -200,6 +200,9 @@ def create_app():
     from app.routes.doc_catalogo_routes import catalogo_dados_bp
     app.register_blueprint(catalogo_dados_bp)
 
+    from app.routes.presenca_routes import presenca_bp
+    app.register_blueprint(presenca_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

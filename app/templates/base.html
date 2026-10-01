@@ -83,27 +83,6 @@
             <ul class="sidebar-menu">
                 <li><a href="{{ url_for('main.geinc_index') }}"><i class="fas fa-home"></i> Início</a></li>
 
-                <!-- Menu Credenciamento -->
-                <li class="sidebar-dropdown">
-                    <a href="#" class="has-dropdown"><i class="fas fa-file-contract"></i> Assessoria de Cobranças <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
-                    <ul class="sidebar-submenu">
-                        <li><a href="{{ url_for('credenciamento.index') }}"><i class="fas fa-home"></i> Dashboard</a></li>
-                        <li><a href="{{ url_for('edital.lista_editais') }}"><i class="fas fa-file-alt"></i> Editais</a></li>
-                        <li><a href="{{ url_for('periodo.lista_periodos') }}"><i class="fas fa-calendar-alt"></i> Períodos</a></li>
-                        <li><a href="{{ url_for('criterio.lista_criterios') }}"><i class="fas fa-list-ol"></i> Critérios de Distribuição</a></li>
-                        <li><a href="{{ url_for('limite.lista_limites') }}"><i class="fas fa-balance-scale"></i> Limites de Distribuição</a></li>
-                        <li><a href="{{ url_for('meta.lista_metas') }}"><i class="fas fa-chart-line"></i> Metas de Avaliação</a></li>
-                    </ul>
-                </li>
-
-                <!-- NOVO Menu Códigos Contábeis -->
-                <li class="sidebar-dropdown">
-                    <a href="#" class="has-dropdown"><i class="fas fa-calculator"></i> Códigos Contábeis <i class="fas fa-chevron-down float-end mt-1 small"></i></a>
-                    <ul class="sidebar-submenu">
-                        <li><a href="{{ url_for('codigo_contabil.lista_codigos') }}"><i class="fas fa-list"></i> Gerenciar Códigos</a></li>
-                        <li><a href="{{ url_for('codigo_contabil.novo_codigo') }}"><i class="fas fa-plus"></i> Novo Código</a></li>
-                    </ul>
-                </li>
 
                 <li><a href="{{ url_for('feedback.index') }}"><i class="fas fa-comment-alt"></i> Feedback</a></li>
                 <li><a href="{{ url_for('chat.index') }}"><i class="fas fa-comments"></i> Chat</a></li>
@@ -122,6 +101,7 @@
                 <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('presenca.painel') }}"><i class="fas fa-database me-2"></i>Usuários Online</a></li>
                 {% endif %}
 
                 {% if current_user.perfil in ['admin', 'moderador'] %}
@@ -352,6 +332,13 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+
+    {% if current_user.is_authenticated and presenca_config %}
+    <script src="{{ url_for('static', filename='js/presenca-online.js') }}"
+            data-url-sinal="{{ url_for('presenca.registrar_sinal') }}"
+            data-url-saida="{{ url_for('presenca.registrar_saida') }}"
+            data-intervalo="{{ presenca_config.intervalo_sinal_seg }}"></script>
+    {% endif %}
 
     {% block scripts %}{% endblock %}
 

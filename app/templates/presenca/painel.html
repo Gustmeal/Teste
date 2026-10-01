@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Usuários Online - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1400px;">
+
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-3" style="gap: 12px;">
+        <div>
+            <h1 style="font-size: 1.6rem; margin: 0;">
+                <i class="fas fa-signal me-2"></i>Usuários Online no Portal
+            </h1>
+            <small class="text-muted">
+                Última atualização: <span id="atualizadoEm">carregando...</span>
+                <span id="textoJanela"></span>
+            </small>
+        </div>
+        <div class="d-flex align-items-center flex-wrap" style="gap: 12px;">
+            <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="chkMostrarOffline">
+                <label class="form-check-label" for="chkMostrarOffline">Mostrar quem saiu recentemente</label>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm js-ignore-loading" id="btnAtualizar">
+                <i class="fas fa-sync-alt me-1"></i>Atualizar agora
+            </button>
+        </div>
+    </div>
+
+    <div id="recomendacao" class="alert d-none" role="alert" style="font-size: 1.05rem;"></div>
+
+    <div class="row mb-3" id="cardsResumo"></div>
+
+    <div class="card shadow-sm">
+        <div class="card-body pb-0">
+            <input type="text" id="filtroBusca" class="form-control mb-3"
+                   placeholder="Pesquisar por nome, área ou módulo...">
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" style="vertical-align: middle;">
+                <thead class="table-light">
+                    <tr>
+                        <th>Usuário</th>
+                        <th>Status</th>
+                        <th>Onde está</th>
+                        <th>Tempo</th>
+                        <th>Entrou em</th>
+                    </tr>
+                </thead>
+                <tbody id="tbodyUsuarios">
+                    <tr><td colspan="5" class="text-center text-muted py-4">Carregando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="erroPainel" class="alert alert-danger d-none mt-3"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    var URL_DADOS = '{{ url_for("presenca.dados_painel") }}';
+    var dadosAtuais = null;
+    var timer = null;
+
+    function esc(valor) {
+        return String(valor === null || valor === undefined ? '' : valor).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function chavesOrdenadas(status) {
+        return Object.keys(status).sort(function (a, b) { return status[a].ordem - status[b].ordem; });
+    }
+
+    function badgeStatus(chave) {
+        var info = dadosAtuais.status[chave] || {};
+        return '<span class="badge ' + esc(info.cor) + '" title="' + esc(info.descricao) + '">' +
+               '<i class="fas ' + esc(info.icone) + ' me-1"></i>' + esc(info.rotulo) + '</span>';
+    }
+
+    function agendar(segundos) {
+        clearTimeout(timer);
+        timer = setTimeout(carregar, (segundos || 30) * 1000);
+    }
+
+    function carregar() {
+        if (document.hidden) { agendar(dadosAtuais ? dadosAtuais.config.intervalo_painel_seg : 20); return; }
+
+        fetch(URL_DADOS, {
+            headers: { 'X-Silent-Request': 'true', 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then(function (r) {
+            if (!r.ok) { throw new Error('HTTP ' + r.status); }
+            return r.json();
+        })
+        .then(function (d) {
+            if (!d.success) { throw new Error(d.message || 'Falha ao consultar'); }
+            dadosAtuais = d;
+            document.getElementById('erroPainel').classList.add('d-none');
+            renderizar();
+            agendar(d.config.intervalo_painel_seg);
+        })
+        .catch(function (erro) {
+            var caixa = document.getElementById('erroPainel');
+            caixa.textContent = 'Erro ao carregar usuários online: ' + erro.message;
+            caixa.classList.remove('d-none');
+            agendar(30);
+        });
+    }
+
+    function renderizar() {
+        var d = dadosAtuais;
+
+        document.getElementById('atualizadoEm').textContent = d.atualizado_em;
+        document.getElementById('textoJanela').textContent =
+            ' · considerando sinais dos últimos ' + d.config.janela_min + ' min · atualiza a cada ' +
+            d.config.intervalo_painel_seg + 's';
+
+        var rec = d.recomendacao;
+        var caixa = document.getElementById('recomendacao');
+        caixa.className = 'alert alert-' + rec.nivel;
+        caixa.innerHTML = '<i class="fas ' + esc(rec.icone) + ' me-2"></i><strong>' + esc(rec.titulo) +
+                          '</strong> — ' + esc(rec.mensagem);
+
+        var cards = '';
+        chavesOrdenadas(d.status).forEach(function (chave) {
+            var info = d.status[chave];
+            var qtd = d.resumo.por_status[chave] || 0;
+            cards += '<div class="col-6 col-md-3 mb-2"><div class="card shadow-sm h-100"><div class="card-body">' +
+                     '<div class="d-flex align-items-center" style="gap: 10px;">' +
+                     '<span class="badge ' + esc(info.cor) + '" style="font-size: 1rem;"><i class="fas ' + esc(info.icone) + '"></i></span>' +
+                     '<span style="font-size: 1.6rem; font-weight: 700;">' + esc(qtd) + '</span>' +
+                     '<span style="font-weight: 600;">' + esc(info.rotulo) + '</span></div>' +
+                     '<small class="text-muted d-block mt-1">' + esc(info.descricao) + '</small>' +
+                     '</div></div></div>';
+        });
+        document.getElementById('cardsResumo').innerHTML = cards;
+
+        renderizarTabela();
+    }
+
+    function renderizarTabela() {
+        if (!dadosAtuais) { return; }
+        var mostrarOffline = document.getElementById('chkMostrarOffline').checked;
+        var termo = document.getElementById('filtroBusca').value.trim().toLowerCase();
+
+        var linhas = dadosAtuais.usuarios.filter(function (u) {
+            if (!mostrarOffline && u.status === 'OFFLINE') { return false; }
+            if (!termo) { return true; }
+            var texto = [u.nome, u.area, u.modulo_atual, u.pagina_atual].join(' ').toLowerCase();
+            return texto.indexOf(termo) !== -1;
+        });
+
+        var tbody = document.getElementById('tbodyUsuarios');
+        if (!linhas.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Nenhum usuário para exibir.</td></tr>';
+            return;
+        }
+
+        var html = '';
+        linhas.forEach(function (u) {
+            var outras = '';
+            if (u.outras_abas && u.outras_abas.length) {
+                outras = '<div class="mt-1" style="font-size: 0.8rem;"><span class="text-muted">+' +
+                         u.outras_abas.length + ' aba(s):</span>';
+                u.outras_abas.forEach(function (a) {
+                    outras += '<div class="text-muted">• ' + esc(a.modulo) +
+                              (a.pagina ? ' — ' + esc(a.pagina) : '') +
+                              ' (inativa há ' + esc(a.inativo_ha) + ')</div>';
+                });
+                outras += '</div>';
+            }
+
+            html += '<tr' + (u.eh_voce ? ' style="background-color: rgba(13,110,253,0.06);"' : '') + '>' +
+                    '<td><strong>' + esc(u.nome) + '</strong>' +
+                    (u.eh_voce ? ' <span class="badge bg-primary">Você</span>' : '') +
+                    '<br><small class="text-muted">' + esc(u.area) + '</small></td>' +
+                    '<td>' + badgeStatus(u.status) + '</td>' +
+                    '<td><strong>' + esc(u.modulo_atual) + '</strong>' +
+                    (u.pagina_atual ? '<br><small class="text-muted">' + esc(u.pagina_atual) + '</small>' : '') +
+                    outras + '</td>' +
+                    '<td><small class="text-muted">' + esc(u.tempo_rotulo) + '</small><br>' + esc(u.tempo) + '</td>' +
+                    '<td>' + esc(u.entrou_em) + '</td>' +
+                    '</tr>';
+        });
+        tbody.innerHTML = html;
+    }
+
+    document.getElementById('btnAtualizar').addEventListener('click', function (evento) {
+        evento.preventDefault();
+        evento.stopImmediatePropagation();
+        carregar();
+    });
+    document.getElementById('chkMostrarOffline').addEventListener('change', renderizarTabela);
+    document.getElementById('filtroBusca').addEventListener('input', renderizarTabela);
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { carregar(); }
+    });
+
+    carregar();
+})();
+</script>
+{% endblock %}
