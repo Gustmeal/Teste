@@ -45,7 +45,8 @@
                 <div style="font-size: 0.8rem; opacity: 0.9;">
                     {% if tem_parametros and dt_ini_vigente %}
                         {% if vigencia_pendente %}
-                            Nova vigência começa em {{ dt_ini_vigente.strftime('%d/%m/%Y') }}
+                            Vigência atual vale até {{ dt_fim_anterior.strftime('%d/%m/%Y') }} ·
+                            os valores abaixo começam em {{ dt_ini_vigente.strftime('%d/%m/%Y') }}
                         {% else %}
                             Vigente desde {{ dt_ini_vigente.strftime('%d/%m/%Y') }}
                         {% endif %}
@@ -67,11 +68,32 @@
             </div>
         </div>
         <div class="card-body" style="padding: 1.25rem;">
-            {% if vigencia_pendente %}
-            <div class="alert alert-warning py-2 small">
-                <i class="fas fa-info-circle me-1"></i>
-                Já houve edição hoje. Uma nova alteração ajusta os valores da vigência que começa em
-                {{ dt_ini_vigente.strftime('%d/%m/%Y') }}, sem criar outra linha.
+            {% if tem_parametros %}
+            <!-- Datas da nova vigência (aparece só no modo de edição) -->
+            <div id="afpBlocoVigencia" class="mb-4"
+                 style="display:none; background: #fffbeb; border: 1px solid #f6c23e; border-radius: 10px; padding: 1rem 1.25rem;">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="afpDtFim" class="form-label fw-semibold mb-1" style="font-size: 0.85rem; color: #5c4400;">
+                            <i class="far fa-calendar-times me-1"></i> Fim da vigência atual
+                        </label>
+                        <input type="date" class="form-control form-control-sm" id="afpDtFim"
+                               min="{{ dt_fim_minimo }}" style="font-weight: 600;">
+                    </div>
+                    <div class="col-md-1 text-center d-none d-md-block" style="color: #c98a02; padding-bottom: 0.35rem;">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="fw-semibold mb-1" style="font-size: 0.85rem; color: #5c4400;">
+                            <i class="far fa-calendar-check me-1"></i> Nova vigência começa em
+                        </div>
+                        <div id="afpDtIniNova"
+                             style="font-size: 1.05rem; font-weight: 700; color: #224abe; padding: 0.25rem 0;">—</div>
+                    </div>
+                    <div class="col-md-3" style="font-size: 0.78rem; color: #8a6d00;">
+                        O início é automático: um dia depois do fim informado.
+                    </div>
+                </div>
             </div>
             {% endif %}
 
@@ -304,6 +326,36 @@
     const btnEditar = document.getElementById('btnEditarParam');
     const btnCancelar = document.getElementById('btnCancelarParam');
     const btnSalvar = document.getElementById('btnSalvarParam');
+    const blocoVigencia = document.getElementById('afpBlocoVigencia');
+    const inputDtFim = document.getElementById('afpDtFim');
+    const txtDtIniNova = document.getElementById('afpDtIniNova');
+
+    function formatarDataBr(data) {
+        const d = String(data.getDate()).padStart(2, '0');
+        const m = String(data.getMonth() + 1).padStart(2, '0');
+        return d + '/' + m + '/' + data.getFullYear();
+    }
+
+    function dataInformada(valorIso) {
+        // 'AAAA-MM-DD' -> Date local (sem fuso)
+        const p = valorIso.split('-').map(Number);
+        return new Date(p[0], p[1] - 1, p[2]);
+    }
+
+    function atualizarInicioNovo() {
+        if (!inputDtFim || !inputDtFim.value) {
+            if (txtDtIniNova) txtDtIniNova.textContent = '—';
+            return;
+        }
+        const fim = dataInformada(inputDtFim.value);
+        const inicio = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate() + 1);
+        txtDtIniNova.textContent = formatarDataBr(inicio);
+    }
+
+    if (inputDtFim) {
+        inputDtFim.addEventListener('change', atualizarInicioNovo);
+        inputDtFim.addEventListener('input', atualizarInicioNovo);
+    }
 
     function pintarInput(inp) {
         // Somente leitura: fundo cinza; editável: branco; alterado: amarelo
@@ -328,6 +380,13 @@
         btnEditar.style.display = ativo ? 'none' : '';
         btnCancelar.style.display = ativo ? '' : 'none';
         btnSalvar.style.display = ativo ? '' : 'none';
+        if (blocoVigencia) {
+            blocoVigencia.style.display = ativo ? 'block' : 'none';
+            if (!ativo) {
+                inputDtFim.value = '';
+                atualizarInicioNovo();
+            }
+        }
     }
 
     inputsParam.forEach(inp => {
@@ -368,13 +427,24 @@
             return;
         }
 
-        const pergunta = TEM_PARAMETROS
-            ? 'Confirma a alteração? A vigência atual será encerrada hoje e os novos valores valem a partir de amanhã.'
-            : 'Confirma o cadastro dos parâmetros?';
+        let pergunta = 'Confirma o cadastro dos parâmetros?';
+        if (TEM_PARAMETROS) {
+            if (!inputDtFim.value) {
+                mostrarMensagem('warning', 'Informe a data de fim da vigência atual.');
+                inputDtFim.focus();
+                return;
+            }
+            pergunta = 'Confirma a alteração? A vigência atual termina em '
+                + formatarDataBr(dataInformada(inputDtFim.value))
+                + ' e os novos valores valem a partir de ' + txtDtIniNova.textContent + '.';
+        }
         if (!confirm(pergunta)) return;
 
+        const corpo = {campos: campos};
+        if (TEM_PARAMETROS) corpo.dt_fim_vigencia = inputDtFim.value;
+
         travarBotao(btnSalvar, true, 'Salvando...');
-        postJson(URL_SALVAR_PARAM, {campos: campos})
+        postJson(URL_SALVAR_PARAM, corpo)
             .then(data => {
                 if (data.success) {
                     mostrarMensagem('success', data.message);

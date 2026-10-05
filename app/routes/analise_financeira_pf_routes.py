@@ -6,10 +6,11 @@ PRIMEIRA PARTE (esta versão):
   1. Parâmetros da análise  -> BDG.FIN_TB034_ANALISE_FINANCEIRA_PF_PARAMETROS
      - Exibe sempre a linha VIGENTE (DT_FIM_VIGENCIA IS NULL; se não houver,
        a de maior DT_INI_VIGENCIA).
-     - Edição NÃO faz UPDATE nos valores: encerra a linha vigente
-       (DT_FIM_VIGENCIA = hoje) e INSERE uma nova linha com todos os valores
-       repetidos, trocando apenas os editados, com
-       DT_INI_VIGENCIA = hoje + 1 dia e DT_FIM_VIGENCIA = NULL.
+     - Edição NÃO faz UPDATE nos valores: o usuário informa a
+       DT_FIM_VIGENCIA da linha vigente, que é encerrada nessa data, e é
+       INSERIDA uma nova linha com todos os valores repetidos, trocando
+       apenas os editados, com DT_INI_VIGENCIA = DT_FIM informada + 1 dia
+       (automático) e DT_FIM_VIGENCIA = NULL.
      - PZ_EXECUCAO_MESES é calculado no back end: PZ_EXECUCAO_ANOS * 12.
 
   2. Contratos da análise   -> BDG.FIN_TB035_ANALISE_FINANCEIRA_PF_CONTRATOS
@@ -316,29 +317,21 @@ def index():
     hoje = date.today()
 
     parametros = []
-    if vigente:
-        for campo in CAMPOS_PARAMETROS:
-            valor = vigente.get(campo['coluna'])
-            parametros.append({
-                'coluna': campo['coluna'],
-                'rotulo': campo['rotulo'],
-                'tipo': campo['tipo'],
-                'editavel': campo['editavel'],
-                'valor_fmt': _formatar_parametro(valor, campo['tipo']),
-            })
-    else:
-        # Tabela vazia: mostra os campos em branco para o primeiro cadastro
-        for campo in CAMPOS_PARAMETROS:
-            parametros.append({
-                'coluna': campo['coluna'],
-                'rotulo': campo['rotulo'],
-                'tipo': campo['tipo'],
-                'editavel': campo['editavel'],
-                'valor_fmt': '',
-            })
+    for campo in CAMPOS_PARAMETROS:
+        valor = vigente.get(campo['coluna']) if vigente else None
+        parametros.append({
+            'coluna': campo['coluna'],
+            'rotulo': campo['rotulo'],
+            'tipo': campo['tipo'],
+            'editavel': campo['editavel'],
+            # Tabela vazia: campos em branco para o primeiro cadastro
+            'valor_fmt': _formatar_parametro(valor, campo['tipo']) if vigente else '',
+        })
 
     dt_ini_vigente = _para_date(vigente['DT_INI_VIGENCIA']) if vigente else None
+    # Linha mais recente ainda não começou: a anterior vale até o dia anterior
     vigencia_pendente = bool(dt_ini_vigente and dt_ini_vigente > hoje)
+    dt_fim_anterior = (dt_ini_vigente - timedelta(days=1)) if vigencia_pendente else None
 
     historico = []
     for h in _listar_historico_parametros():
@@ -358,6 +351,9 @@ def index():
         tem_parametros=vigente is not None,
         dt_ini_vigente=dt_ini_vigente,
         vigencia_pendente=vigencia_pendente,
+        dt_fim_anterior=dt_fim_anterior,
+        # Menor data de fim aceita: o próprio início da vigência atual
+        dt_fim_minimo=dt_ini_vigente.isoformat() if dt_ini_vigente else '',
         campos_historico=CAMPOS_PARAMETROS,
         historico=historico,
         contratos=contratos,
@@ -374,21 +370,21 @@ def index():
 @sistema_requerido(SISTEMA)
 def salvar_parametros():
     """
-    Recebe JSON: {"campos": {"VR_CUSTO_CIPF": "20,40", ...}}
+    Recebe JSON:
+      {"dt_fim_vigencia": "2026-12-31",
+       "campos": {"VR_CUSTO_CIPF": "20,40", ...}}
 
     Lógica:
-      - Compara cada campo recebido com a linha vigente.
-      - Sem alteração -> não grava nada.
+      - Compara cada campo recebido com a linha vigente (DT_FIM_VIGENCIA NULL).
+      - Sem alteração de valor -> não grava nada.
       - Com alteração:
-          a) Linha vigente já em vigor (DT_INI <= hoje):
-               UPDATE vigente SET DT_FIM_VIGENCIA = hoje
-               INSERT nova linha (valores vigentes + editados),
-                      DT_INI_VIGENCIA = hoje + 1, DT_FIM_VIGENCIA = NULL
-          b) Linha vigente ainda não começou (DT_INI > hoje, ou seja, já
-             houve edição hoje): os valores dessa linha futura são
-             ajustados, para não gerar duas linhas com a mesma
-             DT_INI_VIGENCIA nem uma linha com DT_FIM < DT_INI.
-          c) Tabela vazia: INSERT da primeira linha com DT_INI = hoje.
+          a) DT_FIM_VIGENCIA é informada pelo usuário (obrigatória) e não
+             pode ser anterior ao DT_INI_VIGENCIA da linha vigente.
+          b) UPDATE na linha vigente: só DT_FIM_VIGENCIA = data informada.
+          c) INSERT da nova linha: valores vigentes + editados,
+             DT_INI_VIGENCIA = data informada + 1 dia (automático),
+             DT_FIM_VIGENCIA = NULL.
+      - Tabela vazia: INSERT da primeira linha com DT_INI_VIGENCIA = hoje.
     """
     try:
         dados = request.get_json(silent=True) or {}
@@ -396,9 +392,25 @@ def salvar_parametros():
 
         vigente = _obter_parametros_vigentes()
         hoje = date.today()
-        amanha = hoje + timedelta(days=1)
 
-        # 1) Monta os novos valores partindo da linha vigente
+        # 1) Data de fim informada (só existe quando já há vigência)
+        dt_fim = None
+        if vigente:
+            dt_fim = _parse_data_calculo(dados.get('dt_fim_vigencia'))
+            if dt_fim is None:
+                return jsonify({
+                    'success': False,
+                    'message': 'Informe a data de fim da vigência atual.'
+                }), 400
+            dt_ini_atual = _para_date(vigente['DT_INI_VIGENCIA'])
+            if dt_fim < dt_ini_atual:
+                return jsonify({
+                    'success': False,
+                    'message': ('A data de fim não pode ser anterior ao início da vigência atual ('
+                                + dt_ini_atual.strftime('%d/%m/%Y') + ').')
+                }), 400
+
+        # 2) Monta os novos valores partindo da linha vigente
         novos = {}
         alterados = {}
         erros = []
@@ -434,7 +446,7 @@ def salvar_parametros():
         if erros:
             return jsonify({'success': False, 'message': 'Corrija os campos: ' + ' | '.join(erros)}), 400
 
-        # 2) Campo calculado: meses = anos * 12
+        # 3) Campo calculado: meses = anos * 12
         if novos.get('PZ_EXECUCAO_ANOS') is not None:
             meses = int(novos['PZ_EXECUCAO_ANOS']) * 12
             atual_meses = _arredondar(vigente.get('PZ_EXECUCAO_MESES'), 'prazo') if vigente else None
@@ -465,55 +477,51 @@ def salvar_parametros():
         """)
 
         if not vigente:
-            # c) Primeira linha da tabela
+            # Primeira linha da tabela
             db.session.execute(sql_insert, dict(params_valores, dt_ini=hoje))
             dt_ini_nova = hoje
             mensagem = 'Parâmetros cadastrados. Vigência a partir de ' + hoje.strftime('%d/%m/%Y') + '.'
         else:
-            dt_ini_atual = _para_date(vigente['DT_INI_VIGENCIA'])
+            dt_ini_nova = dt_fim + timedelta(days=1)
 
-            if dt_ini_atual > hoje:
-                # b) Já existe uma versão futura criada hoje: ajusta essa versão
-                sets = ', '.join(f'[{c}] = :{c}' for c in COLUNAS_VALORES)
-                res = db.session.execute(text(f"""
-                    UPDATE {TB_PARAMETROS}
-                    SET {sets}
-                    WHERE [DT_INI_VIGENCIA] = :dt_ini_atual
-                      AND [DT_FIM_VIGENCIA] IS NULL
-                """), dict(params_valores, dt_ini_atual=dt_ini_atual))
-                if res.rowcount != 1:
-                    db.session.rollback()
-                    return jsonify({
-                        'success': False,
-                        'message': 'A vigência foi alterada por outra pessoa. Recarregue a página.'
-                    }), 409
-                dt_ini_nova = dt_ini_atual
-                mensagem = ('Parâmetros ajustados na vigência que começa em '
-                            + dt_ini_atual.strftime('%d/%m/%Y') + '.')
-            else:
-                # a) Encerra a vigente e cria a nova
-                res = db.session.execute(text(f"""
-                    UPDATE {TB_PARAMETROS}
-                    SET [DT_FIM_VIGENCIA] = :hoje
-                    WHERE [DT_INI_VIGENCIA] = :dt_ini_atual
-                      AND [DT_FIM_VIGENCIA] IS NULL
-                """), {'hoje': hoje, 'dt_ini_atual': dt_ini_atual})
-                if res.rowcount != 1:
-                    db.session.rollback()
-                    return jsonify({
-                        'success': False,
-                        'message': 'A vigência foi alterada por outra pessoa. Recarregue a página.'
-                    }), 409
-                db.session.execute(sql_insert, dict(params_valores, dt_ini=amanha))
-                dt_ini_nova = amanha
-                mensagem = ('Vigência anterior encerrada em ' + hoje.strftime('%d/%m/%Y')
-                            + '. Novos parâmetros valem a partir de ' + amanha.strftime('%d/%m/%Y') + '.')
+            # Segurança: não pode já existir linha começando nessa data (PK)
+            existe = db.session.execute(text(f"""
+                SELECT COUNT(*) FROM {TB_PARAMETROS}
+                WHERE [DT_INI_VIGENCIA] = :dt_ini_nova
+            """), {'dt_ini_nova': dt_ini_nova}).scalar()
+            if existe:
+                return jsonify({
+                    'success': False,
+                    'message': ('Já existe uma vigência começando em '
+                                + dt_ini_nova.strftime('%d/%m/%Y') + '. Escolha outra data de fim.')
+                }), 400
+
+            # Encerra a vigente com a data informada
+            res = db.session.execute(text(f"""
+                UPDATE {TB_PARAMETROS}
+                SET [DT_FIM_VIGENCIA] = :dt_fim
+                WHERE [DT_INI_VIGENCIA] = :dt_ini_atual
+                  AND [DT_FIM_VIGENCIA] IS NULL
+            """), {'dt_fim': dt_fim, 'dt_ini_atual': dt_ini_atual})
+            if res.rowcount != 1:
+                db.session.rollback()
+                return jsonify({
+                    'success': False,
+                    'message': 'A vigência foi alterada por outra pessoa. Recarregue a página.'
+                }), 409
+
+            # Nova linha começa no dia seguinte ao fim informado
+            db.session.execute(sql_insert, dict(params_valores, dt_ini=dt_ini_nova))
+            mensagem = ('Vigência anterior encerrada em ' + dt_fim.strftime('%d/%m/%Y')
+                        + '. Novos parâmetros valem a partir de ' + dt_ini_nova.strftime('%d/%m/%Y') + '.')
 
         db.session.commit()
 
         if vigente:
             log_antigos = {k: v['de'] for k, v in alterados.items()}
+            log_antigos['DT_FIM_VIGENCIA'] = None
             log_novos = {k: v['para'] for k, v in alterados.items()}
+            log_novos['DT_FIM_VIGENCIA'] = dt_fim.isoformat()
         else:
             log_antigos = None
             log_novos = {c: str(params_valores[c]) for c in COLUNAS_VALORES}
