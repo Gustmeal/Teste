@@ -156,6 +156,12 @@ class PermissaoSistema(db.Model):
             'descricao': 'Resumo de Títulos CVS por contrato e data',
             'categoria': 'Gestão Financeira'
         },
+        'analise_financeira_pf': {
+            'nome': 'Análise Financeira PF',
+            'icone': 'fa-home',
+            'descricao': 'VPL da execução extrajudicial de contratos PF',
+            'categoria': 'Gestão Financeira'
+        },
 
     }
 

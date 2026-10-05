@@ -203,6 +203,9 @@ def create_app():
     from app.routes.presenca_routes import presenca_bp
     app.register_blueprint(presenca_bp)
 
+    from app.routes.analise_financeira_pf_routes import analise_financeira_pf_bp
+    app.register_blueprint(analise_financeira_pf_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

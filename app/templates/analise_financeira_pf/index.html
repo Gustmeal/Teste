@@ -1,0 +1,556 @@
+{% extends "base.html" %}
+
+{% block title %}Análise Financeira PF - Portal GEINC{% endblock %}
+
+{% block content %}
+{# Estilos aplicados inline: é a forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set th_tab = "background: #f8f9fc; color: #5a5c69; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid #e3e6f0; vertical-align: middle;" %}
+{% set num = "text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;" %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('analise_financeira_pf.resultados') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-chart-line me-1"></i> Resultados
+        </a>
+        <a href="{{ url_for('analise_financeira_pf.calculo') }}" class="btn btn-primary btn-sm">
+            <i class="fas fa-calculator me-1"></i> Calcular fluxo
+        </a>
+    </div>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="mb-4">
+        <h1 class="fw-bold header-with-back mb-1">
+            <i class="fas fa-home me-2"></i>Análise Financeira PF
+        </h1>
+        <p class="text-muted mb-0">Parâmetros e contratos usados no cálculo do VPL da execução extrajudicial</p>
+    </div>
+
+    <div id="afpMensagem" style="display:none;"></div>
+
+    <!-- ============================================================ -->
+    <!-- PARÂMETROS                                                   -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: hidden;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <div>
+                <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                    <i class="fas fa-sliders-h me-2"></i>Parâmetros da análise
+                </h5>
+                <div style="font-size: 0.8rem; opacity: 0.9;">
+                    {% if tem_parametros and dt_ini_vigente %}
+                        {% if vigencia_pendente %}
+                            Nova vigência começa em {{ dt_ini_vigente.strftime('%d/%m/%Y') }}
+                        {% else %}
+                            Vigente desde {{ dt_ini_vigente.strftime('%d/%m/%Y') }}
+                        {% endif %}
+                    {% else %}
+                        Nenhum parâmetro cadastrado. Preencha os campos e salve para criar a primeira vigência.
+                    {% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-light btn-sm js-ignore-loading" id="btnEditarParam">
+                    <i class="fas fa-pen me-1"></i> Editar
+                </button>
+                <button type="button" class="btn btn-outline-light btn-sm js-ignore-loading" id="btnCancelarParam" style="display:none;">
+                    Cancelar
+                </button>
+                <button type="button" class="btn btn-warning btn-sm js-ignore-loading" id="btnSalvarParam" style="display:none;">
+                    <i class="fas fa-save me-1"></i> Salvar nova vigência
+                </button>
+            </div>
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+            {% if vigencia_pendente %}
+            <div class="alert alert-warning py-2 small">
+                <i class="fas fa-info-circle me-1"></i>
+                Já houve edição hoje. Uma nova alteração ajusta os valores da vigência que começa em
+                {{ dt_ini_vigente.strftime('%d/%m/%Y') }}, sem criar outra linha.
+            </div>
+            {% endif %}
+
+            <div class="row g-3">
+                {% for p in parametros %}
+                <div class="col-md-6 col-xl-4">
+                    <label class="form-label mb-1" style="font-size: 0.8rem; color: #5a5c69; min-height: 2.4em; display: flex; align-items: end;">
+                        {{ p.rotulo }}
+                    </label>
+                    <div class="input-group input-group-sm">
+                        <input type="text"
+                               class="form-control afp-param-input"
+                               data-coluna="{{ p.coluna }}"
+                               data-tipo="{{ p.tipo }}"
+                               data-editavel="{{ '1' if p.editavel else '0' }}"
+                               data-original="{{ p.valor_fmt }}"
+                               value="{{ p.valor_fmt }}"
+                               style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;"
+                               {% if tem_parametros or not p.editavel %}readonly{% endif %}>
+                        <span class="input-group-text" style="min-width: 62px; justify-content: center; font-size: 0.75rem; color: #858796;">
+                            {% if p.tipo == 'valor' %}R$
+                            {% elif p.tipo == 'percentual' %}taxa
+                            {% elif p.coluna == 'PZ_EXECUCAO_ANOS' %}anos
+                            {% else %}meses{% endif %}
+                        </span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if historico %}
+            <div class="mt-4 pt-3" style="border-top: 1px solid #e3e6f0;">
+                <a class="small fw-semibold text-decoration-none" data-bs-toggle="collapse" href="#afpHistorico" role="button" aria-expanded="false">
+                    <i class="fas fa-history me-1"></i> Histórico de vigências ({{ historico|length }})
+                </a>
+                <div class="collapse mt-2" id="afpHistorico">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" style="font-size: 0.78rem;">
+                            <thead>
+                                <tr>
+                                    <th style="{{ th_tab }} white-space: nowrap;">Início</th>
+                                    <th style="{{ th_tab }} white-space: nowrap;">Fim</th>
+                                    {% for c in campos_historico %}
+                                    <th style="{{ th_tab }} text-align: right; white-space: nowrap;" title="{{ c.rotulo }}">{{ c.coluna }}</th>
+                                    {% endfor %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in historico %}
+                                {% set fundo = 'background: #eef2ff; font-weight: 600;' if not h.dt_fim else '' %}
+                                <tr>
+                                    <td style="{{ fundo }} white-space: nowrap;">{{ h.dt_ini.strftime('%d/%m/%Y') if h.dt_ini else '-' }}</td>
+                                    <td style="{{ fundo }} white-space: nowrap;">{{ h.dt_fim.strftime('%d/%m/%Y') if h.dt_fim else 'Vigente' }}</td>
+                                    {% for v in h.valores %}
+                                    <td style="{{ fundo }} {{ num }}">{{ v }}</td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- ======================================================== -->
+        <!-- IMPORTAÇÃO DE CONTRATOS                                  -->
+        <!-- ======================================================== -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; overflow: hidden;">
+                <div style="{{ cab_secao }}">
+                    <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                        <i class="fas fa-file-excel me-2"></i>Importar contratos
+                    </h5>
+                </div>
+                <div class="card-body" style="padding: 1.25rem;">
+                    <ol style="font-size: 0.85rem; color: #5a5c69; padding-left: 1.1rem; margin-bottom: 1rem;">
+                        <li class="mb-1">Baixe a planilha-modelo e preencha um contrato por linha.</li>
+                        <li class="mb-1">Arraste o arquivo para o quadro abaixo (ou clique para escolher).</li>
+                        <li>Clique em Importar. Contratos já cadastrados são atualizados.</li>
+                    </ol>
+
+                    <a href="{{ url_for('analise_financeira_pf.baixar_modelo_contratos') }}"
+                       class="btn btn-outline-success btn-sm w-100 mb-3 js-ignore-loading">
+                        <i class="fas fa-download me-1"></i> Baixar planilha-modelo
+                    </a>
+
+                    <div id="afpDropzone" tabindex="0" role="button" aria-label="Selecionar planilha Excel de contratos"
+                         style="border: 2px dashed #b7c3e8; border-radius: 10px; background: #f8f9fc; padding: 2rem 1rem; text-align: center; cursor: pointer; transition: all 0.15s ease;">
+                        <i class="fas fa-cloud-upload-alt" style="font-size: 2.2rem; color: #4e73df;"></i>
+                        <div class="fw-semibold mt-2" style="color: #3a3b45;">Arraste a planilha aqui</div>
+                        <div style="font-size: 0.8rem; color: #858796;">ou clique para selecionar · .xlsx no formato do modelo</div>
+                    </div>
+                    <input type="file" id="afpArquivo" accept=".xlsx,.xlsm" style="display:none;">
+
+                    <div id="afpArquivoInfo" style="display:none; border: 1px solid #e3e6f0; border-radius: 10px; padding: 0.85rem 1rem;">
+                        <div class="d-flex align-items-center gap-3 mb-3" style="min-width: 0;">
+                            <div class="d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 42px; height: 42px; border-radius: 8px; background: #d1fae5; color: #047857; font-size: 1.2rem;">
+                                <i class="fas fa-file-excel"></i>
+                            </div>
+                            <div style="min-width: 0;">
+                                <div id="afpArquivoNome" class="fw-semibold text-truncate" style="color: #3a3b45;"></div>
+                                <div id="afpArquivoTamanho" style="font-size: 0.75rem; color: #858796;"></div>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-ignore-loading" id="btnRemoverArquivo">
+                                Trocar arquivo
+                            </button>
+                            <button type="button" class="btn btn-success btn-sm flex-fill js-ignore-loading" id="btnImportar">
+                                <i class="fas fa-upload me-1"></i> Importar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="afpErros" class="alert alert-danger small mt-3 mb-0" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ======================================================== -->
+        <!-- CONTRATOS CADASTRADOS                                    -->
+        <!-- ======================================================== -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; overflow: hidden;">
+                <div class="d-flex justify-content-between align-items-center" style="{{ cab_secao }}">
+                    <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                        <i class="fas fa-list me-2"></i>Contratos cadastrados
+                    </h5>
+                    <span class="badge rounded-pill" style="background: rgba(255,255,255,0.2); font-size: 0.85rem;">{{ contratos|length }}</span>
+                </div>
+                {% if contratos %}
+                <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                    <table class="table table-hover mb-0" style="font-size: 0.88rem;">
+                        <thead>
+                            <tr>
+                                <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2;">Contrato</th>
+                                <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2;">Nome</th>
+                                <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Débitos Propter Rem</th>
+                                <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Laudo de Avaliação</th>
+                                <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in contratos %}
+                            <tr>
+                                <td style="vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #224abe;">
+                                    {{ c.nu_contrato_fmt }}
+                                </td>
+                                <td style="vertical-align: middle;">{{ c.no_mutuario }}</td>
+                                <td style="vertical-align: middle; {{ num }}">{{ c.vr_debitos_fmt }}</td>
+                                <td style="vertical-align: middle; {{ num }}">{{ c.vr_laudo_fmt }}</td>
+                                <td style="vertical-align: middle; text-align: center;">
+                                    <button type="button"
+                                            class="btn btn-sm btn-link text-danger p-0 js-ignore-loading btn-excluir-contrato"
+                                            data-contrato="{{ c.nu_contrato }}"
+                                            data-contrato-fmt="{{ c.nu_contrato_fmt }}"
+                                            title="Excluir contrato">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" style="background: #eef2ff; font-weight: 700; border-top: 2px solid #4e73df;">Total</td>
+                                <td style="background: #eef2ff; font-weight: 700; border-top: 2px solid #4e73df; {{ num }}">{{ total_debitos_fmt }}</td>
+                                <td style="background: #eef2ff; font-weight: 700; border-top: 2px solid #4e73df; {{ num }}">{{ total_laudo_fmt }}</td>
+                                <td style="background: #eef2ff; border-top: 2px solid #4e73df;"></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-5 px-3">
+                    <i class="fas fa-inbox fa-2x mb-3 d-block" style="color: #b7c3e8;"></i>
+                    Nenhum contrato cadastrado. Baixe a planilha-modelo, preencha e importe ao lado.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const URL_SALVAR_PARAM = "{{ url_for('analise_financeira_pf.salvar_parametros') }}";
+    const URL_IMPORTAR_CONTRATOS = "{{ url_for('analise_financeira_pf.importar_contratos') }}";
+    const URL_EXCLUIR_CONTRATO = "{{ url_for('analise_financeira_pf.excluir_contrato') }}";
+    const TEM_PARAMETROS = {{ 'true' if tem_parametros else 'false' }};
+
+    const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
+
+    // ---------------------------------------------------------------
+    // Mensagens e utilitários
+    // ---------------------------------------------------------------
+    function mostrarMensagem(tipo, texto) {
+        const div = document.getElementById('afpMensagem');
+        div.className = 'alert alert-' + tipo;
+        div.textContent = texto;
+        div.style.display = 'block';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    function travarBotao(btn, travar, textoCarregando) {
+        if (travar) {
+            btn.dataset.html = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>' + textoCarregando;
+        } else {
+            btn.disabled = false;
+            if (btn.dataset.html) btn.innerHTML = btn.dataset.html;
+        }
+    }
+
+    function postJson(url, corpo) {
+        return fetch(url, {method: 'POST', headers: HEADERS, body: JSON.stringify(corpo)})
+            .then(r => r.json());
+    }
+
+    // ---------------------------------------------------------------
+    // PARÂMETROS
+    // ---------------------------------------------------------------
+    const inputsParam = Array.from(document.querySelectorAll('.afp-param-input'));
+    const btnEditar = document.getElementById('btnEditarParam');
+    const btnCancelar = document.getElementById('btnCancelarParam');
+    const btnSalvar = document.getElementById('btnSalvarParam');
+
+    function pintarInput(inp) {
+        // Somente leitura: fundo cinza; editável: branco; alterado: amarelo
+        if (inp.readOnly) {
+            inp.style.background = '#f8f9fc';
+            inp.style.borderColor = '';
+        } else if (inp.value.trim() !== inp.dataset.original) {
+            inp.style.background = '#fffbeb';
+            inp.style.borderColor = '#f6c23e';
+        } else {
+            inp.style.background = '#fff';
+            inp.style.borderColor = '#4e73df';
+        }
+    }
+
+    function modoEdicao(ativo) {
+        inputsParam.forEach(inp => {
+            if (inp.dataset.editavel === '1') inp.readOnly = !ativo;
+            if (!ativo) inp.value = inp.dataset.original;
+            pintarInput(inp);
+        });
+        btnEditar.style.display = ativo ? 'none' : '';
+        btnCancelar.style.display = ativo ? '' : 'none';
+        btnSalvar.style.display = ativo ? '' : 'none';
+    }
+
+    inputsParam.forEach(inp => {
+        pintarInput(inp);
+        inp.addEventListener('input', function () { pintarInput(this); });
+    });
+
+    // Tabela vazia: já abre em modo de edição para o primeiro cadastro
+    if (!TEM_PARAMETROS) {
+        modoEdicao(true);
+        btnCancelar.style.display = 'none';
+    }
+
+    btnEditar.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        modoEdicao(true);
+    });
+
+    btnCancelar.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        modoEdicao(false);
+    });
+
+    btnSalvar.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+
+        const campos = {};
+        inputsParam.forEach(inp => {
+            if (inp.dataset.editavel !== '1') return;
+            // Na primeira carga envia tudo; depois só o que mudou
+            if (!TEM_PARAMETROS || inp.value.trim() !== inp.dataset.original) {
+                campos[inp.dataset.coluna] = inp.value.trim();
+            }
+        });
+
+        if (TEM_PARAMETROS && Object.keys(campos).length === 0) {
+            mostrarMensagem('warning', 'Nenhum valor foi alterado.');
+            return;
+        }
+
+        const pergunta = TEM_PARAMETROS
+            ? 'Confirma a alteração? A vigência atual será encerrada hoje e os novos valores valem a partir de amanhã.'
+            : 'Confirma o cadastro dos parâmetros?';
+        if (!confirm(pergunta)) return;
+
+        travarBotao(btnSalvar, true, 'Salvando...');
+        postJson(URL_SALVAR_PARAM, {campos: campos})
+            .then(data => {
+                if (data.success) {
+                    mostrarMensagem('success', data.message);
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    travarBotao(btnSalvar, false);
+                    mostrarMensagem('danger', data.message);
+                }
+            })
+            .catch(err => {
+                travarBotao(btnSalvar, false);
+                mostrarMensagem('danger', 'Erro de comunicação: ' + err);
+            });
+    });
+
+    // ---------------------------------------------------------------
+    // IMPORTAÇÃO DO EXCEL (arrastar e soltar)
+    // ---------------------------------------------------------------
+    const dropzone = document.getElementById('afpDropzone');
+    const inputArquivo = document.getElementById('afpArquivo');
+    const infoArquivo = document.getElementById('afpArquivoInfo');
+    const divErros = document.getElementById('afpErros');
+    const btnImportar = document.getElementById('btnImportar');
+    let arquivoSelecionado = null;
+
+    function destacarDropzone(ativo) {
+        dropzone.style.borderColor = ativo ? '#224abe' : '#b7c3e8';
+        dropzone.style.background = ativo ? '#eef2ff' : '#f8f9fc';
+    }
+
+    function formatarTamanho(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1).replace('.', ',') + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
+    }
+
+    function selecionarArquivo(arquivo) {
+        divErros.style.display = 'none';
+        if (!arquivo) return;
+        const nome = arquivo.name.toLowerCase();
+        if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) {
+            mostrarMensagem('warning', 'Formato não aceito. Envie um arquivo .xlsx (use a planilha-modelo).');
+            return;
+        }
+        arquivoSelecionado = arquivo;
+        document.getElementById('afpArquivoNome').textContent = arquivo.name;
+        document.getElementById('afpArquivoTamanho').textContent = formatarTamanho(arquivo.size);
+        dropzone.style.display = 'none';
+        infoArquivo.style.display = 'block';
+    }
+
+    function limparArquivo() {
+        arquivoSelecionado = null;
+        inputArquivo.value = '';
+        infoArquivo.style.display = 'none';
+        dropzone.style.display = '';
+        destacarDropzone(false);
+    }
+
+    dropzone.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        inputArquivo.click();
+    });
+    dropzone.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            inputArquivo.click();
+        }
+    });
+    dropzone.addEventListener('mouseenter', () => destacarDropzone(true));
+    dropzone.addEventListener('mouseleave', () => destacarDropzone(false));
+    inputArquivo.addEventListener('change', function () {
+        selecionarArquivo(this.files[0]);
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            destacarDropzone(true);
+        });
+    });
+    ['dragleave', 'drop'].forEach(evt => {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            destacarDropzone(false);
+        });
+    });
+    dropzone.addEventListener('drop', function (e) {
+        const arquivos = e.dataTransfer.files;
+        if (arquivos && arquivos.length) selecionarArquivo(arquivos[0]);
+    });
+
+    document.getElementById('btnRemoverArquivo').addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        divErros.style.display = 'none';
+        limparArquivo();
+    });
+
+    btnImportar.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        if (!arquivoSelecionado) {
+            mostrarMensagem('warning', 'Selecione a planilha antes de importar.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('arquivo', arquivoSelecionado);
+
+        divErros.style.display = 'none';
+        travarBotao(btnImportar, true, 'Importando...');
+
+        // Sem Content-Type: o navegador monta o multipart/form-data
+        fetch(URL_IMPORTAR_CONTRATOS, {
+            method: 'POST',
+            headers: {'X-Silent-Request': 'true'},
+            body: formData
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarMensagem('success', data.message);
+                    setTimeout(() => window.location.reload(), 1500);
+                    return;
+                }
+                travarBotao(btnImportar, false);
+                if (data.erros && data.erros.length) {
+                    const titulo = document.createElement('strong');
+                    titulo.textContent = data.message;
+                    const lista = document.createElement('ul');
+                    lista.className = 'mb-0 mt-2';
+                    data.erros.forEach(t => {
+                        const li = document.createElement('li');
+                        li.textContent = t;
+                        lista.appendChild(li);
+                    });
+                    divErros.innerHTML = '';
+                    divErros.appendChild(titulo);
+                    divErros.appendChild(lista);
+                    divErros.style.display = 'block';
+                } else {
+                    mostrarMensagem('danger', data.message);
+                }
+            })
+            .catch(err => {
+                travarBotao(btnImportar, false);
+                mostrarMensagem('danger', 'Erro de comunicação: ' + err);
+            });
+    });
+
+    // ---------------------------------------------------------------
+    // EXCLUSÃO DE CONTRATO
+    // ---------------------------------------------------------------
+    document.querySelectorAll('.btn-excluir-contrato').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.stopImmediatePropagation();
+            if (!confirm('Excluir o contrato ' + this.dataset.contratoFmt + '?')) return;
+
+            travarBotao(btn, true, '');
+            postJson(URL_EXCLUIR_CONTRATO, {nu_contrato: this.dataset.contrato})
+                .then(data => {
+                    if (data.success) {
+                        mostrarMensagem('success', data.message);
+                        setTimeout(() => window.location.reload(), 800);
+                    } else {
+                        travarBotao(btn, false);
+                        mostrarMensagem('danger', data.message);
+                    }
+                })
+                .catch(err => {
+                    travarBotao(btn, false);
+                    mostrarMensagem('danger', 'Erro de comunicação: ' + err);
+                });
+        });
+    });
+})();
+</script>
+{% endblock %}

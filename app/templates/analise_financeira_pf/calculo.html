@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+
+{% block title %}Calcular Fluxo - Análise Financeira PF - Portal GEINC{% endblock %}
+
+{% block content %}
+{# Estilos aplicados inline: é a forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set th_tab = "background: #f8f9fc; color: #5a5c69; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid #e3e6f0; vertical-align: middle; position: sticky; top: 0; z-index: 2;" %}
+{% set num = "text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;" %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('analise_financeira_pf.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <a href="{{ url_for('analise_financeira_pf.resultados') }}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-chart-line me-1"></i> Ver resultados
+    </a>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="mb-4">
+        <h1 class="fw-bold header-with-back mb-1">
+            <i class="fas fa-calculator me-2"></i>Calcular Fluxo de Caixa
+        </h1>
+        <p class="text-muted mb-0">Escolha a data de referência e os contratos para gerar o fluxo simulado e o VPL</p>
+    </div>
+
+    <div id="afpMensagem" style="display:none;"></div>
+
+    {% if not tem_parametros %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle me-1"></i>
+        Não há parâmetros em vigor hoje. Cadastre os parâmetros na página principal antes de calcular.
+    </div>
+    {% endif %}
+
+    <!-- ============================================================ -->
+    <!-- DATA DE REFERÊNCIA + AÇÃO                                    -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
+        <div class="card-body" style="padding: 1.25rem;">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5 col-lg-4">
+                    <label for="afpDataRef" class="form-label fw-semibold mb-1" style="color: #3a3b45;">
+                        <span class="badge rounded-pill me-1" style="background: #4e73df;">1</span>
+                        Data de referência (mês 0)
+                    </label>
+                    <input type="month" class="form-control" id="afpDataRef"
+                           {% if mes_min %}min="{{ mes_min }}"{% endif %}
+                           {% if mes_max %}max="{{ mes_max }}"{% endif %}>
+                    {% if mes_min and mes_max %}
+                    <div class="form-text">
+                        Custo médio disponível de {{ mes_min[5:] }}/{{ mes_min[:4] }} a {{ mes_max[5:] }}/{{ mes_max[:4] }}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4 col-lg-5">
+                    <div class="fw-semibold mb-1" style="color: #3a3b45;">
+                        <span class="badge rounded-pill me-1" style="background: #4e73df;">2</span>
+                        Contratos selecionados
+                    </div>
+                    <div style="font-size: 1.6rem; font-weight: 700; color: #224abe; line-height: 1.2;">
+                        <span id="afpQtdSel">0</span>
+                        <span class="text-muted" style="font-size: 0.9rem; font-weight: 400;">de {{ contratos|length }}</span>
+                    </div>
+                </div>
+                <div class="col-md-3 text-md-end">
+                    <button type="button" class="btn btn-primary btn-lg w-100 js-ignore-loading" id="btnCalcular"
+                            {% if not tem_parametros or not contratos %}disabled{% endif %}>
+                        <i class="fas fa-play me-1"></i> Calcular
+                    </button>
+                </div>
+            </div>
+            <div class="small text-muted mt-3" style="border-top: 1px solid #e3e6f0; padding-top: 0.75rem;">
+                <i class="fas fa-info-circle me-1"></i>
+                Se um contrato já foi calculado hoje, o fluxo dele é substituído pelo novo cálculo.
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- CONTRATOS                                                    -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: hidden;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem;">
+                <i class="fas fa-tasks me-2"></i>Contratos cadastrados
+            </h5>
+            <div class="input-group input-group-sm" style="max-width: 280px;">
+                <span class="input-group-text" style="background: #fff; border: none;"><i class="fas fa-search text-muted"></i></span>
+                <input type="text" class="form-control" id="afpBusca" placeholder="Buscar contrato ou nome" style="border: none;">
+            </div>
+        </div>
+
+        {% if contratos %}
+        <div style="max-height: 520px; overflow-y: auto;">
+            <table class="table table-hover mb-0" style="font-size: 0.9rem;">
+                <thead>
+                    <tr>
+                        <th style="{{ th_tab }} width: 50px; text-align: center;">
+                            <input type="checkbox" class="form-check-input" id="afpTodos" title="Selecionar todos os visíveis">
+                        </th>
+                        <th style="{{ th_tab }}">Contrato</th>
+                        <th style="{{ th_tab }}">Nome</th>
+                        <th style="{{ th_tab }} text-align: right;">Débitos Propter Rem (R$)</th>
+                        <th style="{{ th_tab }} text-align: right;">Laudo de Avaliação (R$)</th>
+                    </tr>
+                </thead>
+                <tbody id="afpCorpo">
+                    {% for c in contratos %}
+                    <tr data-busca="{{ c.nu_contrato }} {{ c.nu_contrato_fmt }} {{ c.no_mutuario|lower }}" style="cursor: pointer;">
+                        <td style="vertical-align: middle; text-align: center;">
+                            <input type="checkbox" class="form-check-input afp-check" value="{{ c.nu_contrato }}">
+                        </td>
+                        <td style="vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #224abe;">
+                            {{ c.nu_contrato_fmt }}
+                        </td>
+                        <td style="vertical-align: middle;">{{ c.no_mutuario }}</td>
+                        <td style="vertical-align: middle; {{ num }}">{{ c.vr_debitos_fmt }}</td>
+                        <td style="vertical-align: middle; {{ num }}">{{ c.vr_laudo_fmt }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-inbox fa-2x mb-3 d-block" style="color: #b7c3e8;"></i>
+            Nenhum contrato cadastrado. Importe a planilha de contratos na página principal.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+(function () {
+    const URL_EXECUTAR = "{{ url_for('analise_financeira_pf.executar_calculo') }}";
+    const COR_SELECIONADO = '#eef2ff';
+
+    const corpo = document.getElementById('afpCorpo');
+    const busca = document.getElementById('afpBusca');
+    const chkTodos = document.getElementById('afpTodos');
+    const qtdSel = document.getElementById('afpQtdSel');
+    const btnCalcular = document.getElementById('btnCalcular');
+
+    function mostrarMensagem(tipo, texto) {
+        const div = document.getElementById('afpMensagem');
+        div.className = 'alert alert-' + tipo;
+        div.textContent = texto;
+        div.style.display = 'block';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    function checks() {
+        return corpo ? Array.from(corpo.querySelectorAll('.afp-check')) : [];
+    }
+
+    function atualizarContagem() {
+        let n = 0;
+        checks().forEach(c => {
+            Array.from(c.closest('tr').cells).forEach(td => {
+                td.style.background = c.checked ? COR_SELECIONADO : '';
+            });
+            if (c.checked) n++;
+        });
+        qtdSel.textContent = n;
+    }
+
+    if (corpo) {
+        corpo.addEventListener('click', function (e) {
+            const tr = e.target.closest('tr');
+            if (!tr) return;
+            const chk = tr.querySelector('.afp-check');
+            if (e.target !== chk) chk.checked = !chk.checked;
+            atualizarContagem();
+        });
+    }
+
+    if (chkTodos) {
+        chkTodos.addEventListener('change', function () {
+            checks().forEach(c => {
+                if (c.closest('tr').style.display !== 'none') c.checked = chkTodos.checked;
+            });
+            atualizarContagem();
+        });
+    }
+
+    if (busca) {
+        busca.addEventListener('input', function () {
+            const termo = this.value.trim().toLowerCase().replace(/[-.\s]/g, '');
+            checks().forEach(c => {
+                const tr = c.closest('tr');
+                const alvo = tr.dataset.busca.replace(/[-.\s]/g, '');
+                tr.style.display = !termo || alvo.indexOf(termo) >= 0 ? '' : 'none';
+            });
+        });
+    }
+
+    btnCalcular.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+
+        const selecionados = checks().filter(c => c.checked).map(c => c.value);
+        const dataRef = document.getElementById('afpDataRef').value;
+
+        if (!dataRef) {
+            mostrarMensagem('warning', 'Informe a data de referência.');
+            return;
+        }
+        if (!selecionados.length) {
+            mostrarMensagem('warning', 'Selecione ao menos um contrato.');
+            return;
+        }
+
+        const htmlOriginal = btnCalcular.innerHTML;
+        btnCalcular.disabled = true;
+        btnCalcular.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Calculando...';
+
+        fetch(URL_EXECUTAR, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({contratos: selecionados, data_referencia: dataRef})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    mostrarMensagem('success', data.message + ' Abrindo resultados...');
+                    setTimeout(() => { window.location.href = data.redirect; }, 900);
+                } else {
+                    btnCalcular.disabled = false;
+                    btnCalcular.innerHTML = htmlOriginal;
+                    mostrarMensagem('danger', data.message);
+                }
+            })
+            .catch(err => {
+                btnCalcular.disabled = false;
+                btnCalcular.innerHTML = htmlOriginal;
+                mostrarMensagem('danger', 'Erro de comunicação: ' + err);
+            });
+    });
+})();
+</script>
+{% endblock %}
