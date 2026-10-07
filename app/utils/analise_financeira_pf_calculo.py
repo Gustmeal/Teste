@@ -755,60 +755,18 @@ def _nome_aba_unico(base, usados):
     return nome
 
 
-def gerar_excel_calculo(resumo, parametros_por_data, fluxos, descricao_filtro=''):
+def gerar_excel_calculo(resumo, fluxos):
     """
-    resumo:              lista de listar_resumo_calculo() (pode ter várias datas)
-    parametros_por_data: {DT_CALCULO: dict da FIN_TB034 em vigor naquela data}
-    fluxos:              {(DT_CALCULO, nu_contrato str): linhas de obter_fluxo_gravado()}
-    descricao_filtro:    texto com os filtros usados (vai no cabeçalho do Resumo)
+    Excel do fluxo: SOMENTE as abas de fluxo de cada contrato e, quando o
+    contrato tem simulação (VPL negativo), a aba da Meta logo depois.
+    (Sem abas de Resumo e de Parâmetros, a pedido da área.)
+
+    resumo: lista de listar_resumo_calculo() (pode ter várias datas)
+    fluxos: {(DT_CALCULO, nu_contrato str): linhas de obter_fluxo_gravado()}
     Retorna BytesIO com o .xlsx.
     """
     wb = Workbook()
-
-    # ---------------- Aba Resumo ----------------
-    ws = wb.active
-    ws.title = 'Resumo'
-    _titulo(ws, 1, 'Análise Financeira PF - Resumo dos cálculos')
-    _rotulo_valor(ws, 2, 'Filtros', descricao_filtro or 'Todos os cálculos')
-
-    cab = ['Data do Cálculo', 'Contrato', 'Nome', 'Memo', 'Débitos Propter Rem', 'Laudo de Avaliação',
-           'Data de Referência', 'VPL', 'Situação',
-           'Débitos Propter Rem Simulado', 'Redução Necessária',
-           'VPL Simulado', 'VPL com Débitos Zerados']
-    larguras = [15, 16, 38, 60, 20, 20, 16, 18, 26, 22, 20, 18, 22]
-    for i, (t, w) in enumerate(zip(cab, larguras), start=1):
-        _estilo_cabecalho(ws.cell(row=4, column=i, value=t))
-        ws.column_dimensions[get_column_letter(i)].width = w
-    ws.row_dimensions[4].height = 32
-
-    linha = 5
-    for r in resumo:
-        sim = r['simulacao']
-        info = SITUACOES.get(r['situacao'])
-        ws.cell(row=linha, column=1, value=r['dt_calculo']).number_format = 'DD/MM/YYYY'
-        ws.cell(row=linha, column=2, value=r['nu_contrato_fmt'])
-        ws.cell(row=linha, column=3, value=r['no_mutuario'])
-        ws.cell(row=linha, column=4, value=r.get('memo') or None)
-        ws.cell(row=linha, column=5, value=float(r['vr_debitos'] or 0)).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=6, value=_float_ou_none(r['vr_laudo'])).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=7, value=r['dt_referencia']).number_format = 'MM/YYYY'
-        ws.cell(row=linha, column=8, value=float(r['vpl'])).number_format = _FMT_VALOR
-        cel_sit = ws.cell(row=linha, column=9, value=info['rotulo'] if info else 'NEGATIVO (recalcular)')
-        cel_sit.font = Font(bold=True, color=(info['cor'].lstrip('#') if info else 'B91C1C'))
-        ws.cell(row=linha, column=10, value=_float_ou_none(sim['VR_DEB_PROPTERREM_SIMULADO'])).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=11, value=_float_ou_none(sim['VR_REDUCAO_PROPTERREM'])).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=12, value=_float_ou_none(sim['VR_VPL_SIMULADO'])).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=13, value=_float_ou_none(sim['VR_VPL_SEM_PROPTERREM'])).number_format = _FMT_VALOR
-        linha += 1
-    ws.freeze_panes = 'D5'
-
-    # ---------------- Aba Parâmetros (um bloco por data de cálculo) ----------------
-    wp = wb.create_sheet('Parâmetros')
-    wp.column_dimensions['A'].width = 70
-    wp.column_dimensions['B'].width = 20
-    lin_p = 1
-    for dt_calc in sorted(parametros_por_data, reverse=True):
-        lin_p = _bloco_parametros(wp, lin_p, dt_calc, parametros_por_data[dt_calc])
+    wb.remove(wb.active)   # tira a aba vazia padrão: a 1ª aba passa a ser o 1º fluxo
 
     # ---------------- Fluxo (e Meta, se negativo) por contrato ----------------
     usados = set()
@@ -859,41 +817,3 @@ def gerar_excel_calculo(resumo, parametros_por_data, fluxos, descricao_filtro=''
     wb.save(saida)
     saida.seek(0)
     return saida
-
-
-def _bloco_parametros(wp, lin, dt_calculo, parametros):
-    """Escreve os parâmetros em vigor numa data de cálculo; devolve a próxima linha livre."""
-    _titulo(wp, lin, f'Parâmetros em vigor no cálculo de {dt_calculo.strftime("%d/%m/%Y")}')
-    lin += 1
-    if parametros:
-        itens = [
-            ('Início da vigência', _para_date(parametros['DT_INI_VIGENCIA']), 'DD/MM/YYYY'),
-            ('Fim da vigência', _para_date(parametros['DT_FIM_VIGENCIA']), 'DD/MM/YYYY'),
-            ('Custo EMGEA Créditos Imobiliários PF (por contrato)', parametros['VR_CUSTO_CIPF'], _FMT_VALOR),
-            ('Custo EMGEA Imóveis Não de Uso (por contrato)', parametros['VR_CUSTO_INU'], _FMT_VALOR),
-            ('Tarifa de Administração de Imóveis Não de Uso (por contrato)',
-             parametros['VR_TARIFA_ADM_IMOVEIS'], _FMT_VALOR),
-            ('Despesa de manutenção INU - primeiro ano', parametros['PC_DESP_MANUT_INU_PRI_ANO'], '0.00%'),
-            ('Despesa de manutenção INU - seis meses subsequentes',
-             parametros['PC_DESP_MANUT_INU_6_MESES'], '0.00%'),
-            ('Desconto na venda do imóvel sobre o valor de avaliação',
-             parametros['PC_DESP_DESCONTO_VENDA'], '0.00%'),
-            ('Despesa média de execução extrajudicial (por contrato)',
-             parametros['VR_DESP_MEDIA_EXEC_JUD'], _FMT_VALOR),
-            ('Prazo para a execução (anos)', parametros['PZ_EXECUCAO_ANOS'], '0'),
-            ('Prazo de permanência em estoque (meses)', parametros['PZ_PERMANENCIA_ESTOQUE_MESES'], '0'),
-            ('Prazo para a execução (meses)', parametros['PZ_EXECUCAO_MESES'], '0'),
-            ('Data do custo de oportunidade', _para_date(parametros.get('DT_CUSTO_DE_OPORTUNIDADE')), 'DD/MM/YYYY'),
-            ('Normativo Sufin', parametros.get('NORMATIVO_SUFIN') or '-', None),
-            ('Número da Ata Direx', parametros.get('NR_ATA_DIREX') if parametros.get('NR_ATA_DIREX') is not None else '-', '0'),
-            ('Data da Ata Direx', _para_date(parametros.get('DT_ATA_DIREX')) or '-', 'DD/MM/YYYY'),
-        ]
-        for rot, val, fmt in itens:
-            if isinstance(val, Decimal):
-                val = float(val)
-            _rotulo_valor(wp, lin, rot, val if val is not None else 'Vigente', fmt)
-            lin += 1
-    else:
-        wp.cell(row=lin, column=1, value='Nenhuma vigência encontrada para essa data de cálculo.')
-        lin += 1
-    return lin + 1

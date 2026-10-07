@@ -1441,8 +1441,7 @@ def exportar_resultados():
     """
     Exporta para Excel exatamente o que está filtrado na tela de resultados
     (data do cálculo ou todas, parte do contrato, parte do nome):
-    Resumo (VPL e situação por contrato), Parâmetros usados em cada data de
-    cálculo e uma aba de fluxo (e de Meta, se negativo) por contrato.
+    somente a aba de fluxo de cada contrato e, quando houver, a aba da Meta.
     Com ?nu_contrato= e ?dt_fluxo= exporta só aquele contrato/cálculo.
     """
     filtros = _ler_filtros_resultados()
@@ -1474,10 +1473,7 @@ def exportar_resultados():
     fluxos = {(r['dt_calculo'], r['nu_contrato']):
               calc.obter_fluxo_gravado(r['dt_calculo'], int(r['nu_contrato']), taxas)
               for r in resumo}
-    parametros_por_data = {d: calc.obter_parametros_na_data(d)
-                           for d in {r['dt_calculo'] for r in resumo}}
-
-    arquivo = calc.gerar_excel_calculo(resumo, parametros_por_data, fluxos, descricao)
+    arquivo = calc.gerar_excel_calculo(resumo, fluxos)
 
     if nu_unico is not None:
         nome = f'Analise_Financeira_PF_{resumo[0]["nu_contrato"]}.xlsx'
