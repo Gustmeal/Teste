@@ -220,11 +220,6 @@
                                title="Gerar Nota Técnica em Word">
                                 <i class="fas fa-file-word"></i>
                             </a>
-                            <a href="{{ url_for('analise_financeira_pf.exportar_resultados', nu_contrato=r.nu_contrato, dt_fluxo=r.dt_calculo_iso) }}"
-                               class="btn btn-sm btn-outline-success js-ignore-loading"
-                               title="Exportar este contrato para Excel">
-                                <i class="fas fa-file-excel"></i>
-                            </a>
                         </td>
                     </tr>
                     {% endfor %}
