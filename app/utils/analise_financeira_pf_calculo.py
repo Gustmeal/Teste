@@ -29,6 +29,15 @@ Reproduz a aba "Fluxo 1" da planilha da SUFIN, célula a célula:
 
   VPL do contrato = soma de VR_PRESENTE (Excel I7).
 
+Simulação de Equilíbrio (abas "Meta" da planilha) - VPL negativo:
+  O VPL é linear nos débitos propter rem (só entram no mês J), então o valor
+  que zera o VPL é obtido direto, sem "Atingir Meta":
+      P* = TOTAL_J sem propter + VPL dos outros meses * (1 + taxa_J)^(J/12)
+  - P* > 0  -> NEGATIVO REVERSÍVEL (reduzir os débitos até P* zera o VPL)
+  - P* <= 0 -> NEGATIVO IRREVERSÍVEL (mesmo com débitos = 0 o VPL é negativo)
+  Gravada em FIN_TB037. Cada contrato tem um único cálculo vigente:
+  recalcular apaga o fluxo e a simulação anteriores do contrato.
+
 Valores nominais em Decimal; o desconto (expoente fracionário) em float,
 como o Excel. Cada valor gravado é arredondado em 2 casas (ROUND_HALF_UP).
 
@@ -37,7 +46,7 @@ Compatível com Python 3.9 e 3.12.
 from app import db
 from sqlalchemy import text
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, ROUND_DOWN
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -47,6 +56,7 @@ from openpyxl.utils import get_column_letter
 TB_PARAMETROS = '[BDG].[FIN_TB034_ANALISE_FINANCEIRA_PF_PARAMETROS]'
 TB_CONTRATOS = '[BDG].[FIN_TB035_ANALISE_FINANCEIRA_PF_CONTRATOS]'
 TB_FLUXOS = '[BDG].[FIN_TB036_ANALISE_FINANCEIRA_PF_FLUXOS]'
+TB_SIMULACAO = '[BDG].[FIN_TB037_ANALISE_FINANCEIRA_PF_SIMULACAO]'
 VW_CUSTO_MEDIO = '[BDG].[FIN_VW036_ANALISE_FINANCEIRA_PF_CUSTO_MEDIO]'
 
 CENTAVO = Decimal('0.01')
@@ -118,16 +128,27 @@ def fmt_br(valor, casas=2):
 
 
 def formatar_contrato(nu_contrato):
-    """101600101095 -> 1-0160-0101-095"""
+    """Contrato exibido só com os dígitos, sem traços: 101600101095."""
     if nu_contrato is None:
         return ''
     txt = str(nu_contrato).strip()
     if txt.endswith('.0'):
         txt = txt[:-2]
-    if txt.isdigit() and len(txt) <= 12:
-        t = txt.zfill(12)
-        return f'{t[0]}-{t[1:5]}-{t[5:9]}-{t[9:12]}'
     return txt
+
+
+# Memo: a tabela guarda só "número/ano" (ex.: 239/2026); o restante é
+# completado pelo aplicativo na exibição e no Excel.
+MEMO_PREFIXO = 'Memorando SEI nº '
+MEMO_SUFIXO = '/Gecoc/Sucre/Diope'
+
+
+def formatar_memo(memo):
+    """'239/2026' -> 'Memorando SEI nº 239/2026/Gecoc/Sucre/Diope' ('' se vazio)."""
+    txt = str(memo or '').strip()
+    if not txt:
+        return ''
+    return f'{MEMO_PREFIXO}{txt}{MEMO_SUFIXO}'
 
 
 def contrato_texto(nu_contrato):
@@ -153,7 +174,8 @@ def obter_parametros_na_data(data_ref):
                [PC_DESP_MANUT_INU_PRI_ANO], [PC_DESP_MANUT_INU_6_MESES],
                [PC_DESP_DESCONTO_VENDA], [VR_DESP_MEDIA_EXEC_JUD],
                [PZ_EXECUCAO_ANOS], [PZ_PERMANENCIA_ESTOQUE_MESES],
-               [PZ_EXECUCAO_MESES]
+               [PZ_EXECUCAO_MESES], [DT_CUSTO_DE_OPORTUNIDADE],
+               [NORMATIVO_SUFIN], [NR_ATA_DIREX], [DT_ATA_DIREX]
         FROM {TB_PARAMETROS}
         WHERE [DT_INI_VIGENCIA] <= :data_ref
           AND ([DT_FIM_VIGENCIA] IS NULL OR [DT_FIM_VIGENCIA] >= :data_ref)
@@ -318,6 +340,7 @@ def calcular_fluxo(contrato, parametros, data_referencia, taxas):
             'VR_VENDA': _r2(venda),
             'VR_TOTAL': _r2(total),
             'VR_PRESENTE': _r2(presente),
+            'FATOR': fator,   # (1 + taxa)^(n/12) - não é gravado, usado na simulação
         }
         vpl += linha['VR_PRESENTE']
         linhas.append(linha)
@@ -326,18 +349,131 @@ def calcular_fluxo(contrato, parametros, data_referencia, taxas):
 
 
 # =========================================================================
+# SIMULAÇÃO DE EQUILÍBRIO FINANCEIRO (VPL NEGATIVO)
+# =========================================================================
+# Situações gravadas em IC_SITUACAO
+SITUACAO_POSITIVO = 1
+SITUACAO_NEGATIVO_REVERSIVEL = 2     # reduzindo os débitos propter rem o VPL zera
+SITUACAO_NEGATIVO_IRREVERSIVEL = 3   # mesmo com débitos propter rem = 0 o VPL fica negativo
+
+SITUACOES = {
+    SITUACAO_POSITIVO: {
+        'rotulo': 'POSITIVO', 'descricao': 'VPL positivo: a execução é vantajosa.',
+        'cor': '#047857', 'fundo': '#d1fae5',
+    },
+    SITUACAO_NEGATIVO_REVERSIVEL: {
+        'rotulo': 'NEGATIVO - REVERSÍVEL',
+        'descricao': 'Reduzindo os débitos propter rem até o valor simulado, o VPL zera.',
+        'cor': '#b45309', 'fundo': '#fef3c7',
+    },
+    SITUACAO_NEGATIVO_IRREVERSIVEL: {
+        'rotulo': 'NEGATIVO - IRREVERSÍVEL',
+        'descricao': 'Mesmo com os débitos propter rem zerados, o VPL continua negativo.',
+        'cor': '#b91c1c', 'fundo': '#fee2e2',
+    },
+}
+
+
+def simular_equilibrio(linhas, debitos_propterrem, mes_consolidacao):
+    """
+    Reproduz as abas "Meta" da planilha (Atingir Meta sobre os Débitos
+    Propter Rem, célula O20), sem precisar de tentativa e erro:
+
+    O VPL é linear nos débitos propter rem (P), que só entram no mês J:
+        VPL(P) = VPL_outros + (TOTAL_J_sem_P - P) / FATOR_J
+    Logo o P que zera o VPL é:
+        P* = TOTAL_J_sem_P + VPL_outros * FATOR_J
+
+    VPL_outros usa os valores presentes JÁ ARREDONDADOS (os mesmos gravados
+    e exibidos), para que o VPL simulado mostrado na tela fique em ~0,00.
+
+    Situações:
+      VPL >= 0                    -> 1 POSITIVO (sem simulação)
+      VPL < 0 e VPL(P=0) > 0      -> 2 REVERSÍVEL: P* entre 0 e o débito atual
+      VPL < 0 e VPL(P=0) <= 0     -> 3 IRREVERSÍVEL: P simulado = 0
+    """
+    j = mes_consolidacao
+    debitos = _r2(debitos_propterrem)
+    vpl = sum((ln['VR_PRESENTE'] for ln in linhas), Decimal('0'))
+
+    linha_j = linhas[j]
+    fator_j = linha_j['FATOR']
+    total_j_sem_p = linha_j['VR_TOTAL'] + debitos          # total do mês J sem o propter rem
+    vpl_outros = vpl - linha_j['VR_PRESENTE']                # VP de todos os outros meses
+    vp_j_sem_p = _r2(Decimal(repr(float(total_j_sem_p) / fator_j)))
+    vpl_sem_p = vpl_outros + vp_j_sem_p
+
+    resultado = {
+        'IC_SITUACAO': SITUACAO_POSITIVO,
+        'VR_VPL': vpl,
+        'VR_DEB_PROPTERREM': debitos,
+        'VR_VPL_SEM_PROPTERREM': vpl_sem_p,
+        'VR_DEB_PROPTERREM_SIMULADO': None,
+        'VR_REDUCAO_PROPTERREM': None,
+        'VR_VPL_SIMULADO': None,
+        'NU_MES_CONSOLIDACAO': j,
+        'VR_TOTAL_SIMULADO': None,
+        'VR_PRESENTE_SIMULADO': None,
+    }
+
+    if vpl >= 0:
+        return resultado
+
+    if vpl_sem_p <= 0:
+        # Mesmo sem débitos o VPL não fica positivo
+        p_sim = Decimal('0.00')
+        resultado['IC_SITUACAO'] = SITUACAO_NEGATIVO_IRREVERSIVEL
+    else:
+        # Arredonda para baixo: o VPL simulado fica >= 0 (nunca negativo por centavos)
+        p_float = float(total_j_sem_p) + float(vpl_outros) * fator_j
+        p_sim = Decimal(repr(p_float)).quantize(CENTAVO, rounding=ROUND_DOWN)
+        if p_sim < 0:
+            p_sim = Decimal('0.00')
+        resultado['IC_SITUACAO'] = SITUACAO_NEGATIVO_REVERSIVEL
+
+    total_sim = total_j_sem_p - p_sim
+    vp_sim = _r2(Decimal(repr(float(total_sim) / fator_j)))
+
+    resultado.update({
+        'VR_DEB_PROPTERREM_SIMULADO': p_sim,
+        'VR_REDUCAO_PROPTERREM': debitos - p_sim,
+        'VR_VPL_SIMULADO': vpl_outros + vp_sim,
+        'VR_TOTAL_SIMULADO': total_sim,
+        'VR_PRESENTE_SIMULADO': vp_sim,
+    })
+    return resultado
+
+
+def montar_fluxo_meta(linhas, simulacao):
+    """
+    Fluxo da "Meta": igual ao fluxo do contrato, trocando no mês J os
+    débitos propter rem pelo valor simulado (e o total / VP daquele mês).
+    """
+    if not simulacao or simulacao.get('VR_DEB_PROPTERREM_SIMULADO') is None:
+        return None
+    j = int(simulacao['NU_MES_CONSOLIDACAO'])
+    meta = []
+    for ln in linhas:
+        nova = dict(ln)
+        if int(ln['NU_MES']) == j:
+            nova['VR_DEB_PROPTERREM'] = -_dec(simulacao['VR_DEB_PROPTERREM_SIMULADO'])
+            nova['VR_TOTAL'] = _dec(simulacao['VR_TOTAL_SIMULADO'])
+            nova['VR_PRESENTE'] = _dec(simulacao['VR_PRESENTE_SIMULADO'])
+        meta.append(nova)
+    return meta
+
+
+# =========================================================================
 # GRAVAÇÃO
 # =========================================================================
-def gravar_fluxo(dt_calculo, nu_contrato, linhas):
+def gravar_fluxo(dt_calculo, nu_contrato, linhas, simulacao):
     """
-    Regrava o fluxo do contrato na data de cálculo:
-    apaga o que existir para (DT_CALCULO, NU_CONTRATO) e insere as linhas.
+    Um contrato tem um único cálculo valendo: apaga TODO fluxo e simulação
+    anteriores do contrato (qualquer DT_CALCULO) e grava o novo.
     """
-    db.session.execute(text(f"""
-        DELETE FROM {TB_FLUXOS}
-        WHERE [DT_CALCULO] = :dt_calculo
-          AND [NU_CONTRATO] = :nu
-    """), {'dt_calculo': dt_calculo, 'nu': nu_contrato})
+    params_nu = {'nu': nu_contrato}
+    db.session.execute(text(f"DELETE FROM {TB_FLUXOS} WHERE [NU_CONTRATO] = :nu"), params_nu)
+    db.session.execute(text(f"DELETE FROM {TB_SIMULACAO} WHERE [NU_CONTRATO] = :nu"), params_nu)
 
     registros = [{
         'dt_calculo': dt_calculo,
@@ -364,6 +500,32 @@ def gravar_fluxo(dt_calculo, nu_contrato, linhas):
              :deb_propter, :venda, :total, :presente)
     """), registros)
 
+    db.session.execute(text(f"""
+        INSERT INTO {TB_SIMULACAO}
+            ([DT_CALCULO], [NU_CONTRATO], [IC_SITUACAO], [VR_VPL],
+             [VR_DEB_PROPTERREM], [VR_VPL_SEM_PROPTERREM],
+             [VR_DEB_PROPTERREM_SIMULADO], [VR_REDUCAO_PROPTERREM], [VR_VPL_SIMULADO],
+             [NU_MES_CONSOLIDACAO], [VR_TOTAL_SIMULADO], [VR_PRESENTE_SIMULADO])
+        VALUES
+            (:dt_calculo, :nu, :situacao, :vpl,
+             :debitos, :vpl_sem,
+             :deb_sim, :reducao, :vpl_sim,
+             :mes_j, :total_sim, :vp_sim)
+    """), {
+        'dt_calculo': dt_calculo,
+        'nu': nu_contrato,
+        'situacao': simulacao['IC_SITUACAO'],
+        'vpl': simulacao['VR_VPL'],
+        'debitos': simulacao['VR_DEB_PROPTERREM'],
+        'vpl_sem': simulacao['VR_VPL_SEM_PROPTERREM'],
+        'deb_sim': simulacao['VR_DEB_PROPTERREM_SIMULADO'],
+        'reducao': simulacao['VR_REDUCAO_PROPTERREM'],
+        'vpl_sim': simulacao['VR_VPL_SIMULADO'],
+        'mes_j': simulacao['NU_MES_CONSOLIDACAO'],
+        'total_sim': simulacao['VR_TOTAL_SIMULADO'],
+        'vp_sim': simulacao['VR_PRESENTE_SIMULADO'],
+    })
+
 
 # =========================================================================
 # CONSULTA DOS RESULTADOS GRAVADOS
@@ -378,47 +540,95 @@ def listar_datas_calculo():
     return [{'dt_calculo': _para_date(r[0]), 'qtd': int(r[1])} for r in rows]
 
 
-def listar_resumo_calculo(dt_calculo, nu_contrato=None):
+def listar_resumo_calculo(dt_calculo=None, nu_contrato=None, filtro_contrato=None, filtro_nome=None):
     """
-    Um registro por contrato: data de referência (ANO_MES do mês 0),
-    meses do fluxo, VPL (soma de VR_PRESENTE) e dados da FIN_TB035.
+    Um registro por (DT_CALCULO, contrato): data de referência (ANO_MES do
+    mês 0), meses do fluxo, VPL (soma de VR_PRESENTE), dados da FIN_TB035 e
+    a simulação de equilíbrio (FIN_TB037).
+
+    Filtros (todos opcionais):
+      dt_calculo      -> só aquela data de cálculo (None = todas)
+      nu_contrato     -> contrato exato (int)
+      filtro_contrato -> parte do número do contrato (texto só com dígitos)
+      filtro_nome     -> parte do nome do mutuário
     """
-    filtro = ''
-    params = {'dt_calculo': dt_calculo}
+    condicoes = []
+    params = {}
+    if dt_calculo is not None:
+        condicoes.append('f.[DT_CALCULO] = :dt_calculo')
+        params['dt_calculo'] = dt_calculo
     if nu_contrato is not None:
-        filtro = 'AND f.[NU_CONTRATO] = :nu'
+        condicoes.append('f.[NU_CONTRATO] = :nu')
         params['nu'] = nu_contrato
+    if filtro_contrato:
+        condicoes.append("CAST(f.[NU_CONTRATO] AS varchar(30)) LIKE :filtro_contrato")
+        params['filtro_contrato'] = f'%{filtro_contrato}%'
+    if filtro_nome:
+        condicoes.append("UPPER(c.[NO_MUTUARIO]) LIKE :filtro_nome")
+        params['filtro_nome'] = f'%{filtro_nome.upper()}%'
+    where = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
 
     rows = db.session.execute(text(f"""
-        SELECT f.[NU_CONTRATO],
-               MAX(c.[NO_MUTUARIO])          AS NO_MUTUARIO,
-               MAX(c.[VR_LAUDO_AVALIACAO])   AS VR_LAUDO_AVALIACAO,
-               -SUM(f.[VR_DEB_PROPTERREM])   AS VR_DEBITOS_PROPTERREM,
-               MIN(f.[ANO_MES])              AS DT_REFERENCIA,
-               MAX(f.[NU_MES])               AS ULTIMO_MES,
-               SUM(f.[VR_PRESENTE])          AS VPL
+        SELECT f.[DT_CALCULO],
+               f.[NU_CONTRATO],
+               MAX(c.[NO_MUTUARIO])                 AS NO_MUTUARIO,
+               MAX(c.[MEMO])                        AS MEMO,
+               MAX(c.[VR_LAUDO_AVALIACAO])          AS VR_LAUDO_AVALIACAO,
+               -SUM(f.[VR_DEB_PROPTERREM])          AS VR_DEBITOS_PROPTERREM,
+               MIN(f.[ANO_MES])                     AS DT_REFERENCIA,
+               MAX(f.[NU_MES])                      AS ULTIMO_MES,
+               SUM(f.[VR_PRESENTE])                 AS VPL,
+               MAX(s.[IC_SITUACAO])                 AS IC_SITUACAO,
+               MAX(s.[VR_VPL_SEM_PROPTERREM])       AS VR_VPL_SEM_PROPTERREM,
+               MAX(s.[VR_DEB_PROPTERREM_SIMULADO])  AS VR_DEB_PROPTERREM_SIMULADO,
+               MAX(s.[VR_REDUCAO_PROPTERREM])       AS VR_REDUCAO_PROPTERREM,
+               MAX(s.[VR_VPL_SIMULADO])             AS VR_VPL_SIMULADO,
+               MAX(s.[NU_MES_CONSOLIDACAO])         AS NU_MES_CONSOLIDACAO,
+               MAX(s.[VR_TOTAL_SIMULADO])           AS VR_TOTAL_SIMULADO,
+               MAX(s.[VR_PRESENTE_SIMULADO])        AS VR_PRESENTE_SIMULADO
         FROM {TB_FLUXOS} f
-        LEFT JOIN {TB_CONTRATOS} c ON c.[NU_CONTRATO] = f.[NU_CONTRATO]
-        WHERE f.[DT_CALCULO] = :dt_calculo
-          {filtro}
-        GROUP BY f.[NU_CONTRATO]
-        ORDER BY MAX(c.[NO_MUTUARIO]), f.[NU_CONTRATO]
+        LEFT JOIN {TB_CONTRATOS} c
+               ON c.[NU_CONTRATO] = f.[NU_CONTRATO]
+        LEFT JOIN {TB_SIMULACAO} s
+               ON s.[DT_CALCULO] = f.[DT_CALCULO] AND s.[NU_CONTRATO] = f.[NU_CONTRATO]
+        {where}
+        GROUP BY f.[DT_CALCULO], f.[NU_CONTRATO]
+        ORDER BY f.[DT_CALCULO] DESC, MAX(c.[NO_MUTUARIO]), f.[NU_CONTRATO]
     """), params).mappings().all()
 
     resumo = []
     for r in rows:
         vpl = _dec(r['VPL'])
         nu = contrato_texto(r['NU_CONTRATO'])
+        situacao = r['IC_SITUACAO']
+        if situacao is None:
+            # Cálculo antigo sem simulação gravada: classifica só pelo sinal
+            situacao = SITUACAO_POSITIVO if vpl >= 0 else None
+        else:
+            situacao = int(situacao)
+
         resumo.append({
+            'dt_calculo': _para_date(r['DT_CALCULO']),
             'nu_contrato': nu,
             'nu_contrato_fmt': formatar_contrato(nu),
             'no_mutuario': r['NO_MUTUARIO'] or '(contrato não está mais cadastrado)',
+            'memo': formatar_memo(r['MEMO']),
             'vr_laudo': r['VR_LAUDO_AVALIACAO'],
             'vr_debitos': r['VR_DEBITOS_PROPTERREM'],
             'dt_referencia': _para_date(r['DT_REFERENCIA']),
             'ultimo_mes': int(r['ULTIMO_MES']),
             'vpl': vpl,
             'positivo': vpl >= 0,
+            'situacao': situacao,
+            'simulacao': {
+                'VR_VPL_SEM_PROPTERREM': r['VR_VPL_SEM_PROPTERREM'],
+                'VR_DEB_PROPTERREM_SIMULADO': r['VR_DEB_PROPTERREM_SIMULADO'],
+                'VR_REDUCAO_PROPTERREM': r['VR_REDUCAO_PROPTERREM'],
+                'VR_VPL_SIMULADO': r['VR_VPL_SIMULADO'],
+                'NU_MES_CONSOLIDACAO': r['NU_MES_CONSOLIDACAO'],
+                'VR_TOTAL_SIMULADO': r['VR_TOTAL_SIMULADO'],
+                'VR_PRESENTE_SIMULADO': r['VR_PRESENTE_SIMULADO'],
+            },
         })
     return resumo
 
@@ -483,11 +693,74 @@ def _rotulo_valor(ws, linha, rotulo, valor, formato=None):
     return c2
 
 
-def gerar_excel_calculo(dt_calculo, resumo, parametros, fluxos):
+def _float_ou_none(valor):
+    return float(valor) if valor is not None else None
+
+
+def _aba_fluxo(wb, nome_aba, titulo, cabecalho_info, linhas):
+    """Cria uma aba com o fluxo mês a mês no layout da planilha."""
+    cab_fluxo = ['Mês', 'Ano/Mês'] + [t for _, t in COLUNAS_FLUXO[:-1]] + \
+                ['Custo Médio (% a.a.)', 'Valor Presente']
+    larg_fluxo = [8, 12, 20, 18, 22, 20, 20, 18, 16, 20]
+
+    wf = wb.create_sheet(nome_aba)
+    _titulo(wf, 1, titulo)
+    lin_info = 2
+    for rot, val, fmt, cor in cabecalho_info:
+        c = _rotulo_valor(wf, lin_info, rot, val, fmt)
+        if cor:
+            c.font = Font(bold=True, color=cor)
+        lin_info += 1
+
+    lin_cab = lin_info + 1
+    for i, (t, w) in enumerate(zip(cab_fluxo, larg_fluxo), start=1):
+        _estilo_cabecalho(wf.cell(row=lin_cab, column=i, value=t))
+        wf.column_dimensions[get_column_letter(i)].width = w
+    wf.row_dimensions[lin_cab].height = 45
+
+    lin = lin_cab + 1
+    primeira = lin
+    for ln in linhas:
+        wf.cell(row=lin, column=1, value=int(ln['NU_MES']))
+        wf.cell(row=lin, column=2, value=ln['ANO_MES']).number_format = 'MMM/YYYY'
+        col = 3
+        for chave, _ in COLUNAS_FLUXO[:-1]:
+            wf.cell(row=lin, column=col, value=float(ln[chave])).number_format = _FMT_VALOR
+            col += 1
+        wf.cell(row=lin, column=col, value=_float_ou_none(ln.get('TAXA_AA'))).number_format = _FMT_TAXA
+        wf.cell(row=lin, column=col + 1, value=float(ln['VR_PRESENTE'])).number_format = _FMT_VALOR
+        if lin % 2 == 0:
+            for c in range(1, len(cab_fluxo) + 1):
+                wf.cell(row=lin, column=c).fill = PatternFill('solid', fgColor=_CINZA)
+        lin += 1
+
+    tot = wf.cell(row=lin, column=1, value='TOTAL')
+    tot.font = Font(bold=True)
+    for c in list(range(3, 3 + len(COLUNAS_FLUXO) - 1)) + [len(cab_fluxo)]:
+        letra = get_column_letter(c)
+        cel = wf.cell(row=lin, column=c, value=f'=SUM({letra}{primeira}:{letra}{lin - 1})')
+        cel.number_format = _FMT_VALOR
+        cel.font = Font(bold=True)
+    wf.freeze_panes = f'C{primeira}'
+    return wf
+
+
+def _nome_aba_unico(base, usados):
+    nome = base[:31]
+    k = 2
+    while nome in usados:
+        nome = f'{base[:28]}_{k}'
+        k += 1
+    usados.add(nome)
+    return nome
+
+
+def gerar_excel_calculo(resumo, parametros_por_data, fluxos, descricao_filtro=''):
     """
-    resumo:     lista de listar_resumo_calculo()
-    parametros: dict da FIN_TB034 em vigor na DT_CALCULO (ou None)
-    fluxos:     {nu_contrato (str): linhas de obter_fluxo_gravado()}
+    resumo:              lista de listar_resumo_calculo() (pode ter várias datas)
+    parametros_por_data: {DT_CALCULO: dict da FIN_TB034 em vigor naquela data}
+    fluxos:              {(DT_CALCULO, nu_contrato str): linhas de obter_fluxo_gravado()}
+    descricao_filtro:    texto com os filtros usados (vai no cabeçalho do Resumo)
     Retorna BytesIO com o .xlsx.
     """
     wb = Workbook()
@@ -495,37 +768,103 @@ def gerar_excel_calculo(dt_calculo, resumo, parametros, fluxos):
     # ---------------- Aba Resumo ----------------
     ws = wb.active
     ws.title = 'Resumo'
-    _titulo(ws, 1, 'Análise Financeira PF - Resumo do cálculo')
-    _rotulo_valor(ws, 2, 'Data do cálculo', dt_calculo, 'DD/MM/YYYY')
+    _titulo(ws, 1, 'Análise Financeira PF - Resumo dos cálculos')
+    _rotulo_valor(ws, 2, 'Filtros', descricao_filtro or 'Todos os cálculos')
 
-    cab = ['Contrato', 'Nome', 'Débitos Propter Rem', 'Laudo de Avaliação',
-           'Data de Referência', 'Meses do fluxo', 'VPL', 'Resultado']
-    larguras = [18, 40, 20, 20, 18, 15, 20, 14]
+    cab = ['Data do Cálculo', 'Contrato', 'Nome', 'Memo', 'Débitos Propter Rem', 'Laudo de Avaliação',
+           'Data de Referência', 'VPL', 'Situação',
+           'Débitos Propter Rem Simulado', 'Redução Necessária',
+           'VPL Simulado', 'VPL com Débitos Zerados']
+    larguras = [15, 16, 38, 60, 20, 20, 16, 18, 26, 22, 20, 18, 22]
     for i, (t, w) in enumerate(zip(cab, larguras), start=1):
         _estilo_cabecalho(ws.cell(row=4, column=i, value=t))
         ws.column_dimensions[get_column_letter(i)].width = w
-    ws.row_dimensions[4].height = 30
+    ws.row_dimensions[4].height = 32
 
     linha = 5
     for r in resumo:
-        ws.cell(row=linha, column=1, value=r['nu_contrato_fmt'])
-        ws.cell(row=linha, column=2, value=r['no_mutuario'])
-        ws.cell(row=linha, column=3, value=float(r['vr_debitos'] or 0)).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=4,
-                value=float(r['vr_laudo']) if r['vr_laudo'] is not None else None).number_format = _FMT_VALOR
-        ws.cell(row=linha, column=5, value=r['dt_referencia']).number_format = 'MM/YYYY'
-        ws.cell(row=linha, column=6, value=r['ultimo_mes'] + 1)
-        ws.cell(row=linha, column=7, value=float(r['vpl'])).number_format = _FMT_VALOR
-        res = ws.cell(row=linha, column=8, value='POSITIVO' if r['positivo'] else 'NEGATIVO')
-        res.font = Font(bold=True, color='047857' if r['positivo'] else 'B91C1C')
+        sim = r['simulacao']
+        info = SITUACOES.get(r['situacao'])
+        ws.cell(row=linha, column=1, value=r['dt_calculo']).number_format = 'DD/MM/YYYY'
+        ws.cell(row=linha, column=2, value=r['nu_contrato_fmt'])
+        ws.cell(row=linha, column=3, value=r['no_mutuario'])
+        ws.cell(row=linha, column=4, value=r.get('memo') or None)
+        ws.cell(row=linha, column=5, value=float(r['vr_debitos'] or 0)).number_format = _FMT_VALOR
+        ws.cell(row=linha, column=6, value=_float_ou_none(r['vr_laudo'])).number_format = _FMT_VALOR
+        ws.cell(row=linha, column=7, value=r['dt_referencia']).number_format = 'MM/YYYY'
+        ws.cell(row=linha, column=8, value=float(r['vpl'])).number_format = _FMT_VALOR
+        cel_sit = ws.cell(row=linha, column=9, value=info['rotulo'] if info else 'NEGATIVO (recalcular)')
+        cel_sit.font = Font(bold=True, color=(info['cor'].lstrip('#') if info else 'B91C1C'))
+        ws.cell(row=linha, column=10, value=_float_ou_none(sim['VR_DEB_PROPTERREM_SIMULADO'])).number_format = _FMT_VALOR
+        ws.cell(row=linha, column=11, value=_float_ou_none(sim['VR_REDUCAO_PROPTERREM'])).number_format = _FMT_VALOR
+        ws.cell(row=linha, column=12, value=_float_ou_none(sim['VR_VPL_SIMULADO'])).number_format = _FMT_VALOR
+        ws.cell(row=linha, column=13, value=_float_ou_none(sim['VR_VPL_SEM_PROPTERREM'])).number_format = _FMT_VALOR
         linha += 1
-    ws.freeze_panes = 'A5'
+    ws.freeze_panes = 'D5'
 
-    # ---------------- Aba Parâmetros ----------------
+    # ---------------- Aba Parâmetros (um bloco por data de cálculo) ----------------
     wp = wb.create_sheet('Parâmetros')
     wp.column_dimensions['A'].width = 70
     wp.column_dimensions['B'].width = 20
-    _titulo(wp, 1, 'Parâmetros em vigor na data do cálculo')
+    lin_p = 1
+    for dt_calc in sorted(parametros_por_data, reverse=True):
+        lin_p = _bloco_parametros(wp, lin_p, dt_calc, parametros_por_data[dt_calc])
+
+    # ---------------- Fluxo (e Meta, se negativo) por contrato ----------------
+    usados = set()
+    varias_datas = len({r['dt_calculo'] for r in resumo}) > 1
+    for r in resumo:
+        linhas = fluxos.get((r['dt_calculo'], r['nu_contrato']), [])
+        cor_vpl = '047857' if r['positivo'] else 'B91C1C'
+        info = SITUACOES.get(r['situacao'])
+        sufixo_data = f" {r['dt_calculo'].strftime('%d%m%y')}" if varias_datas else ''
+
+        _aba_fluxo(
+            wb, _nome_aba_unico(f"Fluxo {r['nu_contrato']}{sufixo_data}", usados),
+            f"Fluxo de Caixa Simulado - {r['no_mutuario']}",
+            ([('Memo', r['memo'], None, None)] if r.get('memo') else []) + [
+                ('Contrato', r['nu_contrato_fmt'], None, None),
+                ('Data do cálculo', r['dt_calculo'], 'DD/MM/YYYY', None),
+                ('Laudo de Avaliação', _float_ou_none(r['vr_laudo']), _FMT_VALOR, None),
+                ('Débitos Propter Rem', _float_ou_none(r['vr_debitos']), _FMT_VALOR, None),
+                ('Data de Referência (mês 0)', r['dt_referencia'], 'MM/YYYY', None),
+                ('VP', float(r['vpl']), _FMT_VALOR, cor_vpl),
+                ('Situação', info['rotulo'] if info else '-', None, info['cor'].lstrip('#') if info else None),
+            ],
+            linhas,
+        )
+
+        meta = montar_fluxo_meta(linhas, r['simulacao'])
+        if meta:
+            sim = r['simulacao']
+            vpl_meta = sum((_dec(ln['VR_PRESENTE']) for ln in meta), Decimal('0'))
+            _aba_fluxo(
+                wb, _nome_aba_unico(f"Meta {r['nu_contrato']}{sufixo_data}", usados),
+                f"Fluxo de Caixa Simulado - Meta - {r['no_mutuario']}",
+                ([('Memo', r['memo'], None, None)] if r.get('memo') else []) + [
+                    ('Contrato', r['nu_contrato_fmt'], None, None),
+                    ('Situação', info['rotulo'] if info else '-', None,
+                     info['cor'].lstrip('#') if info else None),
+                    ('Débitos Propter Rem atuais', _float_ou_none(r['vr_debitos']), _FMT_VALOR, None),
+                    ('Débitos Propter Rem simulados', _float_ou_none(sim['VR_DEB_PROPTERREM_SIMULADO']),
+                     _FMT_VALOR, None),
+                    ('Redução necessária', _float_ou_none(sim['VR_REDUCAO_PROPTERREM']), _FMT_VALOR, None),
+                    ('VP da Meta', float(vpl_meta), _FMT_VALOR,
+                     '047857' if vpl_meta >= 0 else 'B91C1C'),
+                ],
+                meta,
+            )
+
+    saida = BytesIO()
+    wb.save(saida)
+    saida.seek(0)
+    return saida
+
+
+def _bloco_parametros(wp, lin, dt_calculo, parametros):
+    """Escreve os parâmetros em vigor numa data de cálculo; devolve a próxima linha livre."""
+    _titulo(wp, lin, f'Parâmetros em vigor no cálculo de {dt_calculo.strftime("%d/%m/%Y")}')
+    lin += 1
     if parametros:
         itens = [
             ('Início da vigência', _para_date(parametros['DT_INI_VIGENCIA']), 'DD/MM/YYYY'),
@@ -544,70 +883,17 @@ def gerar_excel_calculo(dt_calculo, resumo, parametros, fluxos):
             ('Prazo para a execução (anos)', parametros['PZ_EXECUCAO_ANOS'], '0'),
             ('Prazo de permanência em estoque (meses)', parametros['PZ_PERMANENCIA_ESTOQUE_MESES'], '0'),
             ('Prazo para a execução (meses)', parametros['PZ_EXECUCAO_MESES'], '0'),
+            ('Data do custo de oportunidade', _para_date(parametros.get('DT_CUSTO_DE_OPORTUNIDADE')), 'DD/MM/YYYY'),
+            ('Normativo Sufin', parametros.get('NORMATIVO_SUFIN') or '-', None),
+            ('Número da Ata Direx', parametros.get('NR_ATA_DIREX') if parametros.get('NR_ATA_DIREX') is not None else '-', '0'),
+            ('Data da Ata Direx', _para_date(parametros.get('DT_ATA_DIREX')) or '-', 'DD/MM/YYYY'),
         ]
-        for i, (rot, val, fmt) in enumerate(itens, start=3):
+        for rot, val, fmt in itens:
             if isinstance(val, Decimal):
                 val = float(val)
-            _rotulo_valor(wp, i, rot, val if val is not None else 'Vigente', fmt)
-    else:
-        wp.cell(row=3, column=1, value='Nenhuma vigência encontrada para a data do cálculo.')
-
-    # ---------------- Uma aba de fluxo por contrato ----------------
-    cab_fluxo = ['Mês', 'Ano/Mês'] + [t for _, t in COLUNAS_FLUXO[:-1]] + \
-                ['Custo Médio (% a.a.)', 'Valor Presente']
-    larg_fluxo = [8, 12, 20, 18, 22, 20, 20, 18, 16, 20]
-
-    nomes_usados = set()
-    for r in resumo:
-        nome_aba = f"Fluxo {r['nu_contrato']}"[:31]
-        base, k = nome_aba, 2
-        while nome_aba in nomes_usados:
-            nome_aba = f'{base[:28]}_{k}'
-            k += 1
-        nomes_usados.add(nome_aba)
-
-        wf = wb.create_sheet(nome_aba)
-        _titulo(wf, 1, f"Fluxo de Caixa Simulado - {r['no_mutuario']}")
-        _rotulo_valor(wf, 2, 'Contrato', r['nu_contrato_fmt'])
-        _rotulo_valor(wf, 3, 'Laudo de Avaliação',
-                      float(r['vr_laudo']) if r['vr_laudo'] is not None else None, _FMT_VALOR)
-        _rotulo_valor(wf, 4, 'Data de Referência (mês 0)', r['dt_referencia'], 'MM/YYYY')
-        c_vpl = _rotulo_valor(wf, 5, 'VP', float(r['vpl']), _FMT_VALOR)
-        c_vpl.font = Font(bold=True, color='047857' if r['positivo'] else 'B91C1C')
-
-        for i, (t, w) in enumerate(zip(cab_fluxo, larg_fluxo), start=1):
-            _estilo_cabecalho(wf.cell(row=7, column=i, value=t))
-            wf.column_dimensions[get_column_letter(i)].width = w
-        wf.row_dimensions[7].height = 45
-
-        lin = 8
-        for ln in fluxos.get(r['nu_contrato'], []):
-            wf.cell(row=lin, column=1, value=int(ln['NU_MES']))
-            wf.cell(row=lin, column=2, value=ln['ANO_MES']).number_format = 'MMM/YYYY'
-            col = 3
-            for chave, _ in COLUNAS_FLUXO[:-1]:
-                wf.cell(row=lin, column=col, value=float(ln[chave])).number_format = _FMT_VALOR
-                col += 1
-            wf.cell(row=lin, column=col,
-                    value=float(ln['TAXA_AA']) if ln.get('TAXA_AA') is not None else None
-                    ).number_format = _FMT_TAXA
-            wf.cell(row=lin, column=col + 1, value=float(ln['VR_PRESENTE'])).number_format = _FMT_VALOR
-            if lin % 2 == 0:
-                for c in range(1, len(cab_fluxo) + 1):
-                    wf.cell(row=lin, column=c).fill = PatternFill('solid', fgColor=_CINZA)
+            _rotulo_valor(wp, lin, rot, val if val is not None else 'Vigente', fmt)
             lin += 1
-
-        # Linha de totais
-        tot = wf.cell(row=lin, column=1, value='TOTAL')
-        tot.font = Font(bold=True)
-        for c in list(range(3, 3 + len(COLUNAS_FLUXO) - 1)) + [len(cab_fluxo)]:
-            letra = get_column_letter(c)
-            cel = wf.cell(row=lin, column=c, value=f'=SUM({letra}8:{letra}{lin - 1})')
-            cel.number_format = _FMT_VALOR
-            cel.font = Font(bold=True)
-        wf.freeze_panes = 'C8'
-
-    saida = BytesIO()
-    wb.save(saida)
-    saida.seek(0)
-    return saida
+    else:
+        wp.cell(row=lin, column=1, value='Nenhuma vigência encontrada para essa data de cálculo.')
+        lin += 1
+    return lin + 1

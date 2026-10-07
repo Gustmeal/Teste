@@ -23,7 +23,7 @@
         <h1 class="fw-bold header-with-back mb-1">
             <i class="fas fa-chart-line me-2"></i>Resultados da Análise Financeira PF
         </h1>
-        <p class="text-muted mb-0">VPL por contrato e fluxo de caixa simulado mês a mês</p>
+        <p class="text-muted mb-0">VPL por contrato, simulação de equilíbrio e fluxo de caixa mês a mês</p>
     </div>
 
     {% if not datas %}
@@ -37,31 +37,70 @@
     {% else %}
 
     <!-- ============================================================ -->
-    <!-- FILTRO + EXPORTAÇÃO                                          -->
+    <!-- FILTROS + EXPORTAÇÃO                                         -->
     <!-- ============================================================ -->
     <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
-        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3" style="padding: 1rem 1.25rem;">
-            <form method="get" action="{{ url_for('analise_financeira_pf.resultados') }}"
-                  class="d-flex align-items-center gap-2 mb-0">
-                <label for="afpDtCalculo" class="fw-semibold mb-0 text-nowrap" style="color: #3a3b45;">
-                    <i class="far fa-calendar-alt me-1" style="color: #4e73df;"></i>Data do cálculo
-                </label>
-                <select name="dt_calculo" id="afpDtCalculo" class="form-select" style="width: auto; min-width: 230px;"
-                        onchange="this.form.submit()">
-                    {% for d in datas %}
-                    <option value="{{ d.dt_calculo.isoformat() }}"
-                            {% if dt_sel and d.dt_calculo == dt_sel %}selected{% endif %}>
-                        {{ d.dt_calculo.strftime('%d/%m/%Y') }} · {{ d.qtd }} contrato{{ 's' if d.qtd != 1 }}
-                    </option>
-                    {% endfor %}
-                </select>
+        <div class="card-body" style="padding: 1.1rem 1.25rem;">
+            <form method="get" action="{{ url_for('analise_financeira_pf.resultados') }}" class="mb-0">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label for="afpDtCalculo" class="form-label fw-semibold mb-1" style="font-size: 0.82rem; color: #3a3b45;">
+                            <i class="far fa-calendar-alt me-1" style="color: #4e73df;"></i>Data do cálculo
+                        </label>
+                        <select name="dt_calculo" id="afpDtCalculo" class="form-select">
+                            <option value="todos" {% if filtros.dt_txt == 'todos' %}selected{% endif %}>Todas as datas</option>
+                            {% for d in datas %}
+                            <option value="{{ d.dt_calculo.isoformat() }}"
+                                    {% if filtros.dt_calculo and d.dt_calculo == filtros.dt_calculo %}selected{% endif %}>
+                                {{ d.dt_calculo.strftime('%d/%m/%Y') }} · {{ d.qtd }} contrato{{ 's' if d.qtd != 1 }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="afpFiltroContrato" class="form-label fw-semibold mb-1" style="font-size: 0.82rem; color: #3a3b45;">
+                            <i class="fas fa-hashtag me-1" style="color: #4e73df;"></i>Contrato
+                        </label>
+                        <input type="text" name="contrato" id="afpFiltroContrato" class="form-control"
+                               value="{{ filtros.contrato }}" placeholder="Número ou parte dele" inputmode="numeric">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="afpFiltroNome" class="form-label fw-semibold mb-1" style="font-size: 0.82rem; color: #3a3b45;">
+                            <i class="fas fa-user me-1" style="color: #4e73df;"></i>Nome
+                        </label>
+                        <input type="text" name="nome" id="afpFiltroNome" class="form-control"
+                               value="{{ filtros.nome }}" placeholder="Nome ou parte dele">
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-filter me-1"></i> Filtrar
+                        </button>
+                        {% if filtros.ativos %}
+                        <a href="{{ url_for('analise_financeira_pf.resultados') }}" class="btn btn-outline-secondary" title="Limpar filtros">
+                            <i class="fas fa-times"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
             </form>
-            {% if resumo %}
-            <a href="{{ url_for('analise_financeira_pf.exportar_resultados', dt_calculo=dt_sel.isoformat()) }}"
-               class="btn btn-success js-ignore-loading">
-                <i class="fas fa-file-excel me-1"></i> Exportar tudo para Excel
-            </a>
-            {% endif %}
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 pt-3" style="border-top: 1px solid #e3e6f0;">
+                <div class="small text-muted">
+                    <i class="fas fa-list-ul me-1"></i>{{ resumo|length }} resultado{{ 's' if resumo|length != 1 }} encontrado{{ 's' if resumo|length != 1 }}
+                </div>
+                {% if resumo %}
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('analise_financeira_pf.exportar_resumo', **filtros.url) }}"
+                       class="btn btn-outline-success btn-sm js-ignore-loading">
+                        <i class="fas fa-clipboard-list me-1"></i> Exportar resumos
+                    </a>
+                    <a href="{{ url_for('analise_financeira_pf.exportar_resultados', **filtros.url) }}"
+                       class="btn btn-success btn-sm js-ignore-loading">
+                        <i class="fas fa-file-excel me-1"></i> Exportar resultados filtrados
+                    </a>
+                </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -71,12 +110,13 @@
     <div class="row g-3 mb-4">
         {% set kpis = [
             ('Contratos', resumo|length, 'fa-file-contract', '#4e73df, #224abe', '#3a3b45'),
-            ('VPL positivo', qtd_positivos, 'fa-arrow-up', '#1cc88a, #13855c', '#047857'),
-            ('VPL negativo', qtd_negativos, 'fa-arrow-down', '#e74a3b, #b02a1e', '#b91c1c'),
+            ('Positivos', qtd_positivos, 'fa-arrow-up', '#1cc88a, #13855c', '#047857'),
+            ('Negativos reversíveis', qtd_reversiveis, 'fa-balance-scale', '#f6c23e, #c98a02', '#b45309'),
+            ('Negativos irreversíveis', qtd_irreversiveis, 'fa-arrow-down', '#e74a3b, #b02a1e', '#b91c1c'),
             ('Soma dos VPLs (R$)', total_vpl_fmt, 'fa-coins', '#36b9cc, #258391', '#047857' if total_vpl_positivo else '#b91c1c'),
         ] %}
         {% for rot, val, icone, grad, cor in kpis %}
-        <div class="col-6 col-lg-3">
+        <div class="col-6 col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
                 <div class="card-body d-flex align-items-center gap-3" style="padding: 1rem 1.1rem;">
                     <div class="d-flex align-items-center justify-content-center flex-shrink-0"
@@ -84,8 +124,8 @@
                         <i class="fas {{ icone }}"></i>
                     </div>
                     <div style="min-width: 0;">
-                        <div class="text-muted" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.4px;">{{ rot }}</div>
-                        <div class="fw-bold text-truncate" style="font-size: 1.35rem; color: {{ cor }}; font-variant-numeric: tabular-nums;">{{ val }}</div>
+                        <div class="text-muted" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.4px;">{{ rot }}</div>
+                        <div class="fw-bold text-truncate" style="font-size: 1.3rem; color: {{ cor }}; font-variant-numeric: tabular-nums;">{{ val }}</div>
                     </div>
                 </div>
             </div>
@@ -98,52 +138,89 @@
     <!-- ============================================================ -->
     <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: hidden;">
         <div style="{{ cab_secao }}">
-            <h5 class="mb-0 fw-semibold" style="font-size: 1rem;">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
                 <i class="fas fa-table me-2"></i>VPL por contrato
             </h5>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0" style="font-size: 0.9rem;">
+        <div style="overflow: auto; max-height: 65vh; -webkit-overflow-scrolling: touch;">
+            <table class="table table-hover mb-0" style="font-size: 0.88rem; min-width: 1400px;">
                 <thead>
                     <tr>
-                        <th style="{{ th_tab }}">Contrato</th>
-                        <th style="{{ th_tab }}">Nome</th>
-                        <th style="{{ th_tab }} text-align: right;">Débitos Propter Rem (R$)</th>
-                        <th style="{{ th_tab }} text-align: right;">Laudo de Avaliação (R$)</th>
-                        <th style="{{ th_tab }} text-align: center;">Referência</th>
-                        <th style="{{ th_tab }} text-align: right;">VPL (R$)</th>
-                        <th style="{{ th_tab }} text-align: center;">Resultado</th>
-                        <th style="{{ th_tab }} text-align: center; width: 130px;">Ações</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center;">Data do cálculo</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2;">Contrato</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2;">Nome</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Débitos Propter Rem (R$)</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Laudo (R$)</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center;">Referência</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">VPL (R$)</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center;">Situação</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Propter Rem p/ VPL zero (R$)</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center; min-width: 290px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% if not resumo %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-4">
+                            <i class="fas fa-search me-1"></i> Nenhum resultado para os filtros informados.
+                        </td>
+                    </tr>
+                    {% endif %}
                     {% for r in resumo %}
-                    {% set ativo = contrato_sel and contrato_sel.nu_contrato == r.nu_contrato %}
-                    <tr style="{{ 'background: #eef2ff;' if ativo else '' }}">
-                        <td style="vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #224abe;">
+                    {% set ativo = contrato_sel and contrato_sel.nu_contrato == r.nu_contrato and contrato_sel.dt_calculo == r.dt_calculo %}
+                    {% set fundo = 'background: #eef2ff;' if ativo else '' %}
+                    <tr>
+                        <td style="{{ fundo }} vertical-align: middle; text-align: center; white-space: nowrap;">{{ r.dt_calculo_fmt }}</td>
+                        <td style="{{ fundo }} vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #224abe;">
                             {{ r.nu_contrato_fmt }}
                         </td>
-                        <td style="vertical-align: middle;">{{ r.no_mutuario }}</td>
-                        <td style="vertical-align: middle; {{ num }}">{{ r.vr_debitos_fmt }}</td>
-                        <td style="vertical-align: middle; {{ num }}">{{ r.vr_laudo_fmt }}</td>
-                        <td style="vertical-align: middle; text-align: center; white-space: nowrap;">{{ r.dt_referencia_fmt }}</td>
-                        <td style="vertical-align: middle; {{ num }} font-weight: 700; color: {{ '#047857' if r.positivo else '#b91c1c' }};">
-                            {{ r.vpl_fmt }}
-                        </td>
-                        <td style="vertical-align: middle; text-align: center;">
-                            {% if r.positivo %}
-                            <span class="badge" style="background: #d1fae5; color: #047857; font-weight: 600; padding: 0.4em 0.7em;">POSITIVO</span>
-                            {% else %}
-                            <span class="badge" style="background: #fee2e2; color: #b91c1c; font-weight: 600; padding: 0.4em 0.7em;">NEGATIVO</span>
+                        <td style="{{ fundo }} vertical-align: middle;">
+                            {{ r.no_mutuario }}
+                            {% if r.memo %}
+                            <div class="text-muted" style="font-size: 0.72rem; line-height: 1.25; margin-top: 2px;" title="{{ r.memo }}">
+                                <i class="far fa-file-alt me-1"></i>{{ r.memo }}
+                            </div>
                             {% endif %}
                         </td>
-                        <td style="vertical-align: middle; text-align: center; white-space: nowrap;">
-                            <a href="{{ url_for('analise_financeira_pf.resultados', dt_calculo=dt_sel.isoformat(), nu_contrato=r.nu_contrato) }}#fluxo"
-                               class="btn btn-sm {{ 'btn-primary' if ativo else 'btn-outline-primary' }}"
+                        <td style="{{ fundo }} vertical-align: middle; {{ num }}">{{ r.vr_debitos_fmt }}</td>
+                        <td style="{{ fundo }} vertical-align: middle; {{ num }}">{{ r.vr_laudo_fmt }}</td>
+                        <td style="{{ fundo }} vertical-align: middle; text-align: center; white-space: nowrap;">{{ r.dt_referencia_fmt }}</td>
+                        <td style="{{ fundo }} vertical-align: middle; {{ num }} font-weight: 700; color: {{ '#047857' if r.positivo else '#b91c1c' }};">
+                            {{ r.vpl_fmt }}
+                        </td>
+                        <td style="{{ fundo }} vertical-align: middle; text-align: center;">
+                            <span class="badge" title="{{ r.situacao_info.descricao }}"
+                                  style="background: {{ r.situacao_info.fundo }}; color: {{ r.situacao_info.cor }}; font-weight: 600; padding: 0.45em 0.7em; white-space: nowrap;">
+                                {{ r.situacao_info.rotulo }}
+                            </span>
+                        </td>
+                        <td style="{{ fundo }} vertical-align: middle; {{ num }}">
+                            {% if r.situacao == 2 %}
+                            <span style="font-weight: 700; color: #b45309;">{{ r.deb_simulado_fmt }}</span>
+                            {% elif r.situacao == 3 %}
+                            <span class="text-muted" style="font-size: 0.8rem;">não zera</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="{{ fundo }} vertical-align: middle; text-align: center; white-space: nowrap;">
+                            <a href="{{ url_for('analise_financeira_pf.resultados', nu_contrato=r.nu_contrato, dt_fluxo=r.dt_calculo_iso, **filtros.url) }}#fluxo"
+                               class="btn btn-sm {{ 'btn-primary' if ativo and painel == 'fluxo' else 'btn-outline-primary' }}"
                                title="Ver fluxo mês a mês">
                                 <i class="fas fa-stream me-1"></i>Fluxo
                             </a>
-                            <a href="{{ url_for('analise_financeira_pf.exportar_resultados', dt_calculo=dt_sel.isoformat(), nu_contrato=r.nu_contrato) }}"
+                            <a href="{{ url_for('analise_financeira_pf.resultados', nu_contrato=r.nu_contrato, dt_fluxo=r.dt_calculo_iso, painel='resumo', **filtros.url) }}#resumo"
+                               class="btn btn-sm {{ 'btn-info text-white' if ativo and painel == 'resumo' else 'btn-outline-info' }}"
+                               title="Ver resumo do contrato">
+                                <i class="fas fa-clipboard-list me-1"></i>Resumo
+                            </a>
+                            <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=r.nu_contrato, **filtros.url) }}"
+                               class="btn btn-sm js-ignore-loading"
+                               style="border: 1px solid #2b579a; color: #2b579a;"
+                               title="Gerar Nota Técnica em Word">
+                                <i class="fas fa-file-word"></i>
+                            </a>
+                            <a href="{{ url_for('analise_financeira_pf.exportar_resultados', nu_contrato=r.nu_contrato, dt_fluxo=r.dt_calculo_iso) }}"
                                class="btn btn-sm btn-outline-success js-ignore-loading"
                                title="Exportar este contrato para Excel">
                                 <i class="fas fa-file-excel"></i>
@@ -160,18 +237,28 @@
     <!-- FLUXO DE CAIXA DO CONTRATO SELECIONADO                       -->
     <!-- ============================================================ -->
     {% if contrato_sel and fluxo %}
+    {% set sit = contrato_sel.situacao_info %}
     <div class="card border-0 shadow-sm mb-4" id="fluxo" style="border-radius: 12px; overflow: hidden; scroll-margin-top: 80px;">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
             <div>
-                <h5 class="mb-0 fw-semibold" style="font-size: 1rem;">
-                    <i class="fas fa-stream me-2"></i>Fluxo de Caixa Simulado - {{ contrato_sel.no_mutuario }}
+                <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                    <i class="fas fa-stream me-2"></i>Fluxo de Caixa Simulado{{ ' - Meta' if visao == 'meta' else '' }} - {{ contrato_sel.no_mutuario }}
                 </h5>
-                <div style="font-size: 0.8rem; opacity: 0.85;">Contrato {{ contrato_sel.nu_contrato_fmt }}</div>
+                <div style="font-size: 0.8rem; opacity: 0.85;">Contrato {{ contrato_sel.nu_contrato_fmt }} · calculado em {{ contrato_sel.dt_calculo_fmt }}</div>
+                {% if contrato_sel.memo %}
+                <div style="font-size: 0.78rem; opacity: 0.85;"><i class="far fa-file-alt me-1"></i>{{ contrato_sel.memo }}</div>
+                {% endif %}
             </div>
-            <a href="{{ url_for('analise_financeira_pf.exportar_resultados', dt_calculo=dt_sel.isoformat(), nu_contrato=contrato_sel.nu_contrato) }}"
-               class="btn btn-light btn-sm js-ignore-loading">
-                <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar este contrato
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=contrato_sel.nu_contrato, **filtros.url) }}"
+                   class="btn btn-light btn-sm js-ignore-loading">
+                    <i class="fas fa-file-word me-1" style="color: #2b579a;"></i> Nota técnica
+                </a>
+                <a href="{{ url_for('analise_financeira_pf.exportar_resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso) }}"
+                   class="btn btn-light btn-sm js-ignore-loading">
+                    <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar este contrato
+                </a>
+            </div>
         </div>
 
         <!-- Resumo do contrato -->
@@ -190,6 +277,56 @@
             </div>
             {% endfor %}
         </div>
+
+        <!-- Simulação de equilíbrio (somente VPL negativo) -->
+        {% if not contrato_sel.positivo %}
+        <div style="padding: 1.1rem 1.25rem; background: {{ sit.fundo }}; border-bottom: 1px solid #e3e6f0;">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div style="max-width: 560px;">
+                    <div class="fw-bold mb-1" style="color: {{ sit.cor }}; font-size: 0.95rem;">
+                        <i class="fas {{ 'fa-balance-scale' if contrato_sel.situacao == 2 else 'fa-exclamation-triangle' }} me-1"></i>
+                        Simulação de Equilíbrio Financeiro · {{ sit.rotulo }}
+                    </div>
+                    <div style="font-size: 0.85rem; color: #3a3b45;">{{ sit.descricao }}</div>
+                </div>
+                {% if contrato_sel.tem_meta %}
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="{{ url_for('analise_financeira_pf.resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso, **filtros.url) }}#fluxo"
+                       class="btn {{ 'btn-dark' if visao == 'atual' else 'btn-outline-dark' }}">Fluxo atual</a>
+                    <a href="{{ url_for('analise_financeira_pf.resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso, visao='meta', **filtros.url) }}#fluxo"
+                       class="btn {{ 'btn-dark' if visao == 'meta' else 'btn-outline-dark' }}">Fluxo simulado (Meta)</a>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="row g-3 mt-1">
+                {% if contrato_sel.situacao == 2 %}
+                {% set itens_sim = [
+                    ('Débitos propter rem atuais', 'R$ ' ~ contrato_sel.vr_debitos_fmt, '#3a3b45'),
+                    ('Débitos propter rem que zeram o VPL', 'R$ ' ~ contrato_sel.deb_simulado_fmt, '#b45309'),
+                    ('Redução necessária', 'R$ ' ~ contrato_sel.reducao_fmt, '#b45309'),
+                    ('VPL simulado', 'R$ ' ~ contrato_sel.vpl_simulado_fmt, '#047857'),
+                ] %}
+                {% elif contrato_sel.situacao == 3 %}
+                {% set itens_sim = [
+                    ('Débitos propter rem atuais', 'R$ ' ~ contrato_sel.vr_debitos_fmt, '#3a3b45'),
+                    ('Débitos propter rem simulados', 'R$ 0,00', '#3a3b45'),
+                    ('VPL com débitos zerados', 'R$ ' ~ contrato_sel.vpl_sem_fmt, '#b91c1c'),
+                ] %}
+                {% else %}
+                {% set itens_sim = [] %}
+                {% endif %}
+                {% for rot, val, cor in itens_sim %}
+                <div class="col-6 col-lg-3">
+                    <div style="background: rgba(255,255,255,0.75); border-radius: 10px; padding: 0.7rem 0.9rem; height: 100%;">
+                        <div class="text-muted" style="font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.4px;">{{ rot }}</div>
+                        <div class="fw-bold" style="font-size: 1.05rem; color: {{ cor }}; font-variant-numeric: tabular-nums; white-space: nowrap;">{{ val }}</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Tabela mês a mês -->
         <div style="max-height: 70vh; overflow: auto;">
@@ -217,12 +354,13 @@
                         </td>
                         <td style="{{ fundo }} padding: 0.4rem 0.75rem; white-space: nowrap;">{{ l.ano_mes }}</td>
                         {% for c in l.celulas %}
-                        <td style="{{ fundo }} padding: 0.4rem 0.75rem; {{ num }} color: {{ '#b91c1c' if c.neg else '#3a3b45' }}; {{ 'font-weight: 600;' if loop.last else '' }}">
+                        <td style="{{ fundo }} padding: 0.4rem 0.75rem; {{ num }} color: {{ '#b91c1c' if c.neg else '#3a3b45' }}; {{ 'font-weight: 600;' if loop.last else '' }} {{ 'outline: 2px solid #4e73df; outline-offset: -2px; font-weight: 700;' if c.simulado else '' }}"
+                            {% if c.simulado %}title="Valor simulado"{% endif %}>
                             {{ c.txt }}
                         </td>
                         {% endfor %}
                         <td style="{{ fundo }} padding: 0.4rem 0.75rem; {{ num }} color: #858796;">{{ l.taxa }}</td>
-                        <td style="{{ fundo }} padding: 0.4rem 0.75rem; {{ num }} font-weight: 600; color: {{ '#b91c1c' if l.vp_neg else '#047857' }};">
+                        <td style="{{ fundo }} padding: 0.4rem 0.75rem; {{ num }} font-weight: 600; color: {{ '#b91c1c' if l.vp_neg else '#047857' }}; {{ 'outline: 2px solid #4e73df; outline-offset: -2px;' if l.vp_simulado else '' }}">
                             {{ l.vp }}
                         </td>
                     </tr>
@@ -242,9 +380,91 @@
             </table>
         </div>
     </div>
+    {% elif contrato_sel and painel == 'resumo' %}
+    <!-- ============================================================ -->
+    <!-- RESUMO DO CONTRATO (FIN_VW038)                               -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" id="resumo" style="border-radius: 12px; overflow: hidden; scroll-margin-top: 80px;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <div>
+                <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                    <i class="fas fa-clipboard-list me-2"></i>Resumo - {{ contrato_sel.no_mutuario }}
+                </h5>
+                <div style="font-size: 0.8rem; opacity: 0.85;">Contrato {{ contrato_sel.nu_contrato_fmt }} · calculado em {{ contrato_sel.dt_calculo_fmt }}</div>
+            </div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('analise_financeira_pf.resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso, **filtros.url) }}#fluxo"
+                   class="btn btn-light btn-sm">
+                    <i class="fas fa-stream me-1" style="color: #224abe;"></i> Ver fluxo
+                </a>
+                <a href="{{ url_for('analise_financeira_pf.exportar_resumo', nu_contrato=contrato_sel.nu_contrato, **filtros.url) }}"
+                   class="btn btn-light btn-sm js-ignore-loading">
+                    <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar resumo
+                </a>
+            </div>
+        </div>
+
+        {% if resumo_contrato and (resumo_contrato.cabecalho or resumo_contrato.secoes) %}
+        <div style="padding: 1.25rem;">
+
+            <!-- Cabeçalho do memorando -->
+            {% if resumo_contrato.cabecalho %}
+            <div style="background: #f8f9fc; border: 1px solid #e3e6f0; border-radius: 10px; padding: 0.4rem 1.1rem; margin-bottom: 1.25rem;">
+                {% for c in resumo_contrato.cabecalho %}
+                <div class="row g-2 align-items-start" style="padding: 0.55rem 0; {{ '' if loop.last else 'border-bottom: 1px dashed #dfe3ee;' }}">
+                    <div class="col-md-2" style="font-size: 0.72rem; font-weight: 700; color: #858796; text-transform: uppercase; letter-spacing: 0.4px; padding-top: 2px;">
+                        {{ c.rotulo }}
+                    </div>
+                    <div class="col-md-10" style="font-size: 0.9rem; color: #3a3b45;">
+                        {{ c.texto }}
+                        {% if c.pendente %}
+                        <span class="badge ms-1" style="background: #fef3c7; color: #92400e; font-weight: 600;">
+                            <i class="fas fa-pen me-1"></i>a preencher
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Seções -->
+            <div class="row g-3">
+                {% for secao in resumo_contrato.secoes %}
+                <div class="col-lg-{{ 6 if resumo_contrato.secoes|length > 1 else 12 }}">
+                    <div style="border: 1px solid #e3e6f0; border-radius: 10px; overflow: hidden; height: 100%;">
+                        <div style="background: #eef2ff; color: #224abe; font-weight: 700; font-size: 0.9rem; padding: 0.65rem 1rem; border-bottom: 1px solid #dbe2ff;">
+                            <i class="fas {{ 'fa-chart-line' if loop.first else 'fa-balance-scale' }} me-2"></i>{{ secao.titulo }}
+                        </div>
+                        {% for item in secao.itens %}
+                        <div class="d-flex justify-content-between align-items-center gap-3"
+                             style="padding: 0.85rem 1rem; {{ '' if loop.last else 'border-bottom: 1px solid #f0f2f8;' }} {{ 'background: #fffbeb;' if item.pendente else '' }}">
+                            <div style="font-size: 0.88rem; color: #5a5c69;">{{ item.rotulo }}</div>
+                            {% if item.valor %}
+                            <div style="font-size: 1.15rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+                                        color: {{ '#b91c1c' if item.negativo else ('#047857' if item.numero is not none else '#3a3b45') }};">
+                                {{ item.valor }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="text-muted small" style="padding: 0.85rem 1rem;">Sem itens nesta seção.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-inbox fa-2x mb-3 d-block" style="color: #b7c3e8;"></i>
+            O resumo deste contrato ainda não está disponível na FIN_VW038.
+        </div>
+        {% endif %}
+    </div>
     {% elif resumo %}
     <div class="text-center text-muted small mb-4">
-        <i class="fas fa-hand-pointer me-1"></i> Clique em <strong>Fluxo</strong> em um contrato para ver o fluxo mês a mês aqui embaixo.
+        <i class="fas fa-hand-pointer me-1"></i> Clique em <strong>Fluxo</strong> ou <strong>Resumo</strong> em um contrato para ver os detalhes aqui embaixo.
     </div>
     {% endif %}
 

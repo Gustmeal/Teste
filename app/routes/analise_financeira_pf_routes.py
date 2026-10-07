@@ -16,7 +16,7 @@ PRIMEIRA PARTE (esta versão):
   2. Contratos da análise   -> BDG.FIN_TB035_ANALISE_FINANCEIRA_PF_CONTRATOS
      - Planilha-modelo gerada pelo próprio sistema (download).
      - Importação do Excel preenchido (arrastar e soltar): Contrato, Nome,
-       Débitos Propter Rem, Laudo de Avaliação — várias linhas.
+       Débitos Propter Rem, Laudo de Avaliação e Memo (opcional) — várias linhas.
      - Grava por NU_CONTRATO: se já existe atualiza, se não existe insere.
      - Permite excluir um contrato da lista.
 
@@ -27,14 +27,23 @@ SEGUNDA PARTE:
        "Fluxo 1" da planilha (ver docstring do motor).
      - Taxa de desconto: CUSTO_MEDIO da view FIN_VW036 (% a.a.).
      - Parâmetros: versão da FIN_TB034 em vigor na data do cálculo.
-     - Recalcular o mesmo contrato no mesmo dia substitui o fluxo anterior.
+     - Recalcular um contrato apaga o cálculo anterior dele (qualquer data).
   4. Resultados: consulta por data de cálculo, fluxo mês a mês (na própria
      página, abaixo da tabela) e exportação de toda a operação para Excel.
+  5. VPL negativo -> Simulação de Equilíbrio (abas "Meta" da planilha),
+     gravada em BDG.FIN_TB037_ANALISE_FINANCEIRA_PF_SIMULACAO:
+       - Reversível: débitos propter rem simulados que zeram o VPL;
+       - Irreversível: mesmo com débitos propter rem = 0 o VPL é negativo.
+     Cada contrato tem um único cálculo: recalcular apaga o anterior.
+  6. Nota Técnica em Word montada a partir da view FIN_VW037
+     (app/utils/analise_financeira_pf_nota.py).
+  7. Resumo por contrato a partir da view FIN_VW038: painel na tela de
+     resultados (?painel=resumo) e exportação para Excel.
 
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
 """
-from flask import Blueprint, render_template, request, jsonify, send_file, url_for
+from flask import Blueprint, render_template, request, jsonify, send_file, url_for, flash, redirect
 from flask_login import login_required, current_user
 from app import db
 from app.auth.decorators import sistema_requerido
@@ -50,6 +59,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from app.utils import analise_financeira_pf_calculo as calc
+from app.utils import analise_financeira_pf_nota as nota
 
 
 analise_financeira_pf_bp = Blueprint(
@@ -69,6 +79,10 @@ TB_CONTRATOS = '[BDG].[FIN_TB035_ANALISE_FINANCEIRA_PF_CONTRATOS]'
 #   tipo: 'valor'      -> R$, 2 casas
 #         'percentual' -> exibido como está gravado na tabela, 2 casas
 #         'prazo'      -> inteiro
+#         'data'       -> date (dd/mm/aaaa na tela)
+#         'texto'      -> varchar (limite em 'tamanho')
+#         'numero'     -> inteiro (sem unidade)
+#   obrigatorio: False -> pode ficar vazio (coluna aceita NULL); padrão True
 #   editavel: False -> calculado no back end
 # -------------------------------------------------------------------------
 CAMPOS_PARAMETROS = [
@@ -92,6 +106,15 @@ CAMPOS_PARAMETROS = [
      'tipo': 'prazo', 'editavel': True},
     {'coluna': 'PZ_EXECUCAO_MESES', 'rotulo': 'Prazo para a execução (meses) - calculado: anos × 12',
      'tipo': 'prazo', 'editavel': False},
+    {'coluna': 'DT_CUSTO_DE_OPORTUNIDADE', 'rotulo': 'Data do custo de oportunidade',
+     'tipo': 'data', 'editavel': True},
+    # Dados de referência da Nota Técnica (opcionais: colunas aceitam NULL)
+    {'coluna': 'NORMATIVO_SUFIN', 'rotulo': 'Normativo Sufin (ex.: FI.NOR.003.30)',
+     'tipo': 'texto', 'editavel': True, 'obrigatorio': False, 'tamanho': 13},
+    {'coluna': 'NR_ATA_DIREX', 'rotulo': 'Número da Ata Direx',
+     'tipo': 'numero', 'editavel': True, 'obrigatorio': False},
+    {'coluna': 'DT_ATA_DIREX', 'rotulo': 'Data da Ata Direx',
+     'tipo': 'data', 'editavel': True, 'obrigatorio': False},
 ]
 
 COLUNAS_VALORES = [c['coluna'] for c in CAMPOS_PARAMETROS]
@@ -196,16 +219,8 @@ def _parse_contrato(valor):
 
 
 def _formatar_contrato(nu_contrato):
-    """101600101095 -> 1-0160-0101-095 (mesmo formato da planilha)."""
-    if nu_contrato is None:
-        return ''
-    txt = str(nu_contrato).strip()
-    if txt.endswith('.0'):
-        txt = txt[:-2]
-    if txt.isdigit() and len(txt) <= 12:
-        t = txt.zfill(12)
-        return f'{t[0]}-{t[1:5]}-{t[5:9]}-{t[9:12]}'
-    return txt
+    """Contrato exibido só com os dígitos, sem traços: 101600101095."""
+    return calc.formatar_contrato(nu_contrato)
 
 
 def _fmt_br(valor, casas=2):
@@ -217,19 +232,50 @@ def _fmt_br(valor, casas=2):
 
 
 def _formatar_parametro(valor, tipo):
+    """Texto de exibição (tela, histórico)."""
     if valor is None:
         return ''
+    if tipo == 'data':
+        return _para_date(valor).strftime('%d/%m/%Y')
+    if tipo == 'texto':
+        return str(valor).strip()
     if tipo == 'valor':
         return _fmt_br(valor, 2)
     # VR_ e PC_ são decimal(18,2) no banco: 2 casas para ambos
     return _fmt_br(valor, 2) if tipo == 'percentual' else str(int(valor))
 
 
+def _valor_input_parametro(valor, tipo):
+    """Valor do campo de edição: data em ISO (input type=date), demais formatados."""
+    if valor is None:
+        return ''
+    if tipo == 'data':
+        return _para_date(valor).isoformat()
+    return _formatar_parametro(valor, tipo)
+
+
+def _parse_data_parametro(valor):
+    """'2026-06-24' ou '24/06/2026' -> date(2026, 6, 24). Vazio -> None."""
+    txt = str(valor or '').strip()
+    if not txt:
+        return None
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%Y%m%d'):
+        try:
+            return datetime.strptime(txt, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(f'Data inválida: "{txt}".')
+
+
 def _arredondar(valor, tipo):
     """Normaliza o valor para comparação/gravação conforme o tipo."""
     if valor is None:
         return None
-    if tipo == 'prazo':
+    if tipo == 'data':
+        return _para_date(valor)
+    if tipo == 'texto':
+        return str(valor).strip() or None
+    if tipo in ('prazo', 'numero'):
         return int(valor)
     # VR_ e PC_ são decimal(18,2) no banco: arredonda em 2 casas
     return Decimal(str(valor)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
@@ -248,7 +294,8 @@ def _obter_parametros_vigentes():
                [PC_DESP_MANUT_INU_PRI_ANO], [PC_DESP_MANUT_INU_6_MESES],
                [PC_DESP_DESCONTO_VENDA], [VR_DESP_MEDIA_EXEC_JUD],
                [PZ_EXECUCAO_ANOS], [PZ_PERMANENCIA_ESTOQUE_MESES],
-               [PZ_EXECUCAO_MESES]
+               [PZ_EXECUCAO_MESES], [DT_CUSTO_DE_OPORTUNIDADE],
+               [NORMATIVO_SUFIN], [NR_ATA_DIREX], [DT_ATA_DIREX]
         FROM {TB_PARAMETROS}
         ORDER BY CASE WHEN [DT_FIM_VIGENCIA] IS NULL THEN 0 ELSE 1 END,
                  [DT_INI_VIGENCIA] DESC
@@ -265,7 +312,8 @@ def _listar_historico_parametros():
                [PC_DESP_MANUT_INU_PRI_ANO], [PC_DESP_MANUT_INU_6_MESES],
                [PC_DESP_DESCONTO_VENDA], [VR_DESP_MEDIA_EXEC_JUD],
                [PZ_EXECUCAO_ANOS], [PZ_PERMANENCIA_ESTOQUE_MESES],
-               [PZ_EXECUCAO_MESES]
+               [PZ_EXECUCAO_MESES], [DT_CUSTO_DE_OPORTUNIDADE],
+               [NORMATIVO_SUFIN], [NR_ATA_DIREX], [DT_ATA_DIREX]
         FROM {TB_PARAMETROS}
         ORDER BY [DT_INI_VIGENCIA] DESC
     """)
@@ -283,7 +331,7 @@ def _para_date(valor):
 def _listar_contratos():
     sql = text(f"""
         SELECT [NU_CONTRATO], [NO_MUTUARIO],
-               [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO]
+               [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO], [MEMO]
         FROM {TB_CONTRATOS}
         ORDER BY [NO_MUTUARIO], [NU_CONTRATO]
     """)
@@ -300,6 +348,7 @@ def _listar_contratos():
             'vr_debitos_fmt': _fmt_br(r['VR_DEBITOS_PROPTERREM'], 2),
             'vr_laudo': r['VR_LAUDO_AVALIACAO'],
             'vr_laudo_fmt': _fmt_br(r['VR_LAUDO_AVALIACAO'], 2),
+            'memo': calc.formatar_memo(r['MEMO']),
         })
     return contratos
 
@@ -326,6 +375,7 @@ def index():
             'editavel': campo['editavel'],
             # Tabela vazia: campos em branco para o primeiro cadastro
             'valor_fmt': _formatar_parametro(valor, campo['tipo']) if vigente else '',
+            'valor_input': _valor_input_parametro(valor, campo['tipo']) if vigente else '',
         })
 
     dt_ini_vigente = _para_date(vigente['DT_INI_VIGENCIA']) if vigente else None
@@ -423,8 +473,14 @@ def salvar_parametros():
             if not campo['editavel'] or col not in recebidos:
                 continue
             try:
-                if tipo == 'prazo':
+                if tipo in ('prazo', 'numero'):
                     valor = _parse_inteiro(recebidos.get(col))
+                elif tipo == 'data':
+                    valor = _parse_data_parametro(recebidos.get(col))
+                elif tipo == 'texto':
+                    valor = str(recebidos.get(col) or '').strip().upper() or None
+                    if valor and len(valor) > campo.get('tamanho', 4000):
+                        raise ValueError(f"máximo de {campo['tamanho']} caracteres.")
                 else:
                     valor = _parse_decimal_br(recebidos.get(col))
             except ValueError as e:
@@ -432,9 +488,15 @@ def salvar_parametros():
                 continue
 
             if valor is None:
-                erros.append(f"{campo['rotulo']}: informe um valor.")
+                if campo.get('obrigatorio', True):
+                    erros.append(f"{campo['rotulo']}: informe um valor.")
+                    continue
+                # Opcional deixado em branco: grava NULL
+                if atual is not None:
+                    alterados[col] = {'de': str(atual), 'para': None}
+                novos[col] = None
                 continue
-            if valor < 0:
+            if tipo not in ('data', 'texto') and valor < 0:
                 erros.append(f"{campo['rotulo']}: o valor não pode ser negativo.")
                 continue
 
@@ -459,7 +521,8 @@ def salvar_parametros():
         if vigente and not alterados:
             return jsonify({'success': False, 'message': 'Nenhum valor foi alterado.'}), 400
 
-        faltando = [c['rotulo'] for c in CAMPOS_PARAMETROS if novos.get(c['coluna']) is None]
+        faltando = [c['rotulo'] for c in CAMPOS_PARAMETROS
+                    if c.get('obrigatorio', True) and novos.get(c['coluna']) is None]
         if faltando:
             return jsonify({
                 'success': False,
@@ -552,7 +615,14 @@ COLUNAS_MODELO = [
     {'chave': 'no_mutuario', 'titulo': 'Nome', 'largura': 45, 'formato': '@'},
     {'chave': 'vr_debitos', 'titulo': 'Débitos Propter Rem', 'largura': 22, 'formato': '#,##0.00'},
     {'chave': 'vr_laudo', 'titulo': 'Laudo de Avaliação', 'largura': 22, 'formato': '#,##0.00'},
+    {'chave': 'memo', 'titulo': 'Memo SEI (número/ano)', 'largura': 26, 'formato': '@'},
 ]
+
+# Colunas que precisam existir no cabeçalho (Memo é opcional: planilhas no
+# modelo antigo, sem a coluna, continuam sendo aceitas)
+COLUNAS_OBRIGATORIAS = {'nu_contrato', 'no_mutuario', 'vr_debitos', 'vr_laudo'}
+# Memo: só "número/ano" (ex.: 239/2026). O aplicativo completa o restante.
+REGEX_MEMO = re.compile(r'(\d{1,6})\s*/\s*(\d{4})')
 
 EXTENSOES_PERMITIDAS = ('.xlsx', '.xlsm')
 LINHAS_BUSCA_CABECALHO = 30   # procura o cabeçalho nas primeiras 30 linhas
@@ -573,6 +643,9 @@ def _identificar_coluna(cabecalho):
     h = _normalizar_texto(cabecalho)
     if not h:
         return None
+    # "Memo" vem antes: o texto do memorando não deve ser confundido com as outras colunas
+    if h in ('memo', 'memorando', 'memo sei', 'memorando sei') or h.startswith('memo'):
+        return 'memo'
     if 'contrato' in h:
         return 'nu_contrato'
     if 'nome' in h or 'mutuario' in h:
@@ -587,7 +660,8 @@ def _identificar_coluna(cabecalho):
 def _localizar_cabecalho(linhas):
     """
     Percorre as primeiras linhas e devolve (indice_linha, {campo: indice_coluna})
-    da primeira linha que tenha as 4 colunas. Retorna (None, None) se não achar.
+    da primeira linha que tenha as 4 colunas obrigatórias (Memo é opcional).
+    Retorna (None, None) se não achar.
     """
     for idx, linha in enumerate(linhas):
         mapa = {}
@@ -595,7 +669,7 @@ def _localizar_cabecalho(linhas):
             campo = _identificar_coluna(celula)
             if campo and campo not in mapa:
                 mapa[campo] = col_idx
-        if len(mapa) == len(COLUNAS_MODELO):
+        if COLUNAS_OBRIGATORIAS.issubset(mapa):
             return idx, mapa
     return None, None
 
@@ -619,12 +693,35 @@ def _validar_linha_contrato(bruto):
         raise ValueError('Laudo de avaliação não informado.')
     if debitos < 0 or laudo < 0:
         raise ValueError('Valores não podem ser negativos.')
+
+    # Memo: opcional; vazio vira None (o UPDATE mantém o memo já gravado)
+    memo = _parse_memo(bruto.get('memo'))
+
     return {
         'nu': int(nu),   # NU_CONTRATO decimal(23,0) -> inteiro exato
         'nome': nome.upper(),
+        'memo': memo,
         'debitos': debitos.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
         'laudo': laudo.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
     }
+
+
+def _parse_memo(valor):
+    """
+    Extrai só o "número/ano" do memo: '239/2026' -> '239/2026'.
+    Se colarem o texto completo ('Memorando SEI nº 239/2026/Gecoc/...'),
+    também pega só o 239/2026. Vazio -> None. Fora do padrão -> erro.
+    """
+    txt = str(valor or '').strip()
+    if not txt:
+        return None
+    m = REGEX_MEMO.search(txt)
+    if not m:
+        raise ValueError(f'Memo "{txt}" fora do padrão. Informe só número/ano, ex.: 239/2026.')
+    numero, ano = int(m.group(1)), int(m.group(2))
+    if numero <= 0 or not 1990 <= ano <= 2100:
+        raise ValueError(f'Memo "{txt}" com número ou ano inválido.')
+    return f'{numero}/{ano}'
 
 
 def _ler_excel_contratos(conteudo):
@@ -699,13 +796,14 @@ def _gravar_contratos(validos):
         UPDATE {TB_CONTRATOS}
         SET [NO_MUTUARIO] = :nome,
             [VR_DEBITOS_PROPTERREM] = :debitos,
-            [VR_LAUDO_AVALIACAO] = :laudo
+            [VR_LAUDO_AVALIACAO] = :laudo,
+            [MEMO] = COALESCE(:memo, [MEMO])
         WHERE [NU_CONTRATO] = :nu
     """)
     sql_insert = text(f"""
         INSERT INTO {TB_CONTRATOS}
-            ([NU_CONTRATO], [NO_MUTUARIO], [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO])
-        VALUES (:nu, :nome, :debitos, :laudo)
+            ([NU_CONTRATO], [NO_MUTUARIO], [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO], [MEMO])
+        VALUES (:nu, :nome, :debitos, :laudo, :memo)
     """)
     inseridos = 0
     atualizados = 0
@@ -777,13 +875,16 @@ def baixar_modelo_contratos():
         'Planilha-modelo - Análise Financeira PF (contratos)',
         '',
         '1. Preencha a aba "Contratos" a partir da linha 2, um contrato por linha.',
-        '2. Contrato: somente números, sem traços (ex.: o contrato 1-0160-0101-095 é digitado 101600101095).',
+        '2. Contrato: somente números, sem traços (ex.: 101600101095).',
         '3. Nome: nome do mutuário (até 100 caracteres).',
         '4. Débitos Propter Rem: valor em reais. Deixe em branco ou 0 se não houver débitos.',
         '5. Laudo de Avaliação: valor do laudo em reais (obrigatório).',
-        '6. Não altere os títulos da linha 1 nem o nome da aba "Contratos".',
-        '7. Contrato já cadastrado no portal é atualizado com os valores da planilha.',
-        '8. Se o mesmo contrato aparecer mais de uma vez, vale a última linha.',
+        '6. Memo SEI (opcional): informe só o número e o ano do memorando, ex.: 239/2026.',
+        '   O portal completa o restante: Memorando SEI nº 239/2026/Gecoc/Sucre/Diope.',
+        '   Se ficar em branco, um contrato já cadastrado mantém o memo que já tinha.',
+        '7. Não altere os títulos da linha 1 nem o nome da aba "Contratos".',
+        '8. Contrato já cadastrado no portal é atualizado com os valores da planilha.',
+        '9. Se o mesmo contrato aparecer mais de uma vez, vale a última linha.',
     ]
     for i, txt in enumerate(instrucoes, start=1):
         cel = wi.cell(row=i, column=1, value=txt)
@@ -869,7 +970,8 @@ def importar_contratos():
                        f'{inseridos} novo(s), {atualizados} atualizado(s)'),
             dados_novos={'arquivo': nome_arquivo, 'contratos': [
                 {'nu_contrato': str(r['nu']), 'no_mutuario': r['nome'],
-                 'vr_debitos_propterrem': str(r['debitos']), 'vr_laudo_avaliacao': str(r['laudo'])}
+                 'vr_debitos_propterrem': str(r['debitos']), 'vr_laudo_avaliacao': str(r['laudo']),
+                 'memo': r['memo']}
                 for r in validos.values()
             ]},
         )
@@ -894,7 +996,7 @@ def excluir_contrato():
         nu = int(_parse_contrato(dados.get('nu_contrato')))   # decimal(23,0)
 
         antigo = db.session.execute(text(f"""
-            SELECT [NU_CONTRATO], [NO_MUTUARIO], [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO]
+            SELECT [NU_CONTRATO], [NO_MUTUARIO], [VR_DEBITOS_PROPTERREM], [VR_LAUDO_AVALIACAO], [MEMO]
             FROM {TB_CONTRATOS}
             WHERE [NU_CONTRATO] = :nu
         """), {'nu': nu}).mappings().first()
@@ -918,6 +1020,7 @@ def excluir_contrato():
                 'no_mutuario': antigo['NO_MUTUARIO'],
                 'vr_debitos_propterrem': str(antigo['VR_DEBITOS_PROPTERREM']),
                 'vr_laudo_avaliacao': str(antigo['VR_LAUDO_AVALIACAO']),
+                'memo': antigo['MEMO'],
             },
         )
 
@@ -1012,9 +1115,14 @@ def executar_calculo():
     Lógica:
       1. DT_CALCULO = hoje; parâmetros = versão da FIN_TB034 em vigor hoje.
       2. Taxas = FIN_VW036 (CUSTO_MEDIO por ANO_MES).
-      3. Para cada contrato: calcula o fluxo (mês 0 = data de referência até
-         PZ_EXECUCAO_MESES + PZ_PERMANENCIA_ESTOQUE_MESES), apaga o fluxo
-         existente de (DT_CALCULO, NU_CONTRATO) e grava o novo.
+      3. Para cada contrato:
+         a) calcula o fluxo (mês 0 = data de referência até
+            PZ_EXECUCAO_MESES + PZ_PERMANENCIA_ESTOQUE_MESES);
+         b) se o VPL for negativo, faz a simulação de equilíbrio (débitos
+            propter rem que zeram o VPL, ou constata que nem zerando os
+            débitos o VPL fica positivo);
+         c) apaga TODO cálculo anterior do contrato (FIN_TB036 e FIN_TB037,
+            qualquer data) e grava o novo — contrato repetido é refeito.
       4. Tudo em uma transação: se um contrato falhar, nada é gravado.
     """
     try:
@@ -1062,17 +1170,25 @@ def executar_calculo():
                 'message': 'Contrato(s) não cadastrado(s): ' + ', '.join(ausentes)
             }), 400
 
+        mes_consolidacao, _ = calc.prazos_do_fluxo(parametros)
+
         resultados = []
+        contagem = {s: 0 for s in calc.SITUACOES}
         for c in contratos:
             nu = int(_dec_para_int(c['NU_CONTRATO']))
             if c.get('VR_LAUDO_AVALIACAO') is None:
                 raise calc.ErroCalculo(f'Contrato {_formatar_contrato(nu)} sem laudo de avaliação.')
             linhas, vpl = calc.calcular_fluxo(c, parametros, data_ref, taxas)
-            calc.gravar_fluxo(dt_calculo, nu, linhas)
+            simulacao = calc.simular_equilibrio(linhas, c.get('VR_DEBITOS_PROPTERREM'), mes_consolidacao)
+            calc.gravar_fluxo(dt_calculo, nu, linhas, simulacao)
+            contagem[simulacao['IC_SITUACAO']] += 1
             resultados.append({
                 'nu_contrato': str(nu),
                 'no_mutuario': c['NO_MUTUARIO'],
                 'vpl': str(vpl),
+                'situacao': simulacao['IC_SITUACAO'],
+                'deb_propterrem_simulado': (None if simulacao['VR_DEB_PROPTERREM_SIMULADO'] is None
+                                            else str(simulacao['VR_DEB_PROPTERREM_SIMULADO'])),
             })
 
         db.session.commit()
@@ -1093,7 +1209,10 @@ def executar_calculo():
 
         return jsonify({
             'success': True,
-            'message': f'{len(resultados)} contrato(s) calculado(s).',
+            'message': (f'{len(resultados)} contrato(s) calculado(s): '
+                        f'{contagem[calc.SITUACAO_POSITIVO]} positivo(s), '
+                        f'{contagem[calc.SITUACAO_NEGATIVO_REVERSIVEL]} negativo(s) reversível(is), '
+                        f'{contagem[calc.SITUACAO_NEGATIVO_IRREVERSIVEL]} negativo(s) irreversível(is).'),
             'redirect': url_for('analise_financeira_pf.resultados', dt_calculo=dt_calculo.isoformat()),
         })
 
@@ -1113,68 +1232,167 @@ def _dec_para_int(valor):
 # =========================================================================
 # RESULTADOS — CONSULTA, FLUXO E EXPORTAÇÃO
 # =========================================================================
+def _ler_filtros_resultados():
+    """
+    Lê os filtros da tela de resultados (query string):
+      dt_calculo -> 'todos' (padrão) ou AAAA-MM-DD
+      contrato   -> parte do número do contrato (traços/pontos são ignorados)
+      nome       -> parte do nome do mutuário
+    Devolve os valores prontos para a consulta e o dicionário 'url' com os
+    filtros preenchidos, para manter os filtros nos links da página.
+    """
+    dt_txt = (request.args.get('dt_calculo') or 'todos').strip()
+    dt_calculo = None if dt_txt == 'todos' else _parse_data_calculo(dt_txt)
+    if dt_calculo is None:
+        dt_txt = 'todos'
+
+    contrato = re.sub(r'\D', '', request.args.get('contrato') or '')
+    nome = re.sub(r'\s+', ' ', (request.args.get('nome') or '')).strip()
+
+    url = {'dt_calculo': dt_txt}
+    if contrato:
+        url['contrato'] = contrato
+    if nome:
+        url['nome'] = nome
+
+    return {
+        'dt_calculo': dt_calculo,
+        'dt_txt': dt_txt,
+        'contrato': contrato,
+        'nome': nome,
+        'url': url,
+        'ativos': bool(dt_calculo or contrato or nome),
+    }
+
+
+def _descricao_filtros(filtros):
+    partes = []
+    if filtros['dt_calculo']:
+        partes.append('Data do cálculo ' + filtros['dt_calculo'].strftime('%d/%m/%Y'))
+    else:
+        partes.append('Todas as datas de cálculo')
+    if filtros['contrato']:
+        partes.append(f"Contrato contém {filtros['contrato']}")
+    if filtros['nome']:
+        partes.append(f"Nome contém {filtros['nome']}")
+    return ' · '.join(partes)
+
+
 @analise_financeira_pf_bp.route('/resultados')
 @login_required
 @sistema_requerido(SISTEMA)
 def resultados():
     """
-    Lista os cálculos gravados por data de cálculo, com o VPL de cada contrato.
-    Com ?nu_contrato= (ou quando a data tem um único contrato) monta também
-    o fluxo mês a mês, exibido abaixo da tabela.
+    Lista os cálculos gravados com VPL e situação de cada contrato.
+
+    Filtros: data do cálculo (ou todas), parte do número do contrato e parte
+    do nome. Com ?nu_contrato= e ?dt_fluxo= (ou quando o filtro retorna um
+    único contrato) monta o fluxo mês a mês abaixo da tabela; ?visao=meta
+    mostra o fluxo simulado (débitos propter rem que zeram o VPL).
     """
     db.session.expire_all()
 
+    filtros = _ler_filtros_resultados()
     datas = calc.listar_datas_calculo()
-    dt_sel = _parse_data_calculo(request.args.get('dt_calculo'))
-    if dt_sel is None and datas:
-        dt_sel = datas[0]['dt_calculo']
 
-    resumo = calc.listar_resumo_calculo(dt_sel) if dt_sel else []
+    resumo = calc.listar_resumo_calculo(
+        dt_calculo=filtros['dt_calculo'],
+        filtro_contrato=filtros['contrato'] or None,
+        filtro_nome=filtros['nome'] or None,
+    )
+
+    contagem = {s: 0 for s in calc.SITUACOES}
     for r in resumo:
+        sim = r['simulacao']
+        info = calc.SITUACOES.get(r['situacao'])
+        r['dt_calculo_fmt'] = r['dt_calculo'].strftime('%d/%m/%Y') if r['dt_calculo'] else ''
+        r['dt_calculo_iso'] = r['dt_calculo'].isoformat() if r['dt_calculo'] else ''
         r['vpl_fmt'] = _fmt_br(r['vpl'], 2)
         r['vr_laudo_fmt'] = _fmt_br(r['vr_laudo'], 2) if r['vr_laudo'] is not None else '-'
         r['vr_debitos_fmt'] = _fmt_br(r['vr_debitos'], 2)
         r['dt_referencia_fmt'] = calc.mes_ano_texto(r['dt_referencia'])
+        r['situacao_info'] = info or {
+            'rotulo': 'NEGATIVO', 'descricao': 'Recalcule o contrato para gerar a simulação.',
+            'cor': '#b91c1c', 'fundo': '#fee2e2',
+        }
+        r['deb_simulado_fmt'] = (_fmt_br(sim['VR_DEB_PROPTERREM_SIMULADO'], 2)
+                                 if sim['VR_DEB_PROPTERREM_SIMULADO'] is not None else '')
+        r['reducao_fmt'] = (_fmt_br(sim['VR_REDUCAO_PROPTERREM'], 2)
+                            if sim['VR_REDUCAO_PROPTERREM'] is not None else '')
+        r['vpl_simulado_fmt'] = (_fmt_br(sim['VR_VPL_SIMULADO'], 2)
+                                 if sim['VR_VPL_SIMULADO'] is not None else '')
+        r['vpl_sem_fmt'] = (_fmt_br(sim['VR_VPL_SEM_PROPTERREM'], 2)
+                            if sim['VR_VPL_SEM_PROPTERREM'] is not None else '')
+        r['tem_meta'] = sim['VR_DEB_PROPTERREM_SIMULADO'] is not None
+        r['memo'] = r.get('memo') or ''
+        if r['situacao'] in contagem:
+            contagem[r['situacao']] += 1
 
     total_vpl = sum((r['vpl'] for r in resumo), Decimal('0'))
-    qtd_positivos = sum(1 for r in resumo if r['positivo'])
 
-    # Contrato selecionado para o detalhamento do fluxo
+    # Contrato selecionado para o detalhamento do fluxo (contrato + data do cálculo)
+    contrato_sel = None
     nu_sel = None
     try:
         if request.args.get('nu_contrato'):
             nu_sel = _parse_contrato(request.args.get('nu_contrato'))
     except ValueError:
         nu_sel = None
-    if nu_sel is None and len(resumo) == 1:
-        nu_sel = resumo[0]['nu_contrato']
+    dt_fluxo = _parse_data_calculo(request.args.get('dt_fluxo'))
 
-    contrato_sel = next((r for r in resumo if r['nu_contrato'] == nu_sel), None)
-    fluxo = _montar_fluxo_tela(dt_sel, contrato_sel) if contrato_sel else None
+    if nu_sel is not None:
+        contrato_sel = next((r for r in resumo if r['nu_contrato'] == nu_sel
+                             and (dt_fluxo is None or r['dt_calculo'] == dt_fluxo)), None)
+    elif len(resumo) == 1:
+        contrato_sel = resumo[0]
+
+    # Painel abaixo da tabela: 'fluxo' (padrão) ou 'resumo' (view FIN_VW038)
+    painel = 'resumo' if request.args.get('painel') == 'resumo' else 'fluxo'
+
+    visao = 'meta' if (request.args.get('visao') == 'meta' and contrato_sel
+                       and contrato_sel['tem_meta']) else 'atual'
+    fluxo = None
+    resumo_contrato = None
+    if contrato_sel and painel == 'fluxo':
+        fluxo = _montar_fluxo_tela(contrato_sel['dt_calculo'], contrato_sel, visao)
+    elif contrato_sel and painel == 'resumo':
+        linhas_view = nota.carregar_resumo([int(contrato_sel['nu_contrato'])])
+        resumo_contrato = nota.montar_resumo(linhas_view.get(contrato_sel['nu_contrato'], []),
+                                             contrato_sel['no_mutuario'])
 
     return render_template(
         'analise_financeira_pf/resultados.html',
         datas=datas,
-        dt_sel=dt_sel,
+        filtros=filtros,
         resumo=resumo,
         total_vpl_fmt=_fmt_br(total_vpl, 2),
         total_vpl_positivo=total_vpl >= 0,
-        qtd_positivos=qtd_positivos,
-        qtd_negativos=len(resumo) - qtd_positivos,
+        qtd_positivos=contagem[calc.SITUACAO_POSITIVO],
+        qtd_reversiveis=contagem[calc.SITUACAO_NEGATIVO_REVERSIVEL],
+        qtd_irreversiveis=contagem[calc.SITUACAO_NEGATIVO_IRREVERSIVEL],
         contrato_sel=contrato_sel,
         fluxo=fluxo,
+        visao=visao,
+        painel=painel,
+        resumo_contrato=resumo_contrato,
     )
 
 
-def _montar_fluxo_tela(dt_calculo, contrato):
+def _montar_fluxo_tela(dt_calculo, contrato, visao='atual'):
     """
-    Lê o fluxo gravado e devolve as linhas já formatadas para a tela:
-    cada célula com texto e indicador de negativo, rótulo do evento do mês
-    (Consolidação / Manutenção / Venda) e a linha de totais.
+    Lê o fluxo gravado (ou monta a Meta, se visao='meta') e devolve as linhas
+    já formatadas para a tela: cada célula com texto e indicador de negativo,
+    rótulo do evento do mês (Consolidação / Manutenção / Venda) e totais.
     """
     linhas = calc.obter_fluxo_gravado(dt_calculo, int(contrato['nu_contrato']))
     if not linhas:
         return None
+    if visao == 'meta':
+        meta = calc.montar_fluxo_meta(linhas, contrato['simulacao'])
+        if meta:
+            linhas = meta
+    mes_alterado = (int(contrato['simulacao']['NU_MES_CONSOLIDACAO'])
+                    if visao == 'meta' and contrato['simulacao']['NU_MES_CONSOLIDACAO'] is not None else None)
 
     chaves = ['VR_DESP_MANUT', 'VR_CUSTO_MANUT', 'VR_DESP_CONSOL_PROP',
               'VR_DEB_PROPTERREM', 'VR_VENDA', 'VR_TOTAL']
@@ -1187,7 +1405,7 @@ def _montar_fluxo_tela(dt_calculo, contrato):
             totais[k] += valores[k]
 
         eventos = []
-        if valores['VR_DESP_CONSOL_PROP'] != 0 or valores['VR_DEB_PROPTERREM'] != 0:
+        if valores['VR_DESP_CONSOL_PROP'] != 0 or int(ln['NU_MES']) == mes_alterado:
             eventos.append('Consolidação')
         if valores['VR_DESP_MANUT'] != 0:
             eventos.append('Manutenção')
@@ -1197,10 +1415,14 @@ def _montar_fluxo_tela(dt_calculo, contrato):
         saida.append({
             'nu_mes': int(ln['NU_MES']),
             'ano_mes': calc.mes_ano_texto(ln['ANO_MES']),
-            'celulas': [{'txt': _fmt_br(valores[k], 2), 'neg': valores[k] < 0} for k in chaves],
+            'celulas': [{'txt': _fmt_br(valores[k], 2), 'neg': valores[k] < 0,
+                         'simulado': (int(ln['NU_MES']) == mes_alterado
+                                      and k in ('VR_DEB_PROPTERREM', 'VR_TOTAL'))}
+                        for k in chaves],
             'taxa': _fmt_br(ln['TAXA_AA'], 4) if ln.get('TAXA_AA') is not None else '-',
             'vp': _fmt_br(valores['VR_PRESENTE'], 2),
             'vp_neg': valores['VR_PRESENTE'] < 0,
+            'vp_simulado': int(ln['NU_MES']) == mes_alterado,
             'evento': ' + '.join(eventos),
         })
 
@@ -1217,41 +1439,58 @@ def _montar_fluxo_tela(dt_calculo, contrato):
 @sistema_requerido(SISTEMA)
 def exportar_resultados():
     """
-    Exporta para Excel a operação da data de cálculo:
-    Resumo (VPL por contrato), Parâmetros usados e uma aba de fluxo por contrato.
-    Com ?nu_contrato= exporta só aquele contrato.
+    Exporta para Excel exatamente o que está filtrado na tela de resultados
+    (data do cálculo ou todas, parte do contrato, parte do nome):
+    Resumo (VPL e situação por contrato), Parâmetros usados em cada data de
+    cálculo e uma aba de fluxo (e de Meta, se negativo) por contrato.
+    Com ?nu_contrato= e ?dt_fluxo= exporta só aquele contrato/cálculo.
     """
-    dt_calc = _parse_data_calculo(request.args.get('dt_calculo'))
-    if not dt_calc:
-        return jsonify({'success': False, 'message': 'Data de cálculo inválida.'}), 400
+    filtros = _ler_filtros_resultados()
 
-    nu_filtro = None
+    nu_unico = None
     if request.args.get('nu_contrato'):
         try:
-            nu_filtro = int(_parse_contrato(request.args.get('nu_contrato')))
+            nu_unico = int(_parse_contrato(request.args.get('nu_contrato')))
         except ValueError as e:
             return jsonify({'success': False, 'message': str(e)}), 400
+    dt_fluxo = _parse_data_calculo(request.args.get('dt_fluxo'))
 
-    resumo = calc.listar_resumo_calculo(dt_calc, nu_filtro)
+    if nu_unico is not None:
+        resumo = calc.listar_resumo_calculo(dt_calculo=dt_fluxo or filtros['dt_calculo'],
+                                            nu_contrato=nu_unico)
+        descricao = f'Contrato {nu_unico}'
+    else:
+        resumo = calc.listar_resumo_calculo(
+            dt_calculo=filtros['dt_calculo'],
+            filtro_contrato=filtros['contrato'] or None,
+            filtro_nome=filtros['nome'] or None,
+        )
+        descricao = _descricao_filtros(filtros)
+
     if not resumo:
         return jsonify({'success': False, 'message': 'Nenhum resultado para exportar.'}), 404
 
     taxas = calc.obter_taxas_custo_medio()
-    fluxos = {r['nu_contrato']: calc.obter_fluxo_gravado(dt_calc, int(r['nu_contrato']), taxas)
+    fluxos = {(r['dt_calculo'], r['nu_contrato']):
+              calc.obter_fluxo_gravado(r['dt_calculo'], int(r['nu_contrato']), taxas)
               for r in resumo}
-    parametros = calc.obter_parametros_na_data(dt_calc)
+    parametros_por_data = {d: calc.obter_parametros_na_data(d)
+                           for d in {r['dt_calculo'] for r in resumo}}
 
-    arquivo = calc.gerar_excel_calculo(dt_calc, resumo, parametros, fluxos)
+    arquivo = calc.gerar_excel_calculo(resumo, parametros_por_data, fluxos, descricao)
 
-    sufixo = f'_{resumo[0]["nu_contrato"]}' if nu_filtro is not None else ''
-    nome = f'Analise_Financeira_PF_{dt_calc.strftime("%Y%m%d")}{sufixo}.xlsx'
+    if nu_unico is not None:
+        nome = f'Analise_Financeira_PF_{resumo[0]["nu_contrato"]}.xlsx'
+    elif filtros['dt_calculo']:
+        nome = f'Analise_Financeira_PF_{filtros["dt_calculo"].strftime("%Y%m%d")}.xlsx'
+    else:
+        nome = f'Analise_Financeira_PF_{date.today().strftime("%Y%m%d")}.xlsx'
 
     registrar_log(
         acao='exportar',
         entidade='analise_financeira_pf_fluxos',
         entidade_id=0,
-        descricao=f'Exportação Excel Análise Financeira PF - cálculo de {dt_calc.strftime("%d/%m/%Y")} '
-                  f'({len(resumo)} contrato(s))',
+        descricao=f'Exportação Excel Análise Financeira PF - {descricao} ({len(resumo)} contrato(s))',
     )
 
     return send_file(
@@ -1259,4 +1498,124 @@ def exportar_resultados():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
         download_name=nome,
+    )
+
+
+# =========================================================================
+# NOTA TÉCNICA (WORD) — montada a partir da view FIN_VW037
+# =========================================================================
+@analise_financeira_pf_bp.route('/resultados/nota-tecnica')
+@login_required
+@sistema_requerido(SISTEMA)
+def nota_tecnica():
+    """
+    Gera a Nota Técnica (Memorando) do contrato em Word.
+
+    Lógica:
+      1. Lê os fragmentos do contrato na view FIN_VW037 (ordem do ID).
+      2. Troca cada '...' pela INFORMACAO formatada (R$, %, mês/ano, número);
+         '...' sem valor fica destacado em amarelo para completar no Word.
+      3. Junta os fragmentos em parágrafos e monta o .docx no layout dos
+         modelos (Calibri 13,5, marcadores, itens numerados justificados).
+      4. Acrescenta a assinatura do usuário logado (nome e cargo).
+    Como o texto vem todo da view, a nota se ajusta sozinha ao resultado
+    (positivo, negativo reversível ou irreversível).
+    """
+    filtros = _ler_filtros_resultados()
+    try:
+        nu = int(_parse_contrato(request.args.get('nu_contrato')))
+    except ValueError as e:
+        flash(str(e), 'danger')
+        return redirect(url_for('analise_financeira_pf.resultados', **filtros['url']))
+
+    registros = nota.carregar_textos(nu)
+    if not registros:
+        flash(f'A nota técnica do contrato {nu} ainda não está disponível na FIN_VW037.', 'warning')
+        return redirect(url_for('analise_financeira_pf.resultados', **filtros['url']))
+
+    paragrafos = nota.montar_paragrafos(registros)
+    arquivo = nota.gerar_docx(
+        paragrafos,
+        assinante_nome=getattr(current_user, 'nome', None),
+        assinante_cargo=getattr(current_user, 'cargo', None),
+    )
+
+    registrar_log(
+        acao='exportar',
+        entidade='analise_financeira_pf_nota',
+        entidade_id=0,
+        descricao=f'Nota técnica Análise Financeira PF gerada - contrato {nu}',
+    )
+
+    return send_file(
+        arquivo,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        as_attachment=True,
+        download_name=f'Nota_Tecnica_AF_{nu}.docx',
+    )
+
+
+# =========================================================================
+# RESUMO (FIN_VW038) — EXCEL
+# =========================================================================
+@analise_financeira_pf_bp.route('/resultados/resumo/exportar')
+@login_required
+@sistema_requerido(SISTEMA)
+def exportar_resumo():
+    """
+    Exporta o resumo da view FIN_VW038 para Excel.
+      - Com ?nu_contrato=: só aquele contrato.
+      - Sem: todos os contratos do filtro atual da tela de resultados
+        (aba 'Resumo' com todos + uma aba por contrato).
+    """
+    filtros = _ler_filtros_resultados()
+
+    if request.args.get('nu_contrato'):
+        try:
+            nu = int(_parse_contrato(request.args.get('nu_contrato')))
+        except ValueError as e:
+            flash(str(e), 'danger')
+            return redirect(url_for('analise_financeira_pf.resultados', **filtros['url']))
+        resumo = calc.listar_resumo_calculo(nu_contrato=nu)
+    else:
+        resumo = calc.listar_resumo_calculo(
+            dt_calculo=filtros['dt_calculo'],
+            filtro_contrato=filtros['contrato'] or None,
+            filtro_nome=filtros['nome'] or None,
+        )
+
+    # Um contrato aparece uma vez só (vale o cálculo mais recente)
+    contratos = []
+    vistos = set()
+    for r in resumo:
+        if r['nu_contrato'] not in vistos:
+            vistos.add(r['nu_contrato'])
+            contratos.append(r)
+
+    if not contratos:
+        flash('Nenhum contrato para exportar o resumo.', 'warning')
+        return redirect(url_for('analise_financeira_pf.resultados', **filtros['url']))
+
+    linhas_view = nota.carregar_resumo([int(r['nu_contrato']) for r in contratos])
+    blocos = [{
+        'nu_contrato': r['nu_contrato'],
+        'no_mutuario': r['no_mutuario'],
+        'resumo': nota.montar_resumo(linhas_view.get(r['nu_contrato'], []), r['no_mutuario']),
+    } for r in contratos]
+
+    arquivo = nota.gerar_excel_resumo(blocos)
+    sufixo = contratos[0]['nu_contrato'] if len(contratos) == 1 else date.today().strftime('%Y%m%d')
+
+    registrar_log(
+        acao='exportar',
+        entidade='analise_financeira_pf_resumo',
+        entidade_id=0,
+        descricao=f'Exportação do resumo Análise Financeira PF ({len(contratos)} contrato(s))',
+    )
+
+    return send_file(
+        arquivo,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f'Resumo_Analise_Financeira_PF_{sufixo}.xlsx',
     )

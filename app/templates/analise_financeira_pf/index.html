@@ -104,18 +104,22 @@
                         {{ p.rotulo }}
                     </label>
                     <div class="input-group input-group-sm">
-                        <input type="text"
+                        <input type="{{ 'date' if p.tipo == 'data' else 'text' }}"
                                class="form-control afp-param-input"
                                data-coluna="{{ p.coluna }}"
                                data-tipo="{{ p.tipo }}"
                                data-editavel="{{ '1' if p.editavel else '0' }}"
-                               data-original="{{ p.valor_fmt }}"
-                               value="{{ p.valor_fmt }}"
+                               data-original="{{ p.valor_input }}"
+                               value="{{ p.valor_input }}"
+                               {% if p.tipo == 'texto' %}maxlength="13"{% endif %}
                                style="text-align: right; font-weight: 600; font-variant-numeric: tabular-nums;"
                                {% if tem_parametros or not p.editavel %}readonly{% endif %}>
                         <span class="input-group-text" style="min-width: 62px; justify-content: center; font-size: 0.75rem; color: #858796;">
                             {% if p.tipo == 'valor' %}R$
                             {% elif p.tipo == 'percentual' %}taxa
+                            {% elif p.tipo == 'data' %}<i class="far fa-calendar-alt"></i>
+                            {% elif p.tipo == 'texto' %}<i class="fas fa-font"></i>
+                            {% elif p.tipo == 'numero' %}nº
                             {% elif p.coluna == 'PZ_EXECUCAO_ANOS' %}anos
                             {% else %}meses{% endif %}
                         </span>
@@ -174,7 +178,7 @@
                 </div>
                 <div class="card-body" style="padding: 1.25rem;">
                     <ol style="font-size: 0.85rem; color: #5a5c69; padding-left: 1.1rem; margin-bottom: 1rem;">
-                        <li class="mb-1">Baixe a planilha-modelo e preencha um contrato por linha.</li>
+                        <li class="mb-1">Baixe a planilha-modelo e preencha um contrato por linha (no Memo SEI, só número/ano, ex.: 239/2026).</li>
                         <li class="mb-1">Arraste o arquivo para o quadro abaixo (ou clique para escolher).</li>
                         <li>Clique em Importar. Contratos já cadastrados são atualizados.</li>
                     </ol>
@@ -247,7 +251,14 @@
                                 <td style="vertical-align: middle; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; color: #224abe;">
                                     {{ c.nu_contrato_fmt }}
                                 </td>
-                                <td style="vertical-align: middle;">{{ c.no_mutuario }}</td>
+                                <td style="vertical-align: middle;">
+                                    {{ c.no_mutuario }}
+                                    {% if c.memo %}
+                                    <div class="text-muted" style="font-size: 0.72rem; line-height: 1.25; margin-top: 2px;" title="{{ c.memo }}">
+                                        <i class="far fa-file-alt me-1"></i>{{ c.memo }}
+                                    </div>
+                                    {% endif %}
+                                </td>
                                 <td style="vertical-align: middle; {{ num }}">{{ c.vr_debitos_fmt }}</td>
                                 <td style="vertical-align: middle; {{ num }}">{{ c.vr_laudo_fmt }}</td>
                                 <td style="vertical-align: middle; text-align: center;">
