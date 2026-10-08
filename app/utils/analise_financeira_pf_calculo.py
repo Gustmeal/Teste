@@ -143,6 +143,18 @@ MEMO_PREFIXO = 'Memorando SEI nº '
 MEMO_SUFIXO = '/Gecoc/Sucre/Diope'
 
 
+# Memorando de saída (Gefin): também só "número/ano" na tabela (MEMO_GEFIN)
+MEMO_GEFIN_SUFIXO = '/Gefin/Sufin/Difin'
+
+
+def formatar_memo_gefin(memo):
+    """'762/2026' -> 'Memorando SEI nº 762/2026/Gefin/Sufin/Difin' ('' se vazio)."""
+    txt = str(memo or '').strip()
+    if not txt:
+        return ''
+    return f'{MEMO_PREFIXO}{txt}{MEMO_GEFIN_SUFIXO}'
+
+
 def formatar_memo(memo):
     """'239/2026' -> 'Memorando SEI nº 239/2026/Gecoc/Sucre/Diope' ('' se vazio)."""
     txt = str(memo or '').strip()
@@ -573,6 +585,8 @@ def listar_resumo_calculo(dt_calculo=None, nu_contrato=None, filtro_contrato=Non
                f.[NU_CONTRATO],
                MAX(c.[NO_MUTUARIO])                 AS NO_MUTUARIO,
                MAX(c.[MEMO])                        AS MEMO,
+               MAX(c.[MEMO_GEFIN])                  AS MEMO_GEFIN,
+               MAX(c.[GERENTE])                     AS GERENTE,
                MAX(c.[VR_LAUDO_AVALIACAO])          AS VR_LAUDO_AVALIACAO,
                -SUM(f.[VR_DEB_PROPTERREM])          AS VR_DEBITOS_PROPTERREM,
                MIN(f.[ANO_MES])                     AS DT_REFERENCIA,
@@ -613,6 +627,9 @@ def listar_resumo_calculo(dt_calculo=None, nu_contrato=None, filtro_contrato=Non
             'nu_contrato_fmt': formatar_contrato(nu),
             'no_mutuario': r['NO_MUTUARIO'] or '(contrato não está mais cadastrado)',
             'memo': formatar_memo(r['MEMO']),
+            # Dados da nota técnica (preenchidos no modal; NULL até lá)
+            'memo_gefin': (r['MEMO_GEFIN'] or '').strip(),
+            'gerente': (r['GERENTE'] or '').strip(),
             'vr_laudo': r['VR_LAUDO_AVALIACAO'],
             'vr_debitos': r['VR_DEBITOS_PROPTERREM'],
             'dt_referencia': _para_date(r['DT_REFERENCIA']),

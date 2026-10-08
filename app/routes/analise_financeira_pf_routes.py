@@ -39,6 +39,9 @@ SEGUNDA PARTE:
      (app/utils/analise_financeira_pf_nota.py).
   7. Resumo por contrato a partir da view FIN_VW038: painel na tela de
      resultados (?painel=resumo) e exportação para Excel.
+  8. Dados da nota (FIN_TB035: MEMO_GEFIN e GERENTE): ficam NULL na
+     importação e são pedidos num modal na 1ª vez que se gera a nota
+     técnica ou o resumo do contrato.
 
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
@@ -60,6 +63,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from app.utils import analise_financeira_pf_calculo as calc
 from app.utils import analise_financeira_pf_nota as nota
+from app.utils import analise_financeira_pf_pdf as pdf
 
 
 analise_financeira_pf_bp = Blueprint(
@@ -1325,6 +1329,7 @@ def resultados():
                             if sim['VR_VPL_SEM_PROPTERREM'] is not None else '')
         r['tem_meta'] = sim['VR_DEB_PROPTERREM_SIMULADO'] is not None
         r['memo'] = r.get('memo') or ''
+        r['memo_gefin_fmt'] = calc.formatar_memo_gefin(r.get('memo_gefin'))
         if r['situacao'] in contagem:
             contagem[r['situacao']] += 1
 
@@ -1357,8 +1362,10 @@ def resultados():
         fluxo = _montar_fluxo_tela(contrato_sel['dt_calculo'], contrato_sel, visao)
     elif contrato_sel and painel == 'resumo':
         linhas_view = nota.carregar_resumo([int(contrato_sel['nu_contrato'])])
-        resumo_contrato = nota.montar_resumo(linhas_view.get(contrato_sel['nu_contrato'], []),
-                                             contrato_sel['no_mutuario'])
+        resumo_contrato = nota.montar_resumo(
+            nota.aplicar_dados_contrato(linhas_view.get(contrato_sel['nu_contrato'], []),
+                                        contrato_sel.get('memo_gefin'), contrato_sel.get('gerente')),
+            contrato_sel['no_mutuario'])
 
     return render_template(
         'analise_financeira_pf/resultados.html',
@@ -1375,6 +1382,7 @@ def resultados():
         visao=visao,
         painel=painel,
         resumo_contrato=resumo_contrato,
+        gerente_sugerido=_gerente_mais_usado(),
     )
 
 
@@ -1442,6 +1450,7 @@ def exportar_resultados():
     Exporta para Excel exatamente o que está filtrado na tela de resultados
     (data do cálculo ou todas, parte do contrato, parte do nome):
     somente a aba de fluxo de cada contrato e, quando houver, a aba da Meta.
+    Com ?formato=pdf gera o mesmo conteúdo em PDF (uma página por fluxo/Meta).
     Com ?nu_contrato= e ?dt_fluxo= exporta só aquele contrato/cálculo.
     """
     filtros = _ler_filtros_resultados()
@@ -1473,7 +1482,11 @@ def exportar_resultados():
     fluxos = {(r['dt_calculo'], r['nu_contrato']):
               calc.obter_fluxo_gravado(r['dt_calculo'], int(r['nu_contrato']), taxas)
               for r in resumo}
-    arquivo = calc.gerar_excel_calculo(resumo, fluxos)
+    em_pdf = (request.args.get('formato') or '').lower() == 'pdf'
+    if em_pdf:
+        arquivo = pdf.gerar_pdf_fluxo(resumo, fluxos)
+    else:
+        arquivo = calc.gerar_excel_calculo(resumo, fluxos)
 
     if nu_unico is not None:
         nome = f'Analise_Financeira_PF_{resumo[0]["nu_contrato"]}.xlsx'
@@ -1482,16 +1495,21 @@ def exportar_resultados():
     else:
         nome = f'Analise_Financeira_PF_{date.today().strftime("%Y%m%d")}.xlsx'
 
+    if em_pdf:
+        nome = nome[:-5] + '.pdf'
+
     registrar_log(
         acao='exportar',
         entidade='analise_financeira_pf_fluxos',
         entidade_id=0,
-        descricao=f'Exportação Excel Análise Financeira PF - {descricao} ({len(resumo)} contrato(s))',
+        descricao=(f'Exportação {"PDF" if em_pdf else "Excel"} Análise Financeira PF - '
+                   f'{descricao} ({len(resumo)} contrato(s))'),
     )
 
     return send_file(
         arquivo,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimetype=('application/pdf' if em_pdf else
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
         as_attachment=True,
         download_name=nome,
     )
@@ -1514,6 +1532,9 @@ def nota_tecnica():
       3. Junta os fragmentos em parágrafos e monta o .docx no layout dos
          modelos (Calibri 13,5, marcadores, itens numerados justificados).
       4. Acrescenta a assinatura do usuário logado (nome e cargo).
+      5. Completa o nº do memorando (Gefin) e o nome da gerente com os dados
+         preenchidos no modal (FIN_TB035: MEMO_GEFIN e GERENTE).
+    Com ?formato=pdf gera a mesma nota em PDF (mesmo conteúdo e organização).
     Como o texto vem todo da view, a nota se ajusta sozinha ao resultado
     (positivo, negativo reversível ou irreversível).
     """
@@ -1529,25 +1550,33 @@ def nota_tecnica():
         flash(f'A nota técnica do contrato {nu} ainda não está disponível na FIN_VW037.', 'warning')
         return redirect(url_for('analise_financeira_pf.resultados', **filtros['url']))
 
+    dados = _dados_nota_contrato(nu)
+    registros = nota.aplicar_dados_contrato(registros, dados['memo_gefin'], dados['gerente'])
+
     paragrafos = nota.montar_paragrafos(registros)
-    arquivo = nota.gerar_docx(
-        paragrafos,
-        assinante_nome=getattr(current_user, 'nome', None),
-        assinante_cargo=getattr(current_user, 'cargo', None),
-    )
+    assinante_nome = getattr(current_user, 'nome', None)
+    assinante_cargo = getattr(current_user, 'cargo', None)
+
+    em_pdf = (request.args.get('formato') or '').lower() == 'pdf'
+    if em_pdf:
+        arquivo = pdf.gerar_pdf_nota(paragrafos, assinante_nome, assinante_cargo)
+    else:
+        arquivo = nota.gerar_docx(paragrafos, assinante_nome=assinante_nome,
+                                  assinante_cargo=assinante_cargo)
 
     registrar_log(
         acao='exportar',
         entidade='analise_financeira_pf_nota',
         entidade_id=0,
-        descricao=f'Nota técnica Análise Financeira PF gerada - contrato {nu}',
+        descricao=f'Nota técnica Análise Financeira PF gerada ({"PDF" if em_pdf else "Word"}) - contrato {nu}',
     )
 
     return send_file(
         arquivo,
-        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        mimetype=('application/pdf' if em_pdf else
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
         as_attachment=True,
-        download_name=f'Nota_Tecnica_AF_{nu}.docx',
+        download_name=f'Nota_Tecnica_AF_{nu}.{"pdf" if em_pdf else "docx"}',
     )
 
 
@@ -1563,6 +1592,7 @@ def exportar_resumo():
       - Com ?nu_contrato=: só aquele contrato.
       - Sem: todos os contratos do filtro atual da tela de resultados
         (aba 'Resumo' com todos + uma aba por contrato).
+    Com ?formato=pdf gera o mesmo resumo em PDF.
     """
     filtros = _ler_filtros_resultados()
 
@@ -1596,22 +1626,132 @@ def exportar_resumo():
     blocos = [{
         'nu_contrato': r['nu_contrato'],
         'no_mutuario': r['no_mutuario'],
-        'resumo': nota.montar_resumo(linhas_view.get(r['nu_contrato'], []), r['no_mutuario']),
+        'resumo': nota.montar_resumo(
+            nota.aplicar_dados_contrato(linhas_view.get(r['nu_contrato'], []),
+                                        r.get('memo_gefin'), r.get('gerente')),
+            r['no_mutuario']),
     } for r in contratos]
 
-    arquivo = nota.gerar_excel_resumo(blocos)
+    em_pdf = (request.args.get('formato') or '').lower() == 'pdf'
+    arquivo = pdf.gerar_pdf_resumo(blocos) if em_pdf else nota.gerar_excel_resumo(blocos)
     sufixo = contratos[0]['nu_contrato'] if len(contratos) == 1 else date.today().strftime('%Y%m%d')
 
     registrar_log(
         acao='exportar',
         entidade='analise_financeira_pf_resumo',
         entidade_id=0,
-        descricao=f'Exportação do resumo Análise Financeira PF ({len(contratos)} contrato(s))',
+        descricao=(f'Exportação do resumo ({"PDF" if em_pdf else "Excel"}) Análise Financeira PF '
+                   f'({len(contratos)} contrato(s))'),
     )
 
     return send_file(
         arquivo,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        mimetype=('application/pdf' if em_pdf else
+                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
         as_attachment=True,
-        download_name=f'Resumo_Analise_Financeira_PF_{sufixo}.xlsx',
+        download_name=f'Resumo_Analise_Financeira_PF_{sufixo}.{"pdf" if em_pdf else "xlsx"}',
     )
+
+
+# =========================================================================
+# DADOS DA NOTA TÉCNICA (MEMO_GEFIN e GERENTE) — preenchidos no modal
+# =========================================================================
+TAMANHO_GERENTE = 100   # [GERENTE] varchar(100)
+
+
+def _dados_nota_contrato(nu_contrato):
+    """MEMO_GEFIN e GERENTE gravados na FIN_TB035 ('' quando NULL)."""
+    row = db.session.execute(text(f"""
+        SELECT [MEMO_GEFIN], [GERENTE]
+        FROM {TB_CONTRATOS}
+        WHERE [NU_CONTRATO] = :nu
+    """), {'nu': nu_contrato}).first()
+    if not row:
+        return {'memo_gefin': '', 'gerente': ''}
+    return {'memo_gefin': (row[0] or '').strip(), 'gerente': (row[1] or '').strip()}
+
+
+def _gerente_mais_usado():
+    """Gerente mais informado nos contratos (sugestão no modal). '' se nenhum."""
+    row = db.session.execute(text(f"""
+        SELECT TOP 1 [GERENTE]
+        FROM {TB_CONTRATOS}
+        WHERE [GERENTE] IS NOT NULL AND LTRIM(RTRIM([GERENTE])) <> ''
+        GROUP BY [GERENTE]
+        ORDER BY COUNT(*) DESC
+    """)).first()
+    return (row[0] or '').strip() if row else ''
+
+
+@analise_financeira_pf_bp.route('/contratos/dados-nota', methods=['POST'])
+@login_required
+@sistema_requerido(SISTEMA)
+def salvar_dados_nota():
+    """
+    Recebe JSON: {"nu_contrato": "...", "memo_gefin": "762/2026", "gerente": "NOME"}
+
+    Lógica:
+      - Os dois campos são obrigatórios: é o que falta para a nota/resumo
+        sair completo.
+      - MEMO_GEFIN: só número/ano (o portal completa
+        'Memorando SEI nº 762/2026/Gefin/Sufin/Difin'); aceita o texto
+        completo colado e extrai o número/ano.
+      - GERENTE: até 100 caracteres, gravado em maiúsculas.
+      - UPDATE apenas dessas duas colunas na FIN_TB035 (a importação do
+        Excel nunca mexe nelas).
+    """
+    try:
+        dados = request.get_json(silent=True) or {}
+        nu = int(_parse_contrato(dados.get('nu_contrato')))
+
+        erros = []
+        try:
+            memo = _parse_memo(dados.get('memo_gefin'))
+        except ValueError as e:
+            memo = None
+            erros.append(str(e))
+        if not memo and not erros:
+            erros.append('Informe o número/ano do Memorando SEI (ex.: 762/2026).')
+
+        gerente = re.sub(r'\s+', ' ', str(dados.get('gerente') or '')).strip().upper()
+        if not gerente:
+            erros.append('Informe o nome do(a) gerente.')
+        elif len(gerente) > TAMANHO_GERENTE:
+            erros.append(f'Nome do(a) gerente com mais de {TAMANHO_GERENTE} caracteres.')
+
+        if erros:
+            return jsonify({'success': False, 'message': ' '.join(erros)}), 400
+
+        antigos = _dados_nota_contrato(nu)
+        res = db.session.execute(text(f"""
+            UPDATE {TB_CONTRATOS}
+            SET [MEMO_GEFIN] = :memo,
+                [GERENTE] = :gerente
+            WHERE [NU_CONTRATO] = :nu
+        """), {'memo': memo, 'gerente': gerente, 'nu': nu})
+        if not res.rowcount:
+            db.session.rollback()
+            return jsonify({'success': False, 'message': 'Contrato não encontrado.'}), 404
+        db.session.commit()
+
+        registrar_log(
+            acao='editar',
+            entidade='analise_financeira_pf_contratos',
+            entidade_id=0,
+            descricao=f'Dados da nota técnica preenchidos - contrato {nu}',
+            dados_antigos=antigos,
+            dados_novos={'memo_gefin': memo, 'gerente': gerente},
+        )
+
+        return jsonify({
+            'success': True,
+            'memo_gefin': memo,
+            'gerente': gerente,
+            'memo_gefin_fmt': calc.formatar_memo_gefin(memo),
+        })
+
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Erro ao salvar dados da nota: {str(e)}'}), 500

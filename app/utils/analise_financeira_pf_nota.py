@@ -339,8 +339,6 @@ def gerar_docx(paragrafos, assinante_nome=None, assinante_cargo=None):
             continue
         if tipo == 'marcador' and proximo['tipo'] == 'marcador':
             continue
-        if tipo == 'numerado' and texto.rstrip().endswith(':') and proximo['tipo'] == 'texto':
-            continue
         if tipo == 'nome':
             continue
         _linha_em_branco(doc)
@@ -358,6 +356,48 @@ def gerar_docx(paragrafos, assinante_nome=None, assinante_cargo=None):
     doc.save(saida)
     saida.seek(0)
     return saida
+
+
+# =========================================================================
+# DADOS DO CONTRATO (MEMO_GEFIN e GERENTE da FIN_TB035)
+# =========================================================================
+_LINHA_MEMO_GEFIN = re.compile(r'Memorando\s+SEI.*Gefin', re.IGNORECASE)
+
+
+def aplicar_dados_contrato(registros, memo_gefin=None, gerente=None):
+    """
+    Completa os textos da view (nota FIN_VW037 ou resumo FIN_VW038) com os
+    dados preenchidos no modal e gravados na FIN_TB035:
+
+      - MEMO_GEFIN ('762/2026'): entra no '...' da linha
+        'Memorando SEI nº .../Gefin/Sufin/Difin' quando a view ainda não
+        trouxer INFORMACAO -> 'Memorando SEI nº 762/2026/Gefin/Sufin/Difin'.
+      - GERENTE: substitui o nome da linha imediatamente anterior a 'Gerente'
+        (assinatura da gerente), em maiúsculas.
+
+    Se a view já trouxer o valor (INFORMACAO preenchida), ela prevalece.
+    Devolve uma nova lista; os registros originais não são alterados.
+    """
+    novos = [dict(r) for r in registros]
+    memo = str(memo_gefin or '').strip()
+    nome = str(gerente or '').strip()
+
+    if memo:
+        for r in novos:
+            texto = r.get('TEXTO') or ''
+            sem_info = not _valores_informacao(r.get('INFORMACAO'))
+            if sem_info and _LINHA_MEMO_GEFIN.search(texto) and _PLACEHOLDER.search(texto):
+                r['INFORMACAO'] = memo
+                break
+
+    if nome:
+        for i, r in enumerate(novos):
+            if i > 0 and (r.get('TEXTO') or '').strip().lower() == 'gerente':
+                novos[i - 1]['TEXTO'] = nome.upper()
+                novos[i - 1]['INFORMACAO'] = None
+                break
+
+    return novos
 
 
 # =========================================================================

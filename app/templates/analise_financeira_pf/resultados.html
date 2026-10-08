@@ -88,18 +88,6 @@
                 <div class="small text-muted">
                     <i class="fas fa-list-ul me-1"></i>{{ resumo|length }} resultado{{ 's' if resumo|length != 1 }} encontrado{{ 's' if resumo|length != 1 }}
                 </div>
-                {% if resumo %}
-                <div class="d-flex gap-2 flex-wrap">
-                    <a href="{{ url_for('analise_financeira_pf.exportar_resumo', **filtros.url) }}"
-                       class="btn btn-outline-success btn-sm js-ignore-loading">
-                        <i class="fas fa-clipboard-list me-1"></i> Exportar resumos
-                    </a>
-                    <a href="{{ url_for('analise_financeira_pf.exportar_resultados', **filtros.url) }}"
-                       class="btn btn-success btn-sm js-ignore-loading">
-                        <i class="fas fa-file-excel me-1"></i> Exportar resultados filtrados
-                    </a>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -155,7 +143,7 @@
                         <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">VPL (R$)</th>
                         <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center;">Situação</th>
                         <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: right;">Propter Rem p/ VPL zero (R$)</th>
-                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center; min-width: 290px;">Ações</th>
+                        <th style="{{ th_tab }} position: sticky; top: 0; z-index: 2; text-align: center; min-width: 330px;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -215,10 +203,18 @@
                                 <i class="fas fa-clipboard-list me-1"></i>Resumo
                             </a>
                             <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=r.nu_contrato, **filtros.url) }}"
-                               class="btn btn-sm js-ignore-loading"
+                               class="btn btn-sm js-ignore-loading afp-precisa-dados"
+                               data-nu="{{ r.nu_contrato }}" data-nome="{{ r.no_mutuario }}" data-memo-gefin="{{ r.memo_gefin }}" data-gerente="{{ r.gerente }}"
                                style="border: 1px solid #2b579a; color: #2b579a;"
                                title="Gerar Nota Técnica em Word">
                                 <i class="fas fa-file-word"></i>
+                            </a>
+                            <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=r.nu_contrato, formato='pdf', **filtros.url) }}"
+                               class="btn btn-sm js-ignore-loading afp-precisa-dados"
+                               data-nu="{{ r.nu_contrato }}" data-nome="{{ r.no_mutuario }}" data-memo-gefin="{{ r.memo_gefin }}" data-gerente="{{ r.gerente }}"
+                               style="border: 1px solid #b91c1c; color: #b91c1c;"
+                               title="Gerar Nota Técnica em PDF">
+                                <i class="fas fa-file-pdf"></i>
                             </a>
                         </td>
                     </tr>
@@ -246,8 +242,18 @@
             </div>
             <div class="d-flex gap-2">
                 <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=contrato_sel.nu_contrato, **filtros.url) }}"
-                   class="btn btn-light btn-sm js-ignore-loading">
+                   class="btn btn-light btn-sm js-ignore-loading afp-precisa-dados"
+                   data-nu="{{ contrato_sel.nu_contrato }}" data-nome="{{ contrato_sel.no_mutuario }}" data-memo-gefin="{{ contrato_sel.memo_gefin }}" data-gerente="{{ contrato_sel.gerente }}">
                     <i class="fas fa-file-word me-1" style="color: #2b579a;"></i> Nota técnica
+                </a>
+                <a href="{{ url_for('analise_financeira_pf.nota_tecnica', nu_contrato=contrato_sel.nu_contrato, formato='pdf', **filtros.url) }}"
+                   class="btn btn-light btn-sm js-ignore-loading afp-precisa-dados"
+                   data-nu="{{ contrato_sel.nu_contrato }}" data-nome="{{ contrato_sel.no_mutuario }}" data-memo-gefin="{{ contrato_sel.memo_gefin }}" data-gerente="{{ contrato_sel.gerente }}">
+                    <i class="fas fa-file-pdf me-1" style="color: #b91c1c;"></i> Nota em PDF
+                </a>
+                <a href="{{ url_for('analise_financeira_pf.exportar_resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso, formato='pdf') }}"
+                   class="btn btn-light btn-sm js-ignore-loading">
+                    <i class="fas fa-file-pdf me-1" style="color: #b91c1c;"></i> Fluxo em PDF
                 </a>
                 <a href="{{ url_for('analise_financeira_pf.exportar_resultados', nu_contrato=contrato_sel.nu_contrato, dt_fluxo=contrato_sel.dt_calculo_iso) }}"
                    class="btn btn-light btn-sm js-ignore-loading">
@@ -392,8 +398,14 @@
                    class="btn btn-light btn-sm">
                     <i class="fas fa-stream me-1" style="color: #224abe;"></i> Ver fluxo
                 </a>
+                <a href="{{ url_for('analise_financeira_pf.exportar_resumo', nu_contrato=contrato_sel.nu_contrato, formato='pdf', **filtros.url) }}"
+                   class="btn btn-light btn-sm js-ignore-loading afp-precisa-dados"
+                   data-nu="{{ contrato_sel.nu_contrato }}" data-nome="{{ contrato_sel.no_mutuario }}" data-memo-gefin="{{ contrato_sel.memo_gefin }}" data-gerente="{{ contrato_sel.gerente }}">
+                    <i class="fas fa-file-pdf me-1" style="color: #b91c1c;"></i> Resumo em PDF
+                </a>
                 <a href="{{ url_for('analise_financeira_pf.exportar_resumo', nu_contrato=contrato_sel.nu_contrato, **filtros.url) }}"
-                   class="btn btn-light btn-sm js-ignore-loading">
+                   class="btn btn-light btn-sm js-ignore-loading afp-precisa-dados"
+                   data-nu="{{ contrato_sel.nu_contrato }}" data-nome="{{ contrato_sel.no_mutuario }}" data-memo-gefin="{{ contrato_sel.memo_gefin }}" data-gerente="{{ contrato_sel.gerente }}">
                     <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar resumo
                 </a>
             </div>
@@ -465,4 +477,139 @@
 
     {% endif %}
 </div>
+<!-- ================================================================ -->
+<!-- MODAL: DADOS DA NOTA TÉCNICA (aparece só enquanto faltar algo)    -->
+<!-- ================================================================ -->
+<div class="modal fade" id="afpModalDadosNota" tabindex="-1" aria-labelledby="afpModalDadosNotaTitulo" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border: none; border-radius: 12px; overflow: hidden;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border: none;">
+                <div>
+                    <h5 class="modal-title fw-semibold" id="afpModalDadosNotaTitulo" style="color: #fff !important; font-size: 1rem;">
+                        <i class="fas fa-file-signature me-2"></i>Dados da nota técnica
+                    </h5>
+                    <div id="afpModalDadosNotaSub" style="font-size: 0.8rem; opacity: 0.9;"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <p class="small text-muted mb-3">
+                    Preencha uma vez por contrato. Depois de salvo, a nota e o resumo saem completos sem pedir de novo.
+                </p>
+
+                <label for="afpMemoGefin" class="form-label fw-semibold mb-1" style="font-size: 0.85rem; color: #3a3b45;">
+                    Memorando SEI (número/ano)
+                </label>
+                <input type="text" class="form-control" id="afpMemoGefin" placeholder="ex.: 762/2026" autocomplete="off">
+                <div class="form-text" id="afpMemoGefinPreview">&nbsp;</div>
+
+                <label for="afpGerente" class="form-label fw-semibold mb-1 mt-3" style="font-size: 0.85rem; color: #3a3b45;">
+                    Gerente que assina
+                </label>
+                <input type="text" class="form-control" id="afpGerente" maxlength="100" autocomplete="off"
+                       style="text-transform: uppercase;">
+
+                <div id="afpModalDadosErro" class="alert alert-danger small mt-3 mb-0" style="display:none;"></div>
+            </div>
+            <div class="modal-footer" style="border-top: 1px solid #e3e6f0;">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary btn-sm js-ignore-loading" id="btnSalvarDadosNota">
+                    <i class="fas fa-download me-1"></i> Salvar e baixar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const URL_SALVAR_DADOS = "{{ url_for('analise_financeira_pf.salvar_dados_nota') }}";
+    const GERENTE_SUGERIDO = {{ (gerente_sugerido or '') | tojson }};
+
+    const modalEl = document.getElementById('afpModalDadosNota');
+    const inpMemo = document.getElementById('afpMemoGefin');
+    const inpGerente = document.getElementById('afpGerente');
+    const preview = document.getElementById('afpMemoGefinPreview');
+    const erro = document.getElementById('afpModalDadosErro');
+    const btnSalvar = document.getElementById('btnSalvarDadosNota');
+    let pendente = null;   // {nu, url}
+
+    function atualizarPreview() {
+        const v = inpMemo.value.trim();
+        preview.textContent = v ? 'Vai sair: Memorando SEI nº ' + v + '/Gefin/Sufin/Difin' : '\u00a0';
+    }
+    inpMemo.addEventListener('input', atualizarPreview);
+
+    // Botões de nota técnica e resumo: se o contrato já tem os dados, baixa direto
+    document.querySelectorAll('.afp-precisa-dados').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            if (this.dataset.memoGefin && this.dataset.gerente) return;   // completo: segue o link
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            pendente = {nu: this.dataset.nu, url: this.href};
+            document.getElementById('afpModalDadosNotaSub').textContent =
+                this.dataset.nome + ' · contrato ' + this.dataset.nu;
+            inpMemo.value = this.dataset.memoGefin || '';
+            inpGerente.value = this.dataset.gerente || GERENTE_SUGERIDO || '';
+            erro.style.display = 'none';
+            atualizarPreview();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+            setTimeout(() => inpMemo.focus(), 300);
+        });
+    });
+
+    btnSalvar.addEventListener('click', function (e) {
+        e.stopImmediatePropagation();
+        if (!pendente) return;
+
+        const htmlOriginal = btnSalvar.innerHTML;
+        btnSalvar.disabled = true;
+        btnSalvar.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Salvando...';
+        erro.style.display = 'none';
+
+        fetch(URL_SALVAR_DADOS, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+            body: JSON.stringify({
+                nu_contrato: pendente.nu,
+                memo_gefin: inpMemo.value.trim(),
+                gerente: inpGerente.value.trim()
+            })
+        })
+            .then(r => r.json())
+            .then(data => {
+                btnSalvar.disabled = false;
+                btnSalvar.innerHTML = htmlOriginal;
+                if (!data.success) {
+                    erro.textContent = data.message;
+                    erro.style.display = 'block';
+                    return;
+                }
+                // Marca todos os botões do contrato como completos: o modal não abre mais
+                document.querySelectorAll('.afp-precisa-dados[data-nu="' + pendente.nu + '"]').forEach(b => {
+                    b.dataset.memoGefin = data.memo_gefin;
+                    b.dataset.gerente = data.gerente;
+                });
+                bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                window.location.href = pendente.url;
+            })
+            .catch(err => {
+                btnSalvar.disabled = false;
+                btnSalvar.innerHTML = htmlOriginal;
+                erro.textContent = 'Erro de comunicação: ' + err;
+                erro.style.display = 'block';
+            });
+    });
+
+    [inpMemo, inpGerente].forEach(inp => {
+        inp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                btnSalvar.click();
+            }
+        });
+    });
+})();
+</script>
 {% endblock %}
