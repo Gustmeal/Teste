@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Responsável Cobrança - SUMOV{% endblock %}
+
+{% block content %}
+<style>
+    .rc-wrap { max-width: 1180px; margin: 0 auto; }
+
+    .rc-hero {
+        position: relative;
+        overflow: hidden;
+        border-radius: 20px;
+        padding: 34px 36px;
+        background: linear-gradient(135deg, #4b44d6 0%, #6c63ff 55%, #8f88ff 100%);
+        color: #ffffff;
+        box-shadow: 0 18px 40px -18px rgba(76, 68, 214, 0.65);
+    }
+    .rc-hero::after {
+        content: "";
+        position: absolute;
+        right: -60px; top: -80px;
+        width: 280px; height: 280px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .rc-hero::before {
+        content: "";
+        position: absolute;
+        right: 120px; bottom: -110px;
+        width: 220px; height: 220px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.06);
+    }
+    .rc-hero-titulo { font-size: 1.85rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+    .rc-hero-sub { opacity: 0.85; margin: 6px 0 0; font-size: 0.98rem; }
+    .rc-hero-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 0.85rem; font-weight: 600;
+    }
+    .rc-btn-avancado {
+        position: relative; z-index: 1;
+        display: inline-flex; align-items: center; gap: 10px;
+        background: #ffffff; color: #4b44d6;
+        font-weight: 700; border-radius: 12px;
+        padding: 11px 18px; text-decoration: none;
+        box-shadow: 0 8px 20px -10px rgba(0, 0, 0, 0.45);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .rc-btn-avancado:hover {
+        color: #3a33c4; transform: translateY(-2px);
+        box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .rc-card {
+        position: relative;
+        background: #ffffff;
+        border-radius: 20px;
+        padding: 30px 30px 24px;
+        box-shadow: 0 10px 30px -14px rgba(30, 30, 60, 0.25);
+        border: 1px solid #eef0f6;
+        height: 100%;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .rc-card:hover { transform: translateY(-4px); box-shadow: 0 18px 38px -16px rgba(30, 30, 60, 0.32); }
+    .rc-card-faixa { position: absolute; left: 0; top: 0; right: 0; height: 6px; border-radius: 20px 20px 0 0; }
+    .rc-icone {
+        width: 58px; height: 58px; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.5rem;
+    }
+    .rc-sigla { font-size: 1.35rem; font-weight: 800; letter-spacing: 0.04em; margin: 0; color: #1f2333; }
+    .rc-desc { color: #6b7086; font-size: 0.9rem; margin: 2px 0 0; }
+    .rc-numero { font-size: 3.6rem; font-weight: 800; line-height: 1; letter-spacing: -0.04em; color: #1f2333; }
+    .rc-unidade { font-size: 1.15rem; font-weight: 600; color: #6b7086; margin-left: 6px; }
+    .rc-meses {
+        display: inline-flex; align-items: center; gap: 8px;
+        border-radius: 999px; padding: 7px 14px;
+        font-weight: 700; font-size: 1rem;
+    }
+    .rc-rodape {
+        border-top: 1px dashed #e3e6f0;
+        margin-top: 22px; padding-top: 14px;
+        color: #4a4f63; font-size: 1.05rem;
+    }
+    .rc-qtd { font-size: 1.35rem; font-weight: 800; color: #1f2333; margin-right: 4px; }
+
+    .rc-nota { color: #8a8fa3; font-size: 0.82rem; }
+
+    .rc-vazio {
+        background: #ffffff; border-radius: 20px; padding: 60px 30px; text-align: center;
+        border: 1px dashed #d6d9e6; color: #6b7086;
+    }
+
+    @media (max-width: 767px) {
+        .rc-hero { padding: 26px 22px; }
+        .rc-numero { font-size: 3.2rem; }
+    }
+</style>
+
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.movimentacao_imovel') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar à Movimentação de Imóvel
+    </a>
+
+    <div class="rc-wrap">
+
+        <!-- ===== Cabeçalho ===== -->
+        <div class="rc-hero mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3" style="position: relative; z-index: 1;">
+                <div>
+                    <span class="rc-hero-chip mb-3">
+                        <i class="fas fa-stopwatch"></i> Tempo de permanência
+                    </span>
+                    <h1 class="rc-hero-titulo" style="color: #ffffff !important;">Gestão SUMOV</h1>
+                    <p class="rc-hero-sub" style="color: #ffffff !important;">
+                        Média de dias que os contratos permanecem em cada área, com a conversão em meses.
+                    </p>
+                </div>
+                {% if pode_avancado %}
+                <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico') }}"
+                   class="rc-btn-avancado">
+                    <i class="fas fa-chart-line"></i> Análise Avançada
+                    <i class="fas fa-lock" style="font-size: 0.75rem; opacity: 0.6;"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if tem_dados %}
+
+        <!-- ===== Cards de média por área ===== -->
+        <div class="row g-4 mb-4">
+            {% for s in setores %}
+            <div class="col-lg-4">
+                <div class="rc-card">
+                    <div class="rc-card-faixa" style="background: {{ s.cor }};"></div>
+
+                    <div class="d-flex align-items-center gap-3 mb-4">
+                        <div class="rc-icone" style="background: {{ s.cor_suave }}; color: {{ s.cor }};">
+                            <i class="fas {{ s.icone }}"></i>
+                        </div>
+                        <div>
+                            <p class="rc-sigla">{{ s.sigla }}</p>
+                            <p class="rc-desc">{{ s.descricao }}</p>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-baseline">
+                        <span class="rc-numero">{{ s.media.dias_fmt }}</span>
+                        <span class="rc-unidade">dias</span>
+                    </div>
+
+                    <div class="mt-3">
+                        <span class="rc-meses" style="background: {{ s.cor_suave }}; color: {{ s.cor }};">
+                            <i class="far fa-calendar-alt"></i> ≈ {{ s.media.meses_fmt }} meses
+                        </span>
+                    </div>
+
+                    <div class="rc-rodape">
+                        <i class="fas fa-file-contract me-2" style="color: {{ s.cor }};"></i><span class="rc-qtd">{{ s.media.qtd }}</span> contratos usados na apuração
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <p class="rc-nota text-center mb-4" style="color: black;">
+            <i class="fas fa-info-circle me-1"></i>
+            Base: <strong style="color: #4a4f63;">{{ total_contratos }}</strong> contratos na gestão de permanência.
+            Meses calculados como dias ÷ {{ dias_por_mes }}.
+            Contratos sem tempo registrado na área não entram na média.
+        </p>
+
+        {% else %}
+
+        <div class="rc-vazio">
+            <i class="fas fa-hourglass-half mb-3" style="font-size: 2.4rem; color: #c3c6d6;"></i>
+            <h5 class="fw-bold" style="color: #4a4f63;">Ainda não há tempos de permanência registrados</h5>
+            <p class="mb-0">Assim que houver contratos com tempo na GEADI ou na GEIMO, as médias aparecem aqui.</p>
+        </div>
+
+        {% endif %}
+
+    </div>
+</div>
+{% endblock %}

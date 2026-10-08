@@ -5436,6 +5436,8 @@ def movimentacao_imovel_nova():
     Inclusão de um novo registro de Movimentação de Imóvel.
     - Valida a existência do contrato em HAB_TB001_CONTRATO.
     - Preenche DT_ENVIO_GEADI_SUMOV com a data do dia.
+    - DT_ENVIO_SUMOV_GEIMO e DT_RECEBIMENTO_GEIMO recebem automaticamente
+      a mesma data de DT_ENVIO_GEADI_SUMOV.
     - Preenche STATUS_RM automaticamente a partir de MOV_VW013_IMOVEIS_STATUS_RM
       (ou 'Sem Status' quando o contrato não é encontrado na view).
     """
@@ -5482,15 +5484,17 @@ def movimentacao_imovel_nova():
             else:
                 status_rm = 'Sem Status'
 
-            # Data de envio GEADI -> SUMOV = data do dia da inclusão
+            # Data de envio GEADI -> SUMOV = data do dia da inclusão.
+            # SUMOV -> GEIMO e Recebimento GEIMO recebem a mesma data (automático).
             dt_envio_geadi_sumov = datetime.now().date()
 
-            # INSERT (apenas as colunas preenchidas nesta etapa; as demais ficam nulas)
             sql_insert = text("""
                 INSERT INTO [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
-                    ([NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV], [STATUS_RM])
+                    ([NU_CONTRATO], [RESPONSAVEL], [DT_ENVIO_GEADI_SUMOV],
+                     [DT_ENVIO_SUMOV_GEIMO], [DT_RECEBIMENTO_GEIMO], [STATUS_RM])
                 VALUES
-                    (:nu_contrato, :responsavel, :dt_envio, :status_rm)
+                    (:nu_contrato, :responsavel, :dt_envio,
+                     :dt_envio, :dt_envio, :status_rm)
             """)
             db.session.execute(sql_insert, {
                 'nu_contrato': nu_contrato,
@@ -5542,12 +5546,12 @@ def movimentacao_imovel_nova():
 def movimentacao_imovel_editar(nu_contrato):
     """
     Edição de um registro de Movimentação de Imóvel, respeitando as permissões:
-    - DT_ENVIO_SUMOV_GEIMO: Superintendente da SUMOV / admin / moderador.
-    - DT_RECEBIMENTO_GEIMO, ACAO_GEIMO, OBS_GEIMO, DT_ENVIO_RESALE: gerência GEIMO / admin / moderador.
+    - DT_ENVIO_SUMOV_GEIMO e DT_RECEBIMENTO_GEIMO: automáticas, sempre iguais
+      a DT_ENVIO_GEADI_SUMOV (não editáveis no formulário).
+    - ACAO_GEIMO, OBS_GEIMO, DT_ENVIO_RESALE: gerência GEIMO / admin / moderador.
     - DT_ACAO_GEIMO: automática (data de hoje quando a ação muda).
     - ID_TIPO_ACAO = 4: zera (NULL) as três datas do fluxo.
     """
-    pode_sumov = _pode_editar_envio_sumov_geimo()
     pode_geimo = _pode_editar_geimo()
 
     # Busca o registro atual
@@ -5569,8 +5573,6 @@ def movimentacao_imovel_editar(nu_contrato):
         try:
             # Valores atuais (base): só serão trocados se o perfil permitir
             novo_dt_geadi = row[2]
-            novo_dt_sumov = row[3]
-            novo_dt_receb = row[4]
             novo_acao = row[5]
             novo_dt_acao = row[6]
             novo_obs = row[7]
@@ -5578,13 +5580,8 @@ def movimentacao_imovel_editar(nu_contrato):
 
             acao_id = request.form.get('acao_id', '').strip()
 
-            # ===== Campos liberados para SUMOV (Superintendente) / admin / moderador =====
-            if pode_sumov:
-                novo_dt_sumov = _parse_form_date(request.form.get('dt_envio_sumov_geimo'))
-
             # ===== Campos liberados para GEIMO / admin / moderador =====
             if pode_geimo:
-                novo_dt_receb = _parse_form_date(request.form.get('dt_recebimento_geimo'))
                 novo_obs = (request.form.get('obs_geimo', '').strip() or None)
                 novo_dt_resale = _parse_form_date(request.form.get('dt_envio_resale'))
 
@@ -5605,14 +5602,18 @@ def movimentacao_imovel_editar(nu_contrato):
                     elif acao_desc:
                         novo_acao = acao_desc
 
-                    # Regra ID_TIPO_ACAO = 4: zera as três datas do fluxo
+                    # Regra ID_TIPO_ACAO = 4: zera as datas do fluxo
                     try:
                         if int(acao_id) == 4:
                             novo_dt_geadi = None
-                            novo_dt_sumov = None
-                            novo_dt_receb = None
                     except ValueError:
                         pass
+
+            # ===== Datas automáticas =====
+            # SUMOV -> GEIMO e Recebimento GEIMO sempre espelham o Envio GEADI/SUMOV.
+            # Se a regra da ação 4 zerou o GEADI, as duas também ficam NULL.
+            novo_dt_sumov = novo_dt_geadi
+            novo_dt_receb = novo_dt_geadi
 
             # ===== UPDATE =====
             sql_update = text("""
@@ -5660,12 +5661,12 @@ def movimentacao_imovel_editar(nu_contrato):
         'responsavel': row[1] or '',
         'status_rm': row[8] or '',
         'dt_envio_geadi_sumov_fmt': row[2].strftime('%d/%m/%Y') if row[2] else '',
-        'dt_envio_sumov_geimo_iso': row[3].strftime('%Y-%m-%d') if row[3] else '',
-        'dt_recebimento_geimo_iso': row[4].strftime('%Y-%m-%d') if row[4] else '',
+        'dt_recebimento_geimo_fmt': row[4].strftime('%d/%m/%Y') if row[4] else '',
         'acao_geimo': row[5] or '',
         'dt_acao_geimo_fmt': row[6].strftime('%d/%m/%Y') if row[6] else '',
         'obs_geimo': row[7] or '',
         'dt_envio_resale_iso': row[9].strftime('%Y-%m-%d') if row[9] else '',
+        'dt_envio_resale_fmt': row[9].strftime('%d/%m/%Y') if row[9] else '',
     }
 
     # Lista de ações (MOV_TB057)
@@ -5679,8 +5680,9 @@ def movimentacao_imovel_editar(nu_contrato):
     return render_template('sumov/movimentacao_imovel/editar.html',
                            reg=reg,
                            acoes=acoes,
-                           pode_sumov=pode_sumov,
                            pode_geimo=pode_geimo)
+
+
 @sumov_bp.route('/movimentacao-imovel/status-por-acao')
 @login_required
 def movimentacao_imovel_status_por_acao():
@@ -5937,6 +5939,319 @@ def movimentacao_imovel_exportar():
     except Exception as e:
         flash('Erro ao exportar Excel: %s' % str(e), 'danger')
         return redirect(url_for('sumov.movimentacao_imovel'))
+
+# =============================================================================
+# ROTAS: MOVIMENTAÇÃO DE IMÓVEL - RESPONSÁVEL COBRANÇA (TEMPO DE PERMANÊNCIA)
+# Fonte: BDDASHBOARDBI.BDG.MOV_VW016_GESTAO_SUMOV_PERMANENCIA
+# =============================================================================
+
+# Conversão de dias para meses (mês comercial de 30 dias)
+PERM_DIAS_POR_MES = 30
+
+
+def _perm_eh_admin_ou_moderador():
+    """Libera a análise avançada apenas para admin e moderador."""
+    return current_user.perfil in ('admin', 'moderador')
+
+
+def _perm_fmt(valor, casas=1):
+    """Formata número no padrão brasileiro (1.234,5). None vira '-'."""
+    if valor is None:
+        return '-'
+    texto = '{:,.{c}f}'.format(float(valor), c=casas)
+    return texto.replace(',', 'X').replace('.', ',').replace('X', '.')
+
+
+def _perm_meses(dias):
+    """Converte dias em meses (dias / PERM_DIAS_POR_MES). None continua None."""
+    if dias is None:
+        return None
+    return float(dias) / PERM_DIAS_POR_MES
+
+
+def _perm_numero(valor):
+    """Converte o valor vindo da view em float, ou None se vazio/inválido."""
+    if valor is None:
+        return None
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _perm_bloco_media(media_dias, qtd):
+    """Monta o dicionário padrão (dias, meses e textos formatados) de uma média."""
+    media_meses = _perm_meses(media_dias)
+    return {
+        'dias': round(media_dias, 2) if media_dias is not None else None,
+        'meses': round(media_meses, 2) if media_meses is not None else None,
+        'dias_fmt': _perm_fmt(media_dias),
+        'meses_fmt': _perm_fmt(media_meses),
+        'qtd': int(qtd or 0),
+    }
+
+
+def _perm_medias_gerais(responsavel=None):
+    """
+    Médias gerais de permanência (GEADI, GEIMO e RESALE) direto no SQL Server.
+    AVG ignora NULL: contrato sem tempo registrado não entra na média.
+    TRY_CAST protege contra valores não numéricos na view.
+    """
+    where_sql = ''
+    params = {}
+    if responsavel:
+        where_sql = 'WHERE [RESPONSAVEL] = :resp'
+        params['resp'] = responsavel
+
+    sql = text("""
+        SELECT
+            COUNT(*),
+            AVG(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
+            COUNT(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
+            AVG(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
+            COUNT(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
+            AVG(TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT)),
+            COUNT(TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT))
+        FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
+        """ + where_sql)
+    r = db.session.execute(sql, params).fetchone()
+
+    return {
+        'total_contratos': int(r[0] or 0),
+        'geadi': _perm_bloco_media(_perm_numero(r[1]), r[2]),
+        'geimo': _perm_bloco_media(_perm_numero(r[3]), r[4]),
+        'resale': _perm_bloco_media(_perm_numero(r[5]), r[6]),
+    }
+
+
+@sumov_bp.route('/movimentacao-imovel/responsavel-cobranca')
+@login_required
+def movimentacao_imovel_responsavel_cobranca():
+    """
+    Painel geral (todos os usuários): média de permanência em dias e em meses
+    na GEADI, na GEIMO e na RESALE.
+    """
+    try:
+        medias = _perm_medias_gerais()
+
+        setores = [
+            {
+                'sigla': 'GEADI',
+                'descricao': 'Tempo médio de permanência na GEADI',
+                'icone': 'fa-building',
+                'cor': '#6c63ff',
+                'cor_suave': '#eeedff',
+                'media': medias['geadi'],
+            },
+            {
+                'sigla': 'GEIMO',
+                'descricao': 'Tempo médio de permanência na GEIMO',
+                'icone': 'fa-house-user',
+                'cor': '#0d9488',
+                'cor_suave': '#e6f6f4',
+                'media': medias['geimo'],
+            },
+            {
+                'sigla': 'RESALE',
+                'descricao': 'Tempo médio de permanência na RESALE',
+                'icone': 'fa-store',
+                'cor': '#d97706',
+                'cor_suave': '#fdf3e3',
+                'media': medias['resale'],
+            },
+        ]
+
+        tem_dados = sum(s['media']['qtd'] for s in setores) > 0
+
+        return render_template(
+            'sumov/movimentacao_imovel/responsavel_cobranca.html',
+            setores=setores,
+            total_contratos=medias['total_contratos'],
+            dias_por_mes=PERM_DIAS_POR_MES,
+            tem_dados=tem_dados,
+            pode_avancado=_perm_eh_admin_ou_moderador()
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash('Erro ao carregar o painel de Responsável Cobrança: {}'.format(str(e)), 'danger')
+        return redirect(url_for('sumov.movimentacao_imovel'))
+
+
+@sumov_bp.route('/movimentacao-imovel/responsavel-cobranca/analitico')
+@login_required
+def movimentacao_imovel_responsavel_cobranca_analitico():
+    """
+    Análise avançada (somente admin e moderador):
+    - Indicadores (GEADI, GEIMO e RESALE) gerais ou do responsável filtrado.
+    - Ranking de todos os responsáveis (sempre completo, destaca o filtrado).
+    - Gráfico das médias por responsável.
+    - Lista de contratos (respeita o filtro) para conferência das médias.
+    """
+    if not _perm_eh_admin_ou_moderador():
+        flash('Acesso restrito a administradores e moderadores.', 'warning')
+        return redirect(url_for('sumov.movimentacao_imovel_responsavel_cobranca'))
+
+    try:
+        filtro_responsavel = request.args.get('responsavel', '').strip()
+        ordenar = request.args.get('ordenar', 'geadi').strip()
+        if ordenar not in ('geadi', 'geimo', 'resale', 'qtd'):
+            ordenar = 'geadi'
+
+        # ===== Lista de responsáveis para o filtro =====
+        sql_resp = text("""
+            SELECT DISTINCT [RESPONSAVEL]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
+            WHERE [RESPONSAVEL] IS NOT NULL
+              AND LTRIM(RTRIM([RESPONSAVEL])) <> ''
+            ORDER BY [RESPONSAVEL]
+        """)
+        lista_responsaveis = [r[0] for r in db.session.execute(sql_resp).fetchall()]
+
+        # ===== Indicadores: gerais e do filtro =====
+        medias_gerais = _perm_medias_gerais()
+        medias_filtro = _perm_medias_gerais(filtro_responsavel) if filtro_responsavel else medias_gerais
+
+        media_geral_geadi = medias_gerais['geadi']['dias']
+        media_geral_geimo = medias_gerais['geimo']['dias']
+        media_geral_resale = medias_gerais['resale']['dias']
+
+        # ===== Ranking por responsável (sempre todos) =====
+        sql_ranking = text("""
+            SELECT
+                [RESPONSAVEL],
+                COUNT(*),
+                AVG(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
+                AVG(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
+                AVG(TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT)),
+                MAX(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
+                MAX(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
+                MIN(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
+                MIN(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT))
+            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
+            GROUP BY [RESPONSAVEL]
+        """)
+        linhas_ranking = db.session.execute(sql_ranking).fetchall()
+
+        ranking = []
+        for r in linhas_ranking:
+            m_geadi = _perm_numero(r[2])
+            m_geimo = _perm_numero(r[3])
+            m_resale = _perm_numero(r[4])
+            ranking.append({
+                'responsavel': r[0] or 'Sem responsável',
+                'responsavel_valor': r[0] or '',
+                'qtd': int(r[1] or 0),
+                'geadi': _perm_bloco_media(m_geadi, None),
+                'geimo': _perm_bloco_media(m_geimo, None),
+                'resale': _perm_bloco_media(m_resale, None),
+                'max_geadi_fmt': _perm_fmt(_perm_numero(r[5]), 0),
+                'max_geimo_fmt': _perm_fmt(_perm_numero(r[6]), 0),
+                'min_geadi_fmt': _perm_fmt(_perm_numero(r[7]), 0),
+                'min_geimo_fmt': _perm_fmt(_perm_numero(r[8]), 0),
+                # Acima da média geral = mais lento que o conjunto
+                'geadi_acima': (m_geadi is not None and media_geral_geadi is not None
+                                and m_geadi > media_geral_geadi),
+                'geimo_acima': (m_geimo is not None and media_geral_geimo is not None
+                                and m_geimo > media_geral_geimo),
+                'resale_acima': (m_resale is not None and media_geral_resale is not None
+                                 and m_resale > media_geral_resale),
+                'selecionado': bool(filtro_responsavel) and (r[0] or '') == filtro_responsavel,
+            })
+
+        # Ordenação: tempos -> menor primeiro (mais rápido = 1º); quantidade -> maior primeiro.
+        # Responsáveis sem média no critério escolhido vão para o fim.
+        if ordenar == 'qtd':
+            ranking.sort(key=lambda x: (-x['qtd'], x['responsavel']))
+        else:
+            ranking.sort(key=lambda x: (
+                x[ordenar]['dias'] is None,
+                x[ordenar]['dias'] if x[ordenar]['dias'] is not None else 0,
+                x['responsavel']
+            ))
+
+        for posicao, item in enumerate(ranking, start=1):
+            item['posicao'] = posicao
+
+        # ===== Dados do gráfico (médias por responsável, na ordem do ranking) =====
+        grafico_ranking = {
+            'labels': [x['responsavel'] for x in ranking],
+            'geadi': [x['geadi']['dias'] for x in ranking],
+            'geimo': [x['geimo']['dias'] for x in ranking],
+            'media_geral_geadi': media_geral_geadi,
+            'media_geral_geimo': media_geral_geimo,
+            'dias_por_mes': PERM_DIAS_POR_MES,
+        } if ranking else None
+
+        # ===== Contratos (respeitam o filtro de responsável) =====
+        where_sql = ''
+        params = {}
+        if filtro_responsavel:
+            where_sql = 'WHERE [RESPONSAVEL] = :resp'
+            params['resp'] = filtro_responsavel
+
+        sql_contratos = text("""
+            SELECT
+                [NU_CONTRATO],
+                [RESPONSAVEL],
+                [TEMPO_PERM_GEADI],
+                [TEMPO_PERM_GEIMO],
+                [TEMPO_PERM_RESALE]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
+            """ + where_sql + """
+            ORDER BY [RESPONSAVEL], [NU_CONTRATO]
+        """)
+        contratos = []
+        for r in db.session.execute(sql_contratos, params).fetchall():
+            d_geadi = _perm_numero(r[2])
+            d_geimo = _perm_numero(r[3])
+            d_resale = _perm_numero(r[4])
+            contratos.append({
+                'nu_contrato': r[0],
+                'responsavel': r[1] or 'Sem responsável',
+                'geadi_dias_fmt': _perm_fmt(d_geadi, 0),
+                'geadi_meses_fmt': _perm_fmt(_perm_meses(d_geadi)),
+                'geimo_dias_fmt': _perm_fmt(d_geimo, 0),
+                'geimo_meses_fmt': _perm_fmt(_perm_meses(d_geimo)),
+                'resale_dias_fmt': _perm_fmt(d_resale, 0),
+                'resale_meses_fmt': _perm_fmt(_perm_meses(d_resale)),
+                'geadi_acima': (d_geadi is not None and media_geral_geadi is not None
+                                and d_geadi > media_geral_geadi),
+                'geimo_acima': (d_geimo is not None and media_geral_geimo is not None
+                                and d_geimo > media_geral_geimo),
+            })
+
+        # ===== Cards de indicadores =====
+        indicadores = [
+            {'sigla': 'GEADI', 'icone': 'fa-building', 'cor': '#6c63ff', 'cor_suave': '#eeedff',
+             'media': medias_filtro['geadi'], 'geral': medias_gerais['geadi']},
+            {'sigla': 'GEIMO', 'icone': 'fa-house-user', 'cor': '#0d9488', 'cor_suave': '#e6f6f4',
+             'media': medias_filtro['geimo'], 'geral': medias_gerais['geimo']},
+            {'sigla': 'RESALE', 'icone': 'fa-store', 'cor': '#d97706', 'cor_suave': '#fdf3e3',
+             'media': medias_filtro['resale'], 'geral': medias_gerais['resale']},
+        ]
+
+        return render_template(
+            'sumov/movimentacao_imovel/responsavel_cobranca_analitico.html',
+            indicadores=indicadores,
+            total_contratos=medias_filtro['total_contratos'],
+            total_contratos_geral=medias_gerais['total_contratos'],
+            ranking=ranking,
+            grafico_ranking=grafico_ranking,
+            contratos=contratos,
+            lista_responsaveis=lista_responsaveis,
+            filtro_responsavel=filtro_responsavel,
+            ordenar=ordenar,
+            dias_por_mes=PERM_DIAS_POR_MES
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        flash('Erro ao carregar a análise avançada: {}'.format(str(e)), 'danger')
+        return redirect(url_for('sumov.movimentacao_imovel_responsavel_cobranca'))
+
 
 
 @sumov_bp.route('/faturamento/ans-glosas/exportar-penalidades')

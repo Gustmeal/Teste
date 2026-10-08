@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+
+{% block title %}Análise Avançada - Responsável Cobrança - SUMOV{% endblock %}
+
+{% block content %}
+{# Exibe dias + meses; quando não há tempo registrado, mostra "sem registro". #}
+{% macro tempo(dias_fmt, meses_fmt, classe='') -%}
+    {%- if dias_fmt != '-' -%}
+    <span class="ra-dias {{ classe }}">{{ dias_fmt }} d</span>
+    <span class="ra-sub">{{ meses_fmt }} meses</span>
+    {%- else -%}
+    <span class="ra-sub">sem registro</span>
+    {%- endif -%}
+{%- endmacro %}
+<style>
+    .ra-hero {
+        position: relative; overflow: hidden;
+        border-radius: 20px; padding: 28px 32px;
+        background: linear-gradient(135deg, #1f2340 0%, #3a3478 55%, #6c63ff 100%);
+        color: #ffffff;
+        box-shadow: 0 18px 40px -18px rgba(31, 35, 64, 0.7);
+    }
+    .ra-hero::after {
+        content: ""; position: absolute; right: -70px; top: -90px;
+        width: 300px; height: 300px; border-radius: 50%;
+        background: rgba(255, 255, 255, 0.07);
+    }
+    .ra-hero-titulo { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+    .ra-chip {
+        display: inline-flex; align-items: center; gap: 7px;
+        background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 999px; padding: 5px 12px; font-size: 0.8rem; font-weight: 700;
+    }
+
+    .ra-painel {
+        background: #ffffff; border-radius: 18px;
+        border: 1px solid #eef0f6;
+        box-shadow: 0 10px 28px -16px rgba(30, 30, 60, 0.28);
+    }
+    .ra-painel-cab {
+        display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+        padding: 18px 24px; border-bottom: 1px solid #f0f1f6;
+    }
+    .ra-painel-titulo { font-weight: 800; color: #1f2333; margin: 0; font-size: 1.02rem; }
+    .ra-painel-corpo { padding: 20px 24px; }
+
+    .ra-kpi {
+        position: relative; background: #ffffff; border-radius: 18px; padding: 22px 22px 18px;
+        border: 1px solid #eef0f6; height: 100%;
+        box-shadow: 0 10px 28px -16px rgba(30, 30, 60, 0.28);
+    }
+    .ra-kpi-faixa { position: absolute; left: 0; top: 0; bottom: 0; width: 5px; border-radius: 18px 0 0 18px; }
+    .ra-kpi-icone {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+    }
+    .ra-kpi-rotulo { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #6b7086; }
+    .ra-kpi-num { font-size: 2.3rem; font-weight: 800; color: #1f2333; line-height: 1.05; letter-spacing: -0.03em; }
+    .ra-kpi-un { font-size: 0.95rem; font-weight: 600; color: #6b7086; }
+    .ra-kpi-meses { font-weight: 700; font-size: 0.9rem; border-radius: 999px; padding: 4px 11px; display: inline-block; }
+    .ra-kpi-geral { font-size: 0.8rem; color: #8a8fa3; margin-top: 10px; }
+
+    .ra-tabela { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; }
+    .ra-tabela thead th {
+        position: sticky; top: 0; z-index: 2;
+        background: #f7f7fc; color: #4a4f63;
+        font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800;
+        padding: 12px 14px; border-bottom: 1px solid #e8e9f2; white-space: nowrap;
+    }
+    .ra-tabela tbody td { padding: 12px 14px; border-bottom: 1px solid #f1f2f7; vertical-align: middle; color: #2b2f40; }
+    .ra-tabela tbody tr:hover td { background: #fafaff; }
+    .ra-tabela .ra-sel td { background: #f0efff !important; }
+    .ra-dias { font-weight: 700; }
+    .ra-sub { display: block; font-size: 0.76rem; color: #8a8fa3; }
+    .ra-acima { color: #c2410c; }
+    .ra-abaixo { color: #047857; }
+
+    .ra-pos {
+        width: 34px; height: 34px; border-radius: 10px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: 0.9rem; background: #f1f2f7; color: #4a4f63;
+    }
+    .ra-pos-1 { background: #fff4d6; color: #b7791f; }
+    .ra-pos-2 { background: #eef0f4; color: #64748b; }
+    .ra-pos-3 { background: #fbe9dd; color: #b45309; }
+
+    .ra-link-resp { color: #3a33c4; font-weight: 700; text-decoration: none; }
+    .ra-link-resp:hover { text-decoration: underline; }
+
+    .ra-legenda-cor { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #6b7086; }
+    .ra-bolinha { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+    .ra-scroll { max-height: 560px; overflow: auto; }
+</style>
+
+<div class="container-fluid fade-in">
+    <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar ao Gestão SUMOV
+    </a>
+
+    <!-- ===== Cabeçalho ===== -->
+    <div class="ra-hero mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3" style="position: relative; z-index: 1;">
+            <div>
+                <span class="ra-chip mb-2"><i class="fas fa-user-shield"></i> Restrito: administradores e moderadores</span>
+                <h1 class="ra-hero-titulo" style="color: #ffffff !important;">Análise Avançada de Permanência</h1>
+                <p class="mb-0" style="color: #ffffff !important; opacity: 0.85;">
+                    {% if filtro_responsavel %}
+                    Exibindo os indicadores e contratos de <strong>{{ filtro_responsavel }}</strong>.
+                    {% else %}
+                    Exibindo os indicadores de todos os responsáveis.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="text-end">
+                <div style="font-size: 2.2rem; font-weight: 800; line-height: 1;">{{ total_contratos }}</div>
+                <div style="opacity: 0.8; font-size: 0.85rem;">contratos{% if filtro_responsavel %} de {{ total_contratos_geral }}{% endif %}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Filtros ===== -->
+    <div class="ra-painel mb-4">
+        <div class="ra-painel-corpo">
+            <form method="GET" action="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label for="responsavel" class="form-label fw-bold">
+                            <i class="fas fa-user text-primary me-1"></i>Responsável
+                        </label>
+                        <select class="form-select" id="responsavel" name="responsavel">
+                            <option value="">Todos os responsáveis</option>
+                            {% for nome in lista_responsaveis %}
+                            <option value="{{ nome }}" {% if nome == filtro_responsavel %}selected{% endif %}>{{ nome }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ordenar" class="form-label fw-bold">
+                            <i class="fas fa-sort-amount-down text-primary me-1"></i>Ordenar ranking por
+                        </label>
+                        <select class="form-select" id="ordenar" name="ordenar">
+                            <option value="geadi" {% if ordenar == 'geadi' %}selected{% endif %}>Menor média na GEADI</option>
+                            <option value="geimo" {% if ordenar == 'geimo' %}selected{% endif %}>Menor média na GEIMO</option>
+                            <option value="resale" {% if ordenar == 'resale' %}selected{% endif %}>Menor média na RESALE</option>
+                            <option value="qtd" {% if ordenar == 'qtd' %}selected{% endif %}>Maior quantidade de contratos</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-search me-1"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico') }}"
+                           class="btn btn-secondary flex-fill">
+                            <i class="fas fa-eraser me-1"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== Indicadores ===== -->
+    <div class="row g-4 mb-4">
+        {% for k in indicadores %}
+        <div class="col-lg-4">
+            <div class="ra-kpi">
+                <div class="ra-kpi-faixa" style="background: {{ k.cor }};"></div>
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <div class="ra-kpi-rotulo">Média {{ k.sigla }}</div>
+                        <div class="ra-kpi-num mt-1">{{ k.media.dias_fmt }} <span class="ra-kpi-un">dias</span></div>
+                    </div>
+                    <div class="ra-kpi-icone" style="background: {{ k.cor_suave }}; color: {{ k.cor }};">
+                        <i class="fas {{ k.icone }}"></i>
+                    </div>
+                </div>
+                <span class="ra-kpi-meses" style="background: {{ k.cor_suave }}; color: {{ k.cor }};">
+                    ≈ {{ k.media.meses_fmt }} meses
+                </span>
+                <div class="ra-kpi-geral">
+                    <i class="fas fa-file-contract me-1"></i>{{ k.media.qtd }} contratos com tempo registrado
+                    {% if filtro_responsavel %}
+                    <br><i class="fas fa-users me-1"></i>Média geral: <strong>{{ k.geral.dias_fmt }} dias</strong> ({{ k.geral.meses_fmt }} meses)
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- ===== Gráfico ===== -->
+    {% if grafico_ranking %}
+    <div class="ra-painel mb-4">
+        <div class="ra-painel-cab">
+            <p class="ra-painel-titulo"><i class="fas fa-chart-bar me-2" style="color: #6c63ff;"></i>Média de dias por responsável</p>
+            <span class="ra-legenda-cor"><i class="fas fa-grip-lines-vertical"></i> Linhas tracejadas = média geral da área</span>
+        </div>
+        <div class="ra-painel-corpo">
+            <div style="position: relative; height: {{ 140 + (grafico_ranking.labels|length) * 46 }}px;">
+                <canvas id="graficoRanking"></canvas>
+            </div>
+        </div>
+    </div>
+    <script type="application/json" id="dadosGraficoRanking">{{ grafico_ranking | tojson }}</script>
+    {% endif %}
+
+    <!-- ===== Ranking ===== -->
+    <div class="ra-painel mb-4">
+        <div class="ra-painel-cab">
+            <p class="ra-painel-titulo"><i class="fas fa-trophy me-2" style="color: #d97706;"></i>Ranking de responsáveis</p>
+            <div class="d-flex gap-3 flex-wrap">
+                <span class="ra-legenda-cor"><span class="ra-bolinha" style="background: #047857;"></span>Abaixo da média geral</span>
+                <span class="ra-legenda-cor"><span class="ra-bolinha" style="background: #c2410c;"></span>Acima da média geral</span>
+            </div>
+        </div>
+        <div class="ra-scroll">
+            <table class="ra-tabela">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">#</th>
+                        <th>Responsável</th>
+                        <th class="text-center">Contratos</th>
+                        <th class="text-end">Média GEADI</th>
+                        <th class="text-end">Média GEIMO</th>
+                        <th class="text-end">Média RESALE</th>
+                        <th class="text-end">GEADI mín. / máx.</th>
+                        <th class="text-end">GEIMO mín. / máx.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in ranking %}
+                    <tr class="{% if r.selecionado %}ra-sel{% endif %}">
+                        <td><span class="ra-pos {% if r.posicao <= 3 %}ra-pos-{{ r.posicao }}{% endif %}">{{ r.posicao }}</span></td>
+                        <td>
+                            {% if r.responsavel_valor %}
+                            <a class="ra-link-resp"
+                               href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico', responsavel=r.responsavel_valor, ordenar=ordenar) }}"
+                               title="Ver os contratos de {{ r.responsavel }}">
+                                {{ r.responsavel }}
+                            </a>
+                            {% else %}
+                            <span style="color: #8a8fa3; font-style: italic;">{{ r.responsavel }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center fw-bold">{{ r.qtd }}</td>
+                        <td class="text-end">
+                            {{ tempo(r.geadi.dias_fmt, r.geadi.meses_fmt, 'ra-acima' if r.geadi_acima else 'ra-abaixo') }}
+                        </td>
+                        <td class="text-end">
+                            {{ tempo(r.geimo.dias_fmt, r.geimo.meses_fmt, 'ra-acima' if r.geimo_acima else 'ra-abaixo') }}
+                        </td>
+                        <td class="text-end">
+                            {{ tempo(r.resale.dias_fmt, r.resale.meses_fmt, 'ra-acima' if r.resale_acima else 'ra-abaixo') }}
+                        </td>
+                        <td class="text-end" style="color: #6b7086;">{% if r.max_geadi_fmt != '-' %}{{ r.min_geadi_fmt }} / {{ r.max_geadi_fmt }} d{% else %}<span class="ra-sub">sem registro</span>{% endif %}</td>
+                        <td class="text-end" style="color: #6b7086;">{% if r.max_geimo_fmt != '-' %}{{ r.min_geimo_fmt }} / {{ r.max_geimo_fmt }} d{% else %}<span class="ra-sub">sem registro</span>{% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">Nenhum responsável encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== Contratos (conferência) ===== -->
+    <div class="ra-painel mb-4">
+        <div class="ra-painel-cab">
+            <p class="ra-painel-titulo">
+                <i class="fas fa-list-check me-2" style="color: #0d9488;"></i>Contratos
+                {% if filtro_responsavel %}de {{ filtro_responsavel }}{% endif %}
+                <span class="badge rounded-pill ms-1" style="background: #eeedff; color: #4b44d6;" id="contadorContratos">{{ contratos|length }}</span>
+            </p>
+            <input type="text" class="form-control" id="buscaContrato"
+                   placeholder="Buscar contrato ou responsável..." style="max-width: 280px;">
+        </div>
+        <div class="ra-scroll">
+            <table class="ra-tabela" id="tabelaContratos">
+                <thead>
+                    <tr>
+                        <th>Nº Contrato</th>
+                        <th>Responsável</th>
+                        <th class="text-end">GEADI</th>
+                        <th class="text-end">GEIMO</th>
+                        <th class="text-end">RESALE</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in contratos %}
+                    <tr class="linha-contrato">
+                        <td class="fw-bold">{{ c.nu_contrato }}</td>
+                        <td>{{ c.responsavel }}</td>
+                        <td class="text-end">
+                            {{ tempo(c.geadi_dias_fmt, c.geadi_meses_fmt, 'ra-acima' if c.geadi_acima else '') }}
+                        </td>
+                        <td class="text-end">
+                            {{ tempo(c.geimo_dias_fmt, c.geimo_meses_fmt, 'ra-acima' if c.geimo_acima else '') }}
+                        </td>
+                        <td class="text-end">
+                            {{ tempo(c.resale_dias_fmt, c.resale_meses_fmt) }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">Nenhum contrato encontrado.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p class="text-center mb-4" style="color: #8a8fa3; font-size: 0.82rem;">
+        <i class="fas fa-info-circle me-1"></i>
+        Meses calculados como dias ÷ {{ dias_por_mes }}. Contratos sem tempo registrado na área não entram na média.
+        Tempos em laranja estão acima da média geral da área.
+    </p>
+</div>
+
+<script>
+    // Busca rápida na tabela de contratos (filtra as linhas já carregadas do backend).
+    (function () {
+        var campo = document.getElementById('buscaContrato');
+        var contador = document.getElementById('contadorContratos');
+        if (!campo) { return; }
+        campo.addEventListener('input', function () {
+            var termo = this.value.trim().toLowerCase();
+            var visiveis = 0;
+            document.querySelectorAll('#tabelaContratos tbody tr.linha-contrato').forEach(function (linha) {
+                var mostrar = !termo || linha.textContent.toLowerCase().indexOf(termo) !== -1;
+                linha.style.display = mostrar ? '' : 'none';
+                if (mostrar) { visiveis++; }
+            });
+            if (contador) { contador.textContent = visiveis; }
+        });
+    })();
+
+    // Gráfico de barras horizontais: média de dias por responsável (dados do backend).
+    (function () {
+        var bloco = document.getElementById('dadosGraficoRanking');
+        if (!bloco) { return; }
+        var dados = JSON.parse(bloco.textContent);
+
+        function formatar(valor, casas) {
+            if (valor === null || valor === undefined) { return '-'; }
+            return Number(valor).toLocaleString('pt-BR', {
+                minimumFractionDigits: casas, maximumFractionDigits: casas
+            });
+        }
+
+        var linhaMedia = {
+            id: 'linhaMedia',
+            afterDatasetsDraw: function (chart) {
+                var eixoX = chart.scales.x;
+                var area = chart.chartArea;
+                var ctx = chart.ctx;
+                [
+                    { valor: dados.media_geral_geadi, cor: '#6c63ff' },
+                    { valor: dados.media_geral_geimo, cor: '#0d9488' }
+                ].forEach(function (m) {
+                    if (m.valor === null || m.valor === undefined) { return; }
+                    var x = eixoX.getPixelForValue(m.valor);
+                    ctx.save();
+                    ctx.strokeStyle = m.cor;
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 5]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, area.top);
+                    ctx.lineTo(x, area.bottom);
+                    ctx.stroke();
+                    ctx.restore();
+                });
+            }
+        };
+
+        function iniciar() {
+            new Chart(document.getElementById('graficoRanking'), {
+                type: 'bar',
+                data: {
+                    labels: dados.labels,
+                    datasets: [
+                        {
+                            label: 'GEADI',
+                            data: dados.geadi,
+                            backgroundColor: '#6c63ff',
+                            borderRadius: 6,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.7
+                        },
+                        {
+                            label: 'GEIMO',
+                            data: dados.geimo,
+                            backgroundColor: '#0d9488',
+                            borderRadius: 6,
+                            barPercentage: 0.8,
+                            categoryPercentage: 0.7
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: { usePointStyle: true, pointStyle: 'rectRounded', font: { weight: '600' } }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (ctx) {
+                                    var dias = ctx.raw;
+                                    if (dias === null || dias === undefined) {
+                                        return ctx.dataset.label + ': sem registro';
+                                    }
+                                    return ctx.dataset.label + ': ' + formatar(dias, 1) + ' dias (' +
+                                           formatar(dias / dados.dias_por_mes, 1) + ' meses)';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: { color: '#f0f1f6' },
+                            ticks: { callback: function (v) { return formatar(v, 0) + ' d'; } }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font: { weight: '600' } }
+                        }
+                    }
+                },
+                plugins: [linhaMedia]
+            });
+        }
+
+        if (typeof Chart === 'undefined') {
+            var s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+            s.onload = iniciar;
+            document.head.appendChild(s);
+        } else {
+            iniciar();
+        }
+    })();
+</script>
+{% endblock %}
