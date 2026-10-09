@@ -5948,6 +5948,30 @@ def movimentacao_imovel_exportar():
 # Conversão de dias para meses (mês comercial de 30 dias)
 PERM_DIAS_POR_MES = 30
 
+# Regras de cálculo de cada permanência (exibidas nas telas do Responsável Cobrança)
+PERM_REGRAS_CALCULO = {
+    'GEADI': {
+        'inicio': 'Arrematação do imóvel',
+        'fim': 'Entrega à GEIMO',
+        'regra': 'Calculado entre a data da arrematação do imóvel até a data da entrega à GEIMO.',
+    },
+    'GEIMO': {
+        'inicio': 'Entrega pela GEADI',
+        'fim': 'Disponibilização para a venda',
+        'regra': 'Calculado entre a entrega pela GEADI e a data da disponibilização para a venda.',
+    },
+    'RESALE': {
+        'inicio': 'Entrega pela GEIMO',
+        'fim': 'Data da venda',
+        'regra': 'Calculado entre a data da entrega pela GEIMO e a data da venda.',
+    },
+}
+
+PERM_OBS_DEVOLUCAO = (
+    'O imóvel devolvido para a GEADI volta a contar o prazo de permanência na GEADI, '
+    'não interferindo no prazo da GEIMO.'
+)
+
 
 def _perm_eh_admin_ou_moderador():
     """Libera a análise avançada apenas para admin e moderador."""
@@ -6061,6 +6085,10 @@ def movimentacao_imovel_responsavel_cobranca():
             },
         ]
 
+        # Regra de cálculo de cada área (início, fim e descrição)
+        for s in setores:
+            s.update(PERM_REGRAS_CALCULO[s['sigla']])
+
         tem_dados = sum(s['media']['qtd'] for s in setores) > 0
 
         return render_template(
@@ -6068,6 +6096,7 @@ def movimentacao_imovel_responsavel_cobranca():
             setores=setores,
             total_contratos=medias['total_contratos'],
             dias_por_mes=PERM_DIAS_POR_MES,
+            obs_permanencia=PERM_OBS_DEVOLUCAO,
             tem_dados=tem_dados,
             pode_avancado=_perm_eh_admin_ou_moderador()
         )
@@ -6232,6 +6261,10 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
              'media': medias_filtro['resale'], 'geral': medias_gerais['resale']},
         ]
 
+        # Regra de cálculo de cada área (início, fim e descrição)
+        for k in indicadores:
+            k.update(PERM_REGRAS_CALCULO[k['sigla']])
+
         return render_template(
             'sumov/movimentacao_imovel/responsavel_cobranca_analitico.html',
             indicadores=indicadores,
@@ -6243,7 +6276,8 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
             lista_responsaveis=lista_responsaveis,
             filtro_responsavel=filtro_responsavel,
             ordenar=ordenar,
-            dias_por_mes=PERM_DIAS_POR_MES
+            dias_por_mes=PERM_DIAS_POR_MES,
+            obs_permanencia=PERM_OBS_DEVOLUCAO
         )
 
     except Exception as e:

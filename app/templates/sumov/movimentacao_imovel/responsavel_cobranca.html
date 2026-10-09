@@ -90,13 +90,63 @@
 
     .rc-nota { color: #8a8fa3; font-size: 0.82rem; }
 
+    /* ===== Como é calculada ===== */
+    .rc-como {
+        background: #ffffff; border-radius: 20px; padding: 26px 28px;
+        border: 1px solid #eef0f6;
+        box-shadow: 0 10px 30px -14px rgba(30, 30, 60, 0.25);
+    }
+    .rc-como-titulo { font-weight: 800; color: #1f2333; font-size: 1.1rem; margin: 0; }
+    .rc-como-sub { color: #6b7086; font-size: 0.9rem; margin: 4px 0 0; }
+    .rc-etapa {
+        position: relative; height: 100%;
+        border-radius: 16px; padding: 18px 18px 16px;
+        border: 1px solid #eef0f6; background: #fbfbfe;
+    }
+    .rc-etapa-num {
+        width: 30px; height: 30px; border-radius: 10px;
+        display: inline-flex; align-items: center; justify-content: center;
+        color: #ffffff; font-weight: 800; font-size: 0.9rem;
+    }
+    .rc-etapa-sigla { font-weight: 800; color: #1f2333; font-size: 1.05rem; letter-spacing: 0.03em; }
+    .rc-marco {
+        display: flex; align-items: flex-start; gap: 10px;
+        font-size: 0.9rem; color: #2b2f40; font-weight: 600; line-height: 1.3;
+    }
+    .rc-marco-rotulo {
+        flex: 0 0 34px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase;
+        letter-spacing: 0.06em; color: #8a8fa3; padding-top: 2px;
+    }
+    .rc-marco-linha { width: 2px; height: 14px; margin: 4px 0 4px 50px; border-radius: 2px; }
+    .rc-etapa-regra { color: #6b7086; font-size: 0.84rem; margin: 12px 0 0; line-height: 1.45; }
+    .rc-seta {
+        position: absolute; right: -19px; top: 50%; transform: translateY(-50%);
+        width: 26px; height: 26px; border-radius: 50%; z-index: 2;
+        background: #ffffff; border: 1px solid #e3e6f0; color: #8a8fa3;
+        display: flex; align-items: center; justify-content: center; font-size: 0.7rem;
+    }
+    .rc-obs {
+        display: flex; gap: 14px; align-items: flex-start;
+        background: #fff8eb; border: 1px solid #fde3b3; border-radius: 14px;
+        padding: 14px 18px; margin-top: 18px; color: #7a4d06; font-size: 0.92rem;
+    }
+    .rc-obs-icone {
+        flex: 0 0 34px; height: 34px; border-radius: 10px;
+        background: #fdebc8; color: #b45309;
+        display: flex; align-items: center; justify-content: center;
+    }
+
     .rc-vazio {
         background: #ffffff; border-radius: 20px; padding: 60px 30px; text-align: center;
         border: 1px dashed #d6d9e6; color: #6b7086;
     }
 
+    @media (max-width: 991px) {
+        .rc-seta { display: none; }
+    }
     @media (max-width: 767px) {
         .rc-hero { padding: 26px 22px; }
+        .rc-como { padding: 22px 18px; }
         .rc-numero { font-size: 3.2rem; }
     }
 </style>
@@ -168,7 +218,7 @@
             {% endfor %}
         </div>
 
-        <p class="rc-nota text-center mb-4" style="color: black;">
+        <p class="rc-nota text-center mb-4" style="font-size: 0.95rem;">
             <i class="fas fa-info-circle me-1"></i>
             Base: <strong style="color: #4a4f63;">{{ total_contratos }}</strong> contratos na gestão de permanência.
             Meses calculados como dias ÷ {{ dias_por_mes }}.
@@ -177,13 +227,57 @@
 
         {% else %}
 
-        <div class="rc-vazio">
+        <div class="rc-vazio mb-4">
             <i class="fas fa-hourglass-half mb-3" style="font-size: 2.4rem; color: #c3c6d6;"></i>
             <h5 class="fw-bold" style="color: #4a4f63;">Ainda não há tempos de permanência registrados</h5>
-            <p class="mb-0">Assim que houver contratos com tempo na GEADI ou na GEIMO, as médias aparecem aqui.</p>
+            <p class="mb-0">Assim que houver contratos com tempo registrado, as médias aparecem aqui.</p>
         </div>
 
         {% endif %}
+
+        <!-- ===== Como é calculada a permanência ===== -->
+        <div class="rc-como mb-4">
+            <p class="rc-como-titulo">
+                <i class="fas fa-route me-2" style="color: #6c63ff;"></i>Como é calculada a permanência
+            </p>
+            <p class="rc-como-sub">Cada área conta os dias entre dois marcos do caminho do imóvel.</p>
+
+            <div class="row g-4 mt-1">
+                {% for s in setores %}
+                <div class="col-lg-4">
+                    <div class="rc-etapa" style="border-top: 4px solid {{ s.cor }};">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <span class="rc-etapa-num" style="background: {{ s.cor }};">{{ loop.index }}</span>
+                            <span class="rc-etapa-sigla">Permanência {{ s.sigla }}</span>
+                        </div>
+
+                        <div class="rc-marco">
+                            <span class="rc-marco-rotulo">De</span>
+                            <span><i class="fas fa-circle me-1" style="color: {{ s.cor }}; font-size: 0.55rem; vertical-align: middle;"></i>{{ s.inicio }}</span>
+                        </div>
+                        <div class="rc-marco-linha" style="background: {{ s.cor_suave }};"></div>
+                        <div class="rc-marco">
+                            <span class="rc-marco-rotulo">Até</span>
+                            <span><i class="fas fa-flag-checkered me-1" style="color: {{ s.cor }}; font-size: 0.75rem;"></i>{{ s.fim }}</span>
+                        </div>
+
+                        <p class="rc-etapa-regra">{{ s.regra }}</p>
+
+                        {% if not loop.last %}
+                        <span class="rc-seta"><i class="fas fa-chevron-right"></i></span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if obs_permanencia %}
+            <div class="rc-obs">
+                <span class="rc-obs-icone"><i class="fas fa-rotate-left"></i></span>
+                <div><strong>Obs.:</strong> {{ obs_permanencia }}</div>
+            </div>
+            {% endif %}
+        </div>
 
     </div>
 </div>
