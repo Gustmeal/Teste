@@ -5948,6 +5948,10 @@ def movimentacao_imovel_exportar():
 # Conversão de dias para meses (mês comercial de 30 dias)
 PERM_DIAS_POR_MES = 30
 
+# Áreas ocultas temporariamente no painel geral (o cálculo continua sendo feito
+# e a análise avançada continua mostrando tudo). Para voltar a exibir, esvazie a tupla.
+PERM_OCULTAS_PAINEL_GERAL = ('GEADI',)
+
 # Regras de cálculo de cada permanência (exibidas nas telas do Responsável Cobrança)
 PERM_REGRAS_CALCULO = {
     'GEADI': {
@@ -6089,11 +6093,18 @@ def movimentacao_imovel_responsavel_cobranca():
         for s in setores:
             s.update(PERM_REGRAS_CALCULO[s['sigla']])
 
-        tem_dados = sum(s['media']['qtd'] for s in setores) > 0
+        # Todas as médias continuam calculadas; só as áreas visíveis vão para a tela
+        setores_visiveis = [s for s in setores if s['sigla'] not in PERM_OCULTAS_PAINEL_GERAL]
+
+        # Largura dos cards no Bootstrap conforme a quantidade exibida (3 -> 4 col, 2 -> 6 col)
+        col_lg = max(4, 12 // len(setores_visiveis)) if setores_visiveis else 12
+
+        tem_dados = sum(s['media']['qtd'] for s in setores_visiveis) > 0
 
         return render_template(
             'sumov/movimentacao_imovel/responsavel_cobranca.html',
-            setores=setores,
+            setores=setores_visiveis,
+            col_lg=col_lg,
             total_contratos=medias['total_contratos'],
             dias_por_mes=PERM_DIAS_POR_MES,
             obs_permanencia=PERM_OBS_DEVOLUCAO,

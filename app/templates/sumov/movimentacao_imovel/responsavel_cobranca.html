@@ -165,7 +165,7 @@
                     <span class="rc-hero-chip mb-3">
                         <i class="fas fa-stopwatch"></i> Tempo de permanência
                     </span>
-                    <h1 class="rc-hero-titulo" style="color: #ffffff !important;">Gestão SUMOV</h1>
+                    <h1 class="rc-hero-titulo" style="color: #ffffff !important;">Responsável Cobrança</h1>
                     <p class="rc-hero-sub" style="color: #ffffff !important;">
                         Média de dias que os contratos permanecem em cada área, com a conversão em meses.
                     </p>
@@ -185,7 +185,7 @@
         <!-- ===== Cards de média por área ===== -->
         <div class="row g-4 mb-4">
             {% for s in setores %}
-            <div class="col-lg-4">
+            <div class="col-lg-{{ col_lg }}">
                 <div class="rc-card">
                     <div class="rc-card-faixa" style="background: {{ s.cor }};"></div>
 
@@ -244,7 +244,7 @@
 
             <div class="row g-4 mt-1">
                 {% for s in setores %}
-                <div class="col-lg-4">
+                <div class="col-lg-{{ col_lg }}">
                     <div class="rc-etapa" style="border-top: 4px solid {{ s.cor }};">
                         <div class="d-flex align-items-center gap-2 mb-3">
                             <span class="rc-etapa-num" style="background: {{ s.cor }};">{{ loop.index }}</span>
