@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
+{# Formatação brasileira de valores vindos do backend #}
+{% macro moeda(valor) -%}
+R$ {{ '{:,.2f}'.format(valor or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+{%- endmacro %}
+{% macro percentual(valor) -%}
+{{ '{:,.2f}'.format(valor or 0).replace(',', 'X').replace('.', ',').replace('X', '.') }}%
+{%- endmacro %}
 <div class="container-fluid fade-in">
     <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
@@ -183,60 +190,76 @@
                         </div>
                     </div>
 
-                    <!-- Campos Hidden para período de cobrança -->
-                    <input type="hidden" name="dt_periodo_cobranca_inicio" value="{{ deliberacao.DT_PERIODO_COBRANCA_INICIO.strftime('%Y-%m-%d') if deliberacao.DT_PERIODO_COBRANCA_INICIO else '' }}">
-                    <input type="hidden" name="dt_periodo_cobranca_fim" value="{{ deliberacao.DT_PERIODO_COBRANCA_FIM.strftime('%Y-%m-%d') if deliberacao.DT_PERIODO_COBRANCA_FIM else '' }}">
-
-                    <!-- Valor da Dívida Cobrada (readonly) -->
+                    <!-- Valor da Dívida (SISCalculo) = soma das cotas de todos os cálculos da deliberação -->
                     <div class="mb-3">
                         <label class="form-label fw-bold">
                             <i class="fas fa-dollar-sign text-warning me-1"></i>
                             Valor da Dívida (SISCalculo)
+                            {% if calculos and calculos|length > 1 %}
+                            <span class="badge bg-info ms-1">Soma de {{ calculos|length }} cálculos</span>
+                            {% endif %}
                         </label>
                         <input type="text"
-                               class="form-control bg-light"
-                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DIVIDA_CONDOMINIO_1).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DIVIDA_CONDOMINIO_1 else 'R$ 0,00' }}"
+                               class="form-control bg-light fw-bold"
+                               value="{{ moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1) }}"
                                readonly>
                         <small class="text-muted">
                             <i class="fas fa-database me-1"></i>Dado obtido automaticamente do SISCalculo
                         </small>
                     </div>
 
-                    <div class="row mt-3">
-                        <div class="col-md-12">
-                            <label for="indice_usado_condominio" class="form-label fw-bold">
-                                <i class="fas fa-percent text-info me-1"></i>
-                                Índice Usado pelo Condomínio
-                            </label>
-                            <input type="text"
-                                   class="form-control"
-                                   id="indice_usado_condominio"
-                                   name="indice_usado_condominio"
-                                   maxlength="5"
-                                   value="{{ deliberacao.INDICE_USADO_CONDOMINIO or '' }}"
-                                   placeholder="Ex: IGPM, IPCA, INPC">
-                            <small class="text-success">
-                                <i class="fas fa-edit me-1"></i>Campo editável (opcional - máximo 5 caracteres)
-                            </small>
-                        </div>
-                    </div>
-
-
-                    <!-- Valor da Dívida Manual (EDITÁVEL) -->
+                    <!-- Índice Usado pelo Condomínio (EDITÁVEL) -->
                     <div class="mb-3">
-                        <label for="vr_divida_condominio_2" class="form-label fw-bold">
-                            <i class="fas fa-edit text-secondary me-1"></i>
-                            Valor da Dívida do Condomínio (Manual)
+                        <label for="indice_usado_condominio" class="form-label fw-bold">
+                            <i class="fas fa-percent text-info me-1"></i>
+                            Índice Usado pelo Condomínio
                         </label>
                         <input type="text"
                                class="form-control"
-                               id="vr_divida_condominio_2"
-                               name="vr_divida_condominio_2"
-                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DIVIDA_CONDOMINIO_2).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DIVIDA_CONDOMINIO_2 else '' }}"
-                               placeholder="R$ 0,00">
+                               id="indice_usado_condominio"
+                               name="indice_usado_condominio"
+                               maxlength="5"
+                               value="{{ deliberacao.INDICE_USADO_CONDOMINIO or '' }}"
+                               placeholder="Ex: IGPM, IPCA, INPC">
                         <small class="text-success">
-                            <i class="fas fa-edit me-1"></i>Campo editável - deixe em branco para usar o valor automático
+                            <i class="fas fa-edit me-1"></i>Campo editável (opcional - máximo 5 caracteres)
                         </small>
+                    </div>
+
+                    <div class="row">
+                        <!-- Valor da Dívida do Condomínio (Manual) (EDITÁVEL) -->
+                        <div class="col-md-6 mb-3">
+                            <label for="vr_divida_condominio_manual" class="form-label fw-bold">
+                                <i class="fas fa-building text-secondary me-1"></i>
+                                Valor da Dívida do Condomínio (Manual)
+                            </label>
+                            <input type="text"
+                                   class="form-control campo-moeda"
+                                   id="vr_divida_condominio_manual"
+                                   name="vr_divida_condominio_manual"
+                                   value="{{ moeda(deliberacao.VR_COBRADO_CONDOMINIO) if deliberacao.VR_COBRADO_CONDOMINIO else '' }}"
+                                   placeholder="R$ 0,00">
+                            <small class="text-success">
+                                <i class="fas fa-edit me-1"></i>Campo editável
+                            </small>
+                        </div>
+
+                        <!-- Demais Encargos (Manual) (EDITÁVEL) -->
+                        <div class="col-md-6 mb-3">
+                            <label for="vr_divida_condominio_2" class="form-label fw-bold">
+                                <i class="fas fa-edit text-warning me-1"></i>
+                                Demais Encargos (Manual)
+                            </label>
+                            <input type="text"
+                                   class="form-control campo-moeda"
+                                   id="vr_divida_condominio_2"
+                                   name="vr_divida_condominio_2"
+                                   value="{{ moeda(deliberacao.VR_DIVIDA_CONDOMINIO_2) if deliberacao.VR_DIVIDA_CONDOMINIO_2 else '' }}"
+                                   placeholder="R$ 0,00">
+                            <small class="text-success">
+                                <i class="fas fa-edit me-1"></i>Campo editável
+                            </small>
+                        </div>
                     </div>
 
                     <!-- Valor Excluído (readonly) -->
@@ -247,7 +270,7 @@
                         </label>
                         <input type="text"
                                class="form-control bg-light"
-                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS else 'R$ 0,00' }}"
+                               value="{{ moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS) }}"
                                readonly>
                         <small class="text-muted">
                             <i class="fas fa-database me-1"></i>Valor calculado automaticamente
@@ -255,7 +278,7 @@
                     </div>
                 </div>
 
-                <!-- ==== SEÇÃO 3: CÁLCULO EMGEA ==== -->
+                <!-- ==== SEÇÃO 3: CÁLCULO EMGEA (SOMENTE LEITURA) ==== -->
                 <div class="border-bottom pb-3 mb-4">
                     <h5 class="text-primary mb-3">
                         <i class="fas fa-calculator me-2"></i>Cálculo da EMGEA
@@ -263,66 +286,162 @@
 
                     <!-- Índice Econômico (readonly) -->
                     <div class="mb-3">
-                        <label for="indice_economico" class="form-label fw-bold">
+                        <label class="form-label fw-bold">
                             <i class="fas fa-chart-line text-primary me-1"></i>
                             Índice Econômico Utilizado
                         </label>
                         <input type="text"
                                class="form-control bg-light"
-                               id="indice_economico_display"
                                value="{{ deliberacao.INDICE_DEBITO_EMGEA or '-' }}"
                                readonly>
-                        <input type="hidden" name="indice_economico" value="{{ deliberacao.INDICE_DEBITO_EMGEA or '' }}">
                         <small class="text-warning">
                             <i class="fas fa-exclamation-triangle me-1"></i>
-                            Para alterar o índice econômico, é necessário criar uma nova deliberação
+                            Para alterar o índice ou os cálculos utilizados, é necessário criar uma nova deliberação
                         </small>
                     </div>
 
-                    <!-- Valor Calculado (readonly) -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-money-bill-wave text-success me-1"></i>
-                            Valor do Débito Calculado pela EMGEA
-                        </label>
-                        <input type="text"
-                               class="form-control bg-light"
-                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_DEBITO_CALCULADO_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_DEBITO_CALCULADO_EMGEA else 'R$ 0,00' }}"
-                               readonly>
-                        <small class="text-muted">
-                            <i class="fas fa-database me-1"></i>Valor calculado automaticamente
-                        </small>
+                    <!-- Um quadro para cada cálculo do SISCalculo utilizado -->
+                    {% for calc in calculos %}
+                    <div class="card bg-light border-primary mb-3">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-calculator me-2"></i>Cálculo {{ calc.numero }} - {{ calc.nome_indice }}
+                                <small class="ms-2">
+                                    {% if calc.legado %}
+                                    (deliberação anterior à seleção de múltiplos cálculos)
+                                    {% else %}
+                                    (cálculo de {{ calc.dt_atualizacao.strftime('%d/%m/%Y') if calc.dt_atualizacao else '-' }}
+                                    - {{ calc.qtd_parcelas }} parcela(s)
+                                    {% if calc.dt_vencimento_inicio and calc.dt_vencimento_fim %}
+                                    - vencimentos de {{ calc.dt_vencimento_inicio.strftime('%d/%m/%Y') }} a {{ calc.dt_vencimento_fim.strftime('%d/%m/%Y') }}
+                                    {% endif %})
+                                    {% endif %}
+                                </small>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-file-invoice me-1"></i>Valor da Dívida (SISCalculo)
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ moeda(calc.valor_cotas) }}" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-file-invoice-dollar me-1"></i>Valor da Dívida (sem Honorários)
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ moeda(calc.valor_divida) }}" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-percent me-1"></i>Percentual de Honorários
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ percentual(calc.perc_honorarios) }}" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-warning">
+                                        <i class="fas fa-gavel me-1"></i>Valor dos Honorários
+                                    </label>
+                                    <input type="text" class="form-control bg-white border-warning" value="{{ moeda(calc.valor_honorarios) }}" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-success">
+                                        <i class="fas fa-money-bill-wave me-1"></i>Débito Calculado (com Honorários)
+                                    </label>
+                                    <input type="text" class="form-control bg-white border-success fw-bold" value="{{ moeda(calc.valor_com_honorarios) }}" readonly>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label fw-bold text-danger">
+                                        <i class="fas fa-ban me-1"></i>Cotas Prescritas
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ moeda(calc.valor_prescrito) }}" readonly>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                    {% endfor %}
 
-                    <!-- Percentual de Honorários (readonly) -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-percent text-info me-1"></i>
-                            Percentual de Honorários da EMGEA
-                        </label>
-                        <input type="text"
-                               class="form-control bg-light"
-                               value="{{ '{:,.2f}%'.format(deliberacao.PERC_HONORARIOS_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.PERC_HONORARIOS_EMGEA else '0,00%' }}"
-                               readonly>
-                        <small class="text-muted">
-                            <i class="fas fa-database me-1"></i>Percentual calculado automaticamente (10% ou 20%)
-                        </small>
-                    </div>
+                    <!-- Quadro consolidado (soma de todos os cálculos) -->
+                    {% if calculos %}
+                    <div class="card border-success shadow-sm mb-3">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-calculator me-2"></i>Valor do Débito Calculado pela EMGEA - {{ deliberacao.INDICE_DEBITO_EMGEA or '-' }}
+                                <span class="badge bg-light text-success ms-2">
+                                    {{ 'Soma de %d cálculos'|format(calculos|length) if calculos|length > 1 else '1 cálculo' }}
+                                </span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-file-invoice me-1"></i>Valor da Dívida (SISCalculo) - Soma
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ moeda(totais_calculos.valor_cotas) }}" readonly>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label fw-bold text-secondary">
+                                        <i class="fas fa-file-invoice-dollar me-1"></i>Valor da Dívida Atualizada (sem Honorários) - Soma
+                                    </label>
+                                    <input type="text" class="form-control bg-white" value="{{ moeda(totais_calculos.valor_divida) }}" readonly>
+                                </div>
+                            </div>
 
-                    <!-- Valor dos Honorários (readonly) -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">
-                            <i class="fas fa-gavel text-warning me-1"></i>
-                            Valor dos Honorários
-                        </label>
-                        <input type="text"
-                               class="form-control bg-light"
-                               value="{{ 'R$ {:,.2f}'.format(deliberacao.VR_HONORARIOS_EMGEA).replace(',', 'X').replace('.', ',').replace('X', '.') if deliberacao.VR_HONORARIOS_EMGEA else 'R$ 0,00' }}"
-                               readonly>
-                        <small class="text-muted">
-                            <i class="fas fa-database me-1"></i>Valor calculado automaticamente
-                        </small>
+                            <!-- Honorários separados por percentual -->
+                            <label class="form-label fw-bold text-warning">
+                                <i class="fas fa-gavel me-1"></i>Honorários por Percentual
+                            </label>
+                            <div class="table-responsive mb-3">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Percentual</th>
+                                            <th class="text-center">Cálculos</th>
+                                            <th class="text-end">Dívida (sem Honorários)</th>
+                                            <th class="text-end">Valor dos Honorários</th>
+                                            <th class="text-end">Débito Calculado (com Honorários)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for h in honorarios_por_percentual %}
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-warning text-dark">{{ percentual(h.perc_honorarios) }}</span></td>
+                                            <td class="text-center">{{ h.qtd_calculos }}</td>
+                                            <td class="text-end">{{ moeda(h.valor_divida) }}</td>
+                                            <td class="text-end fw-bold text-warning">{{ moeda(h.valor_honorarios) }}</td>
+                                            <td class="text-end fw-bold">{{ moeda(h.valor_com_honorarios) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label fw-bold text-warning">
+                                        <i class="fas fa-gavel me-1"></i>Valor Total dos Honorários
+                                    </label>
+                                    <input type="text" class="form-control bg-white border-warning" value="{{ moeda(deliberacao.VR_HONORARIOS_EMGEA) }}" readonly>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <label class="form-label fw-bold text-success">
+                                        <i class="fas fa-money-bill-wave me-1"></i>VALOR TOTAL DO DÉBITO CALCULADO PELA EMGEA (com Honorários)
+                                    </label>
+                                    <input type="text" class="form-control bg-white border-success fw-bold" value="{{ moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA) }}" readonly>
+                                </div>
+                            </div>
+                            <small class="text-muted">
+                                <i class="fas fa-lock me-1"></i>Valores calculados automaticamente - não editáveis
+                            </small>
+                        </div>
                     </div>
+                    {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="fas fa-info-circle me-1"></i>Nenhum cálculo do SISCalculo registrado para esta deliberação.
+                    </div>
+                    {% endif %}
 
                     <!-- Data do Registro (EDITÁVEL) -->
                     <div class="mb-3">
@@ -336,11 +455,11 @@
                                name="dt_registro"
                                value="{{ deliberacao.DT_REGISTRO.strftime('%Y-%m-%d') if deliberacao.DT_REGISTRO else '' }}">
                         <small class="text-success">
-                            <i class="fas fa-edit me-1"></i>Campo editável (obrigatório)
+                            <i class="fas fa-edit me-1"></i>Campo editável
                         </small>
                     </div>
 
-                    <!-- ✅ RESUMO POR TIPO DE PARCELA - TABELA BEM FORMATADA -->
+                    <!-- RESUMO POR TIPO DE PARCELA (soma dos cálculos utilizados) -->
                     {% if totais_por_tipo and totais_por_tipo|length > 0 %}
                     <div class="card border-primary shadow-sm mb-4">
                         <div class="card-header bg-primary text-white">
@@ -373,9 +492,7 @@
                                             </td>
                                             <td><strong>{{ tipo.descricao }}</strong></td>
                                             <td class="text-center fw-bold">{{ tipo.quantidade }}</td>
-                                            <td class="text-end fw-bold text-success">
-                                                R$ {{ '{:,.2f}'.format(tipo.valor_total).replace(',', 'X').replace('.', ',').replace('X', '.') }}
-                                            </td>
+                                            <td class="text-end fw-bold text-success">{{ moeda(tipo.valor_total) }}</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -386,7 +503,7 @@
                                                 {{ totais_por_tipo|sum(attribute='quantidade') }}
                                             </td>
                                             <td class="text-end text-primary">
-                                                R$ {{ '{:,.2f}'.format(totais_por_tipo|sum(attribute='valor_total')).replace(',', 'X').replace('.', ',').replace('X', '.') }}
+                                                {{ moeda(totais_por_tipo|sum(attribute='valor_total')) }}
                                             </td>
                                         </tr>
                                     </tfoot>
@@ -655,7 +772,7 @@
                         <div class="card-body">
                             <div class="row">
                                 <!-- SISDEX -->
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-wrench text-primary me-1"></i>
                                         SISDEX
@@ -670,7 +787,7 @@
                                 </div>
 
                                 <!-- SISGEA -->
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-building text-success me-1"></i>
                                         SISGEA
@@ -684,6 +801,7 @@
                                     </small>
                                 </div>
 
+                                <!-- SISINC -->
                                 <div class="col-md-3 mb-3">
                                     <label class="form-label fw-bold">
                                         <i class="fas fa-gavel text-info me-1"></i>
@@ -909,11 +1027,9 @@ function baixarPDFDetalhado(contrato, botao) {
     }, 3000);
 }
 
-// Máscara de moeda para o campo de valor manual
+// Máscara de moeda para os campos manuais (Valor da Dívida do Condomínio e Demais Encargos)
 document.addEventListener('DOMContentLoaded', function() {
-    const campoValor = document.getElementById('vr_divida_condominio_2');
-
-    if (campoValor) {
+    document.querySelectorAll('.campo-moeda').forEach(function(campoValor) {
         campoValor.addEventListener('input', function(e) {
             let value = e.target.value.replace(/\D/g, '');
 
@@ -937,7 +1053,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 e.target.value = '';
             }
         });
-    }
+    });
 });
 
 // ===== IPTU: trava/destrava o valor conforme a situação =====

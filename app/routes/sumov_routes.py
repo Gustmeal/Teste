@@ -902,23 +902,490 @@ def deliberacao_pagamento():
                                filtro_status='')
 
 
+# =====================================================================================
+# DELIBERAÇÃO DE PAGAMENTO - SELEÇÃO DE UM OU MAIS CÁLCULOS DO SISCALCULO
+# Um "cálculo" do SISCalculo é identificado por IMOVEL + DT_ATUALIZACAO + ID_INDICE_ECONOMICO
+# (é a mesma chave que o motor do SISCalculo usa para apagar/reprocessar).
+# =====================================================================================
+
+def _dlp_decimal(valor):
+    """Converte qualquer valor numérico para Decimal (None -> 0)"""
+    if valor is None:
+        return Decimal('0')
+    if isinstance(valor, Decimal):
+        return valor
+    return Decimal(str(valor))
+
+
+def _dlp_arredondar(valor):
+    """Arredonda para 2 casas com ROUND_HALF_UP (padrão do SISCalculo)"""
+    from decimal import ROUND_HALF_UP
+    return _dlp_decimal(valor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+def _dlp_valor_br(valor_str, nome_campo):
+    """Converte 'R$ 1.234,56' em Decimal. Vazio -> None. Inválido -> ValueError"""
+    from decimal import InvalidOperation
+    if not valor_str:
+        return None
+    limpo = valor_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
+    if not limpo:
+        return None
+    try:
+        return Decimal(limpo)
+    except InvalidOperation:
+        raise ValueError(f'{nome_campo} inválido.')
+
+
+def _dlp_para_data(valor):
+    """Garante objeto date (pyodbc pode devolver date, datetime ou string)"""
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor).strip()[:10]
+    for formato in ('%Y-%m-%d', '%d/%m/%Y', '%Y%m%d'):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _dlp_montar_chave(dt_atualizacao, id_indice):
+    """Chave de um cálculo: 'AAAA-MM-DD|ID_INDICE'"""
+    return f"{_dlp_para_data(dt_atualizacao).strftime('%Y-%m-%d')}|{int(id_indice)}"
+
+
+def _dlp_ler_chave(chave):
+    """Lê 'AAAA-MM-DD|ID_INDICE' e devolve (date, int) ou None"""
+    partes = (chave or '').split('|')
+    if len(partes) != 2:
+        return None
+    try:
+        return datetime.strptime(partes[0].strip(), '%Y-%m-%d').date(), int(partes[1].strip())
+    except ValueError:
+        return None
+
+
+def _dlp_nomes_indices():
+    """Dicionário {ID_INDICE_ECONOMICO: DSC_INDICE_ECONOMICO} vindo da PAR023"""
+    from app.models.siscalculo import ParamIndicesEconomicos
+    return {i.ID_INDICE_ECONOMICO: i.DSC_INDICE_ECONOMICO for i in ParamIndicesEconomicos.query.all()}
+
+
+def _dlp_honorarios_por_percentual(lista_calculos):
+    """
+    Agrupa os honorários por percentual (ex.: 10% e 20% aparecem separados).
+    Cada item da lista precisa ter: perc_honorarios, valor_divida, valor_honorarios, valor_com_honorarios.
+    """
+    grupos = {}
+    for calc in lista_calculos:
+        perc = _dlp_arredondar(calc.get('perc_honorarios'))
+        if perc not in grupos:
+            grupos[perc] = {
+                'perc_honorarios': float(perc),
+                'qtd_calculos': 0,
+                'valor_divida': Decimal('0'),
+                'valor_honorarios': Decimal('0'),
+                'valor_com_honorarios': Decimal('0')
+            }
+        grupos[perc]['qtd_calculos'] += 1
+        grupos[perc]['valor_divida'] += _dlp_decimal(calc.get('valor_divida'))
+        grupos[perc]['valor_honorarios'] += _dlp_decimal(calc.get('valor_honorarios'))
+        grupos[perc]['valor_com_honorarios'] += _dlp_decimal(calc.get('valor_com_honorarios'))
+
+    resultado = []
+    for perc in sorted(grupos.keys()):
+        g = grupos[perc]
+        resultado.append({
+            'perc_honorarios': g['perc_honorarios'],
+            'qtd_calculos': g['qtd_calculos'],
+            'valor_divida': float(g['valor_divida']),
+            'valor_honorarios': float(g['valor_honorarios']),
+            'valor_com_honorarios': float(g['valor_com_honorarios'])
+        })
+    return resultado
+
+
+def _dlp_listar_calculos_siscalculo(contrato):
+    """
+    Lista TODOS os cálculos (DT_ATUALIZACAO + ÍNDICE) do contrato no SISCalculo,
+    considerando somente parcelas não prescritas. Antes só a última DT_ATUALIZACAO era lida.
+    """
+    sql = text("""
+        SELECT
+            C.[DT_ATUALIZACAO],
+            C.[ID_INDICE_ECONOMICO],
+            COUNT(*)                AS QTD_PARCELAS,
+            SUM(C.[VR_TOTAL])       AS VR_DIVIDA,
+            MAX(C.[PERC_HONORARIOS]) AS PERC_HONORARIOS,
+            MIN(C.[DT_VENCIMENTO])  AS DT_VENC_INICIO,
+            MAX(C.[DT_VENCIMENTO])  AS DT_VENC_FIM
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
+        WHERE C.[IMOVEL] = :contrato
+          AND C.[PRESCRITO] = 0
+        GROUP BY C.[DT_ATUALIZACAO], C.[ID_INDICE_ECONOMICO]
+        ORDER BY C.[ID_INDICE_ECONOMICO], C.[DT_ATUALIZACAO] DESC
+    """)
+    linhas = db.session.execute(sql, {'contrato': contrato}).fetchall()
+    if not linhas:
+        return []
+
+    nomes = _dlp_nomes_indices()
+
+    # Quantos cálculos existem por índice (para avisar o usuário que pode somar)
+    qtd_por_indice = {}
+    for row in linhas:
+        qtd_por_indice[row[1]] = qtd_por_indice.get(row[1], 0) + 1
+
+    calculos = []
+    for row in linhas:
+        dt_atualizacao = _dlp_para_data(row[0])
+        id_indice = int(row[1])
+        vr_divida = _dlp_arredondar(row[3])
+        perc = _dlp_arredondar(row[4])
+        vr_honorarios = _dlp_arredondar(vr_divida * perc / Decimal('100'))
+        vr_total = vr_divida + vr_honorarios
+        dt_inicio = _dlp_para_data(row[5])
+        dt_fim = _dlp_para_data(row[6])
+
+        calculos.append({
+            'chave': _dlp_montar_chave(dt_atualizacao, id_indice),
+            'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d'),
+            'dt_atualizacao_br': dt_atualizacao.strftime('%d/%m/%Y'),
+            'id_indice': id_indice,
+            'nome_indice': nomes.get(id_indice, f'Índice {id_indice}'),
+            'qtd_parcelas': int(row[2] or 0),
+            'qtd_calculos_mesmo_indice': qtd_por_indice.get(row[1], 1),
+            'valor_divida': float(vr_divida),
+            'perc_honorarios': float(perc),
+            'valor_honorarios': float(vr_honorarios),
+            'valor_com_honorarios': float(vr_total),
+            'dt_vencimento_inicio': dt_inicio.strftime('%Y-%m-%d') if dt_inicio else None,
+            'dt_vencimento_fim': dt_fim.strftime('%Y-%m-%d') if dt_fim else None
+        })
+    return calculos
+
+
+def _dlp_tipos_parcela_calculo(contrato, dt_atualizacao, id_indice):
+    """Totais por tipo de parcela (não prescritas) de UM cálculo"""
+    sql = text("""
+        SELECT
+            C.[ID_TIPO],
+            T.[DSC_TIPO],
+            COUNT(*)          AS QUANTIDADE,
+            SUM(C.[VR_TOTAL]) AS VALOR_TOTAL
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
+        INNER JOIN [BDDASHBOARDBI].[BDG].[MOV_TB038_TIPO_PARCELA] T
+            ON T.[ID_TIPO] = C.[ID_TIPO]
+        WHERE C.[IMOVEL] = :contrato
+          AND C.[DT_ATUALIZACAO] = :dt_atualizacao
+          AND C.[ID_INDICE_ECONOMICO] = :id_indice
+          AND C.[PRESCRITO] = 0
+        GROUP BY C.[ID_TIPO], T.[DSC_TIPO]
+        ORDER BY C.[ID_TIPO]
+    """)
+    linhas = db.session.execute(sql, {
+        'contrato': contrato,
+        'dt_atualizacao': dt_atualizacao,
+        'id_indice': id_indice
+    }).fetchall()
+    return [
+        {
+            'id_tipo': int(r[0]),
+            'descricao': r[1],
+            'quantidade': int(r[2] or 0),
+            'valor_total': _dlp_decimal(r[3])
+        }
+        for r in linhas
+    ]
+
+
+def _dlp_somar_tipos_parcela(listas_tipos):
+    """Soma várias listas de tipos de parcela em uma só (agrupando por ID_TIPO)"""
+    acumulado = {}
+    for lista in listas_tipos:
+        for t in lista:
+            if t['id_tipo'] not in acumulado:
+                acumulado[t['id_tipo']] = {
+                    'id_tipo': t['id_tipo'],
+                    'descricao': t['descricao'],
+                    'tipo': t['descricao'],
+                    'quantidade': 0,
+                    'valor_total': Decimal('0')
+                }
+            acumulado[t['id_tipo']]['quantidade'] += t['quantidade']
+            acumulado[t['id_tipo']]['valor_total'] += _dlp_decimal(t['valor_total'])
+
+    resultado = []
+    for id_tipo in sorted(acumulado.keys()):
+        item = acumulado[id_tipo]
+        item['valor_total'] = float(item['valor_total'])
+        resultado.append(item)
+    return resultado
+
+
+def _dlp_consolidar_calculos(contrato, chaves):
+    """
+    Consolida os cálculos escolhidos (todos do MESMO índice).
+    Tudo é recalculado aqui a partir do banco: o front só envia as chaves.
+    Retorna dict com os detalhes de cada cálculo + os totais somados.
+    Lança ValueError com mensagem amigável quando a seleção é inválida.
+    """
+    # 1) Ler e validar as chaves recebidas (sem repetição, mantendo a ordem)
+    selecionados = []
+    for chave in chaves or []:
+        lida = _dlp_ler_chave(chave)
+        if lida and lida not in selecionados:
+            selecionados.append(lida)
+
+    if not selecionados:
+        raise ValueError('Selecione pelo menos um cálculo do SISCalculo.')
+
+    indices_escolhidos = set(id_indice for _, id_indice in selecionados)
+    if len(indices_escolhidos) > 1:
+        raise ValueError('Só é possível somar cálculos do MESMO índice econômico.')
+
+    # 2) Conferir se os cálculos existem para o contrato
+    disponiveis = {c['chave']: c for c in _dlp_listar_calculos_siscalculo(contrato)}
+    calculos = []
+    for dt_atualizacao, id_indice in selecionados:
+        chave = _dlp_montar_chave(dt_atualizacao, id_indice)
+        if chave not in disponiveis:
+            raise ValueError(
+                f'Cálculo de {dt_atualizacao.strftime("%d/%m/%Y")} não encontrado no SISCalculo para este contrato.'
+            )
+        calculos.append(dict(disponiveis[chave]))
+
+    # Ordena do cálculo mais antigo para o mais recente
+    calculos.sort(key=lambda c: c['dt_atualizacao'])
+
+    sql_cotas = text("""
+        SELECT SUM([VR_COTA]), COUNT(*)
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+        WHERE [IMOVEL] = :contrato
+          AND [DT_ATUALIZACAO] = :dt_atualizacao
+    """)
+    sql_prescrito = text("""
+        SELECT SUM([VR_COTA]), COUNT(*)
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+        WHERE [IMOVEL] = :contrato
+          AND [DT_ATUALIZACAO] = :dt_atualizacao
+          AND [ID_INDICE_ECONOMICO] = :id_indice
+    """)
+    sql_periodo_prescricao = text("""
+        SELECT TOP 1 [PERIODO_PRESCRICAO]
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
+        WHERE [IMOVEL] = :contrato
+          AND [DT_ATUALIZACAO] = :dt_atualizacao
+          AND [ID_INDICE_ECONOMICO] = :id_indice
+        ORDER BY [DT_VENCIMENTO] DESC
+    """)
+
+    tot_cotas = Decimal('0')
+    tot_qtd_cotas = 0
+    tot_sem_honorarios = Decimal('0')
+    tot_honorarios = Decimal('0')
+    tot_com_honorarios = Decimal('0')
+    tot_prescrito = Decimal('0')
+    tot_qtd_prescrito = 0
+    periodos_prescritos = []
+    datas_inicio = []
+    datas_fim = []
+    listas_tipos = []
+
+    for numero, calc in enumerate(calculos, start=1):
+        dt_atualizacao = _dlp_para_data(calc['dt_atualizacao'])
+        params = {'contrato': contrato, 'dt_atualizacao': dt_atualizacao, 'id_indice': calc['id_indice']}
+
+        # Valor da dívida do SISCalculo (soma das cotas importadas para este cálculo)
+        r_cotas = db.session.execute(sql_cotas, params).fetchone()
+        vr_cotas = _dlp_arredondar(r_cotas[0]) if r_cotas and r_cotas[0] is not None else Decimal('0')
+        qtd_cotas = int(r_cotas[1] or 0) if r_cotas else 0
+
+        # Parcelas prescritas deste cálculo
+        r_presc = db.session.execute(sql_prescrito, params).fetchone()
+        vr_presc = _dlp_arredondar(r_presc[0]) if r_presc and r_presc[0] is not None else Decimal('0')
+        qtd_presc = int(r_presc[1] or 0) if r_presc else 0
+
+        r_periodo = db.session.execute(sql_periodo_prescricao, params).fetchone()
+        periodo_presc = r_periodo[0] if r_periodo and r_periodo[0] else None
+        if periodo_presc and periodo_presc not in periodos_prescritos:
+            periodos_prescritos.append(periodo_presc)
+
+        # Tipos de parcela deste cálculo
+        tipos = _dlp_tipos_parcela_calculo(contrato, dt_atualizacao, calc['id_indice'])
+        listas_tipos.append(tipos)
+
+        calc['numero'] = numero
+        calc['valor_cotas'] = float(vr_cotas)
+        calc['qtd_cotas'] = qtd_cotas
+        calc['valor_prescrito'] = float(vr_presc)
+        calc['qtd_prescrito'] = qtd_presc
+        calc['periodo_prescricao'] = periodo_presc
+        calc['totais_por_tipo'] = [
+            {'id_tipo': t['id_tipo'], 'descricao': t['descricao'], 'quantidade': t['quantidade'],
+             'valor_total': float(t['valor_total'])}
+            for t in tipos
+        ]
+
+        tot_cotas += vr_cotas
+        tot_qtd_cotas += qtd_cotas
+        tot_sem_honorarios += _dlp_decimal(calc['valor_divida'])
+        tot_honorarios += _dlp_decimal(calc['valor_honorarios'])
+        tot_com_honorarios += _dlp_decimal(calc['valor_com_honorarios'])
+        tot_prescrito += vr_presc
+        tot_qtd_prescrito += qtd_presc
+        if calc['dt_vencimento_inicio']:
+            datas_inicio.append(calc['dt_vencimento_inicio'])
+        if calc['dt_vencimento_fim']:
+            datas_fim.append(calc['dt_vencimento_fim'])
+
+    # Período de cobrança (menor e maior vencimento das cotas dos cálculos escolhidos)
+    sql_periodo_cobranca = text("""
+        SELECT MIN([DT_VENCIMENTO]), MAX([DT_VENCIMENTO])
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
+        WHERE [IMOVEL] = :contrato
+          AND [DT_ATUALIZACAO] = :dt_atualizacao
+    """)
+    for calc in calculos:
+        r = db.session.execute(sql_periodo_cobranca, {
+            'contrato': contrato,
+            'dt_atualizacao': _dlp_para_data(calc['dt_atualizacao'])
+        }).fetchone()
+        if r and r[0]:
+            datas_inicio.append(_dlp_para_data(r[0]).strftime('%Y-%m-%d'))
+        if r and r[1]:
+            datas_fim.append(_dlp_para_data(r[1]).strftime('%Y-%m-%d'))
+
+    percentuais = sorted(set(_dlp_arredondar(c['perc_honorarios']) for c in calculos))
+
+    return {
+        'id_indice': calculos[0]['id_indice'],
+        'nome_indice': calculos[0]['nome_indice'],
+        'qtd_calculos': len(calculos),
+        'calculos': calculos,
+        'valor_cotas': float(tot_cotas),
+        'qtd_cotas': tot_qtd_cotas,
+        'valor_sem_honorarios': float(tot_sem_honorarios),
+        'valor_honorarios': float(tot_honorarios),
+        'valor_com_honorarios': float(tot_com_honorarios),
+        # Percentual único só quando todos os cálculos usam o mesmo; senão fica None
+        'perc_honorarios_unico': float(percentuais[0]) if len(percentuais) == 1 else None,
+        'honorarios_por_percentual': _dlp_honorarios_por_percentual(calculos),
+        'valor_prescrito': float(tot_prescrito),
+        'qtd_prescrito': tot_qtd_prescrito,
+        'periodo_prescricao': ' | '.join(periodos_prescritos) if periodos_prescritos else None,
+        'dt_periodo_cobranca_inicio': min(datas_inicio) if datas_inicio else None,
+        'dt_periodo_cobranca_fim': max(datas_fim) if datas_fim else None,
+        'totais_por_tipo': _dlp_somar_tipos_parcela(listas_tipos)
+    }
+
+
+def _dlp_calculos_gravados_para_tela(deliberacao):
+    """
+    Monta a lista de cálculos da deliberação para a tela de edição (somente leitura).
+    Se a deliberação é antiga (sem linhas na MOV_TB062), usa os campos da própria MOV_TB033.
+    """
+    from app.models.deliberacao_pagamento import DeliberacaoPagamentoCalculo
+
+    registros = DeliberacaoPagamentoCalculo.listar_por_contrato(deliberacao.NU_CONTRATO)
+    calculos = []
+
+    if registros:
+        for numero, r in enumerate(registros, start=1):
+            calculos.append({
+                'numero': numero,
+                'legado': False,
+                'dt_atualizacao': r.DT_ATUALIZACAO_SISCALCULO,
+                'id_indice': r.ID_INDICE_ECONOMICO,
+                'nome_indice': r.DSC_INDICE_ECONOMICO or f'Índice {r.ID_INDICE_ECONOMICO}',
+                'qtd_parcelas': r.QTD_PARCELAS or 0,
+                'valor_cotas': float(r.VR_DIVIDA_SISCALCULO or 0),
+                'valor_divida': float(r.VR_DIVIDA_SEM_HONORARIOS or 0),
+                'perc_honorarios': float(r.PERC_HONORARIOS or 0),
+                'valor_honorarios': float(r.VR_HONORARIOS or 0),
+                'valor_com_honorarios': float(r.VR_TOTAL_COM_HONORARIOS or 0),
+                'valor_prescrito': float(r.VR_PRESCRITO or 0),
+                'dt_vencimento_inicio': r.DT_VENCIMENTO_INICIO,
+                'dt_vencimento_fim': r.DT_VENCIMENTO_FIM
+            })
+        return calculos
+
+    # Deliberação antiga: 1 cálculo, montado com os dados já gravados na MOV_TB033
+    if deliberacao.VR_DEBITO_CALCULADO_EMGEA is not None:
+        vr_total = float(deliberacao.VR_DEBITO_CALCULADO_EMGEA or 0)
+        vr_honor = float(deliberacao.VR_HONORARIOS_EMGEA or 0)
+        calculos.append({
+            'numero': 1,
+            'legado': True,
+            'dt_atualizacao': deliberacao.DT_CALCULO_EMGEA,
+            'id_indice': None,
+            'nome_indice': deliberacao.INDICE_DEBITO_EMGEA or '-',
+            'qtd_parcelas': None,
+            'valor_cotas': float(deliberacao.VR_DIVIDA_CONDOMINIO_1 or 0),
+            'valor_divida': vr_total - vr_honor,
+            'perc_honorarios': float(deliberacao.PERC_HONORARIOS_EMGEA or 0),
+            'valor_honorarios': vr_honor,
+            'valor_com_honorarios': vr_total,
+            'valor_prescrito': float(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS or 0),
+            'dt_vencimento_inicio': None,
+            'dt_vencimento_fim': None
+        })
+    return calculos
+
+
+@sumov_bp.route('/deliberacao-pagamento/consolidar-calculos', methods=['POST'])
+@login_required
+def deliberacao_pagamento_consolidar_calculos():
+    """
+    Recebe o contrato e as chaves dos cálculos marcados e devolve,
+    calculado no backend, o detalhe de cada cálculo e a soma de todos.
+    """
+    try:
+        dados = request.get_json() or {}
+        contrato = (dados.get('contrato') or '').strip()
+        chaves = dados.get('calculos') or []
+
+        if not contrato:
+            return jsonify({'success': False, 'message': 'Contrato não informado.'}), 400
+
+        consolidado = _dlp_consolidar_calculos(contrato, chaves)
+        return jsonify({'success': True, 'consolidado': consolidado})
+
+    except ValueError as e:
+        return jsonify({'success': False, 'message': str(e)}), 400
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Erro ao consolidar cálculos: {str(e)}'}), 500
+
+
 @sumov_bp.route('/deliberacao-pagamento/nova', methods=['GET', 'POST'])
 @login_required
 def deliberacao_pagamento_nova():
-    """Criar nova Deliberação de Pagamento seguindo estrutura do Word"""
+    """Criar nova Deliberação de Pagamento (permite somar mais de um cálculo do mesmo índice)"""
     if request.method == 'POST':
         try:
-            from decimal import Decimal, InvalidOperation
+            from app.models.deliberacao_pagamento import DeliberacaoPagamentoCalculo
 
             # ===== CAPTURA DADOS DO FORMULÁRIO =====
             contrato = request.form.get('contrato', '').strip()
             matricula = request.form.get('matricula', '').strip() or None
             dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
-            indice_selecionado_idx = request.form.get('indice_economico', '').strip()
             dt_registro_str = request.form.get('dt_registro', '').strip()
 
-            # NOVOS CAMPOS
-            vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
+            # Cálculos do SISCalculo marcados (um ou mais, do mesmo índice)
+            chaves_calculos = [c.strip() for c in request.form.getlist('calculos_selecionados') if c.strip()]
+
+            # Campos manuais de valor
+            vr_divida_condominio_manual_str = request.form.get('vr_divida_condominio_manual', '').strip()
+            vr_demais_encargos_str = request.form.get('vr_divida_condominio_2', '').strip()
+            indice_usado_condominio = request.form.get('indice_usado_condominio', '').strip() or None
+
             dt_periodo_inicio_str = request.form.get('dt_periodo_cobranca_inicio', '').strip()
             dt_periodo_fim_str = request.form.get('dt_periodo_cobranca_fim', '').strip()
 
@@ -936,7 +1403,7 @@ def deliberacao_pagamento_nova():
             consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
             tipo_pagamento_venda = request.form.get('tipo_pagamento_venda', '').strip() or None
 
-            # ===== IPTU (NOVO) =====
+            # ===== IPTU =====
             situacao_iptu = request.form.get('situacao_iptu', '').strip() or None
             vr_iptu_str = request.form.get('vr_iptu', '').strip()
 
@@ -945,225 +1412,102 @@ def deliberacao_pagamento_nova():
                 flash('Por favor, informe o Contrato/Imóvel.', 'danger')
                 return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            if not indice_selecionado_idx:
-                flash('Por favor, selecione o Índice Econômico.', 'danger')
+            if not chaves_calculos:
+                flash('Por favor, selecione pelo menos um cálculo do SISCalculo.', 'danger')
                 return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
+            if indice_usado_condominio and len(indice_usado_condominio) > 5:
+                indice_usado_condominio = indice_usado_condominio[:5]
+
             # ===== CONVERSÃO DE DATAS =====
-
-            # Converter dt_arrematacao (OPCIONAL)
-            dt_arrematacao = None
-            if dt_arrematacao_str:
+            def _ler_data(valor_str, nome):
+                if not valor_str:
+                    return None
                 try:
-                    dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
+                    return datetime.strptime(valor_str, '%Y-%m-%d').date()
                 except ValueError:
-                    flash('Data de Arrematação inválida.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+                    raise ValueError(f'{nome} inválida.')
 
-            # ✅ Converter dt_registro (OPCIONAL - PODE SER VAZIO AGORA)
-            dt_registro = None
-            if dt_registro_str:
-                try:
-                    dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data do Registro inválida.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+            try:
+                dt_arrematacao = _ler_data(dt_arrematacao_str, 'Data de Arrematação')
+                dt_registro = _ler_data(dt_registro_str, 'Data do Registro')
+                dt_periodo_cobranca_inicio = _ler_data(dt_periodo_inicio_str, 'Data de início do período de cobrança')
+                dt_periodo_cobranca_fim = _ler_data(dt_periodo_fim_str, 'Data de fim do período de cobrança')
 
-            # Converter datas do período de cobrança (OPCIONAL)
-            dt_periodo_cobranca_inicio = None
-            if dt_periodo_inicio_str:
-                try:
-                    dt_periodo_cobranca_inicio = datetime.strptime(dt_periodo_inicio_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data de início do período de cobrança inválida.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+                # ===== CONVERSÃO DE VALORES =====
+                vr_divida_condominio_manual = _dlp_valor_br(vr_divida_condominio_manual_str,
+                                                            'Valor da Dívida do Condomínio (Manual)')
+                vr_demais_encargos = _dlp_valor_br(vr_demais_encargos_str, 'Demais Encargos (Manual)')
 
-            dt_periodo_cobranca_fim = None
-            if dt_periodo_fim_str:
-                try:
-                    dt_periodo_cobranca_fim = datetime.strptime(dt_periodo_fim_str, '%Y-%m-%d').date()
-                except ValueError:
-                    flash('Data de fim do período de cobrança inválida.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+                vr_iptu = None
+                if situacao_iptu == 'Em aberto':
+                    vr_iptu = _dlp_valor_br(vr_iptu_str, 'Valor do IPTU')
 
-            # ===== CONVERSÃO DE VALORES =====
+                # ===== CÁLCULOS DO SISCALCULO (recalculados no backend) =====
+                consolidado = _dlp_consolidar_calculos(contrato, chaves_calculos)
+            except ValueError as e:
+                flash(str(e), 'danger')
+                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
-            # Converter valor manual (OPCIONAL)
-            vr_divida_condominio_2 = None
-            if vr_divida_condominio_2_str:
-                try:
-                    # Remover formatação brasileira e converter
-                    valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',',
-                                                                                                        '.').strip()
-                    if valor_limpo:
-                        vr_divida_condominio_2 = Decimal(valor_limpo)
-                except (ValueError, InvalidOperation):
-                    flash('Valor da Dívida (Manual) inválido.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+            vr_divida_inicial = _dlp_arredondar(consolidado['valor_cotas'])
+            vr_debito_excluido_prescritas = _dlp_arredondar(consolidado['valor_prescrito'])
+            vr_debito_calculado_emgea = _dlp_arredondar(consolidado['valor_com_honorarios'])
+            vr_honorarios = _dlp_arredondar(consolidado['valor_honorarios'])
+            perc_honorarios_emgea = (_dlp_arredondar(consolidado['perc_honorarios_unico'])
+                                     if consolidado['perc_honorarios_unico'] is not None else None)
+            indice_debito_emgea = consolidado['nome_indice']
+            periodo_prescrito = consolidado['periodo_prescricao']
 
-            # ===== IPTU (NOVO): converter valor só quando "Em aberto" =====
-            vr_iptu = None
-            if situacao_iptu == 'Em aberto' and vr_iptu_str:
-                try:
-                    valor_iptu_limpo = vr_iptu_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
-                    if valor_iptu_limpo:
-                        vr_iptu = Decimal(valor_iptu_limpo)
-                except (ValueError, InvalidOperation):
-                    flash('Valor do IPTU inválido.', 'danger')
-                    return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+            # Se o usuário não informou o período, usa o detectado nos cálculos
+            if not dt_periodo_cobranca_inicio and consolidado['dt_periodo_cobranca_inicio']:
+                dt_periodo_cobranca_inicio = _dlp_para_data(consolidado['dt_periodo_cobranca_inicio'])
+            if not dt_periodo_cobranca_fim and consolidado['dt_periodo_cobranca_fim']:
+                dt_periodo_cobranca_fim = _dlp_para_data(consolidado['dt_periodo_cobranca_fim'])
 
-            # ===== BUSCA 1: Data de Entrada no Estoque =====
+            # ===== BUSCA: Data de Entrada no Estoque =====
             sql_estoque = text("""
-                SELECT TOP 1 
-                    [DT_ENTRADA_ESTOQUE]
+                SELECT TOP 1 [DT_ENTRADA_ESTOQUE]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
                 WHERE [NR_CONTRATO] = :contrato
             """)
             result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
             dt_entrada_estoque = result_estoque[0] if result_estoque else None
 
-            # ===== BUSCA 2: Período de Prescrição =====
-            sql_prescricao = text("""
-                SELECT TOP 1
-                    [PERIODO_PRESCRICAO]
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                WHERE [IMOVEL] = :contrato
-                ORDER BY [DT_VENCIMENTO] DESC
-            """)
-            result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
-            periodo_prescrito = result_prescricao[0] if result_prescricao else None
-
-            # ===== BUSCA 3: Valor Inicial (DA ÚLTIMA ATUALIZAÇÃO) =====
-            sql_valor_inicial = text("""
-                SELECT 
-                    SUM([VR_COTA]) as VALOR_INICIAL,
-                    MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-                WHERE [IMOVEL] = :contrato
-                AND [DT_ATUALIZACAO] = (
-                    SELECT MAX([DT_ATUALIZACAO])
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-                    WHERE [IMOVEL] = :contrato
-                )
-            """)
-            result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
-
-            vr_divida_inicial = result_valor[0] if result_valor and result_valor[0] else Decimal('0')
-            nome_condominio = result_valor[1] if result_valor and result_valor[1] else None
-
-            # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
-            sql_valor_prescrito = text("""
-                SELECT 
-                    SUM([VR_COTA]) as VALOR_PRESCRITO
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                WHERE [IMOVEL] = :contrato
-                AND [ID_INDICE_ECONOMICO] = (
-                    SELECT MIN([ID_INDICE_ECONOMICO])
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                    WHERE [IMOVEL] = :contrato
-                    AND [DT_ATUALIZACAO] = (
-                        SELECT MAX([DT_ATUALIZACAO])
-                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                        WHERE [IMOVEL] = :contrato
-                    )
-                )
-                AND [DT_ATUALIZACAO] = (
-                    SELECT MAX([DT_ATUALIZACAO])
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                    WHERE [IMOVEL] = :contrato
-                )
-            """)
-            result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
-            vr_debito_excluido_prescritas = result_prescrito[0] if result_prescrito and result_prescrito[
-                0] else Decimal('0')
-
-            # ===== BUSCA 5: Cálculos do SISCalculo =====
-            sql_calculos = text("""
-                SELECT 
-                    ID_INDICE_ECONOMICO,
-                    SUM(VR_TOTAL) AS VR_TOTAL_SEM_HONORARIOS,
-                    MAX(PERC_HONORARIOS) AS PERC_HONORARIOS,
-                    SUM(VR_TOTAL) * MAX(PERC_HONORARIOS) / 100.0 AS VR_HONORARIOS,
-                    SUM(VR_TOTAL) + (SUM(VR_TOTAL) * MAX(PERC_HONORARIOS) / 100.0) AS VR_TOTAL_COM_HONORARIOS
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
-                WHERE [IMOVEL] = :contrato
-                AND [DT_ATUALIZACAO] = (
-                    SELECT MAX([DT_ATUALIZACAO])
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
-                    WHERE [IMOVEL] = :contrato
-                )
-                GROUP BY ID_INDICE_ECONOMICO
-                ORDER BY ID_INDICE_ECONOMICO
-            """)
-            result_calculos = db.session.execute(sql_calculos, {'contrato': contrato}).fetchall()
-
-            if not result_calculos:
-                flash('Nenhum cálculo encontrado no SISCalculo para este contrato. Processe os cálculos primeiro.',
-                      'warning')
-                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
-
-            # Pegar o índice selecionado
-            try:
-                idx = int(indice_selecionado_idx)
-                calculo = result_calculos[idx]
-            except (ValueError, IndexError):
-                flash('Índice econômico inválido.', 'danger')
-                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
-
-            id_indice = calculo[0]
-            vr_divida_calculada = calculo[1]
-            perc_honorarios_emgea = calculo[2]
-            vr_honorarios = calculo[3]
-            vr_debito_calculado_emgea = calculo[4]
-
-            # Buscar nome do índice
-            from app.models.siscalculo import ParamIndicesEconomicos
-            indice_obj = ParamIndicesEconomicos.query.get(id_indice)
-            indice_debito_emgea = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
-
-            # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
+            # ===== BUSCA: Valor de Avaliação e Data do Laudo =====
             sql_avaliacao = text("""
-                SELECT TOP 1
-                    [VR_LAUDO_AVALIACAO],
-                    [DT_LAUDO]
+                SELECT TOP 1 [VR_LAUDO_AVALIACAO], [DT_LAUDO]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
                 WHERE [NR_CONTRATO] = :contrato
                 ORDER BY [DT_REFERENCIA] DESC
             """)
             result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
-
             vr_avaliacao = result_avaliacao[0] if result_avaliacao and result_avaliacao[0] else None
             dt_laudo = result_avaliacao[1] if result_avaliacao and result_avaliacao[1] else None
 
-            # ===== BUSCA 7: Status do Imóvel =====
+            # ===== BUSCA: Status do Imóvel =====
             sql_status = text("""
-                SELECT TOP 1
-                    [DSC_SITUACAO]
+                SELECT TOP 1 [DSC_SITUACAO]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB020_IMOVEIS_RM_TOTVS]
                 WHERE [IMOVEL] = :contrato
             """)
             result_status = db.session.execute(sql_status, {'contrato': contrato}).fetchone()
             status_imovel = result_status[0] if result_status else None
 
-            # ===== BUSCA 8: Dados de Venda =====
+            # ===== BUSCA: Dados de Venda =====
             sql_venda = text("""
-                SELECT TOP 1
-                    [VR_VENDA],
-                    [DT_VENDA],
-                    [NO_COMPRADOR]
+                SELECT TOP 1 [VR_VENDA], [DT_VENDA], [NO_COMPRADOR]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
                 WHERE [NU_IMOVEL] = :contrato
                 ORDER BY [DT_VENDA] DESC
             """)
             result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
-
             vr_venda = result_venda[0] if result_venda and result_venda[0] else None
             dt_venda = result_venda[1] if result_venda and result_venda[1] else None
             nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
 
-            # ===== BUSCA 9: Débitos Pagos (SISDEX + SISGEA + SISINC) =====
+            # ===== BUSCA: Débitos Pagos (SISDEX + SISGEA + SISINC) =====
             sql_sisdex = text("""
-                SELECT SUM([VR_PAGO]) as TOTAL_SISDEX
+                SELECT SUM([VR_PAGO])
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB017_DESPESAS_MANUTENCAO]
                 WHERE [NU_CONTRATO] = :contrato
             """)
@@ -1171,29 +1515,25 @@ def deliberacao_pagamento_nova():
             vr_debitos_sisdex = result_sisdex[0] if result_sisdex and result_sisdex[0] else Decimal('0')
 
             sql_sisgea = text("""
-                SELECT SUM([VR_DESPESA]) as TOTAL_SISGEA
+                SELECT SUM([VR_DESPESA])
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB004_DESPESAS_ANALITICO]
                 WHERE [NR_CONTRATO] = :contrato
             """)
             result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
             vr_debitos_sisgea = result_sisgea[0] if result_sisgea and result_sisgea[0] else Decimal('0')
 
-            # ===== NOVO: BUSCA SISINC =====
             sql_sisinc = text("""
-                SELECT SUM([VR_LANCAMENTO]) as TOTAL_SISINC
+                SELECT SUM([VR_LANCAMENTO])
                 FROM [BDDASHBOARDBI].[BDG].[MOV_TB014_DESPESAS_EXECUCAO_SISINC]
                 WHERE [NU_CONTRATO] = :contrato
             """)
             result_sisinc = db.session.execute(sql_sisinc, {'contrato': contrato}).fetchone()
             vr_debitos_sisinc = result_sisinc[0] if result_sisinc and result_sisinc[0] else Decimal('0')
 
-            # TOTAL agora inclui SISINC
-            vr_debitos_total = vr_debitos_sisdex + vr_debitos_sisgea + vr_debitos_sisinc
+            vr_debitos_total = (_dlp_decimal(vr_debitos_sisdex) + _dlp_decimal(vr_debitos_sisgea)
+                                + _dlp_decimal(vr_debitos_sisinc))
 
-            # ===== VERIFICAR SE JÁ EXISTE REGISTRO =====
-            deliberacao_existente = DeliberacaoPagamento.buscar_por_contrato(contrato)
-
-            # Determinar status e usuários que deliberaram
+            # ===== STATUS E GESTORES QUE DELIBERARAM =====
             status_documento = 'RASCUNHO'
             usuario_deliberou = None
             usuario_gestor_geadi = None
@@ -1201,154 +1541,131 @@ def deliberacao_pagamento_nova():
             dt_deliberacao_geadi = None
             dt_deliberacao_sumov = None
 
-            # Se preencheu considerações do Gestor GEADI
             if consideracoes_gestor:
                 status_documento = 'DELIBERADO'
                 usuario_gestor_geadi = current_user.nome
                 dt_deliberacao_geadi = datetime.utcnow()
-                if not usuario_deliberou:  # Primeiro a deliberar
+                if not usuario_deliberou:
                     usuario_deliberou = current_user.nome
 
-            # Se preencheu considerações do Gestor SUMOV
             if consideracoes_gestor_sumov:
                 status_documento = 'DELIBERADO'
                 usuario_gestor_sumov = current_user.nome
                 dt_deliberacao_sumov = datetime.utcnow()
-                if not usuario_deliberou:  # Primeiro a deliberar
+                if not usuario_deliberou:
                     usuario_deliberou = current_user.nome
 
+            # ===== VERIFICAR SE JÁ EXISTE REGISTRO =====
+            deliberacao_existente = DeliberacaoPagamento.buscar_por_contrato(contrato)
+
             if deliberacao_existente:
-                # ATUALIZAR registro existente
-                deliberacao_existente.COLABORADOR_ANALISOU = current_user.nome
-                deliberacao_existente.DT_ANALISE = datetime.now().date()
-                deliberacao_existente.MATRICULA_CAIXA_EMGEA = matricula
-                deliberacao_existente.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
-                deliberacao_existente.DT_ENTRADA_ESTOQUE = dt_entrada_estoque
-                deliberacao_existente.PERIODO_PRESCRITO = periodo_prescrito
-                deliberacao_existente.DT_PERIODO_COBRANCA_INICIO = dt_periodo_cobranca_inicio
-                deliberacao_existente.DT_PERIODO_COBRANCA_FIM = dt_periodo_cobranca_fim
-                deliberacao_existente.VR_DIVIDA_CONDOMINIO_1 = vr_divida_inicial
-                deliberacao_existente.VR_DIVIDA_CONDOMINIO_2 = vr_divida_condominio_2
-                deliberacao_existente.VR_DEBITO_EXCLUIDO_PRESCRITAS = vr_debito_excluido_prescritas
-                deliberacao_existente.VR_DEBITO_CALCULADO_EMGEA = vr_debito_calculado_emgea
-                deliberacao_existente.INDICE_DEBITO_EMGEA = indice_debito_emgea
-                deliberacao_existente.PERC_HONORARIOS_EMGEA = perc_honorarios_emgea
-                deliberacao_existente.VR_HONORARIOS_EMGEA = vr_honorarios
-                deliberacao_existente.DT_CALCULO_EMGEA = datetime.now().date()
-                deliberacao_existente.VR_AVALIACAO = vr_avaliacao
-                deliberacao_existente.DT_LAUDO = dt_laudo
-                deliberacao_existente.STATUS_IMOVEL = status_imovel
-                deliberacao_existente.VR_VENDA = vr_venda
-                deliberacao_existente.DT_VENDA = dt_venda
-                deliberacao_existente.NOME_COMPRADOR = nome_comprador
-                deliberacao_existente.DT_REGISTRO = dt_registro
-                deliberacao_existente.VR_DEBITOS_SISDEX = vr_debitos_sisdex
-                deliberacao_existente.VR_DEBITOS_SISGEA = vr_debitos_sisgea
-                deliberacao_existente.VR_DEBITOS_SISINC = vr_debitos_sisinc  # NOVO
-                deliberacao_existente.VR_DEBITOS_TOTAL = vr_debitos_total
-                deliberacao_existente.GRAVAME_MATRICULA = gravame_matricula
-                deliberacao_existente.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
-                deliberacao_existente.NR_PROCESSOS_JUDICIAIS = nr_processos
-                deliberacao_existente.VARA_PROCESSO = vara_processo
-                deliberacao_existente.FASE_PROCESSO = fase_processo
-                deliberacao_existente.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
-                deliberacao_existente.PENALIDADE_ANS_CAIXA = penalidade_ans
-                deliberacao_existente.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
-                deliberacao_existente.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
-                deliberacao_existente.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
-                deliberacao_existente.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
-                deliberacao_existente.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
-                deliberacao_existente.SITUACAO_IPTU = situacao_iptu  # NOVO
-                deliberacao_existente.VR_IPTU = vr_iptu  # NOVO
-                deliberacao_existente.STATUS_DOCUMENTO = status_documento
-                # Atualizar usuário geral (mantém o primeiro)
-                if status_documento == 'DELIBERADO' and not deliberacao_existente.USUARIO_DELIBEROU:
-                    deliberacao_existente.USUARIO_DELIBEROU = usuario_deliberou
-                # Atualizar usuário GEADI (sempre atualiza se tiver considerações)
-                if consideracoes_gestor:
-                    deliberacao_existente.USUARIO_GESTOR_GEADI = usuario_gestor_geadi
-                    deliberacao_existente.DT_DELIBERACAO_GEADI = dt_deliberacao_geadi
-                # Atualizar usuário SUMOV (sempre atualiza se tiver considerações)
-                if consideracoes_gestor_sumov:
-                    deliberacao_existente.USUARIO_GESTOR_SUMOV = usuario_gestor_sumov
-                    deliberacao_existente.DT_DELIBERACAO_SUMOV = dt_deliberacao_sumov
-                deliberacao_existente.USUARIO_ATUALIZACAO = current_user.nome
-                deliberacao_existente.UPDATED_AT = datetime.utcnow()
                 deliberacao = deliberacao_existente
                 acao_log = 'atualizar'
                 mensagem = 'Deliberação de Pagamento atualizada com sucesso!'
             else:
-                # CRIAR novo registro
                 deliberacao = DeliberacaoPagamento(
                     NU_CONTRATO=contrato,
-                    COLABORADOR_ANALISOU=current_user.nome,
-                    DT_ANALISE=datetime.now().date(),
-                    MATRICULA_CAIXA_EMGEA=matricula,
-                    DT_ARREMATACAO_AQUISICAO=dt_arrematacao,
-                    DT_ENTRADA_ESTOQUE=dt_entrada_estoque,
-                    PERIODO_PRESCRITO=periodo_prescrito,
-                    DT_PERIODO_COBRANCA_INICIO=dt_periodo_cobranca_inicio,
-                    DT_PERIODO_COBRANCA_FIM=dt_periodo_cobranca_fim,
-                    VR_DIVIDA_CONDOMINIO_1=vr_divida_inicial,
-                    VR_DIVIDA_CONDOMINIO_2=vr_divida_condominio_2,
-                    VR_DEBITO_EXCLUIDO_PRESCRITAS=vr_debito_excluido_prescritas,
-                    VR_DEBITO_CALCULADO_EMGEA=vr_debito_calculado_emgea,
-                    INDICE_DEBITO_EMGEA=indice_debito_emgea,
-                    PERC_HONORARIOS_EMGEA=perc_honorarios_emgea,
-                    VR_HONORARIOS_EMGEA=vr_honorarios,
-                    DT_CALCULO_EMGEA=datetime.now().date(),
-                    VR_AVALIACAO=vr_avaliacao,
-                    DT_LAUDO=dt_laudo,
-                    STATUS_IMOVEL=status_imovel,
-                    VR_VENDA=vr_venda,
-                    DT_VENDA=dt_venda,
-                    NOME_COMPRADOR=nome_comprador,
-                    DT_REGISTRO=dt_registro,
-                    VR_DEBITOS_SISDEX=vr_debitos_sisdex,
-                    VR_DEBITOS_SISGEA=vr_debitos_sisgea,
-                    VR_DEBITOS_SISINC=vr_debitos_sisinc,  # NOVO
-                    VR_DEBITOS_TOTAL=vr_debitos_total,
-                    GRAVAME_MATRICULA=gravame_matricula,
-                    ACOES_NEGOCIAIS_ADMINISTRATIVAS=acoes_negociais_adm,
-                    NR_PROCESSOS_JUDICIAIS=nr_processos,
-                    VARA_PROCESSO=vara_processo,
-                    FASE_PROCESSO=fase_processo,
-                    RELATORIO_ASSESSORIA_JURIDICA=relatorio_assessoria,
-                    PENALIDADE_ANS_CAIXA=penalidade_ans,
-                    PREJUIZO_FINANCEIRO_CAIXA=prejuizo_financeiro,
-                    CONSIDERACOES_ANALISTA_GEADI=consideracoes_analista,
-                    CONSIDERACOES_GESTOR_GEADI=consideracoes_gestor,
-                    CONSIDERACOES_GESTOR_SUMOV=consideracoes_gestor_sumov,
-                    TIPO_PAGAMENTO_VENDA=tipo_pagamento_venda,
-                    SITUACAO_IPTU=situacao_iptu,  # NOVO
-                    VR_IPTU=vr_iptu,  # NOVO
-                    STATUS_DOCUMENTO=status_documento,
-                    USUARIO_GESTOR_GEADI=usuario_gestor_geadi,  # ← NOVO
-                    USUARIO_GESTOR_SUMOV=usuario_gestor_sumov,  # ← NOVO
-                    DT_DELIBERACAO_GEADI=dt_deliberacao_geadi,  # ← NOVO
-                    DT_DELIBERACAO_SUMOV=dt_deliberacao_sumov,  # ← NOVO
-                    USUARIO_DELIBEROU=usuario_deliberou,
                     USUARIO_CRIACAO=current_user.nome,
                     CREATED_AT=datetime.utcnow()
                 )
-
                 acao_log = 'criar'
                 mensagem = 'Deliberação de Pagamento criada com sucesso!'
 
-            # ===== SALVAR NO BANCO =====
+            # ===== PREENCHER CAMPOS (mesmo bloco para criar e atualizar) =====
+            deliberacao.COLABORADOR_ANALISOU = current_user.nome
+            deliberacao.DT_ANALISE = datetime.now().date()
+            deliberacao.MATRICULA_CAIXA_EMGEA = matricula
+            deliberacao.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
+            deliberacao.DT_ENTRADA_ESTOQUE = dt_entrada_estoque
+            deliberacao.PERIODO_PRESCRITO = periodo_prescrito
+            deliberacao.DT_PERIODO_COBRANCA_INICIO = dt_periodo_cobranca_inicio
+            deliberacao.DT_PERIODO_COBRANCA_FIM = dt_periodo_cobranca_fim
+            deliberacao.VR_DIVIDA_CONDOMINIO_1 = vr_divida_inicial            # soma das cotas dos cálculos
+            deliberacao.VR_COBRADO_CONDOMINIO = vr_divida_condominio_manual   # Valor da Dívida do Condomínio (Manual)
+            deliberacao.VR_DIVIDA_CONDOMINIO_2 = vr_demais_encargos           # Demais Encargos (Manual)
+            deliberacao.INDICE_USADO_CONDOMINIO = indice_usado_condominio
+            deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS = vr_debito_excluido_prescritas
+            deliberacao.VR_DEBITO_CALCULADO_EMGEA = vr_debito_calculado_emgea  # soma (com honorários)
+            deliberacao.INDICE_DEBITO_EMGEA = indice_debito_emgea
+            deliberacao.PERC_HONORARIOS_EMGEA = perc_honorarios_emgea           # None se percentuais diferentes
+            deliberacao.VR_HONORARIOS_EMGEA = vr_honorarios                     # soma dos honorários
+            deliberacao.DT_CALCULO_EMGEA = datetime.now().date()
+            deliberacao.VR_AVALIACAO = vr_avaliacao
+            deliberacao.DT_LAUDO = dt_laudo
+            deliberacao.STATUS_IMOVEL = status_imovel
+            deliberacao.VR_VENDA = vr_venda
+            deliberacao.DT_VENDA = dt_venda
+            deliberacao.NOME_COMPRADOR = nome_comprador
+            deliberacao.DT_REGISTRO = dt_registro
+            deliberacao.VR_DEBITOS_SISDEX = vr_debitos_sisdex
+            deliberacao.VR_DEBITOS_SISGEA = vr_debitos_sisgea
+            deliberacao.VR_DEBITOS_SISINC = vr_debitos_sisinc
+            deliberacao.VR_DEBITOS_TOTAL = vr_debitos_total
+            deliberacao.GRAVAME_MATRICULA = gravame_matricula
+            deliberacao.ACOES_NEGOCIAIS_ADMINISTRATIVAS = acoes_negociais_adm
+            deliberacao.NR_PROCESSOS_JUDICIAIS = nr_processos
+            deliberacao.VARA_PROCESSO = vara_processo
+            deliberacao.FASE_PROCESSO = fase_processo
+            deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
+            deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
+            deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
+            deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
+            deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor
+            deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
+            deliberacao.TIPO_PAGAMENTO_VENDA = tipo_pagamento_venda
+            deliberacao.SITUACAO_IPTU = situacao_iptu
+            deliberacao.VR_IPTU = vr_iptu
+            deliberacao.STATUS_DOCUMENTO = status_documento
+
+            if status_documento == 'DELIBERADO' and not deliberacao.USUARIO_DELIBEROU:
+                deliberacao.USUARIO_DELIBEROU = usuario_deliberou
+            if consideracoes_gestor:
+                deliberacao.USUARIO_GESTOR_GEADI = usuario_gestor_geadi
+                deliberacao.DT_DELIBERACAO_GEADI = dt_deliberacao_geadi
+            if consideracoes_gestor_sumov:
+                deliberacao.USUARIO_GESTOR_SUMOV = usuario_gestor_sumov
+                deliberacao.DT_DELIBERACAO_SUMOV = dt_deliberacao_sumov
+
+            if deliberacao_existente:
+                deliberacao.USUARIO_ATUALIZACAO = current_user.nome
+                deliberacao.UPDATED_AT = datetime.utcnow()
+
+            # ===== CÁLCULOS ESCOLHIDOS (MOV_TB062) - troca os antigos pelos novos =====
+            DeliberacaoPagamentoCalculo.excluir_por_contrato(contrato)
+            for calc in consolidado['calculos']:
+                db.session.add(DeliberacaoPagamentoCalculo(
+                    NU_CONTRATO=contrato,
+                    DT_ATUALIZACAO_SISCALCULO=_dlp_para_data(calc['dt_atualizacao']),
+                    ID_INDICE_ECONOMICO=calc['id_indice'],
+                    DSC_INDICE_ECONOMICO=calc['nome_indice'],
+                    QTD_PARCELAS=calc['qtd_parcelas'],
+                    VR_DIVIDA_SISCALCULO=_dlp_arredondar(calc['valor_cotas']),
+                    VR_DIVIDA_SEM_HONORARIOS=_dlp_arredondar(calc['valor_divida']),
+                    PERC_HONORARIOS=_dlp_arredondar(calc['perc_honorarios']),
+                    VR_HONORARIOS=_dlp_arredondar(calc['valor_honorarios']),
+                    VR_TOTAL_COM_HONORARIOS=_dlp_arredondar(calc['valor_com_honorarios']),
+                    VR_PRESCRITO=_dlp_arredondar(calc['valor_prescrito']),
+                    DT_VENCIMENTO_INICIO=_dlp_para_data(calc['dt_vencimento_inicio']),
+                    DT_VENCIMENTO_FIM=_dlp_para_data(calc['dt_vencimento_fim']),
+                    USUARIO_CRIACAO=current_user.nome,
+                    CREATED_AT=datetime.utcnow()
+                ))
+
+            # ===== SALVAR NO BANCO (deliberação + cálculos no mesmo commit) =====
             if deliberacao.salvar():
+                datas_calc = ', '.join(c['dt_atualizacao_br'] for c in consolidado['calculos'])
                 registrar_log(
                     acao=acao_log,
                     entidade='deliberacao_pagamento',
                     entidade_id=contrato,
-                    descricao=f'Deliberação de Pagamento para contrato {contrato}: {indice_debito_emgea}'
+                    descricao=(f'Deliberação de Pagamento para contrato {contrato}: {indice_debito_emgea} '
+                               f'({consolidado["qtd_calculos"]} cálculo(s): {datas_calc})')
                 )
-
                 flash(mensagem, 'success')
                 return redirect(url_for('sumov.deliberacao_pagamento'))
-            else:
-                flash('Erro ao salvar deliberação no banco de dados.', 'danger')
-                return redirect(url_for('sumov.deliberacao_pagamento_nova'))
+
+            flash('Erro ao salvar deliberação no banco de dados.', 'danger')
+            return redirect(url_for('sumov.deliberacao_pagamento_nova'))
 
         except Exception as e:
             db.session.rollback()
@@ -1364,243 +1681,63 @@ def deliberacao_pagamento_nova():
 @sumov_bp.route('/deliberacao-pagamento/buscar-dados-contrato', methods=['POST'])
 @login_required
 def buscar_dados_contrato():
-    """Busca dados do contrato nas tabelas do banco incluindo SISINC"""
+    """Busca dados do contrato nas tabelas do banco (lista TODOS os cálculos do SISCalculo)"""
     try:
-        data = request.get_json()
-        contrato = data.get('contrato', '').strip()
+        data = request.get_json() or {}
+        contrato = (data.get('contrato') or '').strip()
 
         if not contrato:
             return jsonify({'success': False, 'message': 'Contrato não informado'})
 
         # ===== BUSCA 1: Data de Entrada no Estoque =====
         sql_estoque = text("""
-            SELECT TOP 1 
-                [DT_ENTRADA_ESTOQUE]
+            SELECT TOP 1 [DT_ENTRADA_ESTOQUE]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB012_IMOVEIS_NAO_USO_ESTOQUE]
             WHERE [NR_CONTRATO] = :contrato
         """)
         result_estoque = db.session.execute(sql_estoque, {'contrato': contrato}).fetchone()
         dt_entrada_estoque = result_estoque[0].strftime('%Y-%m-%d') if result_estoque and result_estoque[0] else None
 
-        # ===== BUSCA 2: Período de Prescrição =====
-        sql_prescricao = text("""
-            SELECT TOP 1
-                [PERIODO_PRESCRICAO]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-            WHERE [IMOVEL] = :contrato
-            ORDER BY [DT_VENCIMENTO] DESC
-        """)
-        result_prescricao = db.session.execute(sql_prescricao, {'contrato': contrato}).fetchone()
-        periodo_prescricao = result_prescricao[0] if result_prescricao else None
+        # ===== BUSCA 2: Cálculos disponíveis no SISCalculo (todas as DT_ATUALIZACAO) =====
+        calculos_disponiveis = _dlp_listar_calculos_siscalculo(contrato)
 
-        # ===== BUSCA 2.5: Período da Cobrança dos Débitos (MIN e MAX DT_VENCIMENTO) =====
-        sql_periodo_cobranca = text("""
-            SELECT 
-                MIN([DT_VENCIMENTO]) as DT_INICIO,
-                MAX([DT_VENCIMENTO]) as DT_FIM
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-            WHERE [IMOVEL] = :contrato
-            AND [DT_ATUALIZACAO] = (
-                SELECT MAX([DT_ATUALIZACAO])
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-                WHERE [IMOVEL] = :contrato
-            )
-        """)
-        result_periodo_cobranca = db.session.execute(sql_periodo_cobranca, {'contrato': contrato}).fetchone()
-
-        dt_periodo_cobranca_inicio = None
-        dt_periodo_cobranca_fim = None
-        periodo_cobranca_encontrado = False
-
-        if result_periodo_cobranca and result_periodo_cobranca[0] and result_periodo_cobranca[1]:
-            dt_periodo_cobranca_inicio = result_periodo_cobranca[0].strftime('%Y-%m-%d')
-            dt_periodo_cobranca_fim = result_periodo_cobranca[1].strftime('%Y-%m-%d')
-            periodo_cobranca_encontrado = True
-
-        # ===== BUSCA 3: Valor Inicial (Soma dos VR_COTA - DA ÚLTIMA ATUALIZAÇÃO) =====
-        sql_valor_inicial = text("""
-            SELECT 
-                SUM([VR_COTA]) as VALOR_INICIAL,
-                COUNT(*) as QTD_PARCELAS,
-                MAX([NOME_CONDOMINIO]) as NOME_CONDOMINIO
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-            WHERE [IMOVEL] = :contrato
-            AND [DT_ATUALIZACAO] = (
-                SELECT MAX([DT_ATUALIZACAO])
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB030_SISCALCULO_DADOS]
-                WHERE [IMOVEL] = :contrato
-            )
-        """)
-        result_valor = db.session.execute(sql_valor_inicial, {'contrato': contrato}).fetchone()
-
-        valor_inicial = float(result_valor[0]) if result_valor and result_valor[0] else 0
-        qtd_parcelas_inicial = result_valor[1] if result_valor and result_valor[1] else 0
-        nome_condominio = result_valor[2] if result_valor and result_valor[2] else None
-
-        # ===== BUSCA 4: Valor de Débito EXCLUÍDOS as Cotas Prescritas =====
-        sql_valor_prescrito = text("""
-            SELECT 
-                SUM([VR_COTA]) as VALOR_PRESCRITO,
-                COUNT(*) as QTD_PRESCRITO
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-            WHERE [IMOVEL] = :contrato
-            AND [ID_INDICE_ECONOMICO] = (
-                SELECT MIN([ID_INDICE_ECONOMICO])
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                WHERE [IMOVEL] = :contrato
-                AND [DT_ATUALIZACAO] = (
-                    SELECT MAX([DT_ATUALIZACAO])
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                    WHERE [IMOVEL] = :contrato
-                )
-            )
-            AND [DT_ATUALIZACAO] = (
-                SELECT MAX([DT_ATUALIZACAO])
-                FROM [BDDASHBOARDBI].[BDG].[MOV_TB032_SISCALCULO_PRESCRICOES]
-                WHERE [IMOVEL] = :contrato
-            )
-        """)
-        result_prescrito = db.session.execute(sql_valor_prescrito, {'contrato': contrato}).fetchone()
-
-        valor_prescrito = float(result_prescrito[0]) if result_prescrito and result_prescrito[0] else 0
-        qtd_prescrito = result_prescrito[1] if result_prescrito and result_prescrito[1] else 0
-
-        # ===== BUSCA 5: Índices disponíveis no SISCalculo COM TOTAIS POR TIPO =====
-        # ✅ CORREÇÃO: Adicionado AND C.[PRESCRITO] = 0 no WHERE principal
-        # para que só traga parcelas válidas (não prescritas)
-        sql_indices = text("""
-                    SELECT 
-                        C.ID_INDICE_ECONOMICO,
-                        SUM(C.VR_TOTAL) as VR_DIVIDA,
-                        MAX(C.PERC_HONORARIOS) as PERC_HONORARIOS,
-                        SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0 as VR_HONORARIOS,
-                        SUM(C.VR_TOTAL) + (SUM(C.VR_TOTAL) * MAX(C.PERC_HONORARIOS) / 100.0) as VR_TOTAL_COM_HONORARIOS
-                    FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS] C
-                    WHERE C.[IMOVEL] = :contrato
-                    AND C.[PRESCRITO] = 0
-                    AND C.[DT_ATUALIZACAO] = (
-                        SELECT MAX([DT_ATUALIZACAO])
-                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
-                        WHERE [IMOVEL] = :contrato
-                        AND [PRESCRITO] = 0
-                    )
-                    GROUP BY C.ID_INDICE_ECONOMICO
-                    ORDER BY C.ID_INDICE_ECONOMICO
-                """)
-        result_indices = db.session.execute(sql_indices, {'contrato': contrato}).fetchall()
-
-        indices_disponiveis = []
-        if result_indices:
-            from app.models.siscalculo import ParamIndicesEconomicos, SiscalculoCalculos, TipoParcela
-
-            for idx, row in enumerate(result_indices):
-                id_indice = row[0]
-                vr_total_sem_honorarios = float(row[1]) if row[1] else 0
-                perc_honorarios = float(row[2]) if row[2] else 0
-                vr_honorarios = float(row[3]) if row[3] else 0
-                vr_total_com_honorarios = float(row[4]) if row[4] else 0
-
-                indice_obj = ParamIndicesEconomicos.query.get(id_indice)
-                nome_indice = indice_obj.DSC_INDICE_ECONOMICO if indice_obj else f"Índice {id_indice}"
-
-                # ✅ CORREÇÃO: Adicionado filtro PRESCRITO == False nos totais por tipo
-                totais_por_tipo = db.session.query(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO,
-                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
-                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
-                ).join(
-                    TipoParcela,
-                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
-                ).filter(
-                    SiscalculoCalculos.IMOVEL == contrato,
-                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
-                    SiscalculoCalculos.PRESCRITO == False,  # ✅ NOVO: Só válidas
-                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
-                    ).filter(
-                        SiscalculoCalculos.IMOVEL == contrato,
-                        SiscalculoCalculos.PRESCRITO == False  # ✅ NOVO: Só válidas na subquery
-                    ).scalar_subquery()
-                ).group_by(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO
-                ).order_by(
-                    SiscalculoCalculos.ID_TIPO
-                ).all()
-
-                # Converter para lista de dicionários
-                tipos_parcela_lista = [
-                    {
-                        'id_tipo': t.ID_TIPO,
-                        'descricao': t.DSC_TIPO,
-                        'quantidade': t.quantidade,
-                        'valor_total': float(t.valor_total) if t.valor_total else 0
-                    }
-                    for t in totais_por_tipo
-                ]
-
-                indices_disponiveis.append({
-                    'id_indice': id_indice,
-                    'nome_indice': nome_indice,
-                    'valor_divida': vr_total_sem_honorarios,
-                    'valor_honorarios': vr_honorarios,
-                    'perc_honorarios': perc_honorarios,
-                    'valor_com_honorarios': vr_total_com_honorarios,
-                    'totais_por_tipo': tipos_parcela_lista
-                })
-
-        # ===== BUSCA 6: Valor de Avaliação e Data do Laudo =====
+        # ===== BUSCA 3: Valor de Avaliação e Data do Laudo =====
         sql_avaliacao = text("""
-            SELECT TOP 1
-                [VR_LAUDO_AVALIACAO],
-                [DT_LAUDO]
+            SELECT TOP 1 [VR_LAUDO_AVALIACAO], [DT_LAUDO]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB001_IMOVEIS_NAO_USO_STATUS]
             WHERE [NR_CONTRATO] = :contrato
             ORDER BY [DT_REFERENCIA] DESC
         """)
         result_avaliacao = db.session.execute(sql_avaliacao, {'contrato': contrato}).fetchone()
-
         vr_avaliacao = float(result_avaliacao[0]) if result_avaliacao and result_avaliacao[0] else None
         dt_laudo = result_avaliacao[1].strftime('%Y-%m-%d') if result_avaliacao and result_avaliacao[1] else None
 
-        # ===== BUSCA 7: Status do Imóvel =====
+        # ===== BUSCA 4: Status do Imóvel =====
         sql_status = text("""
-            SELECT TOP 1
-                [DSC_SITUACAO]
+            SELECT TOP 1 [DSC_SITUACAO]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB020_IMOVEIS_RM_TOTVS]
             WHERE [IMOVEL] = :contrato
         """)
         result_status = db.session.execute(sql_status, {'contrato': contrato}).fetchone()
         status_imovel = result_status[0] if result_status else None
 
-        # ===== BUSCA 8: Dados de Venda + TIPO DE PAGAMENTO =====
+        # ===== BUSCA 5: Dados de Venda + TIPO DE PAGAMENTO =====
         sql_venda = text("""
-            SELECT TOP 1
-                [VR_VENDA],
-                [DT_VENDA],
-                [NO_COMPRADOR],
-                [VR_SD_DEVEDOR]
+            SELECT TOP 1 [VR_VENDA], [DT_VENDA], [NO_COMPRADOR], [VR_SD_DEVEDOR]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB023_VENDA_IMOVEIS_RM_TOTVS]
             WHERE [NU_IMOVEL] = :contrato
             ORDER BY [DT_VENDA] DESC
         """)
         result_venda = db.session.execute(sql_venda, {'contrato': contrato}).fetchone()
-
         vr_venda = float(result_venda[0]) if result_venda and result_venda[0] else None
         dt_venda = result_venda[1].strftime('%Y-%m-%d') if result_venda and result_venda[1] else None
         nome_comprador = result_venda[2] if result_venda and result_venda[2] else None
 
-        # Determinar tipo de pagamento
         tipo_pagamento_venda = None
         if result_venda and result_venda[3] is not None:
-            vr_sd_devedor = float(result_venda[3])
-            if vr_sd_devedor > 0:
-                tipo_pagamento_venda = "PARCELADO"
-            else:
-                tipo_pagamento_venda = "A_VISTA"
+            tipo_pagamento_venda = 'PARCELADO' if float(result_venda[3]) > 0 else 'A_VISTA'
 
-        # ===== BUSCA 9: Processos Judiciais =====
+        # ===== BUSCA 6: Processos Judiciais =====
         sql_processos = text("""
             SELECT [nrProcessoCnj]
             FROM [BDEMGEAODS].[SISJUD].[tblProcessoCredito]
@@ -1616,81 +1753,65 @@ def buscar_dados_contrato():
                     WHERE CAST([fkContratoSISCTR] AS VARCHAR(50)) = :contrato
                 """)
                 result_processos = db.session.execute(sql_processos_alt, {'contrato': contrato}).fetchall()
-            except:
+            except Exception:
                 result_processos = []
 
         processos_judiciais = []
-        if result_processos:
-            for processo in result_processos:
-                nr_processo = processo[0]
+        sql_detalhes = text("""
+            SELECT [dsComarca], [dsLocal], [dsFaseProcessual]
+            FROM [BDEMGEAODS].[SISJUD].[tblProcessoEmgea]
+            WHERE [nrProcessoCnj] = :nr_processo
+        """)
+        for processo in result_processos or []:
+            nr_processo = processo[0]
+            result_detalhes = db.session.execute(sql_detalhes, {'nr_processo': nr_processo}).fetchone()
+            if result_detalhes:
+                comarca = result_detalhes[0] or ''
+                local = result_detalhes[1] or ''
+                fase = result_detalhes[2] or ''
+                vara = f"{comarca}-{local}" if comarca and local else comarca or local or 'Não informado'
+                processos_judiciais.append({'numero': nr_processo, 'vara': vara, 'fase': fase})
 
-                sql_detalhes = text("""
-                    SELECT 
-                        [dsComarca],
-                        [dsLocal],
-                        [dsFaseProcessual]
-                    FROM [BDEMGEAODS].[SISJUD].[tblProcessoEmgea]
-                    WHERE [nrProcessoCnj] = :nr_processo
-                """)
-                result_detalhes = db.session.execute(sql_detalhes, {'nr_processo': nr_processo}).fetchone()
-
-                if result_detalhes:
-                    comarca = result_detalhes[0] if result_detalhes[0] else ''
-                    local = result_detalhes[1] if result_detalhes[1] else ''
-                    fase = result_detalhes[2] if result_detalhes[2] else ''
-
-                    vara = f"{comarca}-{local}" if comarca and local else comarca or local or 'Não informado'
-
-                    processos_judiciais.append({
-                        'numero': nr_processo,
-                        'vara': vara,
-                        'fase': fase
-                    })
-
-        # ===== BUSCA 10: Débitos Pagos - SISDEX =====
+        # ===== BUSCA 7: Débitos Pagos - SISDEX / SISGEA / SISINC =====
         sql_sisdex = text("""
-            SELECT SUM([VR_PAGO]) as TOTAL_SISDEX
+            SELECT SUM([VR_PAGO])
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB017_DESPESAS_MANUTENCAO]
             WHERE [NU_CONTRATO] = :contrato
         """)
         result_sisdex = db.session.execute(sql_sisdex, {'contrato': contrato}).fetchone()
         vr_sisdex = float(result_sisdex[0]) if result_sisdex and result_sisdex[0] else 0
 
-        # ===== BUSCA 11: Débitos Pagos - SISGEA =====
         sql_sisgea = text("""
-            SELECT SUM([VR_DESPESA]) as TOTAL_SISGEA
+            SELECT SUM([VR_DESPESA])
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB004_DESPESAS_ANALITICO]
             WHERE [NR_CONTRATO] = :contrato
         """)
         result_sisgea = db.session.execute(sql_sisgea, {'contrato': contrato}).fetchone()
         vr_sisgea = float(result_sisgea[0]) if result_sisgea and result_sisgea[0] else 0
 
-        # ===== BUSCA 12: Débitos Pagos - SISINC (NOVO) =====
         sql_sisinc = text("""
-            SELECT SUM([VR_LANCAMENTO]) as TOTAL_SISINC
+            SELECT SUM([VR_LANCAMENTO])
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB014_DESPESAS_EXECUCAO_SISINC]
             WHERE [NU_CONTRATO] = :contrato
         """)
         result_sisinc = db.session.execute(sql_sisinc, {'contrato': contrato}).fetchone()
         vr_sisinc = float(result_sisinc[0]) if result_sisinc and result_sisinc[0] else 0
 
-        # TOTAL agora inclui SISINC
         vr_total_debitos = vr_sisdex + vr_sisgea + vr_sisinc
 
+        # Índices que possuem mais de um cálculo (para avisar que é possível somar)
+        indices_com_varios = sorted(set(
+            c['nome_indice'] for c in calculos_disponiveis if c['qtd_calculos_mesmo_indice'] > 1
+        ))
+
         # ===== RETORNAR TODOS OS DADOS =====
+        # Obs.: período prescrito, período de cobrança, valor inicial e prescritas agora
+        # vêm da rota /consolidar-calculos, conforme os cálculos marcados.
         return jsonify({
             'success': True,
             'dt_entrada_estoque': dt_entrada_estoque,
-            'periodo_prescricao': periodo_prescricao,
-            'dt_periodo_cobranca_inicio': dt_periodo_cobranca_inicio,
-            'dt_periodo_cobranca_fim': dt_periodo_cobranca_fim,
-            'periodo_cobranca_encontrado': periodo_cobranca_encontrado,
-            'valor_inicial': valor_inicial,
-            'qtd_parcelas_inicial': qtd_parcelas_inicial,
-            'nome_condominio': nome_condominio,
-            'valor_prescrito': valor_prescrito,
-            'qtd_parcelas_prescrito': qtd_prescrito,
-            'indices_disponiveis': indices_disponiveis,
+            'calculos_disponiveis': calculos_disponiveis,
+            'indices_com_varios_calculos': indices_com_varios,
             'vr_avaliacao': vr_avaliacao,
             'dt_laudo': dt_laudo,
             'status_imovel': status_imovel,
@@ -1708,16 +1829,13 @@ def buscar_dados_contrato():
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'message': f'Erro ao buscar dados: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'message': f'Erro ao buscar dados: {str(e)}'}), 500
 
 
 @sumov_bp.route('/deliberacao-pagamento/editar/<contrato>', methods=['GET', 'POST'])
 @login_required
 def deliberacao_pagamento_editar(contrato):
-    """Editar uma Deliberação de Pagamento existente"""
+    """Editar uma Deliberação de Pagamento existente (cálculos do SISCalculo ficam somente leitura)"""
     try:
         deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
 
@@ -1728,16 +1846,13 @@ def deliberacao_pagamento_editar(contrato):
         # ===== POST - SALVAR EDIÇÕES =====
         if request.method == 'POST':
             try:
-                from decimal import Decimal, InvalidOperation
-
-                # ✅ NOVOS CAMPOS EDITÁVEIS (ANTES NÃO ERAM CAPTURADOS)
                 matricula = request.form.get('matricula', '').strip() or None
                 dt_arrematacao_str = request.form.get('dt_arrematacao', '').strip()
                 dt_registro_str = request.form.get('dt_registro', '').strip()
-                vr_divida_condominio_2_str = request.form.get('vr_divida_condominio_2', '').strip()
+                vr_divida_condominio_manual_str = request.form.get('vr_divida_condominio_manual', '').strip()
+                vr_demais_encargos_str = request.form.get('vr_divida_condominio_2', '').strip()
                 indice_usado_condominio = request.form.get('indice_usado_condominio', '').strip() or None
 
-                # Campos que já eram capturados
                 consideracoes_analista = request.form.get('consideracoes_analista', '').strip() or None
                 consideracoes_gestor_geadi = request.form.get('consideracoes_gestor', '').strip() or None
                 consideracoes_gestor_sumov = request.form.get('consideracoes_gestor_sumov', '').strip() or None
@@ -1750,67 +1865,55 @@ def deliberacao_pagamento_editar(contrato):
                 penalidade_ans = request.form.get('penalidade_ans_caixa', '').strip() or None
                 prejuizo_financeiro = request.form.get('prejuizo_financeiro_caixa', '').strip() or None
 
-                # ===== IPTU (NOVO) =====
                 situacao_iptu = request.form.get('situacao_iptu', '').strip() or None
                 vr_iptu_str = request.form.get('vr_iptu', '').strip()
 
-                # ✅ CONVERSÃO DE DATAS
-                dt_arrematacao = None
-                if dt_arrematacao_str:
-                    try:
-                        dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
-                    except ValueError:
-                        flash('Data de Arrematação inválida.', 'danger')
-                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+                if indice_usado_condominio and len(indice_usado_condominio) > 5:
+                    indice_usado_condominio = indice_usado_condominio[:5]
 
-                dt_registro = None
-                if dt_registro_str:
-                    try:
-                        dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
-                    except ValueError:
-                        flash('Data do Registro inválida.', 'danger')
-                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+                try:
+                    dt_arrematacao = None
+                    if dt_arrematacao_str:
+                        try:
+                            dt_arrematacao = datetime.strptime(dt_arrematacao_str, '%Y-%m-%d').date()
+                        except ValueError:
+                            raise ValueError('Data de Arrematação inválida.')
 
-                # ✅ CONVERSÃO DO VALOR MONETÁRIO
-                vr_divida_condominio_2 = None
-                if vr_divida_condominio_2_str:
-                    try:
-                        valor_limpo = vr_divida_condominio_2_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
-                        if valor_limpo:
-                            vr_divida_condominio_2 = Decimal(valor_limpo)
-                    except (ValueError, InvalidOperation):
-                        flash('Valor da Dívida (Manual) inválido.', 'danger')
-                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+                    dt_registro = None
+                    if dt_registro_str:
+                        try:
+                            dt_registro = datetime.strptime(dt_registro_str, '%Y-%m-%d').date()
+                        except ValueError:
+                            raise ValueError('Data do Registro inválida.')
 
-                # ✅ CONVERSÃO DO VALOR DO IPTU (só quando "Em aberto")
-                vr_iptu = None
-                if situacao_iptu == 'Em aberto' and vr_iptu_str:
-                    try:
-                        valor_iptu_limpo = vr_iptu_str.replace('R$', '').replace('.', '').replace(',', '.').strip()
-                        if valor_iptu_limpo:
-                            vr_iptu = Decimal(valor_iptu_limpo)
-                    except (ValueError, InvalidOperation):
-                        flash('Valor do IPTU inválido.', 'danger')
-                        return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+                    vr_divida_condominio_manual = _dlp_valor_br(vr_divida_condominio_manual_str,
+                                                                'Valor da Dívida do Condomínio (Manual)')
+                    vr_demais_encargos = _dlp_valor_br(vr_demais_encargos_str, 'Demais Encargos (Manual)')
 
-                # ✅ VERIFICAR SE GESTOR GEADI PREENCHEU/MUDOU CONSIDERAÇÕES
+                    vr_iptu = None
+                    if situacao_iptu == 'Em aberto':
+                        vr_iptu = _dlp_valor_br(vr_iptu_str, 'Valor do IPTU')
+                except ValueError as e:
+                    flash(str(e), 'danger')
+                    return redirect(url_for('sumov.deliberacao_pagamento_editar', contrato=contrato))
+
+                # Gestor GEADI preencheu/mudou considerações
                 if consideracoes_gestor_geadi and consideracoes_gestor_geadi != deliberacao.CONSIDERACOES_GESTOR_GEADI:
                     deliberacao.USUARIO_GESTOR_GEADI = current_user.nome
                     deliberacao.DT_DELIBERACAO_GEADI = datetime.utcnow()
 
-                # ✅ VERIFICAR SE GESTOR SUMOV PREENCHEU/MUDOU CONSIDERAÇÕES
+                # Gestor SUMOV preencheu/mudou considerações
                 if consideracoes_gestor_sumov and consideracoes_gestor_sumov != deliberacao.CONSIDERACOES_GESTOR_SUMOV:
                     deliberacao.USUARIO_GESTOR_SUMOV = current_user.nome
                     deliberacao.DT_DELIBERACAO_SUMOV = datetime.utcnow()
 
-                # ✅ SALVAR OS NOVOS CAMPOS EDITÁVEIS (ANTES NÃO ERAM SALVOS)
                 deliberacao.MATRICULA_CAIXA_EMGEA = matricula
                 deliberacao.DT_ARREMATACAO_AQUISICAO = dt_arrematacao
                 deliberacao.DT_REGISTRO = dt_registro
-                deliberacao.VR_DIVIDA_CONDOMINIO_2 = vr_divida_condominio_2
+                deliberacao.VR_COBRADO_CONDOMINIO = vr_divida_condominio_manual
+                deliberacao.VR_DIVIDA_CONDOMINIO_2 = vr_demais_encargos
                 deliberacao.INDICE_USADO_CONDOMINIO = indice_usado_condominio
 
-                # SALVAR OS CAMPOS QUE JÁ ERAM ATUALIZADOS
                 deliberacao.CONSIDERACOES_ANALISTA_GEADI = consideracoes_analista
                 deliberacao.CONSIDERACOES_GESTOR_GEADI = consideracoes_gestor_geadi
                 deliberacao.CONSIDERACOES_GESTOR_SUMOV = consideracoes_gestor_sumov
@@ -1822,16 +1925,14 @@ def deliberacao_pagamento_editar(contrato):
                 deliberacao.RELATORIO_ASSESSORIA_JURIDICA = relatorio_assessoria
                 deliberacao.PENALIDADE_ANS_CAIXA = penalidade_ans
                 deliberacao.PREJUIZO_FINANCEIRO_CAIXA = prejuizo_financeiro
-                deliberacao.SITUACAO_IPTU = situacao_iptu  # NOVO
-                deliberacao.VR_IPTU = vr_iptu  # NOVO
+                deliberacao.SITUACAO_IPTU = situacao_iptu
+                deliberacao.VR_IPTU = vr_iptu
 
-                # LÓGICA: Se alguma consideração de gestor foi preenchida
                 if consideracoes_gestor_geadi or consideracoes_gestor_sumov:
                     deliberacao.STATUS_DOCUMENTO = 'DELIBERADO'
                     if not deliberacao.USUARIO_DELIBEROU:
                         deliberacao.USUARIO_DELIBEROU = current_user.nome
 
-                # Atualizar dados de auditoria
                 deliberacao.USUARIO_ATUALIZACAO = current_user.nome
                 deliberacao.UPDATED_AT = datetime.utcnow()
 
@@ -1856,59 +1957,50 @@ def deliberacao_pagamento_editar(contrato):
                 return redirect(url_for('sumov.deliberacao_pagamento'))
 
         # ===== GET - MOSTRAR FORMULÁRIO DE EDIÇÃO =====
+        calculos = _dlp_calculos_gravados_para_tela(deliberacao)
+        honorarios_por_percentual = _dlp_honorarios_por_percentual(calculos) if calculos else []
+
+        totais_calculos = {
+            'valor_cotas': sum(c['valor_cotas'] for c in calculos),
+            'valor_divida': sum(c['valor_divida'] for c in calculos),
+            'valor_honorarios': sum(c['valor_honorarios'] for c in calculos),
+            'valor_com_honorarios': sum(c['valor_com_honorarios'] for c in calculos),
+            'valor_prescrito': sum(c['valor_prescrito'] for c in calculos)
+        }
+
+        # Totais por tipo de parcela (somando os cálculos gravados)
         totais_por_tipo = []
-
         try:
-            from app.models.siscalculo import SiscalculoCalculos, TipoParcela, ParamIndicesEconomicos
-
-            indice_usado = deliberacao.INDICE_DEBITO_EMGEA
-
-            if indice_usado:
+            calculos_novos = [c for c in calculos if not c['legado'] and c['dt_atualizacao'] and c['id_indice']]
+            if calculos_novos:
+                listas = [
+                    _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(c['dt_atualizacao']), c['id_indice'])
+                    for c in calculos_novos
+                ]
+                totais_por_tipo = _dlp_somar_tipos_parcela(listas)
+            elif deliberacao.INDICE_DEBITO_EMGEA:
+                # Deliberação antiga: mantém a regra anterior (último cálculo do índice gravado)
+                from app.models.siscalculo import ParamIndicesEconomicos
                 indice_obj = ParamIndicesEconomicos.query.filter(
-                    ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(indice_usado.split(' - ')[0])
+                    ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(
+                        deliberacao.INDICE_DEBITO_EMGEA.split(' - ')[0])
                 ).first()
-
                 if indice_obj:
-                    id_indice = indice_obj.ID_INDICE_ECONOMICO
-
-                    totais_query = db.session.query(
-                        SiscalculoCalculos.ID_TIPO,
-                        TipoParcela.DSC_TIPO,
-                        db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
-                        db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
-                    ).join(
-                        TipoParcela,
-                        SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
-                    ).filter(
-                        SiscalculoCalculos.IMOVEL == contrato,
-                        SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
-                        SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                            db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
-                        ).filter(
-                            SiscalculoCalculos.IMOVEL == contrato
-                        ).scalar_subquery()
-                    ).group_by(
-                        SiscalculoCalculos.ID_TIPO,
-                        TipoParcela.DSC_TIPO
-                    ).order_by(
-                        SiscalculoCalculos.ID_TIPO
-                    ).all()
-
-                    totais_por_tipo = [
-                        {
-                            'id_tipo': t.ID_TIPO,
-                            'tipo': t.DSC_TIPO,
-                            'descricao': t.DSC_TIPO,
-                            'quantidade': t.quantidade,
-                            'valor_total': float(t.valor_total) if t.valor_total else 0
-                        }
-                        for t in totais_query
-                    ]
-
-                    print(f"[DEBUG EDIÇÃO] Encontrados {len(totais_por_tipo)} tipos de parcela")
-                    for t in totais_por_tipo:
-                        print(f"  Tipo {t['id_tipo']}: {t['descricao']} - {t['quantidade']} parcelas")
-
+                    sql_ultima = text("""
+                        SELECT MAX([DT_ATUALIZACAO])
+                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+                        WHERE [IMOVEL] = :contrato
+                          AND [ID_INDICE_ECONOMICO] = :id_indice
+                    """)
+                    r = db.session.execute(sql_ultima, {
+                        'contrato': contrato,
+                        'id_indice': indice_obj.ID_INDICE_ECONOMICO
+                    }).fetchone()
+                    if r and r[0]:
+                        totais_por_tipo = _dlp_somar_tipos_parcela([
+                            _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(r[0]),
+                                                       indice_obj.ID_INDICE_ECONOMICO)
+                        ])
         except Exception as e:
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
@@ -1918,6 +2010,9 @@ def deliberacao_pagamento_editar(contrato):
         return render_template(
             'sumov/deliberacao_pagamento/editar.html',
             deliberacao=deliberacao,
+            calculos=calculos,
+            totais_calculos=totais_calculos,
+            honorarios_por_percentual=honorarios_por_percentual,
             totais_por_tipo=totais_por_tipo
         )
 
@@ -1929,15 +2024,16 @@ def deliberacao_pagamento_editar(contrato):
 @sumov_bp.route('/deliberacao-pagamento/excluir/<contrato>', methods=['POST'])
 @login_required
 def deliberacao_pagamento_excluir(contrato):
-    """Excluir (delete físico) uma Deliberação de Pagamento"""
+    """Excluir (delete físico) uma Deliberação de Pagamento e os cálculos vinculados"""
     try:
+        from app.models.deliberacao_pagamento import DeliberacaoPagamentoCalculo
+
         deliberacao = DeliberacaoPagamento.buscar_por_contrato(contrato)
 
         if not deliberacao:
             flash('Deliberação não encontrada.', 'warning')
             return redirect(url_for('sumov.deliberacao_pagamento'))
 
-        # Registrar log antes de excluir fisicamente o registro
         registrar_log(
             acao='excluir',
             entidade='deliberacao_pagamento',
@@ -1945,7 +2041,8 @@ def deliberacao_pagamento_excluir(contrato):
             descricao=f'Deliberação de Pagamento excluída (delete físico): {contrato}'
         )
 
-        # Delete físico (remove a linha do banco)
+        # Delete físico: primeiro os cálculos vinculados (MOV_TB062), depois a deliberação
+        DeliberacaoPagamentoCalculo.excluir_por_contrato(contrato)
         db.session.delete(deliberacao)
         db.session.commit()
 
@@ -1956,6 +2053,7 @@ def deliberacao_pagamento_excluir(contrato):
         flash(f'Erro ao excluir deliberação: {str(e)}', 'danger')
 
     return redirect(url_for('sumov.deliberacao_pagamento'))
+
 
 @sumov_bp.route('/deliberacao-pagamento/pdf/<contrato>')
 @login_required
@@ -2116,20 +2214,52 @@ def deliberacao_pagamento_pdf(contrato):
             dados_cobranca.append(['Período da Cobrança dos Débitos:', periodo_cobranca_texto])
 
         dados_cobranca.extend([
-            ['Valor Inicial da Dívida:', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
+            ['Valor da Dívida (SISCalculo):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
         ])
 
-        # NOVO: Adicionar valor manual se existir
+        # Campos manuais (só aparecem se preenchidos)
+        if deliberacao.VR_COBRADO_CONDOMINIO:
+            dados_cobranca.append(['Valor da Dívida do Condomínio (Manual):',
+                                   formatar_moeda(deliberacao.VR_COBRADO_CONDOMINIO)])
         if deliberacao.VR_DIVIDA_CONDOMINIO_2:
-            dados_cobranca.append(['Valor da Dívida (Manual):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_2)])
+            dados_cobranca.append(['Demais Encargos (Manual):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_2)])
+        if deliberacao.INDICE_USADO_CONDOMINIO:
+            dados_cobranca.append(['Índice Usado pelo Condomínio:', escape_text(deliberacao.INDICE_USADO_CONDOMINIO)])
 
         dados_cobranca.extend([
             ['Valor Excluídos Cotas Prescritas:', formatar_moeda(deliberacao.VR_DEBITO_EXCLUIDO_PRESCRITAS)],
             ['Índice Econômico:', escape_text(deliberacao.INDICE_DEBITO_EMGEA)],
-            ['Percentual de Honorários:', formatar_percentual(deliberacao.PERC_HONORARIOS_EMGEA)],
-            ['Valor dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
-            ['VALOR TOTAL (com Honorários):', formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)]
         ])
+
+        # Cálculos do SISCalculo utilizados (um ou mais) e honorários separados por percentual
+        calculos_pdf = _dlp_calculos_gravados_para_tela(deliberacao)
+        if len(calculos_pdf) > 1:
+            for calc_pdf in calculos_pdf:
+                dados_cobranca.append([
+                    f"Cálculo {calc_pdf['numero']} ({formatar_data(calc_pdf['dt_atualizacao'])}):",
+                    f"Dívida {formatar_moeda(calc_pdf['valor_divida'])} + Honorários "
+                    f"{formatar_percentual(calc_pdf['perc_honorarios'])} "
+                    f"({formatar_moeda(calc_pdf['valor_honorarios'])}) = "
+                    f"{formatar_moeda(calc_pdf['valor_com_honorarios'])}"
+                ])
+
+        honorarios_pdf = _dlp_honorarios_por_percentual(calculos_pdf) if calculos_pdf else []
+        if honorarios_pdf:
+            for h_pdf in honorarios_pdf:
+                dados_cobranca.append([
+                    f"Honorários ({formatar_percentual(h_pdf['perc_honorarios'])}):",
+                    formatar_moeda(h_pdf['valor_honorarios'])
+                ])
+            if len(honorarios_pdf) > 1:
+                dados_cobranca.append(['Valor Total dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)])
+        else:
+            dados_cobranca.extend([
+                ['Percentual de Honorários:', formatar_percentual(deliberacao.PERC_HONORARIOS_EMGEA)],
+                ['Valor dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)],
+            ])
+
+        # Última linha = total (o estilo da tabela destaca a última linha)
+        dados_cobranca.append(['VALOR TOTAL (com Honorários):', formatar_moeda(deliberacao.VR_DEBITO_CALCULADO_EMGEA)])
 
         tabela_cobranca = Table(dados_cobranca, colWidths=[7 * cm, 10 * cm])
         tabela_cobranca.setStyle(TableStyle([

@@ -134,6 +134,50 @@
                         <i class="fas fa-file-invoice-dollar me-2"></i>Cobrança e Dívida
                     </h5>
 
+                    <!-- ===== SELEÇÃO DOS CÁLCULOS DO SISCALCULO (um ou mais, do mesmo índice) ===== -->
+                    <div class="card border-primary shadow-sm mb-4" id="divCalculos" style="display: none;">
+                        <div class="card-header bg-primary text-white">
+                            <h6 class="mb-0">
+                                <i class="fas fa-list-check me-2"></i>Cálculos do SISCalculo <span class="text-warning">*</span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-2">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Marque um ou mais cálculos. Quando o contrato tiver mais de um cálculo com o
+                                <strong>mesmo índice</strong>, marque todos que devem ser somados.
+                                Não é possível somar cálculos de índices diferentes.
+                            </p>
+                            <div class="alert alert-warning py-2" id="alertVariosCalculos" style="display: none;">
+                                <i class="fas fa-layer-group me-1"></i>
+                                <span id="textoVariosCalculos"></span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center" style="width: 5%;">Usar</th>
+                                            <th>Índice</th>
+                                            <th class="text-center">Data do Cálculo</th>
+                                            <th class="text-center">Parcelas</th>
+                                            <th class="text-end">Dívida (sem Honorários)</th>
+                                            <th class="text-center">% Honorários</th>
+                                            <th class="text-end">Total (com Honorários)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="corpoTabelaCalculos">
+                                        <!-- Preenchido com os dados do backend -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <small class="text-muted d-block mt-2" id="msgCalculos">Nenhum cálculo selecionado</small>
+                            <div id="loadingConsolidacao" class="text-center mt-2" style="display: none;">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="text-muted ms-2">Calculando totais...</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Período Prescrito (automático) -->
                     <div class="mb-3">
                         <label class="form-label fw-bold">
@@ -146,11 +190,11 @@
                                name="periodo_prescricao"
                                readonly>
                         <small class="text-muted">
-                            <span id="msgPrescricao">Será preenchido automaticamente após buscar o contrato</span>
+                            <span id="msgPrescricao">Será preenchido automaticamente após selecionar os cálculos</span>
                         </small>
                     </div>
 
-                    <!-- NOVO: Período da Cobrança dos Débitos -->
+                    <!-- Período da Cobrança dos Débitos -->
                     <div class="card bg-light border-info mb-3">
                         <div class="card-header bg-info text-white">
                             <h6 class="mb-0">
@@ -170,7 +214,7 @@
                                            id="dt_periodo_cobranca_inicio"
                                            name="dt_periodo_cobranca_inicio">
                                     <small class="text-muted">
-                                        <span id="msgPeriodoInicio">Aguardando busca do contrato</span>
+                                        <span id="msgPeriodoInicio">Aguardando seleção dos cálculos</span>
                                     </small>
                                 </div>
 
@@ -185,42 +229,41 @@
                                            id="dt_periodo_cobranca_fim"
                                            name="dt_periodo_cobranca_fim">
                                     <small class="text-muted">
-                                        <span id="msgPeriodoFim">Aguardando busca do contrato</span>
+                                        <span id="msgPeriodoFim">Aguardando seleção dos cálculos</span>
                                     </small>
                                 </div>
 
-                                <!-- Alerta de informação -->
+                                <!-- Alertas -->
                                 <div class="col-md-12">
                                     <div class="alert alert-info mb-0" id="alertPeriodoAutomatico" style="display: none;">
                                         <i class="fas fa-info-circle me-2"></i>
-                                        <strong>Detectado automaticamente:</strong> As datas foram preenchidas com base nos dados do SISCalculo. Você pode alterá-las manualmente se necessário.
+                                        <strong>Detectado automaticamente:</strong> As datas foram preenchidas com base nos cálculos selecionados do SISCalculo. Você pode alterá-las manualmente se necessário.
                                     </div>
                                     <div class="alert alert-warning mb-0" id="alertPeriodoManual" style="display: none;">
                                         <i class="fas fa-exclamation-triangle me-2"></i>
-                                        <strong>Atenção:</strong> Este contrato não possui dados no SISCalculo. Por favor, preencha manualmente o período de cobrança dos débitos.
+                                        <strong>Atenção:</strong> Não foi possível detectar o período nos cálculos selecionados. Por favor, preencha manualmente o período de cobrança dos débitos.
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Valor Inicial da Dívida (automático) -->
+                    <!-- Valor da Dívida (SISCalculo) - soma das cotas dos cálculos marcados -->
                     <div class="mb-3">
                         <label class="form-label fw-bold">
                             <i class="fas fa-dollar-sign text-info me-1"></i>
-                            Valor Inicial da Dívida (Soma das Cotas)
+                            Valor da Dívida (SISCalculo) - Soma das Cotas
                         </label>
                         <input type="text"
-                               class="form-control bg-light"
+                               class="form-control bg-light fw-bold"
                                id="vr_divida_inicial"
-                               name="vr_divida_inicial"
                                readonly>
                         <small class="text-muted">
-                            <span id="msgValorInicial">Soma de todas as cotas do SISCalculo</span>
+                            <span id="msgValorInicial">Soma das cotas de todos os cálculos selecionados</span>
                         </small>
                     </div>
 
-                    <!-- ✅ NOVO CAMPO: Índice Usado pelo Condomínio -->
+                    <!-- Índice Usado pelo Condomínio -->
                     <div class="mb-3">
                         <label for="indice_usado_condominio" class="form-label fw-bold">
                             <i class="fas fa-percent text-info me-1"></i>
@@ -237,21 +280,38 @@
                         </small>
                     </div>
 
+                    <div class="row">
+                        <!-- Valor da Dívida do Condomínio (Manual) -->
+                        <div class="col-md-6 mb-3">
+                            <label for="vr_divida_condominio_manual" class="form-label fw-bold">
+                                <i class="fas fa-building text-secondary me-1"></i>
+                                Valor da Dívida do Condomínio (Manual)
+                            </label>
+                            <input type="text"
+                                   class="form-control campo-moeda"
+                                   id="vr_divida_condominio_manual"
+                                   name="vr_divida_condominio_manual"
+                                   placeholder="R$ 0,00">
+                            <small class="text-muted">
+                                Campo opcional - valor cobrado pelo condomínio
+                            </small>
+                        </div>
 
-                    <!-- NOVO: Valor da Dívida (Manual) -->
-                    <div class="mb-3">
-                        <label for="vr_divida_condominio_2" class="form-label fw-bold">
-                            <i class="fas fa-edit text-warning me-1"></i>
-                            demais encargos (Manual)
-                        </label>
-                        <input type="text"
-                               class="form-control"
-                               id="vr_divida_condominio_2"
-                               name="vr_divida_condominio_2"
-                               placeholder="R$ 0,00">
-                        <small class="text-muted">
-                            Campo opcional para inserir valor manualmente (se houver valor diferente do calculado)
-                        </small>
+                        <!-- Demais Encargos (Manual) -->
+                        <div class="col-md-6 mb-3">
+                            <label for="vr_divida_condominio_2" class="form-label fw-bold">
+                                <i class="fas fa-edit text-warning me-1"></i>
+                                Demais Encargos (Manual)
+                            </label>
+                            <input type="text"
+                                   class="form-control campo-moeda"
+                                   id="vr_divida_condominio_2"
+                                   name="vr_divida_condominio_2"
+                                   placeholder="R$ 0,00">
+                            <small class="text-muted">
+                                Campo opcional para inserir valor manualmente
+                            </small>
+                        </div>
                     </div>
 
                     <!-- Valor de débito excluídos as cotas prescritas -->
@@ -263,92 +323,83 @@
                         <input type="text"
                                class="form-control bg-light"
                                id="vr_debito_excluido_prescritas"
-                               name="vr_debito_excluido_prescritas"
                                readonly>
                         <small class="text-muted">
-                            <span id="msgDebitoExcluido">Será calculado automaticamente</span>
+                            <span id="msgDebitoExcluido">Será calculado automaticamente após selecionar os cálculos</span>
                         </small>
                     </div>
 
-                    <!-- Seleção do Índice Econômico -->
-                    <div class="mb-3" id="divIndices" style="display: none;">
-                        <label for="indice_economico" class="form-label fw-bold">
-                            <i class="fas fa-chart-line text-primary me-1"></i>
-                            Índice Econômico <span class="text-danger">*</span>
-                        </label>
-                        <select class="form-select"
-                                id="indice_economico"
-                                name="indice_economico"
-                                required>
-                            <option value="">Selecione o índice...</option>
-                        </select>
-                        <small class="text-muted">
-                            Selecione o índice econômico para o cálculo
-                        </small>
-                    </div>
+                    <!-- ===== QUADROS POR CÁLCULO (um quadro para cada cálculo marcado) ===== -->
+                    <div id="divQuadrosCalculos"></div>
 
-                    <!-- CARD COM DETALHES DO CÁLCULO (aparece após selecionar índice) -->
-                    <div id="divDetalhesCalculo" class="card bg-light border-primary mb-3" style="display: none;">
-                        <div class="card-header bg-primary text-white">
+                    <!-- ===== QUADRO CONSOLIDADO (soma dos cálculos marcados) ===== -->
+                    <div id="divConsolidado" class="card border-success shadow-sm mb-3" style="display: none;">
+                        <div class="card-header bg-success text-white">
                             <h6 class="mb-0">
-                                <i class="fas fa-calculator me-2"></i>Detalhes do Cálculo - <span id="nomeIndiceDetalhes"></span>
+                                <i class="fas fa-calculator me-2"></i>Valor do Débito Calculado pela EMGEA - <span id="nomeIndiceConsolidado"></span>
+                                <span class="badge bg-light text-success ms-2" id="qtdCalculosConsolidado"></span>
                             </h6>
                         </div>
                         <div class="card-body">
                             <div class="row">
-                                <!-- Valor SEM Honorários -->
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label fw-bold text-secondary">
                                         <i class="fas fa-file-invoice me-1"></i>
-                                        Valor da Dívida (sem Honorários)
+                                        Valor da Dívida (SISCalculo) - Soma
                                     </label>
-                                    <input type="text"
-                                           class="form-control bg-white"
-                                           id="vr_divida_sem_honorarios"
-                                           readonly>
+                                    <input type="text" class="form-control bg-white" id="consolidado_vr_cotas" readonly>
                                 </div>
-
-                                <!-- Percentual de Honorários -->
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label fw-bold text-secondary">
-                                        <i class="fas fa-percent me-1"></i>
-                                        Percentual de Honorários
+                                        <i class="fas fa-file-invoice-dollar me-1"></i>
+                                        Valor da Dívida Atualizada (sem Honorários) - Soma
                                     </label>
-                                    <input type="text"
-                                           class="form-control bg-white"
-                                           id="perc_honorarios_display"
-                                           readonly>
+                                    <input type="text" class="form-control bg-white" id="consolidado_vr_sem_honorarios" readonly>
                                 </div>
+                            </div>
 
-                                <!-- Valor dos Honorários -->
-                                <div class="col-md-6 mb-3">
+                            <!-- Honorários separados por percentual -->
+                            <label class="form-label fw-bold text-warning">
+                                <i class="fas fa-gavel me-1"></i>
+                                Honorários por Percentual
+                            </label>
+                            <div class="table-responsive mb-3">
+                                <table class="table table-sm table-bordered mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="text-center">Percentual</th>
+                                            <th class="text-center">Cálculos</th>
+                                            <th class="text-end">Dívida (sem Honorários)</th>
+                                            <th class="text-end">Valor dos Honorários</th>
+                                            <th class="text-end">Débito Calculado (com Honorários)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="corpoHonorariosPercentual"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-2">
                                     <label class="form-label fw-bold text-warning">
                                         <i class="fas fa-gavel me-1"></i>
-                                        Valor dos Honorários
+                                        Valor Total dos Honorários
                                     </label>
-                                    <input type="text"
-                                           class="form-control bg-white border-warning"
-                                           id="vr_honorarios_display"
-                                           readonly>
+                                    <input type="text" class="form-control bg-white border-warning" id="consolidado_vr_honorarios" readonly>
                                 </div>
-
-                                <!-- Valor TOTAL COM Honorários -->
-                                <div class="col-md-6 mb-3">
+                                <div class="col-md-6 mb-2">
                                     <label class="form-label fw-bold text-success">
                                         <i class="fas fa-money-bill-wave me-1"></i>
-                                        VALOR TOTAL (com Honorários)
+                                        VALOR TOTAL DO DÉBITO CALCULADO PELA EMGEA (com Honorários)
                                     </label>
-                                    <input type="text"
-                                           class="form-control bg-white border-success fw-bold"
-                                           id="vr_total_com_honorarios_display"
-                                           readonly>
+                                    <input type="text" class="form-control bg-white border-success fw-bold" id="consolidado_vr_total" readonly>
                                 </div>
                             </div>
                         </div>
                     </div>
-                        <!-- ✅ NOVO: CARD COM RESUMO POR TIPO DE PARCELA -->
+
+                    <!-- ===== RESUMO POR TIPO DE PARCELA (somando os cálculos marcados) ===== -->
                     <div id="divTiposParcela" class="card shadow-sm mb-3" style="display: none;">
-                        <div class="card-header bg-success text-white py-2">
+                        <div class="card-header bg-secondary text-white py-2">
                             <h6 class="mb-0">
                                 <i class="fas fa-chart-pie me-2"></i>Resumo por Tipo de Parcela - <span id="nomeIndiceTipos"></span>
                             </h6>
@@ -364,9 +415,7 @@
                                             <th class="text-end" style="width: 30%;">Valor Total</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="corpoTabelaTiposParcela">
-                                        <!-- Será preenchido dinamicamente -->
-                                    </tbody>
+                                    <tbody id="corpoTabelaTiposParcela"></tbody>
                                     <tfoot>
                                         <tr class="table-info">
                                             <th colspan="2" class="text-end">TOTAL GERAL:</th>
@@ -378,9 +427,6 @@
                             </div>
                         </div>
                     </div>
-
-                    <!-- Valor do débito calculado pela Emgea (campo hidden usado no POST) -->
-                    <input type="hidden" id="vr_debito_calculado_emgea" name="vr_debito_calculado_emgea">
                 </div>
 
                 <!-- ==== SEÇÃO 3: AVALIAÇÃO E VENDA ==== -->
@@ -828,7 +874,7 @@
                     <a href="{{ url_for('sumov.deliberacao_pagamento') }}" class="btn btn-secondary">
                         <i class="fas fa-times me-2"></i>Cancelar
                     </a>
-                    <button type="submit" class="btn btn-success btn-lg">
+                    <button type="submit" class="btn btn-success btn-lg" id="btnSalvarDeliberacao">
                         <i class="fas fa-save me-2"></i>Salvar Deliberação
                     </button>
                 </div>
@@ -839,9 +885,11 @@
 </div>
 
 <script>
-// Variável global para armazenar índices e processos
-let indicesDisponiveis = [];
+// Dados vindos do backend
+let calculosDisponiveis = [];
 let processosJudiciais = [];
+let contratoBuscado = '';
+let requisicaoConsolidacao = 0; // evita resposta antiga sobrescrever a mais nova
 
 // Preencher data de análise automaticamente ao carregar a página
 document.addEventListener('DOMContentLoaded', function() {
@@ -849,15 +897,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const dia = String(hoje.getDate()).padStart(2, '0');
     const mes = String(hoje.getMonth() + 1).padStart(2, '0');
     const ano = hoje.getFullYear();
-    const dataFormatada = `${dia}/${mes}/${ano}`;
-
     const campoData = document.getElementById('dt_analise_display');
     if (campoData) {
-        campoData.value = dataFormatada;
+        campoData.value = `${dia}/${mes}/${ano}`;
     }
 });
 
-// Função para formatar valores monetários
+// ===== FUNÇÕES DE FORMATAÇÃO =====
 function formatarMoeda(valor) {
     if (!valor) return 'R$ 0,00';
     return 'R$ ' + parseFloat(valor).toLocaleString('pt-BR', {
@@ -866,7 +912,6 @@ function formatarMoeda(valor) {
     });
 }
 
-// Função para formatar percentual
 function formatarPercentual(valor) {
     if (!valor) return '0,00%';
     return parseFloat(valor).toLocaleString('pt-BR', {
@@ -875,32 +920,312 @@ function formatarPercentual(valor) {
     }) + '%';
 }
 
-// Máscara de moeda para o campo de valor manual
-document.getElementById('vr_divida_condominio_2').addEventListener('input', function(e) {
-    let value = e.target.value.replace(/\D/g, '');
+function formatarDataBR(dataIso) {
+    if (!dataIso) return '-';
+    const partes = String(dataIso).substring(0, 10).split('-');
+    return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : dataIso;
+}
 
-    if (value === '') {
-        e.target.value = '';
-        return;
-    }
+function escaparHtml(texto) {
+    if (texto === null || texto === undefined) return '';
+    return String(texto)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
-    value = parseInt(value, 10);
-    const valorFormatado = (value / 100).toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
+// ===== MÁSCARA DE MOEDA (Valor da Dívida do Condomínio e Demais Encargos) =====
+document.querySelectorAll('.campo-moeda').forEach(function(campo) {
+    campo.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value === '') {
+            e.target.value = '';
+            return;
+        }
+        value = parseInt(value, 10);
+        e.target.value = 'R$ ' + (value / 100).toLocaleString('pt-BR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    });
+    campo.addEventListener('keydown', function(e) {
+        if (e.key === 'Backspace' && e.target.value === 'R$ 0,00') {
+            e.target.value = '';
+        }
+    });
+});
+
+// ===== LIMPAR ÁREA DOS CÁLCULOS =====
+function limparConsolidacao() {
+    document.getElementById('divQuadrosCalculos').innerHTML = '';
+    document.getElementById('divConsolidado').style.display = 'none';
+    document.getElementById('divTiposParcela').style.display = 'none';
+    document.getElementById('vr_divida_inicial').value = '';
+    document.getElementById('vr_debito_excluido_prescritas').value = '';
+    document.getElementById('periodo_prescricao').value = '';
+    document.getElementById('msgValorInicial').innerHTML = 'Soma das cotas de todos os cálculos selecionados';
+    document.getElementById('msgDebitoExcluido').innerHTML = 'Será calculado automaticamente após selecionar os cálculos';
+    document.getElementById('msgPrescricao').innerHTML = 'Será preenchido automaticamente após selecionar os cálculos';
+    document.getElementById('msgPeriodoInicio').innerHTML = 'Aguardando seleção dos cálculos';
+    document.getElementById('msgPeriodoFim').innerHTML = 'Aguardando seleção dos cálculos';
+    document.getElementById('alertPeriodoAutomatico').style.display = 'none';
+    document.getElementById('alertPeriodoManual').style.display = 'none';
+}
+
+// ===== MONTAR TABELA DE CÁLCULOS DISPONÍVEIS =====
+function montarTabelaCalculos(calculos, indicesComVarios) {
+    const tbody = document.getElementById('corpoTabelaCalculos');
+    tbody.innerHTML = '';
+
+    calculos.forEach(function(calc) {
+        const tr = document.createElement('tr');
+        tr.dataset.idIndice = calc.id_indice;
+        const badgeVarios = calc.qtd_calculos_mesmo_indice > 1
+            ? ` <span class="badge bg-warning text-dark ms-1">${calc.qtd_calculos_mesmo_indice} cálculos neste índice</span>`
+            : '';
+        tr.innerHTML = `
+            <td class="text-center">
+                <input type="checkbox"
+                       class="form-check-input chk-calculo"
+                       name="calculos_selecionados"
+                       value="${escaparHtml(calc.chave)}"
+                       data-id-indice="${calc.id_indice}">
+            </td>
+            <td><strong>${escaparHtml(calc.nome_indice)}</strong>${badgeVarios}</td>
+            <td class="text-center">${escaparHtml(calc.dt_atualizacao_br)}</td>
+            <td class="text-center">${calc.qtd_parcelas}</td>
+            <td class="text-end">${formatarMoeda(calc.valor_divida)}</td>
+            <td class="text-center">${formatarPercentual(calc.perc_honorarios)}</td>
+            <td class="text-end fw-bold">${formatarMoeda(calc.valor_com_honorarios)}</td>
+        `;
+        tbody.appendChild(tr);
     });
 
-    e.target.value = 'R$ ' + valorFormatado;
-});
-
-// Permitir que o campo seja limpo
-document.getElementById('vr_divida_condominio_2').addEventListener('keydown', function(e) {
-    if (e.key === 'Backspace' && e.target.value === 'R$ 0,00') {
-        e.target.value = '';
+    // Aviso quando existe índice com mais de um cálculo
+    const alerta = document.getElementById('alertVariosCalculos');
+    if (indicesComVarios && indicesComVarios.length > 0) {
+        document.getElementById('textoVariosCalculos').innerHTML =
+            `Este contrato possui mais de um cálculo para: <strong>${indicesComVarios.map(escaparHtml).join(', ')}</strong>. ` +
+            'Marque todos os cálculos que devem ser somados.';
+        alerta.style.display = 'block';
+    } else {
+        alerta.style.display = 'none';
     }
-});
 
-// Evento do botão Buscar
+    document.querySelectorAll('.chk-calculo').forEach(function(chk) {
+        chk.addEventListener('change', aoMarcarCalculo);
+    });
+
+    document.getElementById('divCalculos').style.display = 'block';
+}
+
+// ===== AO MARCAR/DESMARCAR UM CÁLCULO =====
+function aoMarcarCalculo() {
+    const marcados = Array.from(document.querySelectorAll('.chk-calculo:checked'));
+    const indiceTravado = marcados.length > 0 ? marcados[0].dataset.idIndice : null;
+
+    // Só permite marcar cálculos do mesmo índice: os outros índices ficam bloqueados
+    document.querySelectorAll('.chk-calculo').forEach(function(chk) {
+        const outroIndice = indiceTravado !== null && chk.dataset.idIndice !== indiceTravado;
+        chk.disabled = outroIndice;
+        chk.closest('tr').classList.toggle('text-muted', outroIndice);
+        chk.closest('tr').classList.toggle('table-success', chk.checked);
+    });
+
+    const msg = document.getElementById('msgCalculos');
+    if (marcados.length === 0) {
+        msg.innerHTML = 'Nenhum cálculo selecionado';
+        limparConsolidacao();
+        return;
+    }
+    msg.innerHTML = `<i class="fas fa-check text-success me-1"></i>${marcados.length} cálculo(s) selecionado(s) - os demais índices ficam bloqueados até desmarcar`;
+
+    consolidarCalculos(marcados.map(function(chk) { return chk.value; }));
+}
+
+// ===== PEDIR AO BACKEND A CONSOLIDAÇÃO DOS CÁLCULOS MARCADOS =====
+function consolidarCalculos(chaves) {
+    const numeroRequisicao = ++requisicaoConsolidacao;
+    document.getElementById('loadingConsolidacao').style.display = 'block';
+
+    fetch('{{ url_for("sumov.deliberacao_pagamento_consolidar_calculos") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Silent-Request': 'true'
+        },
+        body: JSON.stringify({ contrato: contratoBuscado, calculos: chaves })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (numeroRequisicao !== requisicaoConsolidacao) return; // chegou uma resposta mais nova
+        document.getElementById('loadingConsolidacao').style.display = 'none';
+
+        if (!data.success) {
+            alert(data.message || 'Erro ao consolidar os cálculos.');
+            limparConsolidacao();
+            return;
+        }
+        exibirConsolidacao(data.consolidado);
+    })
+    .catch(error => {
+        document.getElementById('loadingConsolidacao').style.display = 'none';
+        alert('Erro ao consolidar os cálculos: ' + error);
+    });
+}
+
+// ===== EXIBIR QUADROS (um por cálculo) + CONSOLIDADO =====
+function exibirConsolidacao(c) {
+    // 1. Valor da Dívida (SISCalculo) = soma das cotas
+    document.getElementById('vr_divida_inicial').value = formatarMoeda(c.valor_cotas);
+    document.getElementById('msgValorInicial').innerHTML =
+        `<i class="fas fa-check text-success me-1"></i>${c.qtd_cotas} cota(s) somada(s) de ${c.qtd_calculos} cálculo(s)`;
+
+    // 2. Cotas prescritas
+    document.getElementById('vr_debito_excluido_prescritas').value = formatarMoeda(c.valor_prescrito);
+    document.getElementById('msgDebitoExcluido').innerHTML =
+        `<i class="fas fa-check text-success me-1"></i>${c.qtd_prescrito} parcela(s) prescrita(s)`;
+
+    // 3. Período prescrito
+    if (c.periodo_prescricao) {
+        document.getElementById('periodo_prescricao').value = c.periodo_prescricao;
+        document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
+    } else {
+        document.getElementById('periodo_prescricao').value = '';
+        document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-info text-info me-1"></i>Sem parcelas prescritas nos cálculos selecionados';
+    }
+
+    // 4. Período de cobrança (sugerido, pode ser alterado)
+    if (c.dt_periodo_cobranca_inicio && c.dt_periodo_cobranca_fim) {
+        document.getElementById('dt_periodo_cobranca_inicio').value = c.dt_periodo_cobranca_inicio;
+        document.getElementById('dt_periodo_cobranca_fim').value = c.dt_periodo_cobranca_fim;
+        document.getElementById('msgPeriodoInicio').innerHTML =
+            `<i class="fas fa-check text-success me-1"></i>Detectado: ${formatarDataBR(c.dt_periodo_cobranca_inicio)}`;
+        document.getElementById('msgPeriodoFim').innerHTML =
+            `<i class="fas fa-check text-success me-1"></i>Detectado: ${formatarDataBR(c.dt_periodo_cobranca_fim)}`;
+        document.getElementById('alertPeriodoAutomatico').style.display = 'block';
+        document.getElementById('alertPeriodoManual').style.display = 'none';
+    } else {
+        document.getElementById('msgPeriodoInicio').innerHTML =
+            '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Não encontrado - preencha manualmente';
+        document.getElementById('msgPeriodoFim').innerHTML =
+            '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Não encontrado - preencha manualmente';
+        document.getElementById('alertPeriodoAutomatico').style.display = 'none';
+        document.getElementById('alertPeriodoManual').style.display = 'block';
+    }
+
+    // 5. Um quadro para cada cálculo selecionado
+    const container = document.getElementById('divQuadrosCalculos');
+    container.innerHTML = '';
+    c.calculos.forEach(function(calc) {
+        const card = document.createElement('div');
+        card.className = 'card bg-light border-primary mb-3';
+        card.innerHTML = `
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                    <i class="fas fa-calculator me-2"></i>Cálculo ${calc.numero} - ${escaparHtml(calc.nome_indice)}
+                    <small class="ms-2">(cálculo de ${escaparHtml(calc.dt_atualizacao_br)} - ${calc.qtd_parcelas} parcela(s)
+                    - vencimentos de ${formatarDataBR(calc.dt_vencimento_inicio)} a ${formatarDataBR(calc.dt_vencimento_fim)})</small>
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-secondary">
+                            <i class="fas fa-file-invoice me-1"></i>Valor da Dívida (SISCalculo)
+                        </label>
+                        <input type="text" class="form-control bg-white" value="${formatarMoeda(calc.valor_cotas)}" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-secondary">
+                            <i class="fas fa-file-invoice-dollar me-1"></i>Valor da Dívida (sem Honorários)
+                        </label>
+                        <input type="text" class="form-control bg-white" value="${formatarMoeda(calc.valor_divida)}" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-secondary">
+                            <i class="fas fa-percent me-1"></i>Percentual de Honorários
+                        </label>
+                        <input type="text" class="form-control bg-white" value="${formatarPercentual(calc.perc_honorarios)}" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-warning">
+                            <i class="fas fa-gavel me-1"></i>Valor dos Honorários
+                        </label>
+                        <input type="text" class="form-control bg-white border-warning" value="${formatarMoeda(calc.valor_honorarios)}" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-success">
+                            <i class="fas fa-money-bill-wave me-1"></i>Débito Calculado (com Honorários)
+                        </label>
+                        <input type="text" class="form-control bg-white border-success fw-bold" value="${formatarMoeda(calc.valor_com_honorarios)}" readonly>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label fw-bold text-danger">
+                            <i class="fas fa-ban me-1"></i>Cotas Prescritas
+                        </label>
+                        <input type="text" class="form-control bg-white" value="${formatarMoeda(calc.valor_prescrito)}" readonly>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    // 6. Quadro consolidado (soma)
+    document.getElementById('nomeIndiceConsolidado').textContent = c.nome_indice;
+    document.getElementById('qtdCalculosConsolidado').textContent =
+        c.qtd_calculos > 1 ? `Soma de ${c.qtd_calculos} cálculos` : '1 cálculo';
+    document.getElementById('consolidado_vr_cotas').value = formatarMoeda(c.valor_cotas);
+    document.getElementById('consolidado_vr_sem_honorarios').value = formatarMoeda(c.valor_sem_honorarios);
+    document.getElementById('consolidado_vr_honorarios').value = formatarMoeda(c.valor_honorarios);
+    document.getElementById('consolidado_vr_total').value = formatarMoeda(c.valor_com_honorarios);
+
+    const tbodyHon = document.getElementById('corpoHonorariosPercentual');
+    tbodyHon.innerHTML = '';
+    c.honorarios_por_percentual.forEach(function(h) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="text-center"><span class="badge bg-warning text-dark">${formatarPercentual(h.perc_honorarios)}</span></td>
+            <td class="text-center">${h.qtd_calculos}</td>
+            <td class="text-end">${formatarMoeda(h.valor_divida)}</td>
+            <td class="text-end fw-bold text-warning">${formatarMoeda(h.valor_honorarios)}</td>
+            <td class="text-end fw-bold">${formatarMoeda(h.valor_com_honorarios)}</td>
+        `;
+        tbodyHon.appendChild(tr);
+    });
+    document.getElementById('divConsolidado').style.display = 'block';
+
+    // 7. Resumo por tipo de parcela (somado no backend)
+    const tbodyTipos = document.getElementById('corpoTabelaTiposParcela');
+    tbodyTipos.innerHTML = '';
+    if (c.totais_por_tipo && c.totais_por_tipo.length > 0) {
+        let totalQtd = 0;
+        let totalValor = 0;
+        c.totais_por_tipo.forEach(function(tipo) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-center">${tipo.id_tipo}</td>
+                <td>${escaparHtml(tipo.descricao)}</td>
+                <td class="text-center">${tipo.quantidade}</td>
+                <td class="text-end"><strong>${formatarMoeda(tipo.valor_total)}</strong></td>
+            `;
+            tbodyTipos.appendChild(tr);
+            totalQtd += tipo.quantidade;
+            totalValor += tipo.valor_total;
+        });
+        document.getElementById('totalQuantidade').innerHTML = `<strong>${totalQtd}</strong>`;
+        document.getElementById('totalValor').innerHTML = `<strong>${formatarMoeda(totalValor)}</strong>`;
+        document.getElementById('nomeIndiceTipos').textContent = c.nome_indice;
+        document.getElementById('divTiposParcela').style.display = 'block';
+    } else {
+        document.getElementById('divTiposParcela').style.display = 'none';
+    }
+}
+
+// ===== BOTÃO BUSCAR =====
 document.getElementById('btnBuscar').addEventListener('click', function() {
     const contrato = document.getElementById('contrato').value.trim();
 
@@ -929,103 +1254,64 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
             return;
         }
 
-        // 1. Preencher Data de Entrada no Estoque
+        contratoBuscado = contrato;
+        limparConsolidacao();
+
+        // 1. Data de Entrada no Estoque
         if (data.dt_entrada_estoque) {
             document.getElementById('dt_entrada_estoque').value = data.dt_entrada_estoque;
             document.getElementById('msgEstoque').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
         } else {
+            document.getElementById('dt_entrada_estoque').value = '';
             document.getElementById('msgEstoque').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 2. Preencher Período de Prescrição
-        if (data.periodo_prescricao) {
-            document.getElementById('periodo_prescricao').value = data.periodo_prescricao;
-            document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado no sistema';
+        // 2. Cálculos do SISCalculo
+        calculosDisponiveis = data.calculos_disponiveis || [];
+        if (calculosDisponiveis.length > 0) {
+            montarTabelaCalculos(calculosDisponiveis, data.indices_com_varios_calculos);
+            document.getElementById('msgCalculos').innerHTML = 'Nenhum cálculo selecionado';
+
+            // Se só existe 1 cálculo, já marca automaticamente
+            if (calculosDisponiveis.length === 1) {
+                const unico = document.querySelector('.chk-calculo');
+                unico.checked = true;
+                aoMarcarCalculo();
+            }
         } else {
-            document.getElementById('msgPrescricao').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            document.getElementById('divCalculos').style.display = 'none';
+            alert('Nenhum cálculo encontrado no SISCalculo para este contrato. Por favor, processe os cálculos primeiro.');
         }
 
-        // NOVO: 2.5 Preencher Período da Cobrança dos Débitos
-        if (data.periodo_cobranca_encontrado) {
-            document.getElementById('dt_periodo_cobranca_inicio').value = data.dt_periodo_cobranca_inicio;
-            document.getElementById('dt_periodo_cobranca_fim').value = data.dt_periodo_cobranca_fim;
-            document.getElementById('dt_periodo_cobranca_inicio').removeAttribute('readonly');
-            document.getElementById('dt_periodo_cobranca_fim').removeAttribute('readonly');
-
-            const dtInicio = new Date(data.dt_periodo_cobranca_inicio + 'T00:00:00');
-            const dtFim = new Date(data.dt_periodo_cobranca_fim + 'T00:00:00');
-            const dtInicioFormatada = dtInicio.toLocaleDateString('pt-BR');
-            const dtFimFormatada = dtFim.toLocaleDateString('pt-BR');
-
-            document.getElementById('msgPeriodoInicio').innerHTML =
-                `<i class="fas fa-check text-success me-1"></i>Detectado: ${dtInicioFormatada}`;
-            document.getElementById('msgPeriodoFim').innerHTML =
-                `<i class="fas fa-check text-success me-1"></i>Detectado: ${dtFimFormatada}`;
-
-            document.getElementById('alertPeriodoAutomatico').style.display = 'block';
-            document.getElementById('alertPeriodoManual').style.display = 'none';
-        } else {
-            document.getElementById('dt_periodo_cobranca_inicio').value = '';
-            document.getElementById('dt_periodo_cobranca_fim').value = '';
-            document.getElementById('dt_periodo_cobranca_inicio').removeAttribute('readonly');
-            document.getElementById('dt_periodo_cobranca_fim').removeAttribute('readonly');
-
-            document.getElementById('msgPeriodoInicio').innerHTML =
-                '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Não encontrado - preencha manualmente';
-            document.getElementById('msgPeriodoFim').innerHTML =
-                '<i class="fas fa-exclamation-triangle text-warning me-1"></i>Não encontrado - preencha manualmente';
-
-            document.getElementById('alertPeriodoAutomatico').style.display = 'none';
-            document.getElementById('alertPeriodoManual').style.display = 'block';
-        }
-
-        // 3. Preencher Valor Inicial
-        if (data.valor_inicial > 0) {
-            document.getElementById('vr_divida_inicial').value = formatarMoeda(data.valor_inicial);
-            document.getElementById('msgValorInicial').innerHTML =
-                `<i class="fas fa-check text-success me-1"></i>${data.qtd_parcelas_inicial} parcela(s) encontrada(s)`;
-        } else {
-            document.getElementById('msgValorInicial').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
-        }
-
-        // 4. Preencher Valor de Avaliação
+        // 3. Valor de Avaliação
         if (data.vr_avaliacao) {
             document.getElementById('vr_avaliacao').value = formatarMoeda(data.vr_avaliacao);
-            document.getElementById('msgAvaliacao').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgAvaliacao').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
         } else {
-            document.getElementById('msgAvaliacao').innerHTML =
-                '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            document.getElementById('vr_avaliacao').value = '';
+            document.getElementById('msgAvaliacao').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 5. Preencher Data do Laudo
+        // 4. Data do Laudo
         if (data.dt_laudo) {
             document.getElementById('dt_laudo').value = data.dt_laudo;
-            document.getElementById('msgDtLaudo').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgDtLaudo').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
         } else {
-            document.getElementById('msgDtLaudo').innerHTML =
-                '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            document.getElementById('dt_laudo').value = '';
+            document.getElementById('msgDtLaudo').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 6. Preencher Status do Imóvel
+        // 5. Status do Imóvel e dados da venda
         if (data.status_imovel) {
             document.getElementById('status_imovel').value = data.status_imovel;
-            document.getElementById('msgStatus').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgStatus').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
 
             if (data.status_imovel.toUpperCase().includes('VENDIDO')) {
                 document.getElementById('divVendaDetalhes').style.display = 'block';
 
-                if (data.vr_venda) {
-                    document.getElementById('vr_venda').value = formatarMoeda(data.vr_venda);
-                }
-                if (data.dt_venda) {
-                    document.getElementById('dt_venda').value = data.dt_venda;
-                }
-                if (data.nome_comprador) {
-                    document.getElementById('nome_comprador').value = data.nome_comprador;
-                }
+                document.getElementById('vr_venda').value = data.vr_venda ? formatarMoeda(data.vr_venda) : '';
+                document.getElementById('dt_venda').value = data.dt_venda || '';
+                document.getElementById('nome_comprador').value = data.nome_comprador || '';
 
                 if (data.tipo_pagamento_venda) {
                     document.getElementById('tipo_pagamento_venda').value = data.tipo_pagamento_venda;
@@ -1033,7 +1319,6 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
                     let tipoPagamentoDisplay = '';
                     let icone = '';
                     let cor = '';
-
                     if (data.tipo_pagamento_venda === 'A_VISTA') {
                         tipoPagamentoDisplay = 'À Vista';
                         icone = '<i class="fas fa-money-bill-wave text-success me-2"></i>';
@@ -1043,43 +1328,26 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
                         icone = '<i class="fas fa-credit-card text-primary me-2"></i>';
                         cor = 'primary';
                     }
-
                     document.getElementById('tipo_pagamento_display').innerHTML =
                         `${icone}<span class="badge bg-${cor}">${tipoPagamentoDisplay}</span>`;
                     document.getElementById('msgTipoPagamento').innerHTML =
                         '<i class="fas fa-check text-success me-1"></i>Detectado automaticamente';
                 } else {
+                    document.getElementById('tipo_pagamento_venda').value = '';
                     document.getElementById('msgTipoPagamento').innerHTML =
                         '<i class="fas fa-times text-danger me-1"></i>Não foi possível determinar';
                 }
             } else {
                 document.getElementById('divVendaDetalhes').style.display = 'none';
+                document.getElementById('tipo_pagamento_venda').value = '';
             }
         } else {
-            document.getElementById('msgStatus').innerHTML =
-                '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
+            document.getElementById('status_imovel').value = '';
+            document.getElementById('divVendaDetalhes').style.display = 'none';
+            document.getElementById('msgStatus').innerHTML = '<i class="fas fa-times text-danger me-1"></i>Não encontrado';
         }
 
-        // 7. Preencher Select de Índices
-        if (data.indices_disponiveis && data.indices_disponiveis.length > 0) {
-            indicesDisponiveis = data.indices_disponiveis;
-
-            const selectIndice = document.getElementById('indice_economico');
-            selectIndice.innerHTML = '<option value="">Selecione o índice...</option>';
-
-            data.indices_disponiveis.forEach((indice, index) => {
-                const option = document.createElement('option');
-                option.value = index;
-                option.textContent = `${indice.nome_indice} - ${formatarMoeda(indice.valor_com_honorarios)}`;
-                selectIndice.appendChild(option);
-            });
-
-            document.getElementById('divIndices').style.display = 'block';
-        } else {
-            alert('Nenhum cálculo encontrado no SISCalculo para este contrato. Por favor, processe os cálculos primeiro.');
-        }
-
-        // 8. Preencher Processos Judiciais
+        // 6. Processos Judiciais
         if (data.processos_judiciais && data.processos_judiciais.length > 0) {
             processosJudiciais = data.processos_judiciais;
 
@@ -1092,7 +1360,7 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
                 nrProcessos.push(processo.numero);
                 varas.push(`${processo.numero}: ${processo.vara}`);
                 fases.push(`${processo.numero}: ${processo.fase}`);
-                listaProcessos.push(`<li><strong>${processo.numero}</strong> - Vara: ${processo.vara} - Fase: ${processo.fase}</li>`);
+                listaProcessos.push(`<li><strong>${escaparHtml(processo.numero)}</strong> - Vara: ${escaparHtml(processo.vara)} - Fase: ${escaparHtml(processo.fase)}</li>`);
             });
 
             document.getElementById('nr_processos_judiciais').value = nrProcessos.join('\n');
@@ -1101,52 +1369,39 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
 
             document.getElementById('msgProcessos').innerHTML =
                 `<i class="fas fa-check text-success me-1"></i>${data.processos_judiciais.length} processo(s) encontrado(s)`;
-            document.getElementById('msgVara').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Informações carregadas';
-            document.getElementById('msgFase').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Informações carregadas';
+            document.getElementById('msgVara').innerHTML = '<i class="fas fa-check text-success me-1"></i>Informações carregadas';
+            document.getElementById('msgFase').innerHTML = '<i class="fas fa-check text-success me-1"></i>Informações carregadas';
 
             document.getElementById('infoProcessosRelatorio').style.display = 'block';
             document.getElementById('listaProcessosRelatorio').innerHTML = listaProcessos.join('');
         } else {
+            processosJudiciais = [];
             document.getElementById('nr_processos_judiciais').value = '';
             document.getElementById('vara_processo').value = '';
             document.getElementById('fase_processo').value = '';
-            document.getElementById('msgProcessos').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Nenhum processo encontrado';
-            document.getElementById('msgVara').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Não aplicável';
-            document.getElementById('msgFase').innerHTML =
-                '<i class="fas fa-info text-info me-1"></i>Não aplicável';
+            document.getElementById('msgProcessos').innerHTML = '<i class="fas fa-info text-info me-1"></i>Nenhum processo encontrado';
+            document.getElementById('msgVara').innerHTML = '<i class="fas fa-info text-info me-1"></i>Não aplicável';
+            document.getElementById('msgFase').innerHTML = '<i class="fas fa-info text-info me-1"></i>Não aplicável';
             document.getElementById('infoProcessosRelatorio').style.display = 'none';
         }
 
-        // Preencher Débitos
+        // 7. Débitos pagos
         if (data.vr_debitos_sisdex !== undefined) {
             document.getElementById('vr_debitos_sisdex').value = formatarMoeda(data.vr_debitos_sisdex);
-            document.getElementById('msgSisdex').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgSisdex').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
-
         if (data.vr_debitos_sisgea !== undefined) {
             document.getElementById('vr_debitos_sisgea').value = formatarMoeda(data.vr_debitos_sisgea);
-            document.getElementById('msgSisgea').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgSisgea').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
-
-        // NOVO - SISINC
         if (data.vr_debitos_sisinc !== undefined) {
             document.getElementById('vr_debitos_sisinc').value = formatarMoeda(data.vr_debitos_sisinc);
-            document.getElementById('msgSisinc').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Encontrado';
+            document.getElementById('msgSisinc').innerHTML = '<i class="fas fa-check text-success me-1"></i>Encontrado';
         }
-
         if (data.vr_debitos_total !== undefined) {
             document.getElementById('vr_debitos_total').value = formatarMoeda(data.vr_debitos_total);
-            document.getElementById('msgDebitosTotal').innerHTML =
-                '<i class="fas fa-check text-success me-1"></i>Calculado';
+            document.getElementById('msgDebitosTotal').innerHTML = '<i class="fas fa-check text-success me-1"></i>Calculado';
         }
-
     })
     .catch(error => {
         document.getElementById('loadingBusca').style.display = 'none';
@@ -1155,81 +1410,47 @@ document.getElementById('btnBuscar').addEventListener('click', function() {
     });
 });
 
-// Evento ao selecionar índice - MOSTRAR DETALHES DOS HONORÁRIOS E TIPOS DE PARCELA
-document.getElementById('indice_economico').addEventListener('change', function() {
-    const idx = parseInt(this.value);
-
-    if (!isNaN(idx) && indicesDisponiveis[idx]) {
-        const indice = indicesDisponiveis[idx];
-
-        // Preencher valores do cálculo
-        document.getElementById('vr_debito_calculado_emgea').value = indice.valor_com_honorarios;
-        document.getElementById('divDetalhesCalculo').style.display = 'block';
-        document.getElementById('nomeIndiceDetalhes').textContent = indice.nome_indice;
-        document.getElementById('vr_divida_sem_honorarios').value = formatarMoeda(indice.valor_divida);
-        document.getElementById('perc_honorarios_display').value = formatarPercentual(indice.perc_honorarios);
-        document.getElementById('vr_honorarios_display').value = formatarMoeda(indice.valor_honorarios);
-        document.getElementById('vr_total_com_honorarios_display').value = formatarMoeda(indice.valor_com_honorarios);
-
-        // ✅ NOVO: Preencher tabela de tipos de parcela
-        if (indice.totais_por_tipo && indice.totais_por_tipo.length > 0) {
-            const tbody = document.getElementById('corpoTabelaTiposParcela');
-            tbody.innerHTML = '';
-
-            let totalQtd = 0;
-            let totalValor = 0;
-
-            indice.totais_por_tipo.forEach(tipo => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="text-center">${tipo.id_tipo}</td>
-                    <td>${tipo.descricao}</td>
-                    <td class="text-center">${tipo.quantidade}</td>
-                    <td class="text-end"><strong>${formatarMoeda(tipo.valor_total)}</strong></td>
-                `;
-                tbody.appendChild(tr);
-
-                totalQtd += tipo.quantidade;
-                totalValor += tipo.valor_total;
-            });
-
-            // Atualizar totais no footer
-            document.getElementById('totalQuantidade').innerHTML = `<strong>${totalQtd}</strong>`;
-            document.getElementById('totalValor').innerHTML = `<strong>${formatarMoeda(totalValor)}</strong>`;
-
-            // Atualizar nome do índice no card de tipos
-            document.getElementById('nomeIndiceTipos').textContent = indice.nome_indice;
-
-            // Mostrar card de tipos de parcela
-            document.getElementById('divTiposParcela').style.display = 'block';
-        } else {
-            // Esconder card se não houver tipos
-            document.getElementById('divTiposParcela').style.display = 'none';
-        }
-
-        // Scroll suave para os detalhes
-        document.getElementById('divDetalhesCalculo').scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest'
-        });
-    } else {
-        document.getElementById('divDetalhesCalculo').style.display = 'none';
-        document.getElementById('divTiposParcela').style.display = 'none';  // ✅ NOVO
+// ===== Se o usuário trocar o número do contrato depois de buscar, obriga nova busca =====
+document.getElementById('contrato').addEventListener('input', function() {
+    if (contratoBuscado && this.value.trim() !== contratoBuscado) {
+        contratoBuscado = '';
+        calculosDisponiveis = [];
+        document.getElementById('corpoTabelaCalculos').innerHTML = '';
+        document.getElementById('divCalculos').style.display = 'none';
+        limparConsolidacao();
     }
 });
+
+// ===== VALIDAÇÃO ANTES DE SALVAR =====
+// Validação no clique do botão: se barrar, interrompe a propagação para o
+// auto-loading.js não abrir o overlay de carregamento sem o formulário ser enviado.
+document.getElementById('btnSalvarDeliberacao').addEventListener('click', function(e) {
+    let mensagem = '';
+    if (!contratoBuscado) {
+        mensagem = 'Clique em "Buscar Dados" para carregar o contrato antes de salvar.';
+    } else if (document.querySelectorAll('.chk-calculo:checked').length === 0) {
+        mensagem = 'Selecione pelo menos um cálculo do SISCalculo.';
+    }
+    if (mensagem) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        alert(mensagem);
+    }
+});
+
+// ===== IPTU: trava/destrava o valor conforme a situação =====
 document.addEventListener('DOMContentLoaded', function () {
     const selectSituacaoIptu = document.getElementById('situacao_iptu');
     const inputVrIptu = document.getElementById('vr_iptu');
     const msgIptu = document.getElementById('msgIptu');
 
-    // Trava/destrava o campo de valor conforme a situação selecionada
     function aplicarRegraIptu() {
         if (selectSituacaoIptu.value === 'Em aberto') {
-            inputVrIptu.disabled = false; // libera
+            inputVrIptu.disabled = false;
             msgIptu.innerHTML = '<i class="fas fa-unlock text-success me-1"></i>Informe o valor do IPTU em aberto';
         } else {
-            inputVrIptu.value = '';       // limpa o valor quando não está "Em aberto"
-            inputVrIptu.disabled = true;  // mantém bloqueado
+            inputVrIptu.value = '';
+            inputVrIptu.disabled = true;
             msgIptu.innerHTML = '<i class="fas fa-lock me-1"></i>Disponível apenas quando a situação for "Em aberto"';
         }
     }
@@ -1238,15 +1459,14 @@ document.addEventListener('DOMContentLoaded', function () {
     inputVrIptu.addEventListener('input', function () {
         let somenteDigitos = this.value.replace(/\D/g, '');
         if (somenteDigitos === '') { this.value = ''; return; }
-        let numero = (parseInt(somenteDigitos, 10) / 100).toFixed(2); // "1234.56"
+        let numero = (parseInt(somenteDigitos, 10) / 100).toFixed(2);
         let partes = numero.split('.');
-        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');   // separador de milhar
-        this.value = partes[0] + ',' + partes[1];                      // "1.234,56"
+        partes[0] = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        this.value = partes[0] + ',' + partes[1];
     });
 
     selectSituacaoIptu.addEventListener('change', aplicarRegraIptu);
-    aplicarRegraIptu(); // estado inicial: bloqueado
+    aplicarRegraIptu();
 });
-
 </script>
 {% endblock %}

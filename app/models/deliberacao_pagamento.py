@@ -176,3 +176,49 @@ class DeliberacaoPagamento(db.Model):
             db.session.rollback()
             print(f"Erro ao salvar deliberação: {str(e)}")
             return False
+
+
+class DeliberacaoPagamentoCalculo(db.Model):
+    """
+    Cálculos do SISCalculo escolhidos em uma Deliberação de Pagamento.
+    Cada linha = 1 cálculo (IMOVEL + DT_ATUALIZACAO + ID_INDICE_ECONOMICO).
+    Permite somar 2, 3 ou mais cálculos do mesmo índice no mesmo contrato.
+    """
+    __tablename__ = 'MOV_TB062_DELIBERACAO_PAGAMENTO_CALCULOS'
+    __table_args__ = {'schema': 'BDG'}
+
+    ID = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    NU_CONTRATO = db.Column(db.String(50), nullable=False)
+    DT_ATUALIZACAO_SISCALCULO = db.Column(db.Date, nullable=False)
+    ID_INDICE_ECONOMICO = db.Column(db.Integer, nullable=False)
+    DSC_INDICE_ECONOMICO = db.Column(db.String(100), nullable=True)
+    QTD_PARCELAS = db.Column(db.Integer, nullable=True)
+    VR_DIVIDA_SISCALCULO = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_DIVIDA_SEM_HONORARIOS = db.Column(db.Numeric(18, 2), nullable=True)
+    PERC_HONORARIOS = db.Column(db.Numeric(5, 2), nullable=True)
+    VR_HONORARIOS = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_TOTAL_COM_HONORARIOS = db.Column(db.Numeric(18, 2), nullable=True)
+    VR_PRESCRITO = db.Column(db.Numeric(18, 2), nullable=True)
+    DT_VENCIMENTO_INICIO = db.Column(db.Date, nullable=True)
+    DT_VENCIMENTO_FIM = db.Column(db.Date, nullable=True)
+    USUARIO_CRIACAO = db.Column(db.String(200), nullable=True)
+    CREATED_AT = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<DeliberacaoPagamentoCalculo {self.NU_CONTRATO} {self.DT_ATUALIZACAO_SISCALCULO} {self.ID_INDICE_ECONOMICO}>'
+
+    @staticmethod
+    def listar_por_contrato(nu_contrato):
+        """Lista os cálculos gravados para a deliberação do contrato"""
+        return DeliberacaoPagamentoCalculo.query.filter_by(
+            NU_CONTRATO=nu_contrato
+        ).order_by(
+            DeliberacaoPagamentoCalculo.DT_ATUALIZACAO_SISCALCULO
+        ).all()
+
+    @staticmethod
+    def excluir_por_contrato(nu_contrato):
+        """Remove (sem commit) os cálculos gravados para o contrato"""
+        return DeliberacaoPagamentoCalculo.query.filter_by(
+            NU_CONTRATO=nu_contrato
+        ).delete(synchronize_session=False)
