@@ -1338,6 +1338,53 @@ def _dlp_calculos_gravados_para_tela(deliberacao):
     return calculos
 
 
+def _dlp_totais_por_tipo_deliberacao(deliberacao, calculos=None):
+    """
+    Resumo por tipo de parcela da deliberação, SOMANDO todos os cálculos do SISCalculo
+    gravados na MOV_TB062 (só parcelas não prescritas).
+    Deliberação antiga (sem MOV_TB062): usa o último cálculo do índice gravado na MOV_TB033.
+    Usado pela tela de edição e pelo PDF, para os dois mostrarem o mesmo resultado.
+    """
+    contrato = deliberacao.NU_CONTRATO
+    if calculos is None:
+        calculos = _dlp_calculos_gravados_para_tela(deliberacao)
+
+    calculos_novos = [c for c in calculos if not c['legado'] and c['dt_atualizacao'] and c['id_indice']]
+    if calculos_novos:
+        listas = [
+            _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(c['dt_atualizacao']), c['id_indice'])
+            for c in calculos_novos
+        ]
+        return _dlp_somar_tipos_parcela(listas)
+
+    if not deliberacao.INDICE_DEBITO_EMGEA:
+        return []
+
+    from app.models.siscalculo import ParamIndicesEconomicos
+    indice_obj = ParamIndicesEconomicos.query.filter(
+        ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(deliberacao.INDICE_DEBITO_EMGEA.split(' - ')[0])
+    ).first()
+    if not indice_obj:
+        return []
+
+    sql_ultima = text("""
+        SELECT MAX([DT_ATUALIZACAO])
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
+        WHERE [IMOVEL] = :contrato
+          AND [ID_INDICE_ECONOMICO] = :id_indice
+    """)
+    r = db.session.execute(sql_ultima, {
+        'contrato': contrato,
+        'id_indice': indice_obj.ID_INDICE_ECONOMICO
+    }).fetchone()
+    if not r or not r[0]:
+        return []
+
+    return _dlp_somar_tipos_parcela([
+        _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(r[0]), indice_obj.ID_INDICE_ECONOMICO)
+    ])
+
+
 @sumov_bp.route('/deliberacao-pagamento/consolidar-calculos', methods=['POST'])
 @login_required
 def deliberacao_pagamento_consolidar_calculos():
@@ -1968,39 +2015,9 @@ def deliberacao_pagamento_editar(contrato):
             'valor_prescrito': sum(c['valor_prescrito'] for c in calculos)
         }
 
-        # Totais por tipo de parcela (somando os cálculos gravados)
-        totais_por_tipo = []
+        # Totais por tipo de parcela (somando os cálculos gravados) - mesma regra do PDF
         try:
-            calculos_novos = [c for c in calculos if not c['legado'] and c['dt_atualizacao'] and c['id_indice']]
-            if calculos_novos:
-                listas = [
-                    _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(c['dt_atualizacao']), c['id_indice'])
-                    for c in calculos_novos
-                ]
-                totais_por_tipo = _dlp_somar_tipos_parcela(listas)
-            elif deliberacao.INDICE_DEBITO_EMGEA:
-                # Deliberação antiga: mantém a regra anterior (último cálculo do índice gravado)
-                from app.models.siscalculo import ParamIndicesEconomicos
-                indice_obj = ParamIndicesEconomicos.query.filter(
-                    ParamIndicesEconomicos.DSC_INDICE_ECONOMICO.contains(
-                        deliberacao.INDICE_DEBITO_EMGEA.split(' - ')[0])
-                ).first()
-                if indice_obj:
-                    sql_ultima = text("""
-                        SELECT MAX([DT_ATUALIZACAO])
-                        FROM [BDDASHBOARDBI].[BDG].[MOV_TB031_SISCALCULO_CALCULOS]
-                        WHERE [IMOVEL] = :contrato
-                          AND [ID_INDICE_ECONOMICO] = :id_indice
-                    """)
-                    r = db.session.execute(sql_ultima, {
-                        'contrato': contrato,
-                        'id_indice': indice_obj.ID_INDICE_ECONOMICO
-                    }).fetchone()
-                    if r and r[0]:
-                        totais_por_tipo = _dlp_somar_tipos_parcela([
-                            _dlp_tipos_parcela_calculo(contrato, _dlp_para_data(r[0]),
-                                                       indice_obj.ID_INDICE_ECONOMICO)
-                        ])
+            totais_por_tipo = _dlp_totais_por_tipo_deliberacao(deliberacao, calculos)
         except Exception as e:
             print(f"Aviso: Não foi possível buscar tipos de parcela: {e}")
             import traceback
@@ -2064,7 +2081,7 @@ def deliberacao_pagamento_pdf(contrato):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
         from reportlab.lib import colors
         from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
         from reportlab.pdfgen import canvas
@@ -2204,18 +2221,32 @@ def deliberacao_pagamento_pdf(contrato):
         # ===== SEÇÃO 2: COBRANÇA E DÍVIDA =====
         elements.append(Paragraph('2. COBRANÇA E DÍVIDA', style_subtitulo))
 
+        # Cálculos do SISCalculo usados na deliberação (MOV_TB062; deliberação antiga = 1 cálculo)
+        calculos_pdf = _dlp_calculos_gravados_para_tela(deliberacao)
+        varios_calculos = len(calculos_pdf) > 1
+
+        def rotulo_calculo(calc_item):
+            return f"Cálculo {calc_item['numero']} ({formatar_data(calc_item['dt_atualizacao'])})"
+
         dados_cobranca = [
             ['Período Prescrito:', escape_text(deliberacao.PERIODO_PRESCRITO)],
         ]
 
-        # NOVO: Adicionar período de cobrança
-        if deliberacao.DT_PERIODO_COBRANCA_INICIO and deliberacao.DT_PERIODO_COBRANCA_FIM:
-            periodo_cobranca_texto = f"{formatar_data(deliberacao.DT_PERIODO_COBRANCA_INICIO)} até {formatar_data(deliberacao.DT_PERIODO_COBRANCA_FIM)}"
+        # Período da cobrança: um por cálculo quando houver mais de um; senão o período gravado
+        if varios_calculos:
+            for calc_pdf in calculos_pdf:
+                if calc_pdf['dt_vencimento_inicio'] and calc_pdf['dt_vencimento_fim']:
+                    periodo_calc = (f"{formatar_data(calc_pdf['dt_vencimento_inicio'])} até "
+                                    f"{formatar_data(calc_pdf['dt_vencimento_fim'])}")
+                else:
+                    periodo_calc = '-'
+                dados_cobranca.append([f"Período da Cobrança\n{rotulo_calculo(calc_pdf)}:", periodo_calc])
+        elif deliberacao.DT_PERIODO_COBRANCA_INICIO and deliberacao.DT_PERIODO_COBRANCA_FIM:
+            periodo_cobranca_texto = (f"{formatar_data(deliberacao.DT_PERIODO_COBRANCA_INICIO)} até "
+                                      f"{formatar_data(deliberacao.DT_PERIODO_COBRANCA_FIM)}")
             dados_cobranca.append(['Período da Cobrança dos Débitos:', periodo_cobranca_texto])
 
-        dados_cobranca.extend([
-            ['Valor da Dívida (SISCalculo):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)],
-        ])
+        dados_cobranca.append(['Valor da Dívida (SISCalculo):', formatar_moeda(deliberacao.VR_DIVIDA_CONDOMINIO_1)])
 
         # Campos manuais (só aparecem se preenchidos)
         if deliberacao.VR_COBRADO_CONDOMINIO:
@@ -2231,27 +2262,32 @@ def deliberacao_pagamento_pdf(contrato):
             ['Índice Econômico:', escape_text(deliberacao.INDICE_DEBITO_EMGEA)],
         ])
 
-        # Cálculos do SISCalculo utilizados (um ou mais) e honorários separados por percentual
-        calculos_pdf = _dlp_calculos_gravados_para_tela(deliberacao)
-        if len(calculos_pdf) > 1:
+        # Detalhe de cada cálculo (quebra em duas linhas para não passar da borda)
+        if varios_calculos:
             for calc_pdf in calculos_pdf:
                 dados_cobranca.append([
-                    f"Cálculo {calc_pdf['numero']} ({formatar_data(calc_pdf['dt_atualizacao'])}):",
+                    f"{rotulo_calculo(calc_pdf)}:",
                     f"Dívida {formatar_moeda(calc_pdf['valor_divida'])} + Honorários "
                     f"{formatar_percentual(calc_pdf['perc_honorarios'])} "
-                    f"({formatar_moeda(calc_pdf['valor_honorarios'])}) = "
-                    f"{formatar_moeda(calc_pdf['valor_com_honorarios'])}"
+                    f"({formatar_moeda(calc_pdf['valor_honorarios'])})\n"
+                    f"= {formatar_moeda(calc_pdf['valor_com_honorarios'])}"
                 ])
 
-        honorarios_pdf = _dlp_honorarios_por_percentual(calculos_pdf) if calculos_pdf else []
-        if honorarios_pdf:
-            for h_pdf in honorarios_pdf:
+        # Honorários: um por cálculo quando houver mais de um, depois o total
+        if varios_calculos:
+            for calc_pdf in calculos_pdf:
                 dados_cobranca.append([
-                    f"Honorários ({formatar_percentual(h_pdf['perc_honorarios'])}):",
-                    formatar_moeda(h_pdf['valor_honorarios'])
+                    f"Honorários - Cálculo {calc_pdf['numero']}\n"
+                    f"({formatar_data(calc_pdf['dt_atualizacao'])} - "
+                    f"{formatar_percentual(calc_pdf['perc_honorarios'])}):",
+                    formatar_moeda(calc_pdf['valor_honorarios'])
                 ])
-            if len(honorarios_pdf) > 1:
-                dados_cobranca.append(['Valor Total dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)])
+            dados_cobranca.append(['Valor Total dos Honorários:', formatar_moeda(deliberacao.VR_HONORARIOS_EMGEA)])
+        elif calculos_pdf:
+            dados_cobranca.extend([
+                ['Percentual de Honorários:', formatar_percentual(calculos_pdf[0]['perc_honorarios'])],
+                ['Valor dos Honorários:', formatar_moeda(calculos_pdf[0]['valor_honorarios'])],
+            ])
         else:
             dados_cobranca.extend([
                 ['Percentual de Honorários:', formatar_percentual(deliberacao.PERC_HONORARIOS_EMGEA)],
@@ -2282,120 +2318,81 @@ def deliberacao_pagamento_pdf(contrato):
         elements.append(tabela_cobranca)
         elements.append(Spacer(1, 0.5 * cm))
 
-        # ✅ NOVO: Adicionar tabela de tipos de parcela (se houver dados)
-        # Busca o índice diretamente do SISCalculo
+        # Resumo por tipo de parcela: soma de TODOS os cálculos usados na deliberação (MOV_TB062)
         try:
-            from app.models.siscalculo import SiscalculoCalculos, TipoParcela
+            totais_tipos_pdf = _dlp_totais_por_tipo_deliberacao(deliberacao)
 
-            # Primeiro, buscar qual índice foi usado para este contrato
-            indice_usado = db.session.query(
-                SiscalculoCalculos.ID_INDICE_ECONOMICO
-            ).filter(
-                SiscalculoCalculos.IMOVEL == contrato,
-                SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                    db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
-                ).filter(
-                    SiscalculoCalculos.IMOVEL == contrato
-                ).scalar_subquery()
-            ).first()
+            if totais_tipos_pdf:
+                # Criar dados da tabela
+                dados_tipos = [['ID', 'Descrição do Tipo', 'Quantidade', 'Valor Total']]
 
-            # Se encontrou o índice, buscar os totais por tipo
-            if indice_usado:
-                id_indice = indice_usado[0]
+                total_qtd = 0
+                total_valor = Decimal('0')
 
-                totais_query = db.session.query(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO,
-                    db.func.count(SiscalculoCalculos.DT_VENCIMENTO).label('quantidade'),
-                    db.func.sum(SiscalculoCalculos.VR_TOTAL).label('valor_total')
-                ).join(
-                    TipoParcela,
-                    SiscalculoCalculos.ID_TIPO == TipoParcela.ID_TIPO
-                ).filter(
-                    SiscalculoCalculos.IMOVEL == contrato,
-                    SiscalculoCalculos.ID_INDICE_ECONOMICO == id_indice,
-                    SiscalculoCalculos.DT_ATUALIZACAO == db.session.query(
-                        db.func.max(SiscalculoCalculos.DT_ATUALIZACAO)
-                    ).filter(
-                        SiscalculoCalculos.IMOVEL == contrato
-                    ).scalar_subquery()
-                ).group_by(
-                    SiscalculoCalculos.ID_TIPO,
-                    TipoParcela.DSC_TIPO
-                ).order_by(
-                    SiscalculoCalculos.ID_TIPO
-                ).all()
+                for t in totais_tipos_pdf:
+                    valor = Decimal(str(t['valor_total'])) if t['valor_total'] else Decimal('0')
+                    total_qtd += t['quantidade']
+                    total_valor += valor
 
-                if totais_query:
-                    # Adicionar subtítulo
-                    elements.append(Spacer(1, 0.3 * cm))
-                    elements.append(Paragraph('2.1 RESUMO POR TIPO DE PARCELA', style_subtitulo))
-
-                    # Criar dados da tabela
-                    dados_tipos = [['ID', 'Descrição do Tipo', 'Quantidade', 'Valor Total']]
-
-                    total_qtd = 0
-                    total_valor = Decimal('0')
-
-                    for t in totais_query:
-                        valor = Decimal(str(t.valor_total)) if t.valor_total else Decimal('0')
-                        total_qtd += t.quantidade
-                        total_valor += valor
-
-                        dados_tipos.append([
-                            str(t.ID_TIPO),
-                            escape_text(t.DSC_TIPO),
-                            str(t.quantidade),
-                            formatar_moeda(valor)
-                        ])
-
-                    # Adicionar linha de totais
                     dados_tipos.append([
-                        '',
-                        'TOTAL GERAL:',
-                        str(total_qtd),
-                        formatar_moeda(total_valor)
+                        str(t['id_tipo']),
+                        escape_text(t['descricao']),
+                        str(t['quantidade']),
+                        formatar_moeda(valor)
                     ])
 
-                    # Criar tabela
-                    tabela_tipos = Table(dados_tipos, colWidths=[2 * cm, 8 * cm, 3 * cm, 4 * cm])
-                    tabela_tipos.setStyle(TableStyle([
-                        # Cabeçalho
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 10),
+                # Adicionar linha de totais
+                dados_tipos.append([
+                    '',
+                    'TOTAL GERAL:',
+                    str(total_qtd),
+                    formatar_moeda(total_valor)
+                ])
 
-                        # Corpo da tabela
-                        ('BACKGROUND', (0, 1), (-1, -2), colors.white),
-                        ('TEXTCOLOR', (0, 1), (-1, -2), colors.black),
-                        ('ALIGN', (0, 1), (0, -2), 'CENTER'),  # ID centralizado
-                        ('ALIGN', (1, 1), (1, -2), 'LEFT'),  # Descrição à esquerda
-                        ('ALIGN', (2, 1), (2, -2), 'CENTER'),  # Quantidade centralizada
-                        ('ALIGN', (3, 1), (3, -2), 'RIGHT'),  # Valor à direita
-                        ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -2), 9),
+                # Criar tabela
+                tabela_tipos = Table(dados_tipos, colWidths=[2 * cm, 8 * cm, 3 * cm, 4 * cm])
+                tabela_tipos.setStyle(TableStyle([
+                    # Cabeçalho
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 10),
 
-                        # Linha de totais (última linha)
-                        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#D4EDDA')),
-                        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, -1), (-1, -1), 10),
-                        ('ALIGN', (1, -1), (1, -1), 'RIGHT'),
-                        ('ALIGN', (2, -1), (2, -1), 'CENTER'),
-                        ('ALIGN', (3, -1), (3, -1), 'RIGHT'),
+                    # Corpo da tabela
+                    ('BACKGROUND', (0, 1), (-1, -2), colors.white),
+                    ('TEXTCOLOR', (0, 1), (-1, -2), colors.black),
+                    ('ALIGN', (0, 1), (0, -2), 'CENTER'),  # ID centralizado
+                    ('ALIGN', (1, 1), (1, -2), 'LEFT'),  # Descrição à esquerda
+                    ('ALIGN', (2, 1), (2, -2), 'CENTER'),  # Quantidade centralizada
+                    ('ALIGN', (3, 1), (3, -2), 'RIGHT'),  # Valor à direita
+                    ('FONTNAME', (0, 1), (-1, -2), 'Helvetica'),
+                    ('FONTSIZE', (0, 1), (-1, -2), 9),
 
-                        # Bordas e padding
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-                        ('TOPPADDING', (0, 0), (-1, -1), 6),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                    ]))
+                    # Linha de totais (última linha)
+                    ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#D4EDDA')),
+                    ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, -1), (-1, -1), 10),
+                    ('ALIGN', (1, -1), (1, -1), 'RIGHT'),
+                    ('ALIGN', (2, -1), (2, -1), 'CENTER'),
+                    ('ALIGN', (3, -1), (3, -1), 'RIGHT'),
 
-                    elements.append(tabela_tipos)
-                    elements.append(Spacer(1, 0.5 * cm))
+                    # Bordas e padding
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ]))
+
+                # Subtítulo + tabela na mesma página
+                elements.append(KeepTogether([
+                    Spacer(1, 0.3 * cm),
+                    Paragraph('2.1 RESUMO POR TIPO DE PARCELA', style_subtitulo),
+                    tabela_tipos
+                ]))
+                elements.append(Spacer(1, 0.5 * cm))
         except Exception as e:
             # Se der erro ao buscar tipos de parcela, apenas não adiciona no PDF (não quebra)
             print(f"Aviso: Não foi possível adicionar tipos de parcela ao PDF: {e}")
