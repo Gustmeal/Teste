@@ -156,10 +156,10 @@
                             <th>Data Ação GEIMO</th>
                             <th>Ação GEIMO</th>
                             <th>Status RM</th>
-                            <th>Obs. GEIMO</th>
                             <th>Envio RESALE</th>
                             <th class="text-end">Prazo GEIMO</th>
                             <th class="text-end">Prazo RESALE</th>
+                            <th>Obs. GEIMO</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -173,7 +173,6 @@
                             <td>{{ reg.dt_acao_geimo }}</td>
                             <td>{{ reg.acao_geimo }}</td>
                             <td>{{ reg.status_rm }}</td>
-                            <td style="white-space: normal; min-width: 220px;">{{ reg.obs_geimo }}</td>
                             <td>{{ reg.dt_envio_resale }}</td>
                             <td class="text-end">
                                 {% if reg.prazo_geimo_dias %}
@@ -187,6 +186,7 @@
                                 <small class="d-block text-muted">{{ reg.prazo_resale_meses }} meses</small>
                                 {% endif %}
                             </td>
+                            <td style="white-space: normal; min-width: 220px;">{{ reg.obs_geimo }}</td>
                         </tr>
                         {% else %}
                         <tr>
