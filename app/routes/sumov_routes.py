@@ -5384,7 +5384,8 @@ def _parse_form_date(valor):
 def movimentacao_imovel():
     """
     Lista os registros de Movimentação de Imóvel, com filtros.
-    Fonte: BDDASHBOARDBI.BDG.MOV_TB56_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA
+    Fonte: BDDASHBOARDBI.BDG.MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA
+    Prazos de permanência (GEIMO e RESALE): BDDASHBOARDBI.BDG.MOV_VW016_GESTAO_SUMOV_PERMANENCIA
     """
     try:
         # ===== Captura dos filtros =====
@@ -5403,81 +5404,95 @@ def movimentacao_imovel():
 
         # Filtro por contrato (contém)
         if filtro_contrato:
-            condicoes.append("[NU_CONTRATO] LIKE :contrato")
+            condicoes.append("T.[NU_CONTRATO] LIKE :contrato")
             params['contrato'] = '%' + filtro_contrato + '%'
 
         # Filtro por Ação GEIMO (igualdade exata pela descrição)
         if filtro_acao:
-            condicoes.append("[ACAO_GEIMO] = :acao")
+            condicoes.append("T.[ACAO_GEIMO] = :acao")
             params['acao'] = filtro_acao
 
         # Filtro por Status RM: '__VAZIO__' traz os em branco; senão igualdade exata
         if filtro_status == '__VAZIO__':
-            condicoes.append("([STATUS_RM] IS NULL OR LTRIM(RTRIM([STATUS_RM])) = '')")
+            condicoes.append("(T.[STATUS_RM] IS NULL OR LTRIM(RTRIM(T.[STATUS_RM])) = '')")
         elif filtro_status:
-            condicoes.append("[STATUS_RM] = :status")
+            condicoes.append("T.[STATUS_RM] = :status")
             params['status'] = filtro_status
 
         # Filtro DT_ENVIO_GEADI_SUMOV: "somente vazios" tem prioridade sobre a data exata
         if vazio_dt_geadi:
-            condicoes.append("[DT_ENVIO_GEADI_SUMOV] IS NULL")
+            condicoes.append("T.[DT_ENVIO_GEADI_SUMOV] IS NULL")
         elif filtro_dt_geadi:
             data = _parse_form_date(filtro_dt_geadi)
             if data:
-                condicoes.append("CONVERT(date, [DT_ENVIO_GEADI_SUMOV]) = :dt_geadi")
+                condicoes.append("CONVERT(date, T.[DT_ENVIO_GEADI_SUMOV]) = :dt_geadi")
                 params['dt_geadi'] = data
 
         # Filtro DT_ENVIO_SUMOV_GEIMO
         if vazio_dt_sumov:
-            condicoes.append("[DT_ENVIO_SUMOV_GEIMO] IS NULL")
+            condicoes.append("T.[DT_ENVIO_SUMOV_GEIMO] IS NULL")
         elif filtro_dt_sumov:
             data = _parse_form_date(filtro_dt_sumov)
             if data:
-                condicoes.append("CONVERT(date, [DT_ENVIO_SUMOV_GEIMO]) = :dt_sumov")
+                condicoes.append("CONVERT(date, T.[DT_ENVIO_SUMOV_GEIMO]) = :dt_sumov")
                 params['dt_sumov'] = data
 
         # Filtro DT_RECEBIMENTO_GEIMO
         if vazio_dt_receb:
-            condicoes.append("[DT_RECEBIMENTO_GEIMO] IS NULL")
+            condicoes.append("T.[DT_RECEBIMENTO_GEIMO] IS NULL")
         elif filtro_dt_receb:
             data = _parse_form_date(filtro_dt_receb)
             if data:
-                condicoes.append("CONVERT(date, [DT_RECEBIMENTO_GEIMO]) = :dt_receb")
+                condicoes.append("CONVERT(date, T.[DT_RECEBIMENTO_GEIMO]) = :dt_receb")
                 params['dt_receb'] = data
 
         where_sql = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
 
+        # OUTER APPLY + TOP 1: traz os prazos da view sem duplicar o contrato
+        # e mantém na lista os contratos que ainda não estão na view (prazo vazio).
         sql = text("""
             SELECT
-                [NU_CONTRATO],
-                [RESPONSAVEL],
-                [DT_ENVIO_GEADI_SUMOV],
-                [DT_ENVIO_SUMOV_GEIMO],
-                [DT_RECEBIMENTO_GEIMO],
-                [ACAO_GEIMO],
-                [DT_ACAO_GEIMO],
-                [OBS_GEIMO],
-                [STATUS_RM],
-                [DT_ENVIO_RESALE]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+                T.[NU_CONTRATO],
+                T.[RESPONSAVEL],
+                T.[DT_ENVIO_GEADI_SUMOV],
+                T.[ACAO_GEIMO],
+                T.[DT_ACAO_GEIMO],
+                T.[OBS_GEIMO],
+                T.[STATUS_RM],
+                T.[DT_ENVIO_RESALE],
+                P.[TEMPO_PERM_GEIMO],
+                P.[TEMPO_PERM_RESALE]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA] T
+            OUTER APPLY (
+                SELECT TOP 1
+                    TRY_CAST(V.[TEMPO_PERM_GEIMO] AS FLOAT) AS [TEMPO_PERM_GEIMO],
+                    TRY_CAST(V.[TEMPO_PERM_RESALE] AS FLOAT) AS [TEMPO_PERM_RESALE]
+                FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA] V
+                WHERE V.[NU_CONTRATO] = T.[NU_CONTRATO]
+            ) P
             """ + where_sql + """
-            ORDER BY [DT_ENVIO_GEADI_SUMOV] DESC, [NU_CONTRATO]
+            ORDER BY T.[DT_ENVIO_GEADI_SUMOV] DESC, T.[NU_CONTRATO]
         """)
         resultado = db.session.execute(sql, params).fetchall()
 
         registros = []
         for r in resultado:
+            prazo_geimo = _perm_numero(r[8])
+            prazo_resale = _perm_numero(r[9])
             registros.append({
                 'nu_contrato': r[0],
-                'responsavel': r[1],
+                'responsavel': r[1] or '',
                 'dt_envio_geadi_sumov': r[2].strftime('%d/%m/%Y') if r[2] else '',
-                'dt_envio_sumov_geimo': r[3].strftime('%d/%m/%Y') if r[3] else '',
-                'dt_recebimento_geimo': r[4].strftime('%d/%m/%Y') if r[4] else '',
-                'acao_geimo': r[5] or '',
-                'dt_acao_geimo': r[6].strftime('%d/%m/%Y') if r[6] else '',
-                'obs_geimo': r[7] or '',
-                'status_rm': r[8] or '',
-                'dt_envio_resale': r[9].strftime('%d/%m/%Y') if r[9] else '',
+                'acao_geimo': r[3] or '',
+                'dt_acao_geimo': r[4].strftime('%d/%m/%Y') if r[4] else '',
+                'obs_geimo': r[5] or '',
+                'status_rm': r[6] or '',
+                'dt_envio_resale': r[7].strftime('%d/%m/%Y') if r[7] else '',
+                # Prazos em dias (inteiro) e a conversão em meses
+                'prazo_geimo_dias': _perm_fmt(prazo_geimo, 0) if prazo_geimo is not None else '',
+                'prazo_geimo_meses': _perm_fmt(_perm_meses(prazo_geimo)) if prazo_geimo is not None else '',
+                'prazo_resale_dias': _perm_fmt(prazo_resale, 0) if prazo_resale is not None else '',
+                'prazo_resale_meses': _perm_fmt(_perm_meses(prazo_resale)) if prazo_resale is not None else '',
             })
 
         # Lista de ações para o filtro (MOV_TB057)

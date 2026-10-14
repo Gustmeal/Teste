@@ -140,20 +140,26 @@
     <!-- Tabela de Movimentações -->
     <div class="card shadow">
         <div class="card-body p-0">
-            <div class="table-responsive" style="overflow-x: auto;">
-                <table class="table table-hover mb-0" id="movimentacaoTable">
+            <!-- Barra de rolagem horizontal em cima da lista (sincronizada com a de baixo) -->
+            <div id="scrollTopo"
+                 style="overflow-x: auto; overflow-y: hidden; height: 16px; border-bottom: 1px solid #eef0f6;">
+                <div id="scrollTopoConteudo" style="height: 1px;"></div>
+            </div>
+
+            <div class="table-responsive" id="scrollTabela" style="overflow-x: auto;">
+                <table class="table table-hover mb-0" id="movimentacaoTable" style="white-space: nowrap;">
                     <thead>
                         <tr>
                             <th>Nº Contrato</th>
                             <th>Responsável</th>
-                            <th>Envio GEADI/SUMOV</th>
-                            <th>Envio SUMOV/GEIMO</th>
-                            <th>Recebimento GEIMO</th>
-                            <th>Ação GEIMO</th>
+                            <th>Envio GEADI/GEIMO</th>
                             <th>Data Ação GEIMO</th>
-                            <th>Obs. GEIMO</th>
+                            <th>Ação GEIMO</th>
                             <th>Status RM</th>
+                            <th>Obs. GEIMO</th>
                             <th>Envio RESALE</th>
+                            <th class="text-end">Prazo GEIMO</th>
+                            <th class="text-end">Prazo RESALE</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -164,13 +170,23 @@
                             <td><strong>{{ reg.nu_contrato }}</strong></td>
                             <td>{{ reg.responsavel }}</td>
                             <td>{{ reg.dt_envio_geadi_sumov }}</td>
-                            <td>{{ reg.dt_envio_sumov_geimo }}</td>
-                            <td>{{ reg.dt_recebimento_geimo }}</td>
-                            <td>{{ reg.acao_geimo }}</td>
                             <td>{{ reg.dt_acao_geimo }}</td>
-                            <td>{{ reg.obs_geimo }}</td>
+                            <td>{{ reg.acao_geimo }}</td>
                             <td>{{ reg.status_rm }}</td>
+                            <td style="white-space: normal; min-width: 220px;">{{ reg.obs_geimo }}</td>
                             <td>{{ reg.dt_envio_resale }}</td>
+                            <td class="text-end">
+                                {% if reg.prazo_geimo_dias %}
+                                <span class="fw-bold" style="color: #0d9488;">{{ reg.prazo_geimo_dias }} dias</span>
+                                <small class="d-block text-muted">{{ reg.prazo_geimo_meses }} meses</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if reg.prazo_resale_dias %}
+                                <span class="fw-bold" style="color: #d97706;">{{ reg.prazo_resale_dias }} dias</span>
+                                <small class="d-block text-muted">{{ reg.prazo_resale_meses }} meses</small>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% else %}
                         <tr>
@@ -198,6 +214,36 @@
 </div>
 
 <script>
+    // Barra de rolagem horizontal em cima da lista, sincronizada com a da tabela.
+    (function () {
+        var topo = document.getElementById('scrollTopo');
+        var conteudo = document.getElementById('scrollTopoConteudo');
+        var tabela = document.getElementById('scrollTabela');
+        if (!topo || !conteudo || !tabela) { return; }
+
+        function ajustarLargura() {
+            conteudo.style.width = tabela.scrollWidth + 'px';
+            // Esconde a barra de cima quando a tabela cabe na tela
+            topo.style.display = (tabela.scrollWidth > tabela.clientWidth) ? '' : 'none';
+        }
+
+        var sincronizando = false;
+        topo.addEventListener('scroll', function () {
+            if (sincronizando) { sincronizando = false; return; }
+            sincronizando = true;
+            tabela.scrollLeft = topo.scrollLeft;
+        });
+        tabela.addEventListener('scroll', function () {
+            if (sincronizando) { sincronizando = false; return; }
+            sincronizando = true;
+            topo.scrollLeft = tabela.scrollLeft;
+        });
+
+        ajustarLargura();
+        window.addEventListener('resize', ajustarLargura);
+        window.addEventListener('load', ajustarLargura);
+    })();
+
     // Ao marcar "Somente vazios", desabilita o input de data correspondente.
     document.querySelectorAll('.chk-vazio').forEach(function (chk) {
         chk.addEventListener('change', function () {
