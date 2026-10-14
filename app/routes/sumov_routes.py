@@ -5448,8 +5448,9 @@ def movimentacao_imovel():
 
         where_sql = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
 
-        # OUTER APPLY + TOP 1: traz os prazos da view sem duplicar o contrato
-        # e mantém na lista os contratos que ainda não estão na view (prazo vazio).
+        # Prazos: a view é lida UMA vez (agrupada por contrato) e ligada com LEFT JOIN.
+        # O LEFT JOIN mantém na lista os contratos que ainda não estão na view (prazo vazio)
+        # e o GROUP BY garante que nenhum contrato apareça duplicado.
         sql = text("""
             SELECT
                 T.[NU_CONTRATO],
@@ -5463,13 +5464,14 @@ def movimentacao_imovel():
                 P.[TEMPO_PERM_GEIMO],
                 P.[TEMPO_PERM_RESALE]
             FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA] T
-            OUTER APPLY (
-                SELECT TOP 1
-                    TRY_CAST(V.[TEMPO_PERM_GEIMO] AS FLOAT) AS [TEMPO_PERM_GEIMO],
-                    TRY_CAST(V.[TEMPO_PERM_RESALE] AS FLOAT) AS [TEMPO_PERM_RESALE]
+            LEFT JOIN (
+                SELECT
+                    V.[NU_CONTRATO],
+                    MAX(TRY_CAST(V.[TEMPO_PERM_GEIMO] AS FLOAT)) AS [TEMPO_PERM_GEIMO],
+                    MAX(TRY_CAST(V.[TEMPO_PERM_RESALE] AS FLOAT)) AS [TEMPO_PERM_RESALE]
                 FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA] V
-                WHERE V.[NU_CONTRATO] = T.[NU_CONTRATO]
-            ) P
+                GROUP BY V.[NU_CONTRATO]
+            ) P ON P.[NU_CONTRATO] = T.[NU_CONTRATO]
             """ + where_sql + """
             ORDER BY T.[DT_ENVIO_GEADI_SUMOV] DESC, T.[NU_CONTRATO]
         """)
@@ -6194,6 +6196,42 @@ def _perm_medias_gerais(responsavel=None):
     }
 
 
+def _perm_ler_view():
+    """
+    Lê a view de permanência UMA única vez (a view é pesada: cada leitura recalcula tudo).
+    Retorna lista de tuplas: (nu_contrato, responsavel, dias_geadi, dias_geimo, dias_resale),
+    com os tempos já convertidos para float (ou None).
+    """
+    sql = text("""
+        SELECT
+            [NU_CONTRATO],
+            [RESPONSAVEL],
+            TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT),
+            TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT),
+            TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT)
+        FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
+    """)
+    return [
+        (r[0], r[1], _perm_numero(r[2]), _perm_numero(r[3]), _perm_numero(r[4]))
+        for r in db.session.execute(sql).fetchall()
+    ]
+
+
+def _perm_media(valores):
+    """Média ignorando None (mesmo comportamento do AVG do SQL Server)."""
+    validos = [v for v in valores if v is not None]
+    return (sum(validos) / len(validos)) if validos else None
+
+
+def _perm_medias_de_linhas(linhas):
+    """Mesmo resultado de _perm_medias_gerais, mas calculado a partir das linhas já lidas."""
+    resultado = {'total_contratos': len(linhas)}
+    for indice, chave in ((2, 'geadi'), (3, 'geimo'), (4, 'resale')):
+        valores = [l[indice] for l in linhas if l[indice] is not None]
+        resultado[chave] = _perm_bloco_media(_perm_media(valores), len(valores))
+    return resultado
+
+
 @sumov_bp.route('/movimentacao-imovel/responsavel-cobranca')
 @login_required
 def movimentacao_imovel_responsavel_cobranca():
@@ -6281,57 +6319,51 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
         if ordenar not in ('geadi', 'geimo', 'resale', 'qtd'):
             ordenar = 'geadi'
 
+        # ===== Leitura única da view (antes eram 5 leituras) =====
+        linhas = _perm_ler_view()
+
         # ===== Lista de responsáveis para o filtro =====
-        sql_resp = text("""
-            SELECT DISTINCT [RESPONSAVEL]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
-            WHERE [RESPONSAVEL] IS NOT NULL
-              AND LTRIM(RTRIM([RESPONSAVEL])) <> ''
-            ORDER BY [RESPONSAVEL]
-        """)
-        lista_responsaveis = [r[0] for r in db.session.execute(sql_resp).fetchall()]
+        lista_responsaveis = sorted({
+            l[1] for l in linhas if l[1] is not None and str(l[1]).strip() != ''
+        })
 
         # ===== Indicadores: gerais e do filtro =====
-        medias_gerais = _perm_medias_gerais()
-        medias_filtro = _perm_medias_gerais(filtro_responsavel) if filtro_responsavel else medias_gerais
+        if filtro_responsavel:
+            linhas_filtro = [l for l in linhas if (l[1] or '') == filtro_responsavel]
+        else:
+            linhas_filtro = linhas
+
+        medias_gerais = _perm_medias_de_linhas(linhas)
+        medias_filtro = _perm_medias_de_linhas(linhas_filtro) if filtro_responsavel else medias_gerais
 
         media_geral_geadi = medias_gerais['geadi']['dias']
         media_geral_geimo = medias_gerais['geimo']['dias']
         media_geral_resale = medias_gerais['resale']['dias']
 
         # ===== Ranking por responsável (sempre todos) =====
-        sql_ranking = text("""
-            SELECT
-                [RESPONSAVEL],
-                COUNT(*),
-                AVG(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
-                AVG(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
-                AVG(TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT)),
-                MAX(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
-                MAX(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT)),
-                MIN(TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT)),
-                MIN(TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT))
-            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
-            GROUP BY [RESPONSAVEL]
-        """)
-        linhas_ranking = db.session.execute(sql_ranking).fetchall()
+        grupos = {}
+        for l in linhas:
+            grupos.setdefault(l[1], []).append(l)
 
         ranking = []
-        for r in linhas_ranking:
-            m_geadi = _perm_numero(r[2])
-            m_geimo = _perm_numero(r[3])
-            m_resale = _perm_numero(r[4])
+        for responsavel, itens in grupos.items():
+            v_geadi = [i[2] for i in itens if i[2] is not None]
+            v_geimo = [i[3] for i in itens if i[3] is not None]
+            v_resale = [i[4] for i in itens if i[4] is not None]
+            m_geadi = _perm_media(v_geadi)
+            m_geimo = _perm_media(v_geimo)
+            m_resale = _perm_media(v_resale)
             ranking.append({
-                'responsavel': r[0] or 'Sem responsável',
-                'responsavel_valor': r[0] or '',
-                'qtd': int(r[1] or 0),
+                'responsavel': responsavel or 'Sem responsável',
+                'responsavel_valor': responsavel or '',
+                'qtd': len(itens),
                 'geadi': _perm_bloco_media(m_geadi, None),
                 'geimo': _perm_bloco_media(m_geimo, None),
                 'resale': _perm_bloco_media(m_resale, None),
-                'max_geadi_fmt': _perm_fmt(_perm_numero(r[5]), 0),
-                'max_geimo_fmt': _perm_fmt(_perm_numero(r[6]), 0),
-                'min_geadi_fmt': _perm_fmt(_perm_numero(r[7]), 0),
-                'min_geimo_fmt': _perm_fmt(_perm_numero(r[8]), 0),
+                'max_geadi_fmt': _perm_fmt(max(v_geadi) if v_geadi else None, 0),
+                'max_geimo_fmt': _perm_fmt(max(v_geimo) if v_geimo else None, 0),
+                'min_geadi_fmt': _perm_fmt(min(v_geadi) if v_geadi else None, 0),
+                'min_geimo_fmt': _perm_fmt(min(v_geimo) if v_geimo else None, 0),
                 # Acima da média geral = mais lento que o conjunto
                 'geadi_acima': (m_geadi is not None and media_geral_geadi is not None
                                 and m_geadi > media_geral_geadi),
@@ -6339,7 +6371,7 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
                                 and m_geimo > media_geral_geimo),
                 'resale_acima': (m_resale is not None and media_geral_resale is not None
                                  and m_resale > media_geral_resale),
-                'selecionado': bool(filtro_responsavel) and (r[0] or '') == filtro_responsavel,
+                'selecionado': bool(filtro_responsavel) and (responsavel or '') == filtro_responsavel,
             })
 
         # Ordenação: tempos -> menor primeiro (mais rápido = 1º); quantidade -> maior primeiro.
@@ -6367,31 +6399,12 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
         } if ranking else None
 
         # ===== Contratos (respeitam o filtro de responsável) =====
-        where_sql = ''
-        params = {}
-        if filtro_responsavel:
-            where_sql = 'WHERE [RESPONSAVEL] = :resp'
-            params['resp'] = filtro_responsavel
-
-        sql_contratos = text("""
-            SELECT
-                [NU_CONTRATO],
-                [RESPONSAVEL],
-                [TEMPO_PERM_GEADI],
-                [TEMPO_PERM_GEIMO],
-                [TEMPO_PERM_RESALE]
-            FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
-            """ + where_sql + """
-            ORDER BY [RESPONSAVEL], [NU_CONTRATO]
-        """)
         contratos = []
-        for r in db.session.execute(sql_contratos, params).fetchall():
-            d_geadi = _perm_numero(r[2])
-            d_geimo = _perm_numero(r[3])
-            d_resale = _perm_numero(r[4])
+        for l in sorted(linhas_filtro, key=lambda x: (str(x[1] or ''), str(x[0] or ''))):
+            d_geadi, d_geimo, d_resale = l[2], l[3], l[4]
             contratos.append({
-                'nu_contrato': r[0],
-                'responsavel': r[1] or 'Sem responsável',
+                'nu_contrato': l[0],
+                'responsavel': l[1] or 'Sem responsável',
                 'geadi_dias_fmt': _perm_fmt(d_geadi, 0),
                 'geadi_meses_fmt': _perm_fmt(_perm_meses(d_geadi)),
                 'geimo_dias_fmt': _perm_fmt(d_geimo, 0),
