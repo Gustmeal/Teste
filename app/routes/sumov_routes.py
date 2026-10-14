@@ -6196,25 +6196,103 @@ def _perm_medias_gerais(responsavel=None):
     }
 
 
-def _perm_ler_view():
+def _perm_ler_view(filtro_acao='', filtro_status=''):
     """
     Lê a view de permanência UMA única vez (a view é pesada: cada leitura recalcula tudo).
-    Retorna lista de tuplas: (nu_contrato, responsavel, dias_geadi, dias_geimo, dias_resale),
-    com os tempos já convertidos para float (ou None).
+    A Ação GEIMO e o Status RM vêm da MOV_TB056 (OUTER APPLY + TOP 1 para nunca duplicar contrato).
+    Filtros opcionais:
+      - filtro_acao: igualdade exata com ACAO_GEIMO
+      - filtro_status: igualdade exata com STATUS_RM; '__VAZIO__' traz os em branco
+    Retorna lista de tuplas:
+      (nu_contrato, responsavel, dias_geadi, dias_geimo, dias_resale, acao_geimo, status_rm)
     """
+    condicoes = []
+    params = {}
+
+    if filtro_acao:
+        condicoes.append("M.[ACAO_GEIMO] = :acao")
+        params['acao'] = filtro_acao
+
+    if filtro_status == '__VAZIO__':
+        condicoes.append("(M.[STATUS_RM] IS NULL OR LTRIM(RTRIM(M.[STATUS_RM])) = '')")
+    elif filtro_status:
+        condicoes.append("M.[STATUS_RM] = :status")
+        params['status'] = filtro_status
+
+    where_sql = ('WHERE ' + ' AND '.join(condicoes)) if condicoes else ''
+
     sql = text("""
         SELECT
-            [NU_CONTRATO],
-            [RESPONSAVEL],
-            TRY_CAST([TEMPO_PERM_GEADI] AS FLOAT),
-            TRY_CAST([TEMPO_PERM_GEIMO] AS FLOAT),
-            TRY_CAST([TEMPO_PERM_RESALE] AS FLOAT)
-        FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA]
-    """)
+            V.[NU_CONTRATO],
+            V.[RESPONSAVEL],
+            TRY_CAST(V.[TEMPO_PERM_GEADI] AS FLOAT),
+            TRY_CAST(V.[TEMPO_PERM_GEIMO] AS FLOAT),
+            TRY_CAST(V.[TEMPO_PERM_RESALE] AS FLOAT),
+            M.[ACAO_GEIMO],
+            M.[STATUS_RM]
+        FROM [BDDASHBOARDBI].[BDG].[MOV_VW016_GESTAO_SUMOV_PERMANENCIA] V
+        OUTER APPLY (
+            SELECT TOP 1 T.[ACAO_GEIMO], T.[STATUS_RM]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA] T
+            WHERE T.[NU_CONTRATO] = V.[NU_CONTRATO]
+        ) M
+        """ + where_sql)
     return [
-        (r[0], r[1], _perm_numero(r[2]), _perm_numero(r[3]), _perm_numero(r[4]))
-        for r in db.session.execute(sql).fetchall()
+        (r[0], r[1], _perm_numero(r[2]), _perm_numero(r[3]), _perm_numero(r[4]), r[5], r[6])
+        for r in db.session.execute(sql, params).fetchall()
     ]
+
+
+def _perm_filtros_acao_status():
+    """Lê os filtros de Ação GEIMO e Status RM da URL."""
+    return (
+        request.args.get('filtro_acao', '').strip(),
+        request.args.get('filtro_status', '').strip()
+    )
+
+
+def _perm_listas_acao_status(filtro_acao=''):
+    """
+    Opções dos filtros (mesma regra da tela de Movimentação de Imóvel):
+    - Ações: MOV_TB057_TIPO_ACAO_GEIMO
+    - Status RM: valores da MOV_TB056; se há ação escolhida, só os status daquela ação
+    """
+    sql_acoes = text("""
+        SELECT [DSC_TIPO_ACAO]
+        FROM [BDDASHBOARDBI].[BDG].[MOV_TB057_TIPO_ACAO_GEIMO]
+        ORDER BY [DSC_TIPO_ACAO]
+    """)
+    acoes = [a[0] for a in db.session.execute(sql_acoes).fetchall() if a[0]]
+
+    if filtro_acao:
+        sql_status = text("""
+            SELECT DISTINCT [STATUS_RM]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            WHERE [ACAO_GEIMO] = :acao
+              AND [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
+            ORDER BY [STATUS_RM]
+        """)
+        status_lista = [s[0] for s in db.session.execute(sql_status, {'acao': filtro_acao}).fetchall()]
+    else:
+        sql_status = text("""
+            SELECT DISTINCT [STATUS_RM]
+            FROM [BDDASHBOARDBI].[BDG].[MOV_TB056_CONTROLE_REGULARIZACAO_IMOVEIS_VENDA]
+            WHERE [STATUS_RM] IS NOT NULL AND LTRIM(RTRIM([STATUS_RM])) <> ''
+            ORDER BY [STATUS_RM]
+        """)
+        status_lista = [s[0] for s in db.session.execute(sql_status).fetchall()]
+
+    return acoes, status_lista
+
+
+def _perm_descricao_filtros(filtro_acao, filtro_status):
+    """Texto curto dos filtros ativos, para exibir no cabeçalho."""
+    partes = []
+    if filtro_acao:
+        partes.append('Ação GEIMO: ' + filtro_acao)
+    if filtro_status:
+        partes.append('Status RM: ' + ('(Em branco)' if filtro_status == '__VAZIO__' else filtro_status))
+    return ' | '.join(partes)
 
 
 def _perm_media(valores):
@@ -6240,7 +6318,12 @@ def movimentacao_imovel_responsavel_cobranca():
     na GEADI, na GEIMO e na RESALE.
     """
     try:
-        medias = _perm_medias_gerais()
+        # Filtros de Ação GEIMO e Status RM (todos os usuários)
+        filtro_acao, filtro_status = _perm_filtros_acao_status()
+        acoes, status_lista = _perm_listas_acao_status(filtro_acao)
+
+        # Médias calculadas só com os contratos que atendem aos filtros
+        medias = _perm_medias_de_linhas(_perm_ler_view(filtro_acao, filtro_status))
 
         setores = [
             {
@@ -6289,7 +6372,12 @@ def movimentacao_imovel_responsavel_cobranca():
             dias_por_mes=PERM_DIAS_POR_MES,
             obs_permanencia=PERM_OBS_DEVOLUCAO,
             tem_dados=tem_dados,
-            pode_avancado=_perm_eh_admin_ou_moderador()
+            pode_avancado=_perm_eh_admin_ou_moderador(),
+            acoes=acoes,
+            status_lista=status_lista,
+            filtro_acao=filtro_acao,
+            filtro_status=filtro_status,
+            descricao_filtros=_perm_descricao_filtros(filtro_acao, filtro_status)
         )
 
     except Exception as e:
@@ -6319,13 +6407,21 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
         if ordenar not in ('geadi', 'geimo', 'resale', 'qtd'):
             ordenar = 'geadi'
 
-        # ===== Leitura única da view (antes eram 5 leituras) =====
-        linhas = _perm_ler_view()
+        # Filtros de Ação GEIMO e Status RM: definem o recorte de TODA a análise
+        # (indicadores, médias gerais, ranking, gráfico e contratos).
+        filtro_acao, filtro_status = _perm_filtros_acao_status()
+        acoes, status_lista = _perm_listas_acao_status(filtro_acao)
+
+        # ===== Leitura única da view (já com os filtros de Ação GEIMO / Status RM) =====
+        linhas = _perm_ler_view(filtro_acao, filtro_status)
 
         # ===== Lista de responsáveis para o filtro =====
         lista_responsaveis = sorted({
             l[1] for l in linhas if l[1] is not None and str(l[1]).strip() != ''
         })
+        # Mantém o responsável escolhido na lista mesmo se ele não tiver contratos no recorte
+        if filtro_responsavel and filtro_responsavel not in lista_responsaveis:
+            lista_responsaveis = sorted(lista_responsaveis + [filtro_responsavel])
 
         # ===== Indicadores: gerais e do filtro =====
         if filtro_responsavel:
@@ -6405,6 +6501,8 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
             contratos.append({
                 'nu_contrato': l[0],
                 'responsavel': l[1] or 'Sem responsável',
+                'acao_geimo': l[5] or '',
+                'status_rm': l[6] or '',
                 'geadi_dias_fmt': _perm_fmt(d_geadi, 0),
                 'geadi_meses_fmt': _perm_fmt(_perm_meses(d_geadi)),
                 'geimo_dias_fmt': _perm_fmt(d_geimo, 0),
@@ -6443,7 +6541,12 @@ def movimentacao_imovel_responsavel_cobranca_analitico():
             filtro_responsavel=filtro_responsavel,
             ordenar=ordenar,
             dias_por_mes=PERM_DIAS_POR_MES,
-            obs_permanencia=PERM_OBS_DEVOLUCAO
+            obs_permanencia=PERM_OBS_DEVOLUCAO,
+            acoes=acoes,
+            status_lista=status_lista,
+            filtro_acao=filtro_acao,
+            filtro_status=filtro_status,
+            descricao_filtros=_perm_descricao_filtros(filtro_acao, filtro_status)
         )
 
     except Exception as e:

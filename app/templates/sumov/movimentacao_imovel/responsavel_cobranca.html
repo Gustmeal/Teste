@@ -136,6 +136,20 @@
         display: flex; align-items: center; justify-content: center;
     }
 
+    /* ===== Filtros ===== */
+    .rc-filtros {
+        background: #ffffff; border-radius: 20px; padding: 20px 24px;
+        border: 1px solid #eef0f6;
+        box-shadow: 0 10px 30px -14px rgba(30, 30, 60, 0.25);
+    }
+    .rc-filtro-ativo {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 999px; padding: 5px 12px;
+        font-size: 0.82rem; font-weight: 600; margin-top: 10px;
+    }
+
     .rc-vazio {
         background: #ffffff; border-radius: 20px; padding: 60px 30px; text-align: center;
         border: 1px dashed #d6d9e6; color: #6b7086;
@@ -169,15 +183,60 @@
                     <p class="rc-hero-sub" style="color: #ffffff !important;">
                         Média de dias que os contratos permanecem em cada área, com a conversão em meses.
                     </p>
+                    {% if descricao_filtros %}
+                    <span class="rc-filtro-ativo" style="color: #ffffff !important;">
+                        <i class="fas fa-filter"></i> {{ descricao_filtros }}
+                    </span>
+                    {% endif %}
                 </div>
                 {% if pode_avancado %}
-                <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico') }}"
+                <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico', filtro_acao=filtro_acao or None, filtro_status=filtro_status or None) }}"
                    class="rc-btn-avancado">
                     <i class="fas fa-chart-line"></i> Análise Avançada
                     <i class="fas fa-lock" style="font-size: 0.75rem; opacity: 0.6;"></i>
                 </a>
                 {% endif %}
             </div>
+        </div>
+
+        <!-- ===== Filtros (Ação GEIMO e Status RM) ===== -->
+        <div class="rc-filtros mb-4">
+            <form method="GET" action="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca') }}">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="filtro_acao" class="form-label fw-bold">
+                            <i class="fas fa-tasks text-primary me-1"></i>Ação GEIMO
+                        </label>
+                        <select class="form-select" id="filtro_acao" name="filtro_acao">
+                            <option value="">Todas</option>
+                            {% for acao in acoes %}
+                            <option value="{{ acao }}" {% if acao == filtro_acao %}selected{% endif %}>{{ acao }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="filtro_status" class="form-label fw-bold">
+                            <i class="fas fa-info-circle text-primary me-1"></i>Status RM
+                        </label>
+                        <select class="form-select" id="filtro_status" name="filtro_status">
+                            <option value="">Todos</option>
+                            <option value="__VAZIO__" {% if filtro_status == '__VAZIO__' %}selected{% endif %}>(Em branco)</option>
+                            {% for st in status_lista %}
+                            <option value="{{ st }}" {% if st == filtro_status %}selected{% endif %}>{{ st }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">
+                            <i class="fas fa-search me-1"></i>Filtrar
+                        </button>
+                        <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca') }}"
+                           class="btn btn-secondary flex-fill">
+                            <i class="fas fa-eraser me-1"></i>Limpar
+                        </a>
+                    </div>
+                </div>
+            </form>
         </div>
 
         {% if tem_dados %}
@@ -220,7 +279,7 @@
 
         <p class="rc-nota text-center mb-4" style="font-size: 0.95rem;">
             <i class="fas fa-info-circle me-1"></i>
-            Base: <strong style="color: #4a4f63;">{{ total_contratos }}</strong> contratos na gestão de permanência.
+            Base: <strong style="color: #4a4f63;">{{ total_contratos }}</strong> contratos na gestão de permanência{% if descricao_filtros %} (com os filtros aplicados){% endif %}.
             Meses calculados como dias ÷ {{ dias_por_mes }}.
             Contratos sem tempo registrado na área não entram na média.
         </p>
@@ -229,8 +288,13 @@
 
         <div class="rc-vazio mb-4">
             <i class="fas fa-hourglass-half mb-3" style="font-size: 2.4rem; color: #c3c6d6;"></i>
+            {% if descricao_filtros %}
+            <h5 class="fw-bold" style="color: #4a4f63;">Nenhum contrato com tempo registrado para os filtros escolhidos</h5>
+            <p class="mb-0">Altere a Ação GEIMO ou o Status RM, ou clique em Limpar.</p>
+            {% else %}
             <h5 class="fw-bold" style="color: #4a4f63;">Ainda não há tempos de permanência registrados</h5>
             <p class="mb-0">Assim que houver contratos com tempo registrado, as médias aparecem aqui.</p>
+            {% endif %}
         </div>
 
         {% endif %}
@@ -281,4 +345,38 @@
 
     </div>
 </div>
+
+<script>
+    // Status RM dependente da Ação GEIMO (mesma regra da tela de Movimentação de Imóvel)
+    (function () {
+        var selAcao = document.getElementById('filtro_acao');
+        var selStatus = document.getElementById('filtro_status');
+        if (!selAcao || !selStatus) { return; }
+
+        selAcao.addEventListener('change', function () {
+            var statusAtual = selStatus.value;
+            var url = '{{ url_for("sumov.movimentacao_imovel_status_por_acao") }}' +
+                      '?acao=' + encodeURIComponent(this.value);
+
+            fetch(url, { method: 'GET', headers: { 'X-Silent-Request': 'true' } })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                selStatus.innerHTML =
+                    '<option value="">Todos</option>' +
+                    '<option value="__VAZIO__">(Em branco)</option>';
+                (data.status || []).forEach(function (st) {
+                    var opt = document.createElement('option');
+                    opt.value = st;
+                    opt.textContent = st;
+                    selStatus.appendChild(opt);
+                });
+                var existe = Array.prototype.some.call(selStatus.options, function (o) {
+                    return o.value === statusAtual;
+                });
+                selStatus.value = existe ? statusAtual : '';
+            })
+            .catch(function () { /* silencioso */ });
+        });
+    })();
+</script>
 {% endblock %}

@@ -115,7 +115,7 @@
 </style>
 
 <div class="container-fluid fade-in">
-    <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca') }}" class="btn-back">
+    <a href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca', filtro_acao=filtro_acao or None, filtro_status=filtro_status or None) }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar ao Responsável Cobrança
     </a>
 
@@ -132,6 +132,9 @@
                     Exibindo os indicadores de todos os responsáveis.
                     {% endif %}
                 </p>
+                {% if descricao_filtros %}
+                <span class="ra-chip mt-2"><i class="fas fa-filter"></i> {{ descricao_filtros }}</span>
+                {% endif %}
             </div>
             <div class="text-end">
                 <div style="font-size: 2.2rem; font-weight: 800; line-height: 1;">{{ total_contratos }}</div>
@@ -174,7 +177,7 @@
         <div class="ra-painel-corpo">
             <form method="GET" action="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico') }}">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-5">
+                    <div class="col-lg-3 col-md-6">
                         <label for="responsavel" class="form-label fw-bold">
                             <i class="fas fa-user text-primary me-1"></i>Responsável
                         </label>
@@ -185,7 +188,30 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-lg-3 col-md-6">
+                        <label for="filtro_acao" class="form-label fw-bold">
+                            <i class="fas fa-tasks text-primary me-1"></i>Ação GEIMO
+                        </label>
+                        <select class="form-select" id="filtro_acao" name="filtro_acao">
+                            <option value="">Todas</option>
+                            {% for acao in acoes %}
+                            <option value="{{ acao }}" {% if acao == filtro_acao %}selected{% endif %}>{{ acao }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
+                        <label for="filtro_status" class="form-label fw-bold">
+                            <i class="fas fa-info-circle text-primary me-1"></i>Status RM
+                        </label>
+                        <select class="form-select" id="filtro_status" name="filtro_status">
+                            <option value="">Todos</option>
+                            <option value="__VAZIO__" {% if filtro_status == '__VAZIO__' %}selected{% endif %}>(Em branco)</option>
+                            {% for st in status_lista %}
+                            <option value="{{ st }}" {% if st == filtro_status %}selected{% endif %}>{{ st }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-lg-2 col-md-6">
                         <label for="ordenar" class="form-label fw-bold">
                             <i class="fas fa-sort-amount-down text-primary me-1"></i>Ordenar ranking por
                         </label>
@@ -196,7 +222,7 @@
                             <option value="qtd" {% if ordenar == 'qtd' %}selected{% endif %}>Maior quantidade de contratos</option>
                         </select>
                     </div>
-                    <div class="col-md-3 d-flex gap-2">
+                    <div class="col-lg-2 col-md-12 d-flex gap-2">
                         <button type="submit" class="btn btn-primary flex-fill">
                             <i class="fas fa-search me-1"></i>Filtrar
                         </button>
@@ -285,7 +311,7 @@
                         <td>
                             {% if r.responsavel_valor %}
                             <a class="ra-link-resp"
-                               href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico', responsavel=r.responsavel_valor, ordenar=ordenar) }}"
+                               href="{{ url_for('sumov.movimentacao_imovel_responsavel_cobranca_analitico', responsavel=r.responsavel_valor, ordenar=ordenar, filtro_acao=filtro_acao or None, filtro_status=filtro_status or None) }}"
                                title="Ver os contratos de {{ r.responsavel }}">
                                 {{ r.responsavel }}
                             </a>
@@ -325,7 +351,7 @@
                 <span class="badge rounded-pill ms-1" style="background: #eeedff; color: #4b44d6;" id="contadorContratos">{{ contratos|length }}</span>
             </p>
             <input type="text" class="form-control" id="buscaContrato"
-                   placeholder="Buscar contrato ou responsável..." style="max-width: 280px;">
+                   placeholder="Buscar contrato, responsável, ação ou status..." style="max-width: 280px;">
         </div>
         <div class="ra-scroll">
             <table class="ra-tabela" id="tabelaContratos">
@@ -333,6 +359,8 @@
                     <tr>
                         <th>Nº Contrato</th>
                         <th>Responsável</th>
+                        <th>Ação GEIMO</th>
+                        <th>Status RM</th>
                         <th class="text-end">GEADI</th>
                         <th class="text-end">GEIMO</th>
                         <th class="text-end">RESALE</th>
@@ -343,6 +371,8 @@
                     <tr class="linha-contrato">
                         <td class="fw-bold">{{ c.nu_contrato }}</td>
                         <td>{{ c.responsavel }}</td>
+                        <td>{{ c.acao_geimo or '-' }}</td>
+                        <td>{{ c.status_rm or '-' }}</td>
                         <td class="text-end">
                             {{ tempo(c.geadi_dias_fmt, c.geadi_meses_fmt, 'ra-acima' if c.geadi_acima else '') }}
                         </td>
@@ -355,7 +385,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-4">Nenhum contrato encontrado.</td>
+                        <td colspan="7" class="text-center text-muted py-4">Nenhum contrato encontrado.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -371,6 +401,38 @@
 </div>
 
 <script>
+    // Status RM dependente da Ação GEIMO (mesma regra da tela de Movimentação de Imóvel)
+    (function () {
+        var selAcao = document.getElementById('filtro_acao');
+        var selStatus = document.getElementById('filtro_status');
+        if (!selAcao || !selStatus) { return; }
+
+        selAcao.addEventListener('change', function () {
+            var statusAtual = selStatus.value;
+            var url = '{{ url_for("sumov.movimentacao_imovel_status_por_acao") }}' +
+                      '?acao=' + encodeURIComponent(this.value);
+
+            fetch(url, { method: 'GET', headers: { 'X-Silent-Request': 'true' } })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                selStatus.innerHTML =
+                    '<option value="">Todos</option>' +
+                    '<option value="__VAZIO__">(Em branco)</option>';
+                (data.status || []).forEach(function (st) {
+                    var opt = document.createElement('option');
+                    opt.value = st;
+                    opt.textContent = st;
+                    selStatus.appendChild(opt);
+                });
+                var existe = Array.prototype.some.call(selStatus.options, function (o) {
+                    return o.value === statusAtual;
+                });
+                selStatus.value = existe ? statusAtual : '';
+            })
+            .catch(function () { /* silencioso */ });
+        });
+    })();
+
     // Busca rápida na tabela de contratos (filtra as linhas já carregadas do backend).
     (function () {
         var campo = document.getElementById('buscaContrato');
