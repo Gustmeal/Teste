@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Painel{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1500px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <form method="GET" class="d-flex align-items-center flex-wrap mb-3" style="gap: 10px;">
+        <label class="mb-0 fw-semibold" for="selDias">Período:</label>
+        <select id="selDias" name="dias" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+            {% for valor, rotulo in opcoes_periodo %}
+            <option value="{{ valor }}" {% if valor == dias %}selected{% endif %}>{{ rotulo }}</option>
+            {% endfor %}
+        </select>
+        <small class="text-muted">{{ ini.strftime('%d/%m/%Y') }} a {{ fim.strftime('%d/%m/%Y') }}</small>
+    </form>
+
+    <div class="row g-3 mb-3">
+        {% set cards = [
+            ('acoes', 'Ações no portal', 'fas fa-mouse-pointer', 'primary', url_for('auditoria_v2.atividades', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d'))),
+            ('usuarios', 'Usuários ativos', 'fas fa-users', 'dark', url_for('auditoria_v2.atividades', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d'))),
+            ('alteracoes', 'Registros alterados', 'fas fa-exchange-alt', 'warning', url_for('auditoria_v2.alteracoes', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d'))),
+            ('exportacoes', 'Exportações / downloads', 'fas fa-file-download', 'success', url_for('auditoria_v2.atividades', tipo='EXPORTACAO', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d'))),
+            ('erros', 'Erros no sistema', 'fas fa-bug', 'danger', url_for('auditoria_v2.atividades', tipo='ERRO', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d'))),
+            ('logins_falhos', 'Logins com falha', 'fas fa-user-lock', 'danger', url_for('auditoria_v2.eventos', tipo='LOGIN_FALHO', dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d')))
+        ] %}
+        {% for chave, rotulo, icone, cor, link in cards %}
+        <div class="col-6 col-md-4 col-xl-2">
+            <a href="{{ link }}" class="text-decoration-none">
+                <div class="card shadow-sm h-100" style="border-left: 4px solid var(--bs-{{ cor }});">
+                    <div class="card-body py-3">
+                        <div class="text-muted small"><i class="{{ icone }} me-1"></i>{{ rotulo }}</div>
+                        <div class="fw-bold text-{{ cor }}" style="font-size: 1.7rem;">{{ kpis[chave]|mil }}</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Ações por dia</div>
+                <div class="card-body"><div style="height: 260px;"><canvas id="grafDias"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Tipos de ação</div>
+                <div class="card-body"><div style="height: 260px;"><canvas id="grafTipos"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Aplicativos mais usados</div>
+                <div class="card-body"><div style="height: 300px;"><canvas id="grafApps"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Uso por horário</div>
+                <div class="card-body"><div style="height: 300px;"><canvas id="grafHoras"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Usuários mais ativos</div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0" style="vertical-align: middle;">
+                        <thead class="table-light">
+                            <tr><th>Usuário</th><th>Área</th><th class="text-end">Ações</th>
+                                <th class="text-end">Registros alterados</th><th>Última ação</th></tr>
+                        </thead>
+                        <tbody>
+                        {% for u in por_usuario %}
+                            <tr>
+                                <td><a href="{{ url_for('auditoria_v2.atividades', usuario_id=u.id, dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d')) }}">{{ u.nome }}</a></td>
+                                <td>{{ u.area or '-' }}</td>
+                                <td class="text-end">{{ u.acoes|mil }}</td>
+                                <td class="text-end">{{ u.alterados|mil }}</td>
+                                <td><small>{{ u.ultima.strftime('%d/%m/%Y %H:%M') if u.ultima else '-' }}</small></td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">Sem ações no período.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white fw-semibold">Tabelas mais alteradas</div>
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0" style="vertical-align: middle;">
+                        <thead class="table-light"><tr><th>Tabela</th><th>Operação</th><th class="text-end">Registros</th></tr></thead>
+                        <tbody>
+                        {% for t in tabelas %}
+                            <tr>
+                                <td><a href="{{ url_for('auditoria_v2.alteracoes', tabela=t.tabela, operacao=t.operacao, dt_ini=ini.strftime('%Y-%m-%d'), dt_fim=fim.strftime('%Y-%m-%d')) }}"><code>{{ t.tabela }}</code></a></td>
+                                <td><span class="badge bg-{{ cores_operacao.get(t.operacao, 'secondary') }}">{{ rotulos_operacao.get(t.operacao, t.operacao) }}</span></td>
+                                <td class="text-end">{{ t.qtde|mil }}</td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="3" class="text-center text-muted py-3">Nenhuma alteração de dados no período.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Alertas recentes</div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" style="vertical-align: middle;">
+                <thead class="table-light"><tr><th>Data/Hora</th><th>Nível</th><th>Tipo</th><th>Usuário</th><th>Descrição</th><th></th></tr></thead>
+                <tbody>
+                {% for e in alertas %}
+                    <tr>
+                        <td><small>{{ e.DT_EVENTO.strftime('%d/%m/%Y %H:%M:%S') }}</small></td>
+                        <td><span class="badge bg-{{ cores_nivel.get(e.NIVEL, 'secondary') }}">{{ e.NIVEL }}</span></td>
+                        <td>{{ e.TIPO }}</td>
+                        <td>{{ e.USUARIO_NOME or '-' }}</td>
+                        <td>{{ e.DESCRICAO }}</td>
+                        <td class="text-end"><a class="btn btn-sm btn-outline-primary" title="Ver ação completa"
+                               href="{{ url_for('auditoria_v2.atividade', correlacao=e.ID_CORRELACAO) }}"><i class="fas fa-search"></i></a></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="text-center text-muted py-3">Nenhum alerta no período.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="dadosGraficos">{{ graficos|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+(function () {
+    var dados = JSON.parse(document.getElementById('dadosGraficos').textContent);
+    if (typeof Chart === 'undefined') { return; }
+    var azul = '#1F4E79';
+    var opcoesBase = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+
+    new Chart(document.getElementById('grafDias'), {
+        type: 'line',
+        data: { labels: dados.dias.map(function (d) { return d.dia; }),
+                datasets: [{ data: dados.dias.map(function (d) { return d.qtde; }), borderColor: azul,
+                             backgroundColor: 'rgba(31,78,121,0.12)', fill: true, tension: 0.25, pointRadius: 3 }] },
+        options: Object.assign({}, opcoesBase, { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } })
+    });
+    new Chart(document.getElementById('grafTipos'), {
+        type: 'bar',
+        data: { labels: dados.tipos.map(function (d) { return d.nome; }),
+                datasets: [{ data: dados.tipos.map(function (d) { return d.qtde; }), backgroundColor: azul }] },
+        options: Object.assign({}, opcoesBase, { indexAxis: 'y', scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } })
+    });
+    new Chart(document.getElementById('grafApps'), {
+        type: 'bar',
+        data: { labels: dados.apps.map(function (d) { return d.nome; }),
+                datasets: [{ data: dados.apps.map(function (d) { return d.qtde; }), backgroundColor: azul }] },
+        options: Object.assign({}, opcoesBase, { indexAxis: 'y', scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } })
+    });
+    new Chart(document.getElementById('grafHoras'), {
+        type: 'bar',
+        data: { labels: dados.horas.map(function (d) { return d.hora; }),
+                datasets: [{ data: dados.horas.map(function (d) { return d.qtde; }), backgroundColor: azul }] },
+        options: Object.assign({}, opcoesBase, { scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } })
+    });
+})();
+</script>
+{% endblock %}

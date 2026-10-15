@@ -1,0 +1,43 @@
+{# Detalhe antes/depois de UM registro. Espera: alt = {'obj': AudAlteracao, 'campos': [...]}, mostrar_cabecalho #}
+{% set a = alt.obj %}
+<div class="border rounded mb-2">
+    <div class="d-flex flex-wrap align-items-center px-2 py-1 bg-light" style="gap: 8px;">
+        <span class="badge bg-{{ cores_operacao.get(a.OPERACAO, 'secondary') }}">{{ rotulos_operacao.get(a.OPERACAO, a.OPERACAO) }}</span>
+        <code style="font-size: 0.85rem;">{{ a.TABELA }}</code>
+        <small class="text-muted">chave: <strong>{{ a.CHAVE_REGISTRO or '-' }}</strong></small>
+        {% if mostrar_cabecalho %}
+        <small class="text-muted">&middot; {{ a.DT_ALTERACAO.strftime('%d/%m/%Y %H:%M:%S') }} &middot; {{ a.USUARIO_NOME or '-' }} &middot; {{ a.APLICATIVO or '-' }}</small>
+        {% endif %}
+        <small class="text-muted ms-auto">via {{ 'model (ORM)' if a.ORIGEM == 'ORM' else 'comando SQL' }}</small>
+        {% if a.CHAVE_REGISTRO and not a.CHAVE_REGISTRO.startswith('(') %}
+        <a class="btn btn-sm btn-outline-secondary py-0" title="Histórico completo deste registro"
+           href="{{ url_for('auditoria_v2.historico', tabela=a.TABELA, chave=a.CHAVE_REGISTRO) }}"><i class="fas fa-stream"></i></a>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size: 0.85rem;">
+            <thead>
+                <tr>
+                    <th style="width: 22%;">Campo</th>
+                    {% if a.OPERACAO != 'INSERT' %}<th style="width: 39%;">Antes</th>{% endif %}
+                    {% if a.OPERACAO != 'DELETE' %}<th style="width: 39%;">Depois</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+            {% for c in alt.campos %}
+                <tr {% if c.mudou %}style="background: #fff8e1;"{% endif %}>
+                    <td><code>{{ c.campo }}</code>{% if c.mudou %} <i class="fas fa-pen text-warning" title="Alterado"></i>{% endif %}</td>
+                    {% if a.OPERACAO != 'INSERT' %}
+                    <td style="word-break: break-word;" {% if c.mudou %}class="text-danger"{% endif %}>{% if c.antes is none %}<span class="text-muted">vazio</span>{% else %}{{ c.antes }}{% endif %}</td>
+                    {% endif %}
+                    {% if a.OPERACAO != 'DELETE' %}
+                    <td style="word-break: break-word;" {% if c.mudou %}class="text-success fw-semibold"{% endif %}>{% if c.depois is none %}<span class="text-muted">vazio</span>{% else %}{{ c.depois }}{% endif %}</td>
+                    {% endif %}
+                </tr>
+            {% else %}
+                <tr><td colspan="3" class="text-muted">Sem detalhe de campos.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

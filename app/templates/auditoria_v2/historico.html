@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Histórico do registro{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1300px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary mb-3"><i class="fas fa-arrow-left me-1"></i>Voltar</a>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <div class="small text-muted">Histórico completo do registro</div>
+            <div style="font-size: 1.15rem;"><code>{{ tabela }}</code> &middot; <strong>{{ chave }}</strong></div>
+            <small class="text-muted">{{ versoes|length }} alteração(ões) registradas, da mais antiga para a mais recente.</small>
+        </div>
+    </div>
+
+    {% for alt in versoes %}
+    <div class="d-flex mb-2" style="gap: 12px;">
+        <div class="text-center" style="min-width: 42px;">
+            <div class="rounded-circle bg-{{ cores_operacao.get(alt.obj.OPERACAO, 'secondary') }} text-white d-inline-flex align-items-center justify-content-center"
+                 style="width: 34px; height: 34px; font-size: 0.8rem;">{{ loop.index }}</div>
+        </div>
+        <div class="flex-grow-1">
+            <div class="small mb-1">
+                <strong>{{ alt.obj.DT_ALTERACAO.strftime('%d/%m/%Y %H:%M:%S') }}</strong> &middot; {{ alt.obj.USUARIO_NOME or '-' }}
+                &middot; {{ alt.obj.APLICATIVO or '-' }}
+                <a class="ms-2" href="{{ url_for('auditoria_v2.atividade', correlacao=alt.obj.ID_CORRELACAO) }}">ver ação</a>
+            </div>
+            {% set mostrar_cabecalho = False %}
+            {% include 'auditoria_v2/_alteracao.html' %}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">Nenhuma alteração registrada para este registro.</div>
+    {% endfor %}
+</div>
+{% endblock %}

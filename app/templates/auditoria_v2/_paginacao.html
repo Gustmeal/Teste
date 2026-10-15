@@ -1,0 +1,30 @@
+{# Paginação comum. Espera: paginacao, args, endpoint_paginacao #}
+{% if paginacao.paginas > 1 %}
+<nav class="d-flex justify-content-between align-items-center flex-wrap mt-3" style="gap: 8px;">
+    <small class="text-muted">
+        Página {{ paginacao.pagina }} de {{ paginacao.paginas }} &middot; {{ paginacao.total|mil }} registros
+    </small>
+    <ul class="pagination pagination-sm mb-0">
+        {% set p = paginacao.pagina %}
+        <li class="page-item {% if p <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint_paginacao, pagina=1, **args) }}">&laquo;</a>
+        </li>
+        <li class="page-item {% if p <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint_paginacao, pagina=p - 1, **args) }}">&lsaquo;</a>
+        </li>
+        {% for n in range([1, p - 2]|max, [paginacao.paginas, p + 2]|min + 1) %}
+        <li class="page-item {% if n == p %}active{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint_paginacao, pagina=n, **args) }}">{{ n }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {% if p >= paginacao.paginas %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint_paginacao, pagina=p + 1, **args) }}">&rsaquo;</a>
+        </li>
+        <li class="page-item {% if p >= paginacao.paginas %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for(endpoint_paginacao, pagina=paginacao.paginas, **args) }}">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+{% elif paginacao.total %}
+<small class="text-muted d-block mt-2">{{ paginacao.total|mil }} registros</small>
+{% endif %}

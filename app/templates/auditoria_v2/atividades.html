@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Atividades{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1600px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('auditoria_v2.atividades') }}" class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">De</label>
+                    <input type="date" name="dt_ini" value="{{ filtros.dt_ini }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Até</label>
+                    <input type="date" name="dt_fim" value="{{ filtros.dt_fim }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Usuário</label>
+                    <select name="usuario_id" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for u in usuarios %}
+                        <option value="{{ u.id }}" {% if filtros.usuario_id == u.id|string %}selected{% endif %}>{{ u.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Aplicativo</label>
+                    <select name="blueprint" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for a in aplicativos %}
+                        <option value="{{ a.blueprint }}" {% if filtros.blueprint == a.blueprint %}selected{% endif %}>{{ a.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Tipo de ação</label>
+                    <select name="tipo" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for t in tipos %}
+                        <option value="{{ t }}" {% if filtros.tipo == t %}selected{% endif %}>{{ rotulos_tipo.get(t, t) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Buscar (URL, parâmetro, IP, arquivo)</label>
+                    <input type="text" name="busca" value="{{ filtros.busca }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 d-flex flex-wrap align-items-center" style="gap: 10px;">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="somente_alteracoes" value="1" id="chkAlt"
+                               {% if filtros.somente_alteracoes %}checked{% endif %}>
+                        <label class="form-check-label small" for="chkAlt">Somente ações que alteraram dados</label>
+                    </div>
+                    <div class="ms-auto d-flex" style="gap: 8px;">
+                        <a href="{{ url_for('auditoria_v2.atividades') }}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+                        <a href="{{ url_for('auditoria_v2.exportar_atividades', **args) }}" class="btn btn-sm btn-success js-ignore-loading">
+                            <i class="fas fa-file-excel me-1"></i>Exportar Excel
+                        </a>
+                        <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Filtrar</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" style="vertical-align: middle; font-size: 0.9rem;">
+                <thead class="table-light">
+                    <tr>
+                        <th>Data/Hora</th><th>Usuário</th><th>Aplicativo</th><th>Ação</th><th>Tela / rota</th>
+                        <th class="text-center">Registros alterados</th><th class="text-center">Status</th>
+                        <th class="text-end">Tempo</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in itens %}
+                    <tr>
+                        <td style="white-space: nowrap;"><small>{{ r.DT_INICIO.strftime('%d/%m/%Y %H:%M:%S') }}</small></td>
+                        <td>
+                            {{ r.USUARIO_NOME or '-' }}
+                            {% if r.USUARIO_AREA %}<br><small class="text-muted">{{ r.USUARIO_AREA }}</small>{% endif %}
+                        </td>
+                        <td>{{ r.APLICATIVO or '-' }}</td>
+                        <td><span class="badge bg-{{ cores_tipo.get(r.TIPO_ACAO, 'secondary') }}">{{ rotulos_tipo.get(r.TIPO_ACAO, r.TIPO_ACAO) }}</span>
+                            {% if r.ARQUIVO_DOWNLOAD %}<br><small class="text-success"><i class="fas fa-file me-1"></i>{{ r.ARQUIVO_DOWNLOAD }}</small>{% endif %}
+                        </td>
+                        <td style="max-width: 380px;">
+                            <small class="text-muted">{{ r.METODO }}</small> <code style="font-size: 0.8rem;">{{ r.ROTA or '-' }}</code><br>
+                            <small class="text-muted" style="word-break: break-all;">{{ r.URL }}</small>
+                        </td>
+                        <td class="text-center">{% if r.QTDE_REGISTROS_ALTERADOS %}<span class="badge bg-warning text-dark">{{ r.QTDE_REGISTROS_ALTERADOS|mil }}</span>{% else %}-{% endif %}</td>
+                        <td class="text-center"><span class="badge {% if (r.STATUS_HTTP or 0) >= 400 %}bg-danger{% else %}bg-light text-dark{% endif %}">{{ r.STATUS_HTTP or '-' }}</span></td>
+                        <td class="text-end"><small>{{ r.DURACAO_MS|mil }} ms</small></td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" title="Ver detalhes"
+                               href="{{ url_for('auditoria_v2.atividade', correlacao=r.ID_CORRELACAO) }}"><i class="fas fa-search"></i></a>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-4">Nenhuma ação encontrada com esses filtros.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% set endpoint_paginacao = 'auditoria_v2.atividades' %}
+    {% include 'auditoria_v2/_paginacao.html' %}
+</div>
+{% endblock %}

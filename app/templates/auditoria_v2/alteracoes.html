@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Alterações de dados{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1600px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('auditoria_v2.alteracoes') }}" class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">De</label>
+                    <input type="date" name="dt_ini" value="{{ filtros.dt_ini }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Até</label>
+                    <input type="date" name="dt_fim" value="{{ filtros.dt_fim }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Usuário</label>
+                    <select name="usuario_id" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for u in usuarios %}
+                        <option value="{{ u.id }}" {% if filtros.usuario_id == u.id|string %}selected{% endif %}>{{ u.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Aplicativo</label>
+                    <select name="blueprint" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for a in aplicativos %}
+                        <option value="{{ a.blueprint }}" {% if filtros.blueprint == a.blueprint %}selected{% endif %}>{{ a.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Tabela</label>
+                    <select name="tabela" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for t in tabelas %}
+                        <option value="{{ t }}" {% if filtros.tabela == t %}selected{% endif %}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Operação</label>
+                    <select name="operacao" class="form-select form-select-sm">
+                        <option value="">Todas</option>
+                        {% for o in operacoes %}
+                        <option value="{{ o }}" {% if filtros.operacao == o %}selected{% endif %}>{{ rotulos_operacao.get(o, o) }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">Chave do registro (contém)</label>
+                    <input type="text" name="chave" value="{{ filtros.chave }}" class="form-control form-control-sm" placeholder="ex.: ID=125">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">Campo alterado (contém)</label>
+                    <input type="text" name="campo" value="{{ filtros.campo }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">Valor antes/depois (contém)</label>
+                    <input type="text" name="valor" value="{{ filtros.valor }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-3 d-flex justify-content-end" style="gap: 8px;">
+                    <a href="{{ url_for('auditoria_v2.alteracoes') }}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+                    <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" style="vertical-align: middle; font-size: 0.9rem;">
+                <thead class="table-light">
+                    <tr><th>Data/Hora</th><th>Usuário</th><th>Aplicativo</th><th>Operação</th><th>Tabela</th>
+                        <th>Chave</th><th>Campos alterados</th><th></th></tr>
+                </thead>
+                <tbody>
+                {% for alt in itens %}
+                    {% set a = alt.obj %}
+                    <tr>
+                        <td style="white-space: nowrap;"><small>{{ a.DT_ALTERACAO.strftime('%d/%m/%Y %H:%M:%S') }}</small></td>
+                        <td>{{ a.USUARIO_NOME or '-' }}</td>
+                        <td>{{ a.APLICATIVO or '-' }}</td>
+                        <td><span class="badge bg-{{ cores_operacao.get(a.OPERACAO, 'secondary') }}">{{ rotulos_operacao.get(a.OPERACAO, a.OPERACAO) }}</span></td>
+                        <td><code style="font-size: 0.8rem;">{{ a.TABELA }}</code></td>
+                        <td><small>{{ a.CHAVE_REGISTRO or '-' }}</small></td>
+                        <td style="max-width: 280px;"><small>{{ a.CAMPOS_ALTERADOS or ('todos (registro completo)' if a.OPERACAO in ['INSERT', 'DELETE'] else '-') }}</small></td>
+                        <td class="text-end" style="white-space: nowrap;">
+                            <button type="button" class="btn btn-sm btn-outline-secondary js-ignore-loading" title="Ver antes/depois"
+                                    data-bs-toggle="collapse" data-bs-target="#det{{ a.ID }}"><i class="fas fa-eye"></i></button>
+                            <a class="btn btn-sm btn-outline-primary" title="Ver a ação completa do usuário"
+                               href="{{ url_for('auditoria_v2.atividade', correlacao=a.ID_CORRELACAO) }}"><i class="fas fa-search"></i></a>
+                        </td>
+                    </tr>
+                    <tr class="collapse" id="det{{ a.ID }}">
+                        <td colspan="8" class="bg-white">
+                            {% set mostrar_cabecalho = False %}
+                            {% include 'auditoria_v2/_alteracao.html' %}
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Nenhuma alteração encontrada com esses filtros.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% set endpoint_paginacao = 'auditoria_v2.alteracoes' %}
+    {% include 'auditoria_v2/_paginacao.html' %}
+</div>
+{% endblock %}

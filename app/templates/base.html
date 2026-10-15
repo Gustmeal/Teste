@@ -100,6 +100,9 @@
                 <li><a href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users"></i> Gerenciar Usuários</a></li>
                 <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
+                {% if current_user.perfil == 'admin' %}
+                <li><a href="{{ url_for('auditoria_v2.painel') }}"><i class="fas fa-shield-alt"></i> Auditoria V2</a></li>
+                {% endif %}
                 <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('presenca.painel') }}"><i class="fas fa-database me-2"></i>Usuários Online</a></li>
                 {% endif %}
@@ -182,6 +185,9 @@
                                                         <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
+                            {% if current_user.perfil == 'admin' %}
+                            <li><a class="dropdown-item" href="{{ url_for('auditoria_v2.painel') }}"><i class="fas fa-shield-alt me-2"></i> Auditoria V2</a></li>
+                            {% endif %}
 
                             {% endif %}
 

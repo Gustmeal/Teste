@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Detalhe da ação{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1500px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <a href="javascript:history.back()" class="btn btn-sm btn-outline-secondary mb-3"><i class="fas fa-arrow-left me-1"></i>Voltar</a>
+
+    {% if requisicao %}
+    {% set r = requisicao %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white d-flex flex-wrap align-items-center" style="gap: 10px;">
+            <span class="badge bg-{{ cores_tipo.get(r.TIPO_ACAO, 'secondary') }}" style="font-size: 0.95rem;">{{ rotulos_tipo.get(r.TIPO_ACAO, r.TIPO_ACAO) }}</span>
+            <strong>{{ r.USUARIO_NOME or '-' }}</strong>
+            <span class="text-muted">em {{ r.APLICATIVO or '-' }}</span>
+            <span class="ms-auto text-muted small">ID da ação: <code>{{ correlacao }}</code></span>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 small">
+                <div class="col-md-3"><div class="text-muted">Data/hora</div><strong>{{ r.DT_INICIO.strftime('%d/%m/%Y %H:%M:%S') }}</strong></div>
+                <div class="col-md-3"><div class="text-muted">E-mail / perfil</div>{{ r.USUARIO_EMAIL or '-' }} / {{ r.USUARIO_PERFIL or '-' }}</div>
+                <div class="col-md-3"><div class="text-muted">Área / cargo</div>{{ r.USUARIO_AREA or '-' }} / {{ r.USUARIO_CARGO or '-' }}</div>
+                <div class="col-md-3"><div class="text-muted">IP</div>{{ r.IP or '-' }}</div>
+                <div class="col-md-6"><div class="text-muted">Endereço</div><span class="badge bg-light text-dark">{{ r.METODO }}</span> <code style="word-break: break-all;">{{ r.URL }}</code></div>
+                <div class="col-md-3"><div class="text-muted">Rota</div><code>{{ r.ROTA or '-' }}</code></div>
+                <div class="col-md-3"><div class="text-muted">Resposta</div>HTTP {{ r.STATUS_HTTP or '-' }}{% if r.AJAX %} (chamada interna da tela){% endif %}</div>
+                <div class="col-md-3"><div class="text-muted">Duração total</div>{{ r.DURACAO_MS|mil }} ms</div>
+                <div class="col-md-3"><div class="text-muted">Banco de dados</div>{{ r.QTDE_CONSULTAS_BANCO|mil }} comandos / {{ r.TEMPO_BANCO_MS|mil }} ms</div>
+                <div class="col-md-3"><div class="text-muted">Registros alterados</div>{{ r.QTDE_REGISTROS_ALTERADOS|mil }}</div>
+                <div class="col-md-3"><div class="text-muted">Arquivo baixado</div>{{ r.ARQUIVO_DOWNLOAD or '-' }}</div>
+                <div class="col-md-6"><div class="text-muted">Veio da página</div><small style="word-break: break-all;">{{ r.PAGINA_ORIGEM or '-' }}</small></div>
+                <div class="col-md-6"><div class="text-muted">Navegador</div><small>{{ r.NAVEGADOR or '-' }}</small></div>
+            </div>
+
+            {% if mensagens %}
+            <hr>
+            <div class="small text-muted mb-1">Mensagens exibidas ao usuário</div>
+            {% for m in mensagens %}
+            <div class="alert alert-{{ 'danger' if m.categoria == 'error' else (m.categoria or 'info') }} py-1 px-2 mb-1 small">{{ m.mensagem }}</div>
+            {% endfor %}
+            {% endif %}
+
+            {% if parametros %}
+            <hr>
+            <div class="small text-muted mb-1">Dados enviados (senhas e campos sensíveis mascarados)</div>
+            <pre class="bg-light border rounded p-2 mb-0" style="max-height: 320px; overflow: auto; font-size: 0.8rem;">{{ parametros|tojson(indent=2) }}</pre>
+            {% endif %}
+
+            {% if r.ERRO %}
+            <hr>
+            <div class="small text-danger mb-1"><i class="fas fa-bug me-1"></i>Erro ocorrido</div>
+            <pre class="bg-light border border-danger rounded p-2 mb-0" style="max-height: 320px; overflow: auto; font-size: 0.78rem;">{{ r.ERRO }}</pre>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-info">Ação executada fora de uma tela (rotina do sistema). ID: <code>{{ correlacao }}</code></div>
+    {% endif %}
+
+    {% if eventos %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Eventos</div>
+        <ul class="list-group list-group-flush">
+            {% for e in eventos %}
+            <li class="list-group-item small">
+                <span class="badge bg-{{ cores_nivel.get(e.NIVEL, 'secondary') }}">{{ e.TIPO }}</span>
+                {{ e.DESCRICAO }}
+                {% if e.ENTIDADE %}<span class="text-muted">&middot; {{ e.ENTIDADE }} {{ e.ENTIDADE_ID or '' }}</span>{% endif %}
+                <span class="text-muted float-end">{{ e.DT_EVENTO.strftime('%H:%M:%S') }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-white fw-semibold">Registros alterados ({{ alteracoes|length }})</div>
+        <div class="card-body">
+            {% for alt in alteracoes %}
+                {% set mostrar_cabecalho = False %}
+                {% include 'auditoria_v2/_alteracao.html' %}
+            {% else %}
+                <div class="text-muted small">Esta ação não alterou dados.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% if comandos %}
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-white fw-semibold">Comandos de gravação executados no banco ({{ comandos|length }})</div>
+        <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size: 0.82rem; vertical-align: top;">
+                <thead class="table-light"><tr><th>Operação</th><th>Tabela</th><th>Situação</th><th class="text-end">Linhas</th><th class="text-end">ms</th><th>Comando / parâmetros</th></tr></thead>
+                <tbody>
+                {% for c in comandos %}
+                    <tr>
+                        <td><span class="badge bg-{{ cores_operacao.get(c.OPERACAO, 'secondary') }}">{{ rotulos_operacao.get(c.OPERACAO, c.OPERACAO) }}</span></td>
+                        <td><code>{{ c.TABELA or '-' }}</code></td>
+                        <td><span class="badge {% if c.SITUACAO == 'CONFIRMADA' %}bg-success{% elif c.SITUACAO == 'ERRO' %}bg-danger{% else %}bg-secondary{% endif %}">{{ rotulos_situacao.get(c.SITUACAO, c.SITUACAO) }}</span>
+                            <br><small class="text-muted">{{ c.DETALHAMENTO }}</small></td>
+                        <td class="text-end">{{ c.LINHAS_AFETADAS if c.LINHAS_AFETADAS is not none else '-' }}{% if c.QTDE_LOTES and c.QTDE_LOTES > 1 %}<br><small class="text-muted">{{ c.QTDE_LOTES|mil }} lotes</small>{% endif %}</td>
+                        <td class="text-end">{{ c.DURACAO_MS or 0 }}</td>
+                        <td style="max-width: 700px;">
+                            <pre class="mb-1" style="white-space: pre-wrap; font-size: 0.78rem; max-height: 160px; overflow: auto;">{{ c.COMANDO }}</pre>
+                            {% if c.PARAMETROS %}<div class="text-muted" style="word-break: break-all;">Parâmetros: {{ c.PARAMETROS }}</div>{% endif %}
+                            {% if c.ERRO %}<div class="text-danger" style="word-break: break-word;">{{ c.ERRO }}</div>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

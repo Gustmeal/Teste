@@ -63,6 +63,8 @@ def create_app():
         from app.models.indices_anbima import IndiceAnbima
         from app.models.quadro_rentabilidade import QuadroRentabilidade
         from app.models.doc_catalogo import Aplicativo, Subaplicativo, TabelaDoc
+        from app.models.auditoria_v2 import (AudRequisicao, AudAlteracao, AudAlteracaoCampo,
+                                             AudComandoSql, AudEvento, AudAplicativo, AudConfig)
 
         db.create_all()
 
@@ -206,6 +208,10 @@ def create_app():
     from app.routes.analise_financeira_pf_routes import analise_financeira_pf_bp
     app.register_blueprint(analise_financeira_pf_bp)
 
+    # Auditoria V2 (telas)
+    from app.routes.auditoria_v2_routes import auditoria_v2_bp
+    app.register_blueprint(auditoria_v2_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():
@@ -235,5 +241,10 @@ def create_app():
             return {'pendentes_count': pendentes_count}
         return {'pendentes_count': 0}
 
+
+    # Auditoria V2: captura automática de todas as ações e alterações.
+    # Fica por último para enxergar todos os blueprints registrados acima.
+    from app.auditoria_v2 import iniciar_auditoria_v2
+    iniciar_auditoria_v2(app)
 
     return app

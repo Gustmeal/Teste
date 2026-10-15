@@ -61,6 +61,22 @@ def registrar_log(acao, entidade, entidade_id, descricao, dados_antigos=None, da
         db.session.add(log)
         db.session.commit()
 
+        # Auditoria V2: o registro manual vira um "evento de negócio" ligado à ação
+        # atual do usuário (a alteração dos dados em si já é capturada automaticamente)
+        try:
+            from app.auditoria_v2 import registrar_evento
+            registrar_evento(
+                tipo='REGISTRO_' + str(acao).upper(),
+                descricao=descricao,
+                entidade=entidade,
+                entidade_id=entidade_id,
+                detalhes={'dados_antigos': dados_antigos, 'dados_novos': dados_novos,
+                          'id_log_legado': log.ID},
+                nivel='INFO'
+            )
+        except Exception:
+            pass
+
         return True
     except Exception as e:
         # Usar repr(e) em vez de str(e) para evitar problemas de codificação no console

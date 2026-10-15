@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Eventos e segurança{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1500px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('auditoria_v2.eventos') }}" class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">De</label>
+                    <input type="date" name="dt_ini" value="{{ filtros.dt_ini }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label small mb-1">Até</label>
+                    <input type="date" name="dt_fim" value="{{ filtros.dt_fim }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Tipo</label>
+                    <select name="tipo" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for t in tipos %}<option value="{{ t }}" {% if filtros.tipo == t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Nível</label>
+                    <select name="nivel" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for n in niveis %}<option value="{{ n }}" {% if filtros.nivel == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Usuário</label>
+                    <select name="usuario_id" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for u in usuarios %}
+                        <option value="{{ u.id }}" {% if filtros.usuario_id == u.id|string %}selected{% endif %}>{{ u.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">Buscar</label>
+                    <input type="text" name="busca" value="{{ filtros.busca }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 d-flex justify-content-end" style="gap: 8px;">
+                    <a href="{{ url_for('auditoria_v2.eventos') }}" class="btn btn-sm btn-outline-secondary">Limpar</a>
+                    <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0" style="vertical-align: middle; font-size: 0.9rem;">
+                <thead class="table-light">
+                    <tr><th>Data/Hora</th><th>Nível</th><th>Tipo</th><th>Usuário</th><th>IP</th><th>Aplicativo</th><th>Descrição</th><th></th></tr>
+                </thead>
+                <tbody>
+                {% for e in itens %}
+                    <tr>
+                        <td style="white-space: nowrap;"><small>{{ e.DT_EVENTO.strftime('%d/%m/%Y %H:%M:%S') }}</small></td>
+                        <td><span class="badge bg-{{ cores_nivel.get(e.NIVEL, 'secondary') }}">{{ e.NIVEL }}</span></td>
+                        <td><code>{{ e.TIPO }}</code></td>
+                        <td>{{ e.USUARIO_NOME or '-' }}</td>
+                        <td><small>{{ e.IP or '-' }}</small></td>
+                        <td>{{ e.APLICATIVO or '-' }}</td>
+                        <td style="max-width: 480px;">
+                            {{ e.DESCRICAO }}
+                            {% if e.ENTIDADE %}<br><small class="text-muted">{{ e.ENTIDADE }} {{ e.ENTIDADE_ID or '' }}</small>{% endif %}
+                            {% if e.DETALHES %}
+                            <details class="mt-1"><summary class="small text-muted" style="cursor: pointer;">detalhes</summary>
+                                <pre class="bg-light border rounded p-2 mb-0 small" style="white-space: pre-wrap; max-height: 240px; overflow: auto;">{{ e.DETALHES }}</pre>
+                            </details>
+                            {% endif %}
+                        </td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" title="Ver ação completa"
+                               href="{{ url_for('auditoria_v2.atividade', correlacao=e.ID_CORRELACAO) }}"><i class="fas fa-search"></i></a>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="8" class="text-center text-muted py-4">Nenhum evento encontrado com esses filtros.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% set endpoint_paginacao = 'auditoria_v2.eventos' %}
+    {% include 'auditoria_v2/_paginacao.html' %}
+</div>
+{% endblock %}

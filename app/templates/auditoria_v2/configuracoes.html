@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Auditoria V2 - Configurações{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="max-width: 1400px;">
+    {% include 'auditoria_v2/_nav.html' %}
+
+    <form method="POST" action="{{ url_for('auditoria_v2.configuracoes') }}">
+        {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+        <div class="row g-3">
+            <div class="col-xl-7">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-white fw-semibold">Parâmetros da captura</div>
+                    <div class="card-body">
+                        {% for c in configs %}
+                        <div class="mb-3">
+                            <label class="form-label mb-1" for="cfg_{{ c.CHAVE }}"><code>{{ c.CHAVE }}</code></label>
+                            {% if (c.VALOR or '')|length > 60 %}
+                            <textarea class="form-control form-control-sm" rows="3" id="cfg_{{ c.CHAVE }}" name="cfg_{{ c.CHAVE }}">{{ c.VALOR or '' }}</textarea>
+                            {% else %}
+                            <input type="text" class="form-control form-control-sm" id="cfg_{{ c.CHAVE }}" name="cfg_{{ c.CHAVE }}" value="{{ c.VALOR or '' }}">
+                            {% endif %}
+                            <small class="text-muted d-block">{{ c.DESCRICAO }}</small>
+                            {% if c.UPDATED_AT %}<small class="text-muted">Alterado em {{ c.UPDATED_AT.strftime('%d/%m/%Y %H:%M') }} por {{ c.UPDATED_POR or '-' }}</small>{% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-5">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-white fw-semibold">Volume armazenado</div>
+                    <ul class="list-group list-group-flush">
+                        {% for v in volume %}
+                        <li class="list-group-item d-flex justify-content-between"><span>{{ v.rotulo }}</span><strong>{{ v.qtde|mil }}</strong></li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-white fw-semibold">Rotas mais chamadas (últimas 24h)</div>
+                    <div class="card-body pb-1">
+                        <small class="text-muted d-block mb-2">Se aparecer aqui alguma chamada automática de alta frequência (que não é ação do usuário), inclua o nome dela em <code>ENDPOINTS_IGNORADOS</code>.</small>
+                    </div>
+                    <table class="table table-sm mb-0">
+                        <tbody>
+                        {% for r in rotas_frequentes %}
+                            <tr><td><code>{{ r.rota }}</code></td><td class="text-end">{{ r.qtde|mil }}</td></tr>
+                        {% else %}
+                            <tr><td class="text-muted">Sem dados nas últimas 24h.</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header bg-white fw-semibold">Aplicativos (preenchidos automaticamente a partir dos módulos do portal)</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0" style="vertical-align: middle;">
+                    <thead class="table-light"><tr><th>Módulo (blueprint)</th><th>Nome exibido</th><th>Categoria</th><th class="text-center">Auditar</th></tr></thead>
+                    <tbody>
+                    {% for a in aplicativos %}
+                        <tr>
+                            <td><code>{{ a.BLUEPRINT }}</code></td>
+                            <td><input type="text" class="form-control form-control-sm" name="app_{{ a.ID }}_nome" value="{{ a.NO_APLICATIVO }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="app_{{ a.ID }}_categoria" value="{{ a.CATEGORIA or '' }}"></td>
+                            <td class="text-center">
+                                <select class="form-select form-select-sm" name="app_{{ a.ID }}_auditar" style="width: auto; display: inline-block;">
+                                    <option value="1" {% if a.IN_AUDITAR %}selected{% endif %}>Sim</option>
+                                    <option value="0" {% if not a.IN_AUDITAR %}selected{% endif %}>Não</option>
+                                </select>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="4" class="text-muted">Nenhum aplicativo cadastrado ainda.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end mb-4">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Salvar configurações</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
