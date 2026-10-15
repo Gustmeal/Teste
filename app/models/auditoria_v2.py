@@ -19,7 +19,7 @@ Compatível com Python 3.9 e 3.12.
 
 from datetime import datetime
 
-from sqlalchemy.dialects.mssql import DATETIME2
+from sqlalchemy.dialects.mssql import DATETIME2, NVARCHAR
 
 from app import db
 
@@ -27,6 +27,8 @@ from app import db
 DATA_HORA = db.DateTime().with_variant(DATETIME2(), 'mssql')
 # BIGINT IDENTITY no SQL Server (INTEGER só para permitir testes locais em SQLite)
 ID_GRANDE = db.BigInteger().with_variant(db.Integer(), 'sqlite')
+# Texto longo: sempre NVARCHAR(MAX) no SQL Server (nunca o antigo NTEXT)
+TEXTO_LONGO = db.UnicodeText().with_variant(NVARCHAR(), 'mssql')
 
 
 class AudRequisicao(db.Model):
@@ -60,15 +62,15 @@ class AudRequisicao(db.Model):
     TIPO_ACAO = db.Column(db.String(30))
     STATUS_HTTP = db.Column(db.SmallInteger)
     AJAX = db.Column(db.Boolean)
-    PARAMETROS = db.Column(db.UnicodeText)
+    PARAMETROS = db.Column(TEXTO_LONGO)
     ARQUIVO_DOWNLOAD = db.Column(db.Unicode(400))
     TAMANHO_RESPOSTA = db.Column(db.BigInteger)
     QTDE_CONSULTAS_BANCO = db.Column(db.Integer)
     TEMPO_BANCO_MS = db.Column(db.Integer)
     QTDE_COMANDOS_ESCRITA = db.Column(db.Integer)
     QTDE_REGISTROS_ALTERADOS = db.Column(db.Integer)
-    MENSAGENS = db.Column(db.UnicodeText)
-    ERRO = db.Column(db.UnicodeText)
+    MENSAGENS = db.Column(TEXTO_LONGO)
+    ERRO = db.Column(TEXTO_LONGO)
 
 
 class AudAlteracao(db.Model):
@@ -95,8 +97,8 @@ class AudAlteracao(db.Model):
     TABELA = db.Column(db.String(300))
     CHAVE_REGISTRO = db.Column(db.Unicode(500))
     CAMPOS_ALTERADOS = db.Column(db.Unicode(4000))
-    DADOS_ANTES = db.Column(db.UnicodeText)
-    DADOS_DEPOIS = db.Column(db.UnicodeText)
+    DADOS_ANTES = db.Column(TEXTO_LONGO)
+    DADOS_DEPOIS = db.Column(TEXTO_LONGO)
 
 
 class AudAlteracaoCampo(db.Model):
@@ -140,8 +142,8 @@ class AudComandoSql(db.Model):
     ORIGEM = db.Column(db.String(20))            # ORM / ORM_LOTE / SQL
     OPERACAO = db.Column(db.String(20))          # INSERT / UPDATE / DELETE / MERGE / PROCEDURE / DDL
     TABELA = db.Column(db.String(300))
-    COMANDO = db.Column(db.UnicodeText)
-    PARAMETROS = db.Column(db.UnicodeText)
+    COMANDO = db.Column(TEXTO_LONGO)
+    PARAMETROS = db.Column(TEXTO_LONGO)
     QTDE_LOTES = db.Column(db.Integer)
     LINHAS_AFETADAS = db.Column(db.Integer)
     DURACAO_MS = db.Column(db.Integer)
@@ -172,7 +174,7 @@ class AudEvento(db.Model):
     ENTIDADE = db.Column(db.Unicode(100))
     ENTIDADE_ID = db.Column(db.Unicode(100))
     DESCRICAO = db.Column(db.Unicode(4000))
-    DETALHES = db.Column(db.UnicodeText)
+    DETALHES = db.Column(TEXTO_LONGO)
 
 
 class AudAplicativo(db.Model):
