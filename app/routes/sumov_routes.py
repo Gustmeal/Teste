@@ -5088,7 +5088,10 @@ def _situacoes_venda_lista():
 # Situações de acerto que entram NEGATIVAS apenas no Resumo por Situação.
 # A comparação é feita sem acento e em maiúsculas, para não depender de
 # como a descrição está gravada na PAR_TB032.
-SITUACOES_NEGATIVAS_RESUMO_DPV = ('DEVOLVIDO', 'PERDA')
+SITUACOES_NEGATIVAS_RESUMO_DPV = ('DEVOLVIDO',)
+
+# Situações que entram sempre POSITIVAS no Resumo por Situação.
+SITUACOES_POSITIVAS_RESUMO_DPV = ('PERDA',)
 
 
 def _normalizar_texto_dpv(texto):
@@ -5107,8 +5110,8 @@ def _resumo_situacoes_despesas_pos_venda(filtros):
     quantidade, soma de VR_DESPESA e soma de VR_VENDA.
     NULL (sem classificação) vira a linha 'Não classificadas'.
 
-    Regra do resumo: as situações 'Devolvido' e 'Perda' são exibidas com
-    valor NEGATIVO, e o TOTAL GERAL já considera esse sinal.
+    Regra do resumo: a situação 'Devolvido' é exibida com valor NEGATIVO
+    e 'Perda' com valor POSITIVO; o TOTAL GERAL já considera esses sinais.
     Isso vale SOMENTE para este resumo. Listagem, cards e salvamento
     continuam com os valores originais do banco.
     """
@@ -5142,11 +5145,13 @@ def _resumo_situacoes_despesas_pos_venda(filtros):
         vr_desp = float(l.VR_DESPESA) if l.VR_DESPESA is not None else 0.0
         vr_vnd = float(l.VR_VENDA) if l.VR_VENDA is not None else 0.0
 
-        # Devolvido / Perda entram negativos (somente no resumo)
-        negativa = classificada and \
-            _normalizar_texto_dpv(l.DSC_SITUACAO) in SITUACOES_NEGATIVAS_RESUMO_DPV
+        # Devolvido entra negativo; Perda entra positivo (somente no resumo)
+        dsc_norm = _normalizar_texto_dpv(l.DSC_SITUACAO) if classificada else ''
+        negativa = dsc_norm in SITUACOES_NEGATIVAS_RESUMO_DPV
         if negativa:
             vr_desp = -abs(vr_desp)
+        elif dsc_norm in SITUACOES_POSITIVAS_RESUMO_DPV:
+            vr_desp = abs(vr_desp)
 
         total_qtd += qtd
         total_despesa += vr_desp
