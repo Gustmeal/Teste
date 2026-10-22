@@ -618,6 +618,79 @@ def _baixar_csv_b3():
 # =========================================================================
 # PROCESSAMENTO DO CSV — CONSTRÓI SÉRIE COMPLETA DE 105 MESES
 # =========================================================================
+def _ler_csv_b3(caminho_csv):
+    """
+    Lê o CSV de Negócios Consolidados da B3 de forma tolerante ao formato.
+
+    Funciona tanto para o arquivo baixado pela API (UTF-8, cabeçalho na
+    3ª linha) quanto para o arquivo aberto/salvo pelo Excel (ANSI/cp1252,
+    com linhas extras ';;;;' antes do cabeçalho).
+
+    Lógica:
+      1. Lê os bytes e decodifica tentando utf-8-sig → cp1252 → latin-1.
+      2. Procura a linha que começa com 'Instrumento financeiro'
+         (nas 50 primeiras) e usa ela como cabeçalho.
+      3. Detecta o separador (';' ou ',') pela própria linha de cabeçalho.
+
+    Retorna o DataFrame com todas as colunas como texto (dtype=str).
+    """
+    import io
+    import pandas as pd
+
+    with open(caminho_csv, 'rb') as f:
+        bruto = f.read()
+
+    if not bruto:
+        raise Exception('O arquivo CSV está vazio.')
+
+    # 1. Decodificação
+    texto = None
+    enc_usado = None
+    ultimo_erro = None
+    for enc in ('utf-8-sig', 'cp1252', 'latin-1'):
+        try:
+            texto = bruto.decode(enc)
+            enc_usado = enc
+            break
+        except UnicodeDecodeError as e:
+            ultimo_erro = e
+
+    if texto is None:
+        raise Exception(f'Não foi possível ler o CSV. Último erro: {ultimo_erro}')
+
+    # 2. Localiza a linha de cabeçalho
+    linhas = texto.splitlines()
+    idx_cabecalho = None
+    for i, linha in enumerate(linhas[:50]):
+        if linha.lstrip().lower().startswith('instrumento financeiro'):
+            idx_cabecalho = i
+            break
+
+    if idx_cabecalho is None:
+        raise Exception(
+            "Cabeçalho 'Instrumento financeiro' não encontrado no CSV. "
+            "Confirme se o arquivo é o de Negócios Consolidados de Derivativos da B3."
+        )
+
+    # 3. Separador
+    cabecalho = linhas[idx_cabecalho]
+    sep = ';' if cabecalho.count(';') >= cabecalho.count(',') else ','
+
+    df = pd.read_csv(
+        io.StringIO('\n'.join(linhas[idx_cabecalho:])),
+        sep=sep,
+        dtype=str,
+        engine='python',
+        on_bad_lines='skip'
+    )
+    df.columns = [str(c).strip() for c in df.columns]
+
+    print(f'[CustoOportunidade] CSV lido: {len(df)} linhas, '
+          f'sep="{sep}", enc="{enc_usado}", cabeçalho na linha {idx_cabecalho}')
+
+    return df
+
+
 def _processar_csv(caminho_csv, dt_atualizacao):
     """
     Lê CSV → filtra DI1 → constrói série mensal contínua até ANO_MES_LIMITE
@@ -637,30 +710,9 @@ def _processar_csv(caminho_csv, dt_atualizacao):
     from app.models.mes_instrumento import MesInstrumento
     from app.models.config_custo_oportunidade import ConfigCustoOportunidade
 
-    # 1. Ler CSV
-    df = None
-    ultimo_erro = None
-    tentativas = [
-        {'sep': ';', 'encoding': 'utf-8-sig'},
-        {'sep': ';', 'encoding': 'latin-1'},
-        {'sep': ',', 'encoding': 'utf-8-sig'},
-    ]
-    for cfg in tentativas:
-        try:
-            df_tmp = pd.read_csv(
-                caminho_csv, dtype=str, skiprows=[0, 1],
-                engine='python', on_bad_lines='skip', **cfg
-            )
-            if 'Instrumento financeiro' in df_tmp.columns:
-                df = df_tmp
-                print(f'[CustoOportunidade] CSV lido: {len(df)} linhas, '
-                      f'sep="{cfg["sep"]}", enc="{cfg["encoding"]}"')
-                break
-        except Exception as e:
-            ultimo_erro = e
+    # 1. Ler CSV (tolerante a UTF-8/ANSI e a linhas extras antes do cabeçalho)
+    df = _ler_csv_b3(caminho_csv)
 
-    if df is None:
-        raise Exception(f'Não foi possível ler o CSV. Último erro: {ultimo_erro}')
     if 'Preço médio' not in df.columns:
         raise Exception(
             "Coluna 'Preço médio' não encontrada. "
