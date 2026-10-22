@@ -4449,6 +4449,51 @@ def ans_glosas_salvar_dt_aplicacao():
 
 
 # =====================================================
+# ANS GLOSAS - TUTORIAL DAS PENALIDADES
+# =====================================================
+
+@sumov_bp.route('/faturamento/ans-glosas/tutorial')
+@login_required
+def ans_glosas_tutorial():
+    """Página de tutorial do processo de penalidades ANS (sem alterar dados)."""
+    from flask import session
+    from datetime import datetime as _dt
+    from app.models.ans_apuracao import AnsApuracao
+
+    # Mesma regra de data da tela ANS Glosas: URL > última usada na tela > mais recente
+    datas_iso = [str(d)[:10] for d in AnsApuracao.obter_datas_apuracao()]
+    dt_param = (request.args.get('dt_apuracao') or '').strip()[:10]
+    dt_sessao = (session.get('ans_glosas_dt_apuracao') or '').strip()[:10]
+
+    if dt_param and dt_param in datas_iso:
+        dt_apuracao = dt_param
+    elif dt_sessao and dt_sessao in datas_iso:
+        dt_apuracao = dt_sessao
+    elif datas_iso:
+        dt_apuracao = datas_iso[0]
+    else:
+        dt_apuracao = ''
+
+    try:
+        dt_apuracao_br = _dt.strptime(dt_apuracao, '%Y-%m-%d').strftime('%d/%m/%Y') if dt_apuracao else '-'
+    except ValueError:
+        dt_apuracao_br = dt_apuracao or '-'
+
+    etapas = [
+        {'numero': 1, 'titulo_curto': 'Analisar pendentes'},
+        {'numero': 2, 'titulo_curto': 'Botões por grupo'},
+        {'numero': 3, 'titulo_curto': 'Sim → Não e justificativas'},
+        {'numero': 4, 'titulo_curto': 'Concluir apuração'},
+        {'numero': 5, 'titulo_curto': 'Data de aplicação'},
+    ]
+
+    return render_template('sumov/faturamento/ans_glosas_tutorial.html',
+                           dt_apuracao=dt_apuracao,
+                           dt_apuracao_br=dt_apuracao_br,
+                           etapas=etapas)
+
+
+# =====================================================
 # ANS GLOSAS - AUDITORIA (somente admin / moderador)  — FUNÇÕES NOVAS
 # =====================================================
 

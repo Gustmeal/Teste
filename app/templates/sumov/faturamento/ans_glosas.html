@@ -8,6 +8,10 @@
             <h1 class="fw-bold header-with-back"><i class="fas fa-clipboard-check text-info me-2"></i> ANS Glosas</h1>
 
             <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('sumov.ans_glosas_tutorial', dt_apuracao=dt_apuracao) }}" class="btn btn-outline-primary"
+                   title="Passo a passo das penalidades ANS">
+                    <i class="fas fa-graduation-cap me-1"></i>Tutorial
+                </a>
                 <span class="btn btn-warning js-ignore-loading" onclick="abrirModalTarifa()" style="cursor:pointer;"
                       title="Alterar a tarifa da última data cadastrada (TB061)">
                     <i class="fas fa-dollar-sign me-1"></i>Alterar Tarifa

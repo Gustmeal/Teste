@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid fade-in tut-pagina">
+    <a href="{{ url_for('sumov.ans_glosas', dt_apuracao=dt_apuracao) }}" class="btn-back"><i class="fas fa-arrow-left"></i> Voltar ao ANS Glosas</a>
+
+    <!-- ================= CABEÇALHO ================= -->
+    <div class="tut-hero mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <div class="tut-hero-icone"><i class="fas fa-graduation-cap"></i></div>
+            <div class="flex-grow-1" style="min-width:0;">
+                <div class="tut-hero-eyebrow">SUMOV · Faturamento · ANS Glosas</div>
+                <h1 class="tut-hero-titulo">Tutorial das Penalidades ANS</h1>
+                <p class="tut-hero-texto mb-0">
+                    Siga as etapas na ordem: analisar as pendentes, aplicar as penalidades de cada grupo,
+                    corrigir de Sim para Não quando a prestadora justificar, concluir a apuração e informar a data de aplicação.
+                </p>
+            </div>
+        </div>
+        <div class="tut-hero-data">
+            <i class="fas fa-calendar-alt me-2"></i>Apuração selecionada na tela:
+            <strong>{{ dt_apuracao_br }}</strong>
+        </div>
+    </div>
+
+    <!-- ================= MAPA DAS ETAPAS ================= -->
+    <div class="row g-2 mb-4">
+        {% for etapa in etapas %}
+        <div class="col-6 col-md">
+            <a href="#etapa-{{ etapa.numero }}" class="tut-mapa js-ignore-loading" data-etapa="{{ etapa.numero }}">
+                <span class="tut-mapa-num">{{ etapa.numero }}</span>
+                <span class="tut-mapa-txt">{{ etapa.titulo_curto }}</span>
+                <i class="fas fa-check-circle tut-mapa-ok"></i>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Antes de começar -->
+    <div class="alert alert-info d-flex gap-3 align-items-start mb-4">
+        <i class="fas fa-calendar-check fs-4 mt-1"></i>
+        <div>
+            <strong>Antes de começar, confira a Data de Apuração.</strong><br>
+            No topo da tela ANS Glosas, em <b>Data de Apuração</b>, selecione o mês que você vai apurar.
+            Tudo o que for feito vale só para essa data.
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 1 ================= -->
+    <div class="card shadow-sm mb-4 tut-etapa" id="etapa-1" data-etapa="1">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">1</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold text-white">Analise as ocorrências pendentes</h5>
+                    <small class="text-white-50">Em cada grupo, antes de qualquer penalidade.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="1"> Feito</label>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Clique no cabeçalho azul do grupo para abrir. Os grupos vêm fechados.</li>
+                        <li>Na seção <b>Pendentes</b>, marque se a justificativa foi aceita:
+                            <b class="text-success">Sim</b> ou <b class="text-danger">Não</b>. Clicar de novo na mesma opção desmarca.</li>
+                        <li>Clique em <b>Salvar Grupo</b> para gravar todas as marcadas de uma vez (ou no disquete da linha para salvar só uma) e confirme.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-lightbulb"></i>
+                        <span>Depois de salvas, as ocorrências passam para <b>Analisadas</b>, onde ficam os botões de penalidade.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Grupo · Pendentes</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="tut-grupo">
+                                <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                                    <span class="tut-grupo-num">N</span>
+                                    <div style="min-width:0;"><b>Nome do grupo</b><small class="d-block text-white-50">Prazo ANS: nº de dias</small></div>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-hourglass-half me-1"></i>pend.</span>
+                                    <span class="badge bg-light text-success"><i class="fas fa-check-circle me-1"></i>anal.</span>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 tut-tabela">
+                                    <thead><tr><th>Oc.</th><th>Justif.</th><th>Just. aceita?</th><th>Salvar</th></tr></thead>
+                                    <tbody>
+                                    <tr>
+                                        <td class="fw-bold">nº</td><td>dd/mm/aaaa</td>
+                                        <td><span class="tut-radio"><i class="tut-bolinha tut-sim"></i><b class="text-success">Sim</b></span>
+                                            <span class="tut-radio"><i class="tut-bolinha"></i><b class="text-danger">Não</b></span></td>
+                                        <td><span class="btn btn-sm btn-outline-primary"><i class="fas fa-save"></i></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">nº</td><td>dd/mm/aaaa</td>
+                                        <td><span class="tut-radio"><i class="tut-bolinha"></i><b class="text-success">Sim</b></span>
+                                            <span class="tut-radio"><i class="tut-bolinha tut-nao"></i><b class="text-danger">Não</b></span></td>
+                                        <td><span class="btn btn-sm btn-outline-primary"><i class="fas fa-save"></i></span></td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex justify-content-end">
+                                <span class="btn btn-sm btn-outline-primary tut-destaque"><i class="fas fa-save me-1"></i>Salvar Grupo</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 2 ================= -->
+    <div class="card shadow-sm mb-4 tut-etapa" id="etapa-2" data-etapa="2">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">2</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold text-white">Aperte os botões do grupo, na ordem</h5>
+                    <small class="text-white-50">Repita grupo por grupo, até o último.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="2"> Feito</label>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Abra <b>Analisadas</b> dentro do grupo e desça até o <b>Resumo — Grupo</b>.</li>
+                        <li>Clique em <b>1. Advertência</b> e confirme. Ela libera o próximo botão.</li>
+                        <li>Clique em <b>2. Reincidência</b> e confirme. Ela libera o próximo botão.</li>
+                        <li>Clique em <b>3. Reiteração</b> e confirme. O grupo está pronto.</li>
+                        <li>Passe para o próximo grupo e repita.</li>
+                    </ol>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Resumo do grupo · botões</span><span>a ordem é obrigatória</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="tut-sequencia">
+                                <div class="tut-seq-linha">
+                                    <span class="tut-seq-rotulo">Início</span>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <span class="btn btn-danger btn-sm px-3"><i class="fas fa-gavel me-1"></i>1. Advertência</span>
+                                        <span class="btn btn-secondary btn-sm px-3 tut-travado"><i class="fas fa-lock me-1"></i>2. Reincidência</span>
+                                        <span class="btn btn-secondary btn-sm px-3 tut-travado"><i class="fas fa-lock me-1"></i>3. Reiteração</span>
+                                    </div>
+                                </div>
+                                <div class="tut-seq-linha">
+                                    <span class="tut-seq-rotulo">Depois do 1</span>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <span class="btn btn-danger btn-sm px-3"><i class="fas fa-gavel me-1"></i>1. Advertência</span>
+                                        <span class="btn btn-warning text-dark btn-sm px-3 tut-destaque"><i class="fas fa-redo me-1"></i>2. Reincidência</span>
+                                        <span class="btn btn-secondary btn-sm px-3 tut-travado"><i class="fas fa-lock me-1"></i>3. Reiteração</span>
+                                    </div>
+                                </div>
+                                <div class="tut-seq-linha">
+                                    <span class="tut-seq-rotulo">Depois do 2</span>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <span class="btn btn-danger btn-sm px-3"><i class="fas fa-gavel me-1"></i>1. Advertência</span>
+                                        <span class="btn btn-outline-secondary btn-sm px-3" style="opacity:.6;"><i class="fas fa-check-circle me-1"></i>2. Reinc.</span>
+                                        <span class="btn btn-dark btn-sm px-3 tut-destaque"><i class="fas fa-exclamation-circle me-1"></i>3. Reiteração</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                    <div class="tut-cor h-100">
+                        <span class="btn btn-danger btn-sm"><i class="fas fa-gavel me-1"></i>1. Advertência</span>
+                        <p class="mb-0">Vermelho: o grupo passou de <b>10%</b> de ocorrências fora do prazo com justificativa rejeitada. Haverá advertência.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="tut-cor h-100">
+                        <span class="btn btn-success btn-sm"><i class="fas fa-gavel me-1"></i>1. Advertência</span>
+                        <p class="mb-0">Roxo: o grupo está dentro do limite de 10%. Aperte mesmo assim, a etapa precisa ser registrada.</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="tut-cor h-100">
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-danger"><i class="fas fa-gavel me-1"></i>Adv. (n)</span>
+                            <span class="badge bg-success"><i class="fas fa-shield-alt me-1"></i>Sem Reinc.</span>
+                        </div>
+                        <p class="mb-0">Depois de processar, o cabeçalho do grupo mostra um selo para cada penalidade.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="alert alert-warning d-flex gap-3 align-items-start mt-3 mb-0">
+                <i class="fas fa-exclamation-triangle fs-5 mt-1"></i>
+                <div><strong>Aperte cada botão uma vez só.</strong>
+                    O botão <b>1. Advertência</b> continua clicável depois de usado. Se for apertado de novo,
+                    o sistema recalcula o grupo inteiro e desfaz as correções manuais da Etapa 3.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 3 ================= -->
+    <div class="card shadow-sm mb-4 tut-etapa" id="etapa-3" data-etapa="3">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">3</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold text-white">Se necessário: mude uma ocorrência de Sim para Não</h5>
+                    <small class="text-white-50">Só depois de terminar a Etapa 2 em todos os grupos.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="3"> Feito</label>
+        </div>
+        <div class="card-body">
+            <p class="text-muted">Use quando a prestadora retornar uma justificativa que tira a penalidade de uma ocorrência.</p>
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Encontre a ocorrência pelo campo <b>Localizar Ocorrência</b> no topo: digite o número e tecle <kbd>Enter</kbd>. A tela abre o grupo e destaca a linha.</li>
+                        <li>Na tabela <b>Analisadas</b>, clique no selo vermelho <b>Sim</b> da coluna certa: <b>Adv.</b>, <b>Reinc.</b> ou <b>Reit.</b></li>
+                        <li>Na janela <b>Retorno da Prestadora</b>, preencha o retorno (obrigatório) e, se houver, a <b>Manifestação GEADI</b>. Até 500 caracteres cada.</li>
+                        <li>Clique em <b>Salvar e Alterar</b>. O selo fica cinza com <b>Não</b> e o total do grupo é atualizado.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-lightbulb"></i>
+                        <span>De <b>Não</b> para <b>Sim</b> não pede justificativa: basta clicar no selo cinza e confirmar.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Analisadas · clique no selo</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="table-responsive">
+                                <table class="table table-sm mb-0 tut-tabela">
+                                    <thead><tr><th>Oc.</th><th>No prazo?</th><th>Adv.</th><th>Reinc.</th><th>Reit.</th></tr></thead>
+                                    <tbody><tr>
+                                        <td class="fw-bold">nº</td>
+                                        <td><span class="badge bg-danger">Fora</span></td>
+                                        <td><span class="badge bg-danger tut-destaque">Sim <i class="fas fa-pen ms-1" style="font-size:.6rem;"></i></span></td>
+                                        <td><span class="badge bg-secondary">Não <i class="fas fa-pen ms-1" style="font-size:.6rem;"></i></span></td>
+                                        <td><span class="badge bg-secondary">Não <i class="fas fa-pen ms-1" style="font-size:.6rem;"></i></span></td>
+                                    </tr></tbody>
+                                </table>
+                            </div>
+                            <div class="text-center text-muted small"><i class="fas fa-arrow-down me-1"></i>abre a janela</div>
+                            <div class="tut-modal">
+                                <div class="tut-modal-cab"><i class="fas fa-comment-alt me-2"></i>Retorno da Prestadora</div>
+                                <div class="tut-modal-corpo">
+                                    <div class="alert alert-info py-2 mb-0 small">Você está alterando manualmente a ocorrência para <strong>NÃO</strong>.</div>
+                                    <div>
+                                        <label class="form-label fw-bold small mb-1">Retorno da Prestadora <span class="text-danger">*</span></label>
+                                        <div class="tut-campo">Digite aqui o retorno informado pela prestadora...</div>
+                                    </div>
+                                    <div>
+                                        <label class="form-label fw-bold small mb-1">Manifestação GEADI</label>
+                                        <div class="tut-campo">Digite aqui a manifestação da GEADI...</div>
+                                    </div>
+                                </div>
+                                <div class="tut-modal-rodape">
+                                    <span class="btn btn-secondary btn-sm"><i class="fas fa-times me-1"></i>Cancelar</span>
+                                    <span class="btn btn-success btn-sm tut-destaque"><i class="fas fa-save me-1"></i>Salvar e Alterar</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 4 ================= -->
+    <div class="card shadow-sm mb-4 tut-etapa" id="etapa-4" data-etapa="4">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">4</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold text-white">Conclua a apuração</h5>
+                    <small class="text-white-50">Uma vez por mês, depois de tudo acima.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="4"> Feito</label>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>No topo da tela, clique no painel <b>Conclusão</b> para abrir.</li>
+                        <li>Confira a tabela: todos os grupos com <i class="fas fa-check-circle text-success"></i> em Análise, Advertência, Reincidência e Reiteração, e status <span class="badge bg-success">Completo</span>.</li>
+                        <li>Clique em <b>Concluir Apuração</b> e confirme. Aparece um resumo com os totais do mês.</li>
+                    </ol>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Painel Conclusão</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-bordered mb-0 tut-tabela">
+                                    <thead><tr><th>Grupo</th><th>Análise</th><th>Advert.</th><th>Reinc.</th><th>Reit.</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                    <tr><td class="fw-bold">A</td>
+                                        <td><i class="fas fa-check-circle text-success"></i></td><td><i class="fas fa-check-circle text-success"></i></td>
+                                        <td><i class="fas fa-check-circle text-success"></i></td><td><i class="fas fa-check-circle text-success"></i></td>
+                                        <td><span class="badge bg-success">Completo</span></td></tr>
+                                    <tr><td class="fw-bold">B</td>
+                                        <td><i class="fas fa-check-circle text-success"></i></td><td><i class="fas fa-check-circle text-success"></i></td>
+                                        <td><i class="fas fa-times-circle text-danger"></i></td><td><i class="fas fa-times-circle text-danger"></i></td>
+                                        <td><span class="badge bg-warning text-dark">Pendente</span></td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="text-center">
+                                <span class="btn btn-success px-4 tut-destaque tut-btn-quebra"><i class="fas fa-flag-checkered me-2"></i>Concluir Apuração — {{ dt_apuracao }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="alert alert-danger d-flex gap-3 align-items-start mt-3 mb-0">
+                <i class="fas fa-ban fs-5 mt-1"></i>
+                <div><strong>Não conclua com grupo pendente.</strong>
+                    O sistema deixa concluir mesmo com pendências e só mostra um aviso amarelo.
+                    A conclusão é definitiva: depois dela a tela mostra <b>CONCLUÍDA</b> e a mesma data não pode ser concluída de novo.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 5 ================= -->
+    <div class="card shadow-sm mb-4 tut-etapa" id="etapa-5" data-etapa="5">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">5</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold text-white">Informe a data de aplicação da glosa</h5>
+                    <small class="text-white-50">Aparece só depois da conclusão.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="5"> Feito</label>
+        </div>
+        <div class="card-body">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>No bloco verde <b>Apuração Concluída</b>, clique em <b>Informar Data de Aplicação da Glosa</b>.</li>
+                        <li>A Data de Apuração já vem preenchida. Escolha a <b>Data de Aplicação</b> e clique em <b>Salvar</b>.</li>
+                        <li>Para corrigir depois, use <b>Alterar Data de Aplicação</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-file-excel"></i>
+                        <span>Para levar os números para planilha, use o botão <b>Exportar Penalidades</b> no topo da tela.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Apuração concluída</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="alert alert-success mb-0 small"><i class="fas fa-lock me-2"></i>Esta apuração foi concluída por <strong>usuário</strong> em <strong>data e hora</strong>.</div>
+                            <div><span class="btn btn-primary tut-destaque tut-btn-quebra"><i class="fas fa-calendar-plus me-1"></i>Informar Data de Aplicação da Glosa</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= RODAPÉ ================= -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="tut-resumo">
+                <span class="badge bg-primary">1 Analisar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-danger">2 Botões 1-2-3</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-secondary">3 Sim → Não</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-success">4 Concluir</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-info text-dark">5 Data de aplicação</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm js-ignore-loading" id="tutDesmarcar"><i class="fas fa-undo me-1"></i>Desmarcar tudo</button>
+                <a href="{{ url_for('sumov.ans_glosas', dt_apuracao=dt_apuracao) }}" class="btn btn-info text-white btn-sm"><i class="fas fa-clipboard-check me-1"></i>Ir para ANS Glosas</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tut-pagina{--tut-navy:#2c3e6b;--tut-navy-esc:#1a2744;--tut-txt:var(--text-color,#333);--tut-muted:var(--text-muted,#666);--tut-borda:var(--border-color,rgba(0,0,0,.1));--tut-card:var(--card-bg,#fff)}
+    .tut-pagina h1.tut-hero-titulo{color:#fff!important;text-shadow:none!important}
+
+    /* Cabeçalho */
+    .tut-hero{background:linear-gradient(135deg,var(--tut-navy) 0%,var(--tut-navy-esc) 100%);color:#fff;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 24px rgba(26,39,68,.18)}
+    .tut-hero-icone{width:60px;height:60px;flex-shrink:0;border-radius:16px;background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-size:1.6rem}
+    .tut-hero-eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+    .tut-hero-titulo{font-size:clamp(1.5rem,3vw,2rem);font-weight:700;margin:2px 0 6px}
+    .tut-hero-texto{color:rgba(255,255,255,.88)!important;max-width:70ch}
+    .tut-hero-data{align-self:flex-start;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);border-radius:50px;padding:6px 14px;font-size:.9rem}
+
+    /* Mapa das etapas */
+    .tut-mapa{display:flex;align-items:center;gap:10px;height:100%;padding:10px 12px;border-radius:12px;background:var(--tut-card);border:1px solid var(--tut-borda);color:var(--tut-txt);text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.05);transition:transform .15s ease,border-color .15s ease}
+    .tut-mapa:hover{transform:translateY(-2px);border-color:var(--tut-navy);color:var(--tut-txt)}
+    .tut-mapa-num{width:30px;height:30px;flex-shrink:0;border-radius:9px;background:var(--tut-navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem}
+    .tut-mapa-txt{font-size:.85rem;font-weight:600;line-height:1.25;min-width:0;flex:1}
+    .tut-mapa-ok{color:#1cc88a;display:none}
+    .tut-mapa.feito{border-color:#1cc88a;background:rgba(28,200,138,.08)}
+    .tut-mapa.feito .tut-mapa-num{background:#1cc88a}
+    .tut-mapa.feito .tut-mapa-ok{display:inline}
+
+    /* Etapas */
+    .tut-etapa{border:none;border-radius:12px;overflow:hidden;scroll-margin-top:80px}
+    .tut-etapa-header{background:linear-gradient(135deg,var(--tut-navy) 0%,var(--tut-navy-esc) 100%);padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .tut-etapa-num{width:46px;height:46px;flex-shrink:0;border-radius:12px;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.25);color:#fff;font-size:1.3rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+    .tut-etapa.feito .tut-etapa-num{background:#1cc88a;border-color:#1cc88a}
+    .tut-feito{display:inline-flex;align-items:center;gap:8px;margin:0;cursor:pointer;user-select:none;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:50px;padding:5px 14px;font-size:.85rem;font-weight:600;white-space:nowrap}
+    .tut-etapa.feito .tut-feito{background:#1cc88a;border-color:#1cc88a}
+
+    /* Passo a passo */
+    .tut-passos{list-style:none;counter-reset:passo;padding:0;margin:0 0 16px;display:flex;flex-direction:column;gap:12px}
+    .tut-passos li{counter-increment:passo;position:relative;padding-left:40px;min-height:28px;line-height:1.55;overflow-wrap:anywhere}
+    .tut-passos li::before{content:counter(passo);position:absolute;left:0;top:0;width:28px;height:28px;border-radius:50%;background:rgba(44,62,107,.1);color:var(--tut-navy);font-weight:700;font-size:.85rem;display:flex;align-items:center;justify-content:center}
+    [data-theme="dark"] .tut-passos li::before{background:rgba(138,130,255,.18);color:#c9c5ff}
+    .tut-dica{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;align-items:start;background:rgba(78,115,223,.07);border-radius:10px;padding:10px 12px;font-size:.9rem}
+    .tut-dica i{color:#4e73df;margin-top:3px}
+
+    /* Tela simulada (só ilustração, sem cliques) */
+    .tut-tela{border:1px solid var(--tut-borda);border-radius:12px;overflow:hidden;background:var(--tut-card)}
+    .tut-tela *{pointer-events:none}
+    .tut-tela-barra{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--tut-borda);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--tut-muted);background:rgba(0,0,0,.02)}
+    .tut-tela-corpo{padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+    .tut-grupo{background:linear-gradient(135deg,var(--tut-navy) 0%,var(--tut-navy-esc) 100%);color:#fff;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .tut-grupo-num{width:34px;height:34px;flex-shrink:0;border-radius:9px;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;font-weight:700}
+    .tut-tabela{min-width:380px}
+    .tut-tabela th{font-size:.7rem;text-transform:uppercase;letter-spacing:.5px;text-align:center;white-space:nowrap;padding:.5rem!important}
+    .tut-tabela td{text-align:center;vertical-align:middle;font-size:.83rem;white-space:nowrap}
+    .tut-radio{display:inline-flex;align-items:center;gap:5px;margin:0 6px}
+    .tut-bolinha{width:14px;height:14px;border-radius:50%;border:2px solid #adb5bd;display:inline-block}
+    .tut-bolinha.tut-sim{background:#1cc88a;border-color:#1cc88a}
+    .tut-bolinha.tut-nao{background:#e74a3b;border-color:#e74a3b}
+    .tut-destaque{box-shadow:0 0 0 3px rgba(78,115,223,.45)!important}
+    .tut-travado{opacity:.45}
+    .tut-btn-quebra{white-space:normal;max-width:100%}
+
+    /* Sequência dos botões */
+    .tut-sequencia{display:flex;flex-direction:column;gap:10px}
+    .tut-seq-linha{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.025)}
+    .tut-seq-rotulo{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tut-muted)}
+    @media (max-width:575.98px){.tut-seq-linha{grid-template-columns:minmax(0,1fr)}}
+
+    /* Cores do botão 1 */
+    .tut-cor{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:14px;border-radius:12px;border:1px solid var(--tut-borda);background:var(--tut-card);font-size:.9rem}
+    .tut-cor .btn{pointer-events:none}
+
+    /* Janela simulada */
+    .tut-modal{border:1px solid var(--tut-borda);border-radius:10px;overflow:hidden;background:var(--tut-card)}
+    .tut-modal-cab{background:#0d6efd;color:#fff;font-weight:600;padding:9px 14px;font-size:.9rem}
+    .tut-modal-corpo{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+    .tut-campo{border:1px solid var(--tut-borda);border-radius:8px;padding:8px 10px;color:var(--tut-muted);font-size:.83rem;min-height:48px}
+    .tut-modal-rodape{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:10px 14px;border-top:1px solid var(--tut-borda)}
+
+    /* Rodapé */
+    .tut-resumo{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+    .tut-resumo i{font-size:.65rem;color:var(--tut-muted)}
+    .tut-resumo .badge{font-size:.8rem;padding:.45em .7em}
+
+    @media (prefers-reduced-motion:reduce){.tut-mapa{transition:none}}
+</style>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+// Progresso do tutorial: fica guardado só no navegador de quem está lendo.
+(function () {
+    var CHAVE = 'sumov_ans_tutorial_feito';
+    var estado = {};
+    try { estado = JSON.parse(localStorage.getItem(CHAVE) || '{}') || {}; } catch (e) { estado = {}; }
+
+    function salvar() { try { localStorage.setItem(CHAVE, JSON.stringify(estado)); } catch (e) {} }
+
+    function pintar() {
+        document.querySelectorAll('.tut-etapa').forEach(function (card) {
+            var n = card.getAttribute('data-etapa');
+            var feito = !!estado[n];
+            card.classList.toggle('feito', feito);
+            var chk = card.querySelector('input[data-etapa]');
+            if (chk) chk.checked = feito;
+            var mapa = document.querySelector('.tut-mapa[data-etapa="' + n + '"]');
+            if (mapa) mapa.classList.toggle('feito', feito);
+        });
+    }
+
+    document.querySelectorAll('.tut-feito input[data-etapa]').forEach(function (chk) {
+        chk.addEventListener('change', function () {
+            estado[chk.getAttribute('data-etapa')] = chk.checked;
+            salvar();
+            pintar();
+        });
+    });
+
+    var btn = document.getElementById('tutDesmarcar');
+    if (btn) btn.addEventListener('click', function () { estado = {}; salvar(); pintar(); });
+
+    pintar();
+})();
+</script>
+{% endblock %}
