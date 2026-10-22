@@ -815,6 +815,7 @@ class AnsApuracao(db.Model):
                 -- Contrato da ocorrência (a TB045 não tem NR_CONTRATO).
                 -- 1) Prévia (TB059): mesmo mês primeiro, depois a mais recente com contrato.
                 -- 2) Faturamento (TB034): cobre ocorrências que nunca entraram em prévia.
+                -- 3) Faturamento final (TB035): ocorrências que já saíram da TB034.
                 SELECT COALESCE(
                     (SELECT TOP 1 P.NR_CONTRATO
                        FROM BDDASHBOARDBI.BDG.MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO P
@@ -826,7 +827,12 @@ class AnsApuracao(db.Model):
                        FROM BDDASHBOARDBI.BDG.MOV_TB034_SMART_FATURAMENTO S
                       WHERE S.nrOcorrencia = A.nrOcorrencia
                         AND S.NR_CONTRATO IS NOT NULL
-                      ORDER BY S.DT_REFERENCIA DESC)
+                      ORDER BY S.DT_REFERENCIA DESC),
+                    (SELECT TOP 1 F.NR_CONTRATO
+                       FROM BDDASHBOARDBI.BDG.MOV_TB035_SMART_FATURAMENTO_FINAL F
+                      WHERE F.nrOcorrencia = A.nrOcorrencia
+                        AND F.NR_CONTRATO IS NOT NULL
+                      ORDER BY F.DT_REFERENCIA DESC)
                 ) AS NR_CONTRATO
             ) C
             WHERE A.DT_APURACAO = :dt
