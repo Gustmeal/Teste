@@ -812,9 +812,22 @@ class AnsApuracao(db.Model):
                 WHERE X.GRUPO = A.GRUPO
             ) B
             OUTER APPLY (
-                SELECT TOP 1 P.NR_CONTRATO
-                FROM BDDASHBOARDBI.BDG.MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO P
-                WHERE P.DT_APURACAO = A.DT_APURACAO AND P.nrOcorrencia = A.nrOcorrencia
+                -- Contrato da ocorrência (a TB045 não tem NR_CONTRATO).
+                -- 1) Prévia (TB059): mesmo mês primeiro, depois a mais recente com contrato.
+                -- 2) Faturamento (TB034): cobre ocorrências que nunca entraram em prévia.
+                SELECT COALESCE(
+                    (SELECT TOP 1 P.NR_CONTRATO
+                       FROM BDDASHBOARDBI.BDG.MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO P
+                      WHERE P.nrOcorrencia = A.nrOcorrencia
+                        AND P.NR_CONTRATO IS NOT NULL
+                      ORDER BY CASE WHEN P.DT_APURACAO = A.DT_APURACAO THEN 0 ELSE 1 END,
+                               P.DT_APURACAO DESC),
+                    (SELECT TOP 1 S.NR_CONTRATO
+                       FROM BDDASHBOARDBI.BDG.MOV_TB034_SMART_FATURAMENTO S
+                      WHERE S.nrOcorrencia = A.nrOcorrencia
+                        AND S.NR_CONTRATO IS NOT NULL
+                      ORDER BY S.DT_REFERENCIA DESC)
+                ) AS NR_CONTRATO
             ) C
             WHERE A.DT_APURACAO = :dt
               AND (
