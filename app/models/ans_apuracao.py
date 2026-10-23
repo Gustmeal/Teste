@@ -544,11 +544,15 @@ class AnsApuracao(db.Model):
             ).fetchone().qtd > 0
 
             if ja_processada:
-                # 4) Reconta quantas ocorrências do grupo ainda estão com o campo = 1
+                # 4) Reconta só as penalidades DESTE mês: campo = 1 e data da penalidade = DT_APURACAO.
+                #    Mesmo critério do aplicar_* (só as novas da rodada) e do Excel Exportar Penalidades.
+                #    Antes contava todas com campo = 1, inclusive as herdadas de meses anteriores,
+                #    e o total do grupo não batia com o Excel depois de uma edição manual.
                 sql_conta = text(f"""
                         SELECT COUNT(*) AS qtd
                         FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
                         WHERE DT_APURACAO=:dt AND GRUPO=:g AND [{campo}]=1
+                          AND [{dt_campo}] = DT_APURACAO
                     """)
                 nova_qtde = db.session.execute(
                     sql_conta, {'dt': dt_apuracao, 'g': grupo}
@@ -792,7 +796,7 @@ class AnsApuracao(db.Model):
         valor_reit = (base * perc_reit).quantize(centavo, rounding=ROUND_HALF_UP)
 
         sql = text("""
-            SELECT A.DT_APURACAO, A.nrOcorrencia, C.NR_CONTRATO,
+            SELECT A.DT_APURACAO, A.nrOcorrencia, A.NR_CONTRATO,
                    A.GRUPO, B.NO_GRUPO, B.itemServico, B.PRAZO,
                    A.DT_ABERTURA, A.DT_ANDAMENTO, A.DT_EFETIVACAO, A.DT_DEFERIDO,
                    A.QTDE_DIAS, A.NO_PRAZO,
@@ -811,30 +815,6 @@ class AnsApuracao(db.Model):
                 FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X
                 WHERE X.GRUPO = A.GRUPO
             ) B
-            OUTER APPLY (
-                -- Contrato da ocorrência (a TB045 não tem NR_CONTRATO).
-                -- 1) Prévia (TB059): mesmo mês primeiro, depois a mais recente com contrato.
-                -- 2) Faturamento (TB034): cobre ocorrências que nunca entraram em prévia.
-                -- 3) Faturamento final (TB035): ocorrências que já saíram da TB034.
-                SELECT COALESCE(
-                    (SELECT TOP 1 P.NR_CONTRATO
-                       FROM BDDASHBOARDBI.BDG.MOV_TB059_PREVIAS_ANS_GLOSA_FATURAMENTO P
-                      WHERE P.nrOcorrencia = A.nrOcorrencia
-                        AND P.NR_CONTRATO IS NOT NULL
-                      ORDER BY CASE WHEN P.DT_APURACAO = A.DT_APURACAO THEN 0 ELSE 1 END,
-                               P.DT_APURACAO DESC),
-                    (SELECT TOP 1 S.NR_CONTRATO
-                       FROM BDDASHBOARDBI.BDG.MOV_TB034_SMART_FATURAMENTO S
-                      WHERE S.nrOcorrencia = A.nrOcorrencia
-                        AND S.NR_CONTRATO IS NOT NULL
-                      ORDER BY S.DT_REFERENCIA DESC),
-                    (SELECT TOP 1 F.NR_CONTRATO
-                       FROM BDDASHBOARDBI.BDG.MOV_TB035_SMART_FATURAMENTO_FINAL F
-                      WHERE F.nrOcorrencia = A.nrOcorrencia
-                        AND F.NR_CONTRATO IS NOT NULL
-                      ORDER BY F.DT_REFERENCIA DESC)
-                ) AS NR_CONTRATO
-            ) C
             WHERE A.DT_APURACAO = :dt
               AND (
                     (A.ADVERTENCIA  = 1 AND A.DT_ADVERTENCIA  = A.DT_APURACAO)

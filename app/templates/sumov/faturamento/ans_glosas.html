@@ -79,7 +79,13 @@
                 Esta apuração foi concluída por <strong>{{ conclusao_existente.USUARIO_NOME }}</strong>
                 em <strong>{{ conclusao_existente.DT_CONCLUSAO.strftime('%d/%m/%Y às %H:%M') if conclusao_existente.DT_CONCLUSAO else '-' }}</strong>.
                 <br>
-                <small>{{ conclusao_existente.TOTAL_OCORRENCIAS }} ocorrências | {{ conclusao_existente.TOTAL_GRUPOS }} grupos | {{ conclusao_existente.TOTAL_ADVERTENCIAS }} advert. | {{ conclusao_existente.TOTAL_REINCIDENCIAS }} reinc. | {{ conclusao_existente.TOTAL_REITERACOES }} reiter.</small>
+                {# Totais ATUAIS (TB049, mesma fonte dos quadros e do Excel). A TB046 guarda a foto do momento da conclusão. #}
+                <small>Atual: {{ verificacao.total_ocorrencias }} ocorrências | {{ verificacao.total_grupos }} grupos | {{ verificacao.total_advertencias }} advert. | {{ verificacao.total_reincidencias }} reinc. | {{ verificacao.total_reiteracoes }} reiter.</small>
+                {% if conclusao_existente.TOTAL_ADVERTENCIAS != verificacao.total_advertencias
+                      or conclusao_existente.TOTAL_REINCIDENCIAS != verificacao.total_reincidencias
+                      or conclusao_existente.TOTAL_REITERACOES != verificacao.total_reiteracoes %}
+                <br><small class="text-muted"><i class="fas fa-history me-1"></i>Na conclusão eram: {{ conclusao_existente.TOTAL_ADVERTENCIAS }} advert. | {{ conclusao_existente.TOTAL_REINCIDENCIAS }} reinc. | {{ conclusao_existente.TOTAL_REITERACOES }} reiter. (houve edição manual depois)</small>
+                {% endif %}
             </div>
 
             <!-- Botão / status da Data de Aplicação da Glosa (TB053) -->
