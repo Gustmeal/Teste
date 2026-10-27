@@ -31,9 +31,10 @@
 
     .bj-ordem { font-family: monospace; font-size: .78rem; background: #eef2ff; color: #1e3a8a;
                 border-radius: 6px; padding: .1rem .4rem; white-space: nowrap; }
-    .bj-aviso-ordem { background: #fff7ed; border: 2px solid #f59e0b; border-left: 6px solid #f59e0b;
-                      color: #7c2d12; border-radius: 8px; padding: .75rem 1rem; font-size: .9rem;
-                      margin-bottom: 1rem; }
+    .bj-pergunta-ordem { background: #eef2ff; border-left: 6px solid #1e3a8a; color: #1e3a8a;
+                         border-radius: 8px; padding: .9rem 1rem; font-size: 1.15rem; font-weight: 700;
+                         margin-bottom: .5rem; }
+    .bj-aviso-ordem { color: #64748b; font-size: .82rem; margin-bottom: 1.2rem; }
     table.bj-vinc { width: 100%; border-collapse: collapse; font-size: .82rem; }
     table.bj-vinc th { background: #eaf1fb; color: #1e3a5c; padding: .45rem .5rem; text-align: left; }
     table.bj-vinc td { padding: .4rem .5rem; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
@@ -278,12 +279,12 @@
 
         <!-- Passo 1: pergunta -->
         <div id="bjOrdemPasso1">
-            <div class="bj-aviso-ordem">
-                <i class="fas fa-triangle-exclamation me-2"></i>
-                <strong>Atenção:</strong> se este for o <strong>PRIMEIRO</strong> bloqueio desta Ordem,
-                marque <strong>NÃO</strong>.
+            <div class="bj-pergunta-ordem">
+                <i class="fas fa-circle-question me-2"></i>Existe vinculação deste bloqueio com outro(s) da mesma Ordem?
             </div>
-            <p class="mb-3">Existe vinculação deste bloqueio com outro(s) da mesma Ordem?</p>
+            <div class="bj-aviso-ordem">
+                <i class="fas fa-circle-info me-1"></i>Se este for o primeiro bloqueio da Ordem, marque Não.
+            </div>
             <div class="d-flex justify-content-end gap-2">
                 <button type="button" class="btn btn-outline-secondary" onclick="bjFecharOrdem()">Cancelar</button>
                 <button type="button" class="btn btn-outline-primary" onclick="bjOrdemNao()">

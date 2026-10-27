@@ -775,6 +775,20 @@ def liberar_parcial():
     }
 
     try:
+        # 0) Pega a ORDEM do original: o recorte herda a mesma Ordem, assim no
+        #    Bloqueio Diário (dia do depósito) ele continua no mesmo cartão
+        r_ordem = db.session.execute(text(f"""
+            SELECT TOP 1 ORDEM FROM {_TB}
+            WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :o_dep
+              AND VR_BLOQUEADO = :o_vr
+              AND ISNULL(CONTA, '') = :o_conta
+              AND ISNULL(PROCESSO, '') = :o_processo
+              AND ISNULL(VARA, '') = :o_vara
+              AND ISNULL(AUTOR, '') = :o_autor
+              AND DT_DESBLOQUEIO IS NULL
+        """), params).fetchone()
+        ordem = (r_ordem[0] or '').strip() if (r_ordem and r_ordem[0]) else None
+
         # 1) Subtrai a parte liberada do registro original (continua bloqueado)
         upd = db.session.execute(text(f"""
             UPDATE {_TB}
@@ -797,11 +811,12 @@ def liberar_parcial():
         #    com a mesma DT_DEPOSITO e a DT_DESBLOQUEIO informada
         db.session.execute(text(f"""
             INSERT INTO {_TB}
-                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO, EXCE, EVENTO)
-            VALUES (:dt_dep, :lib, :conta, :processo, :vara, :autor, :dt_desb, :exce, :evento)
+                (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO, EXCE, EVENTO, ORDEM)
+            VALUES (:dt_dep, :lib, :conta, :processo, :vara, :autor, :dt_desb, :exce, :evento, :ordem)
         """), {'dt_dep': o_dep, 'lib': valor_liberado, 'conta': o_conta,
                'processo': o_processo, 'vara': o_vara, 'autor': o_autor,
-               'dt_desb': dt_desb, 'exce': _parse_bit(request.form.get('EXCE')), 'evento': evento})
+               'dt_desb': dt_desb, 'exce': _parse_bit(request.form.get('EXCE')), 'evento': evento,
+               'ordem': ordem})
 
         db.session.commit()
 
@@ -814,7 +829,7 @@ def liberar_parcial():
                          'VR_RESTANTE': str(novo_valor_original),
                          'DT_DESBLOQUEIO': dt_desb.strftime('%Y-%m-%d'),
                          'CONTA': o_conta, 'PROCESSO': o_processo,
-                         'VARA': o_vara, 'AUTOR': o_autor},
+                         'VARA': o_vara, 'AUTOR': o_autor, 'ORDEM': ordem},
         )
         return jsonify({'success': True,
                         'message': f'Liberado {_fmt_vr(valor_liberado)} do processo {o_processo}. '
@@ -917,6 +932,16 @@ def _dados_bloqueio_diario(dia):
         situacao = ''
         if g['desb_na_data']:
             situacao = f"Desbloqueados e Transferidos em {g['dt_transf']}"
+        else:
+            # Cartão de BLOQUEIO: recortes (liberação parcial) da mesma conta somam
+            # numa linha só, mostrando o valor bloqueado na data do depósito.
+            # Cartão de DESBLOQUEIO não passa por aqui (continua linha a linha).
+            por_conta = OrderedDict()
+            for ct in g['contas']:
+                nome = (ct['conta'] or '').strip()
+                por_conta[nome] = por_conta.get(nome, Decimal('0')) + ct['valor']
+            g['contas'] = [{'conta': nome, 'vr_fmt': _fmt_vr(v), 'valor': v}
+                           for nome, v in por_conta.items()]
 
         # SISDOC tem prioridade: quando existe, o Memo SEI não aparece
         if g['memo_sisdoc']:
