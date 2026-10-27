@@ -164,7 +164,7 @@ def index():
     # MEMO_SEI_DESBLOQUEIO e MEMO_SISDOC entram no SELECT pra já virem preenchidos na edição
     sql = text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR, DT_DESBLOQUEIO,
-               EXCE, EVENTO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC
+               EXCE, EVENTO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC, ORDEM
         FROM {_TB} {where}
         ORDER BY DT_DEPOSITO DESC, PROCESSO
     """)
@@ -186,6 +186,7 @@ def index():
             'memo_sei': (r[9] or ''),
             'memo_sei_desbloqueio': (r[10] or ''),
             'memo_sisdoc': (r[11] or ''),
+            'ordem': (r[12] or '').strip(),
         })
 
     # ===== Totais sensíveis aos filtros (calculados sobre a lista já filtrada) =====
@@ -221,9 +222,95 @@ def index():
     )
 
 
+_ORDEM_TAM = 10
+_ORDEM_ALFABETO = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  # sem 0/O/1/I pra não confundir
+
+
+def _gerar_codigo_ordem():
+    """Gera um código aleatório de ordem e garante que ainda não existe na FIN_TB022."""
+    import secrets
+    for _ in range(20):
+        codigo = ''.join(secrets.choice(_ORDEM_ALFABETO) for _ in range(_ORDEM_TAM))
+        existe = db.session.execute(
+            text(f"SELECT TOP 1 1 FROM {_TB} WHERE ORDEM = :o"), {'o': codigo}
+        ).fetchone()
+        if not existe:
+            return codigo
+    raise RuntimeError('Não foi possível gerar um código de ordem único.')
+
+
+# WHERE composto que identifica uma linha da FIN_TB022 (a tabela não tem PK)
+_WHERE_LINHA = """
+    CONVERT(varchar(8), DT_DEPOSITO, 112) = :w_dep
+    AND ROUND(VR_BLOQUEADO, 2) = ROUND(:w_vr, 2)
+    AND RTRIM(ISNULL(CONTA, '')) = RTRIM(:w_conta)
+    AND RTRIM(ISNULL(PROCESSO, '')) = RTRIM(:w_processo)
+    AND RTRIM(ISNULL(VARA, '')) = RTRIM(:w_vara)
+    AND RTRIM(ISNULL(AUTOR, '')) = RTRIM(:w_autor)
+    AND CONVERT(varchar(8), ISNULL(DT_DESBLOQUEIO, '19000101'), 112) = :w_desb
+"""
+
+
+def _params_linha(item):
+    """Converte um item vindo do front (valores originais da linha) nos parâmetros do _WHERE_LINHA.
+    Retorna None se o item for inválido."""
+    dep = _parse_data(item.get('dep'))
+    vr = _parse_decimal(str(item.get('vr') if item.get('vr') is not None else ''))
+    if not dep or vr is None:
+        return None
+    desb = _parse_data(item.get('desb'))
+    return {
+        'w_dep': dep.strftime('%Y%m%d'), 'w_vr': vr,
+        'w_conta': (item.get('conta') or '').strip(),
+        'w_processo': (item.get('processo') or '').strip(),
+        'w_vara': (item.get('vara') or '').strip(),
+        'w_autor': (item.get('autor') or '').strip(),
+        'w_desb': desb.strftime('%Y%m%d') if desb else '19000101',
+    }
+
+
+@bloqueios_judiciais_bp.route('/vinculos-ordem')
+@login_required
+def vinculos_ordem():
+    """Lista os bloqueios com o MESMO processo e a MESMA data de depósito,
+    pra o usuário escolher com quais o novo bloqueio fica na mesma Ordem."""
+    processo = (request.args.get('processo') or '').strip()
+    dt_dep = _parse_data(request.args.get('dt_deposito'))
+    if not processo or not dt_dep:
+        return jsonify({'success': False,
+                        'message': 'Informe o processo e a data do depósito antes de vincular.'}), 400
+
+    rows = db.session.execute(text(f"""
+        SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
+               DT_DESBLOQUEIO, MEMO_SEI, ORDEM
+        FROM {_TB}
+        WHERE RTRIM(ISNULL(PROCESSO, '')) = RTRIM(:p)
+          AND CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
+        ORDER BY ORDEM DESC, CONTA, VR_BLOQUEADO
+    """), {'p': processo, 'd': dt_dep.strftime('%Y%m%d')}).fetchall()
+
+    itens = []
+    for r in rows:
+        itens.append({
+            'dep': r[0].strftime('%Y-%m-%d') if r[0] else '',
+            'vr': ('' if r[1] is None else str(r[1])),
+            'vr_fmt': _fmt_vr(r[1]),
+            'conta': (r[2] or '').strip(),
+            'processo': (r[3] or '').strip(),
+            'vara': (r[4] or '').strip(),
+            'autor': (r[5] or '').strip(),
+            'desb': r[6].strftime('%Y-%m-%d') if r[6] else '',
+            'situacao': ('Desbloqueado' if r[6] else 'Bloqueado'),
+            'memo_sei': (r[7] or '').strip(),
+            'ordem': (r[8] or '').strip(),
+        })
+    return jsonify({'success': True, 'itens': itens})
+
+
 @bloqueios_judiciais_bp.route('/incluir', methods=['POST'])
 @login_required
 def incluir():
+    import json
     dt_dep = _parse_data(request.form.get('DT_DEPOSITO'))
     vr = _parse_decimal(request.form.get('VR_BLOQUEADO'))
     conta = (request.form.get('CONTA') or '').strip()
@@ -233,6 +320,15 @@ def incluir():
     exce = _parse_bit(request.form.get('EXCE'))
     memo_sei = _montar_memo_sei(request.form.get('MEMO_SEI'))  # monta o valor completo
 
+    # Vinculação na mesma Ordem (vem do modal): VINCULAR=1 + VINCULOS=[{linha original}, ...]
+    vincular = _parse_bit(request.form.get('VINCULAR')) == 1
+    vinculos = []
+    if vincular:
+        try:
+            vinculos = json.loads(request.form.get('VINCULOS') or '[]') or []
+        except ValueError:
+            vinculos = []
+
     if not dt_dep:
         return jsonify({'success': False, 'message': 'Informe a data do depósito.'}), 400
     if vr is None:
@@ -241,27 +337,71 @@ def incluir():
         return jsonify({'success': False, 'message': 'Selecione a conta.'}), 400
     if not processo:
         return jsonify({'success': False, 'message': 'Informe o processo.'}), 400
+    if vincular and not vinculos:
+        return jsonify({'success': False,
+                        'message': 'Selecione ao menos um bloqueio para vincular na mesma Ordem.'}), 400
 
     try:
+        ordem = None
+        if vincular:
+            # Só aceita vincular com o MESMO processo e a MESMA data de depósito
+            params_linhas = []
+            for item in vinculos:
+                p = _params_linha(item)
+                if not p:
+                    continue
+                if p['w_processo'] != processo or p['w_dep'] != dt_dep.strftime('%Y%m%d'):
+                    continue
+                params_linhas.append(p)
+            if not params_linhas:
+                return jsonify({'success': False,
+                                'message': 'Nenhum bloqueio válido selecionado para vincular.'}), 400
+
+            # 1) Se algum escolhido já tem Ordem, reaproveita o código
+            for p in params_linhas:
+                r = db.session.execute(text(f"""
+                    SELECT TOP 1 ORDEM FROM {_TB}
+                    WHERE {_WHERE_LINHA} AND ORDEM IS NOT NULL AND LTRIM(RTRIM(ORDEM)) <> ''
+                """), p).fetchone()
+                if r and r[0]:
+                    ordem = r[0].strip()
+                    break
+
+            # 2) Senão, gera um novo código aleatório
+            if not ordem:
+                ordem = _gerar_codigo_ordem()
+
+            # 3) Grava a Ordem em todos os escolhidos (os que estavam NULL entram nela)
+            for p in params_linhas:
+                p2 = dict(p); p2['ordem'] = ordem
+                db.session.execute(text(f"""
+                    UPDATE {_TB} SET ORDEM = :ordem WHERE {_WHERE_LINHA}
+                """), p2)
+
         db.session.execute(text(f"""
             INSERT INTO {_TB}
                 (DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
-                 DT_DESBLOQUEIO, EXCE, EVENTO, MEMO_SEI)
+                 DT_DESBLOQUEIO, EXCE, EVENTO, MEMO_SEI, ORDEM)
             VALUES (:dt_dep, :vr, :conta, :processo, :vara, :autor,
-                    NULL, :exce, NULL, :memo)
+                    NULL, :exce, NULL, :memo, :ordem)
         """), {'dt_dep': dt_dep, 'vr': vr, 'conta': conta,
                'processo': processo, 'vara': vara, 'autor': autor,
-               'exce': exce, 'memo': memo_sei})
+               'exce': exce, 'memo': memo_sei, 'ordem': ordem})
         db.session.commit()
 
         registrar_log(
             acao='inclusao', entidade='bloqueios_judiciais', entidade_id=None,
-            descricao=f'Novo bloqueio — processo {processo}',
+            descricao=(f'Novo bloqueio — processo {processo}'
+                       + (f' (vinculado à Ordem {ordem})' if ordem else '')),
             dados_novos={'DT_DEPOSITO': dt_dep.strftime('%Y-%m-%d'), 'VR_BLOQUEADO': str(vr),
                          'CONTA': conta, 'PROCESSO': processo, 'VARA': vara, 'AUTOR': autor,
-                         'EXCE': exce, 'MEMO_SEI': memo_sei},
+                         'EXCE': exce, 'MEMO_SEI': memo_sei, 'ORDEM': ordem,
+                         'VINCULADOS': len(vinculos) if ordem else 0},
         )
-        return jsonify({'success': True, 'message': f'Bloqueio do processo {processo} incluído.'})
+        msg = f'Bloqueio do processo {processo} incluído.'
+        if ordem:
+            msg += f' Vinculado na Ordem {ordem}.'
+        return jsonify({'success': True, 'message': msg})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Erro ao incluir: {str(e)}'}), 500
@@ -692,9 +832,13 @@ def _fmt_data_ponto(d):
 
 
 def _dados_bloqueio_diario(dia):
-    """Registros com DEPÓSITO = dia OU DESBLOQUEIO = dia, AGRUPADOS por
-    (processo, vara, autor, memo_sei, memo_sisdoc, data do depósito). Cada grupo = um cartão
-    com várias contas e o total somado. Situação aparece quando há desbloqueio na data.
+    """Registros com DEPÓSITO = dia OU DESBLOQUEIO = dia, agrupados em cartões.
+
+    Agrupamento:
+      - BLOQUEIO com ORDEM preenchida: todos da mesma ORDEM ficam no MESMO cartão
+        (várias contas, total somado), independente de vara/autor/memo;
+      - BLOQUEIO sem ORDEM e todo DESBLOQUEIO na data: regra antiga, por
+        (processo, vara, autor, memo_sei, memo_sisdoc, data do depósito) — nada muda.
 
     Memos exibidos:
       - na linha do bloqueio: Memo SISDOC (se houver) OU Memo SEI — nunca os dois;
@@ -703,30 +847,36 @@ def _dados_bloqueio_diario(dia):
     dia_112 = dia.strftime('%Y%m%d')
     rows = db.session.execute(text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
-               DT_DESBLOQUEIO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC
+               DT_DESBLOQUEIO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC, ORDEM
         FROM {_TB}
         WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
            OR CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :d
-        ORDER BY PROCESSO, DT_DEPOSITO
+        ORDER BY PROCESSO, DT_DEPOSITO, ORDEM
     """), {'d': dia_112}).fetchall()
 
     grupos = OrderedDict()
     for r in rows:
-        dep, vr, conta, proc, vara, autor, desb, memo, memo_desb, memo_sisdoc = r
+        dep, vr, conta, proc, vara, autor, desb, memo, memo_desb, memo_sisdoc, ordem = r
         dep_d = dep.date() if hasattr(dep, 'date') else dep
         desb_d = desb.date() if (desb and hasattr(desb, 'date')) else desb
 
         memo = (memo or '').strip()
         memo_desb = (memo_desb or '').strip()
         memo_sisdoc = (memo_sisdoc or '').strip()
+        ordem = (ordem or '').strip()
+        desb_na_data = bool(desb_d and desb_d.strftime('%Y%m%d') == dia_112)
 
-        # MEMO_SISDOC entra na chave junto com o MEMO_SEI: quando é SISDOC o SEI fica
-        # vazio, e sem isso SISDOCs diferentes cairiam no mesmo cartão
-        chave = (
-            (proc or '').strip(), (vara or '').strip(),
-            (autor or '').strip(), memo, memo_sisdoc,
-            dep_d.strftime('%Y%m%d') if dep_d else '',
-        )
+        if ordem and not desb_na_data:
+            # Mesma Ordem = mesmo cartão (só na visão do bloqueio)
+            chave = ('ORDEM', ordem)
+        else:
+            # MEMO_SISDOC entra na chave junto com o MEMO_SEI: quando é SISDOC o SEI fica
+            # vazio, e sem isso SISDOCs diferentes cairiam no mesmo cartão
+            chave = (
+                (proc or '').strip(), (vara or '').strip(),
+                (autor or '').strip(), memo, memo_sisdoc,
+                dep_d.strftime('%Y%m%d') if dep_d else '',
+            )
 
         if chave not in grupos:
             grupos[chave] = {
@@ -740,11 +890,22 @@ def _dados_bloqueio_diario(dia):
             }
 
         g = grupos[chave]
+        # Numa Ordem as linhas podem ter vara/autor/memo em branco em alguma delas:
+        # aproveita o primeiro valor preenchido que aparecer
+        if not g['vara'] and vara:
+            g['vara'] = vara
+        if not g['autor'] and autor:
+            g['autor'] = autor
+        if not g['memo_sisdoc'] and memo_sisdoc:
+            g['memo_sisdoc'] = memo_sisdoc
+        if not g['memo_sei'] and memo:
+            g['memo_sei'] = memo
+
         vrd = Decimal(str(vr)) if vr is not None else Decimal('0')
         g['contas'].append({'conta': (conta or ''), 'vr_fmt': _fmt_vr(vrd), 'valor': vrd})
         g['total'] += vrd
 
-        if desb_d and desb_d.strftime('%Y%m%d') == dia_112:
+        if desb_na_data:
             g['desb_na_data'] = True
             g['dt_transf'] = _fmt_data_ponto(desb_d)
             # memo do desbloqueio: só das linhas desbloqueadas na data, sem repetir

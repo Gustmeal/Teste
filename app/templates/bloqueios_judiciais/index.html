@@ -28,6 +28,16 @@
     .bj-stat.s-blue { border-top: 3px solid #2563eb; }
     .bj-stat.s-amber { border-top: 3px solid #f59e0b; }
     .bj-stat.s-green { border-top: 3px solid #16a34a; }
+
+    .bj-ordem { font-family: monospace; font-size: .78rem; background: #eef2ff; color: #1e3a8a;
+                border-radius: 6px; padding: .1rem .4rem; white-space: nowrap; }
+    .bj-aviso-ordem { background: #fff7ed; border: 2px solid #f59e0b; border-left: 6px solid #f59e0b;
+                      color: #7c2d12; border-radius: 8px; padding: .75rem 1rem; font-size: .9rem;
+                      margin-bottom: 1rem; }
+    table.bj-vinc { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    table.bj-vinc th { background: #eaf1fb; color: #1e3a5c; padding: .45rem .5rem; text-align: left; }
+    table.bj-vinc td { padding: .4rem .5rem; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+    table.bj-vinc tr.sel td { background: #f0f7ff; }
 </style>
 
 <div class="bj-container fade-in">
@@ -198,7 +208,7 @@
                     <thead>
                         <tr>
                             <th>Depósito</th><th>Valor</th><th>Conta</th><th>Processo</th>
-                            <th>Vara</th><th>Autor</th><th>EXCE</th><th>Desbloqueio</th><th>Evento</th><th></th>
+                            <th>Vara</th><th>Autor</th><th>EXCE</th><th>Desbloqueio</th><th>Evento</th><th>Ordem</th><th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -219,6 +229,9 @@
                                 {% endif %}
                             </td>
                             <td class="text-center">{{ b.evento }}</td>
+                            <td class="text-center">
+                                {% if b.ordem %}<span class="bj-ordem">{{ b.ordem }}</span>{% endif %}
+                            </td>
                             <td>
                                 <div class="bj-acoes">
                                     <button type="button" class="btn btn-sm btn-outline-primary"
@@ -249,10 +262,52 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="10" class="text-center text-muted py-3">Nenhum registro.</td></tr>
+                        <tr><td colspan="11" class="text-center text-muted py-3">Nenhum registro.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL DE VINCULAÇÃO NA MESMA ORDEM (aparece ao clicar em Incluir) -->
+<div id="bjOrdemOverlay" class="bj-overlay" style="display:none;">
+    <div class="bj-modal" style="width:760px;">
+        <h5 class="fw-bold mb-3"><i class="fas fa-link me-2"></i>Vinculação na mesma Ordem</h5>
+
+        <!-- Passo 1: pergunta -->
+        <div id="bjOrdemPasso1">
+            <div class="bj-aviso-ordem">
+                <i class="fas fa-triangle-exclamation me-2"></i>
+                <strong>Atenção:</strong> se este for o <strong>PRIMEIRO</strong> bloqueio desta Ordem,
+                marque <strong>NÃO</strong>.
+            </div>
+            <p class="mb-3">Existe vinculação deste bloqueio com outro(s) da mesma Ordem?</p>
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" onclick="bjFecharOrdem()">Cancelar</button>
+                <button type="button" class="btn btn-outline-primary" onclick="bjOrdemNao()">
+                    <i class="fas fa-xmark me-1"></i>Não
+                </button>
+                <button type="button" class="btn btn-primary" onclick="bjOrdemSim()">
+                    <i class="fas fa-check me-1"></i>Sim
+                </button>
+            </div>
+        </div>
+
+        <!-- Passo 2: escolher os bloqueios do mesmo processo e mesma data de depósito -->
+        <div id="bjOrdemPasso2" style="display:none;">
+            <p class="text-muted mb-2" style="font-size:.85rem;">
+                Bloqueios do processo <strong id="bjOrdemProc">—</strong> com depósito em
+                <strong id="bjOrdemData">—</strong>. Marque os que fazem parte da mesma Ordem.
+                Se algum já tiver Ordem, o código dela é reaproveitado.
+            </p>
+            <div id="bjOrdemLista"></div>
+            <div class="mt-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" onclick="bjOrdemVoltar()">Voltar</button>
+                <button type="button" class="btn btn-primary" id="bjOrdemBtnSalvar" onclick="bjOrdemConfirmar()">
+                    <i class="fas fa-save me-2"></i>Incluir e vincular
+                </button>
             </div>
         </div>
     </div>
@@ -460,12 +515,108 @@ function bjEnviar(url, form) {
     return fetch(url, { method: 'POST', headers: { 'X-Silent-Request': 'true' },
         body: new FormData(form) }).then(function (r) { return r.json(); });
 }
+// ---- Inclusão com pergunta de vinculação na mesma Ordem ----
+var bjOrdemItens = [];
+
 function bjIncluir() {
-    bjEnviar("{{ url_for('bloqueios_judiciais.incluir') }}", document.getElementById('formNovo'))
+    // valida o básico antes de abrir o modal (o backend valida de novo)
+    var f = document.getElementById('formNovo');
+    if (!f.DT_DEPOSITO.value || !f.VR_BLOQUEADO.value || !f.CONTA.value || !f.PROCESSO.value.trim()) {
+        bjFeedback('danger', 'Preencha Data do Depósito, Valor, Conta e Processo antes de incluir.');
+        return;
+    }
+    document.getElementById('bjOrdemPasso1').style.display = '';
+    document.getElementById('bjOrdemPasso2').style.display = 'none';
+    document.getElementById('bjOrdemOverlay').style.display = 'flex';
+}
+function bjFecharOrdem() { document.getElementById('bjOrdemOverlay').style.display = 'none'; }
+function bjOrdemVoltar() {
+    document.getElementById('bjOrdemPasso2').style.display = 'none';
+    document.getElementById('bjOrdemPasso1').style.display = '';
+}
+function bjEnviarInclusao(vinculos) {
+    var fd = new FormData(document.getElementById('formNovo'));
+    if (vinculos && vinculos.length) {
+        fd.append('VINCULAR', '1');
+        fd.append('VINCULOS', JSON.stringify(vinculos));
+    }
+    fetch("{{ url_for('bloqueios_judiciais.incluir') }}", {
+        method: 'POST', headers: { 'X-Silent-Request': 'true' }, body: fd
+    }).then(function (r) { return r.json(); })
+      .then(function (d) {
+          bjFecharOrdem();
+          if (d.success) { bjFeedback('success', d.message); setTimeout(function(){location.reload();}, 1200); }
+          else bjFeedback('danger', d.message);
+      }).catch(function (e) { bjFecharOrdem(); bjFeedback('danger', 'Erro: ' + e); });
+}
+function bjOrdemNao() { bjEnviarInclusao(null); }
+
+function _bjEsc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+function _bjDataBr(iso) { return iso ? iso.split('-').reverse().join('/') : ''; }
+
+function bjOrdemSim() {
+    var f = document.getElementById('formNovo');
+    var proc = f.PROCESSO.value.trim(), dep = f.DT_DEPOSITO.value;
+    document.getElementById('bjOrdemProc').textContent = proc;
+    document.getElementById('bjOrdemData').textContent = _bjDataBr(dep);
+    var lista = document.getElementById('bjOrdemLista');
+    lista.innerHTML = '<div class="text-muted py-2"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>';
+    document.getElementById('bjOrdemPasso1').style.display = 'none';
+    document.getElementById('bjOrdemPasso2').style.display = '';
+    document.getElementById('bjOrdemBtnSalvar').disabled = true;
+
+    var url = "{{ url_for('bloqueios_judiciais.vinculos_ordem') }}"
+            + '?processo=' + encodeURIComponent(proc) + '&dt_deposito=' + encodeURIComponent(dep);
+    fetch(url, { headers: { 'X-Silent-Request': 'true' } })
+        .then(function (r) { return r.json(); })
         .then(function (d) {
-            if (d.success) { bjFeedback('success', d.message); setTimeout(function(){location.reload();}, 1200); }
-            else bjFeedback('danger', d.message);
-        }).catch(function (e) { bjFeedback('danger', 'Erro: ' + e); });
+            if (!d.success) { lista.innerHTML = '<div class="alert alert-danger mb-0">' + _bjEsc(d.message) + '</div>'; return; }
+            bjOrdemItens = d.itens || [];
+            if (!bjOrdemItens.length) {
+                lista.innerHTML = '<div class="alert alert-warning mb-0">Nenhum bloqueio encontrado com este processo '
+                    + 'e esta data de depósito. Volte e marque <strong>Não</strong>.</div>';
+                return;
+            }
+            var h = '<table class="bj-vinc"><thead><tr><th></th><th>Conta</th><th class="text-end">Valor Bloqueado</th>'
+                  + '<th>Vara</th><th>Autor</th><th>Situação</th><th>Ordem</th></tr></thead><tbody>';
+            bjOrdemItens.forEach(function (it, i) {
+                h += '<tr id="bjVincTr' + i + '">'
+                   + '<td><input type="checkbox" class="form-check-input" id="bjVinc' + i + '" onchange="bjOrdemMarcou(' + i + ')"></td>'
+                   + '<td><label for="bjVinc' + i + '" style="cursor:pointer;">' + _bjEsc(it.conta) + '</label></td>'
+                   + '<td class="text-end">' + _bjEsc(it.vr_fmt) + '</td>'
+                   + '<td>' + _bjEsc(it.vara) + '</td>'
+                   + '<td>' + _bjEsc(it.autor) + '</td>'
+                   + '<td>' + (it.desb ? '<span class="badge bg-secondary">Desbloqueado</span>'
+                                       : '<span class="badge bg-warning text-dark">Bloqueado</span>') + '</td>'
+                   + '<td>' + (it.ordem ? '<span class="bj-ordem">' + _bjEsc(it.ordem) + '</span>' : '<span class="text-muted">—</span>') + '</td>'
+                   + '</tr>';
+            });
+            h += '</tbody></table>';
+            lista.innerHTML = h;
+        })
+        .catch(function (e) { lista.innerHTML = '<div class="alert alert-danger mb-0">Erro: ' + _bjEsc(e) + '</div>'; });
+}
+function bjOrdemMarcou(i) {
+    var chk = document.getElementById('bjVinc' + i);
+    document.getElementById('bjVincTr' + i).classList.toggle('sel', chk.checked);
+    var algum = bjOrdemItens.some(function (_, j) { return document.getElementById('bjVinc' + j).checked; });
+    document.getElementById('bjOrdemBtnSalvar').disabled = !algum;
+}
+function bjOrdemConfirmar() {
+    var escolhidos = [];
+    bjOrdemItens.forEach(function (it, i) {
+        if (document.getElementById('bjVinc' + i).checked) {
+            escolhidos.push({ dep: it.dep, vr: it.vr, conta: it.conta, processo: it.processo,
+                              vara: it.vara, autor: it.autor, desb: it.desb });
+        }
+    });
+    if (!escolhidos.length) { return; }
+    document.getElementById('bjOrdemBtnSalvar').disabled = true;
+    bjEnviarInclusao(escolhidos);
 }
 function _bjYmd(v){ return (v||'').replace(/-/g,''); }
 // Remove o sufixo fixo '/Gefin/Sufin/Difin' pra edicao mostrar so a parte variavel
