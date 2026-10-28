@@ -57,6 +57,7 @@
                 {% if c.situacao %}
                 <div class="bd-l2">
                     Data do Desbloqueio: {{ c.dt_transf }}
+                    {% if c.evento %} - Evento: {{ c.evento }}{% endif %}
                     {% if c.memo_desb %} - Memo SEI do Desbloqueio: {{ c.memo_desb }}{% endif %}
                 </div>
                 {% endif %}

@@ -862,7 +862,7 @@ def _dados_bloqueio_diario(dia):
     dia_112 = dia.strftime('%Y%m%d')
     rows = db.session.execute(text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
-               DT_DESBLOQUEIO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC, ORDEM
+               DT_DESBLOQUEIO, MEMO_SEI, MEMO_SEI_DESBLOQUEIO, MEMO_SISDOC, ORDEM, EVENTO
         FROM {_TB}
         WHERE CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
            OR CONVERT(varchar(8), DT_DESBLOQUEIO, 112) = :d
@@ -871,7 +871,8 @@ def _dados_bloqueio_diario(dia):
 
     grupos = OrderedDict()
     for r in rows:
-        dep, vr, conta, proc, vara, autor, desb, memo, memo_desb, memo_sisdoc, ordem = r
+        dep, vr, conta, proc, vara, autor, desb, memo, memo_desb, memo_sisdoc, ordem, evento = r
+        evento = (evento or '').strip().upper()
         dep_d = dep.date() if hasattr(dep, 'date') else dep
         desb_d = desb.date() if (desb and hasattr(desb, 'date')) else desb
 
@@ -899,7 +900,7 @@ def _dados_bloqueio_diario(dia):
                 'processo': (proc or ''), 'vara': (vara or ''),
                 'autor': (autor or ''),
                 'memo_sei': memo, 'memo_sisdoc': memo_sisdoc,
-                'memos_desb': [],
+                'memos_desb': [], 'eventos': [],
                 'contas': [], 'total': Decimal('0'),
                 'desb_na_data': False, 'dt_transf': '',
             }
@@ -926,6 +927,9 @@ def _dados_bloqueio_diario(dia):
             # memo do desbloqueio: só das linhas desbloqueadas na data, sem repetir
             if memo_desb and memo_desb not in g['memos_desb']:
                 g['memos_desb'].append(memo_desb)
+            # evento (D/T) das linhas desbloqueadas na data, sem repetir
+            if evento and evento not in g['eventos']:
+                g['eventos'].append(evento)
 
     cartoes = []
     for g in grupos.values():
@@ -943,6 +947,9 @@ def _dados_bloqueio_diario(dia):
             g['contas'] = [{'conta': nome, 'vr_fmt': _fmt_vr(v), 'valor': v}
                            for nome, v in por_conta.items()]
 
+        # Conta corrente/Investimento em ordem alfabética (bloqueio e desbloqueio)
+        g['contas'].sort(key=lambda ct: (ct['conta'] or '').strip().casefold())
+
         # SISDOC tem prioridade: quando existe, o Memo SEI não aparece
         if g['memo_sisdoc']:
             memo_label, memo_valor = 'Memo SISDOC', g['memo_sisdoc']
@@ -958,6 +965,7 @@ def _dados_bloqueio_diario(dia):
             'memo_sei': g['memo_sei'], 'memo_sisdoc': g['memo_sisdoc'],
             'memo_label': memo_label, 'memo_valor': memo_valor,
             'memo_desb': ', '.join(g['memos_desb']),
+            'evento': '/'.join(sorted(g['eventos'])),
             'contas': g['contas'],
             'total_fmt': _fmt_vr(g['total']), 'total_valor': g['total'],
             'situacao': situacao,
@@ -1040,6 +1048,8 @@ def bloqueio_diario_excel():
         # Data do desbloqueio + Memo SEI do Desbloqueio (se houver)
         if tem_desb:
             txt_desb = f"Data dos Desbloqueios/Transferências: {c['dt_transf']}"
+            if c['evento']:
+                txt_desb += f" - Evento: {c['evento']}"
             if c['memo_desb']:
                 txt_desb += f" - Memo SEI do Desbloqueio: {c['memo_desb']}"
             faixa_data(lin + 1, txt_desb)
