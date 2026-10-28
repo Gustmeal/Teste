@@ -19,6 +19,7 @@
     table.bd-t th { background: #eaf1fb; text-align: left; color: #1e3a5c; }
     table.bd-t td.v, table.bd-t th.v { text-align: right; white-space: nowrap; }
     table.bd-t tr.tot td { font-weight: 700; background: #f5f7fa; }
+    table.bd-t td.ev, table.bd-t th.ev { text-align: center; width: 80px; font-weight: 700; }
 </style>
 
 <div class="bd-wrap fade-in">
@@ -57,7 +58,6 @@
                 {% if c.situacao %}
                 <div class="bd-l2">
                     Data do Desbloqueio: {{ c.dt_transf }}
-                    {% if c.evento %} - Evento: {{ c.evento }}{% endif %}
                     {% if c.memo_desb %} - Memo SEI do Desbloqueio: {{ c.memo_desb }}{% endif %}
                 </div>
                 {% endif %}
@@ -70,13 +70,25 @@
                     </div>
                     <table class="bd-t">
                         <thead>
-                            <tr><th>Conta corrente/Investimento</th><th class="v">Valor Bloqueado</th></tr>
+                            <tr>
+                                <th>Conta corrente/Investimento</th>
+                                {% if c.situacao %}<th class="ev">Evento</th>{% endif %}
+                                <th class="v">Valor Bloqueado</th>
+                            </tr>
                         </thead>
                         <tbody>
                             {% for ct in c.contas %}
-                            <tr><td>{{ ct.conta }}</td><td class="v">{{ ct.vr_fmt }}</td></tr>
+                            <tr>
+                                <td>{{ ct.conta }}</td>
+                                {% if c.situacao %}<td class="ev">{{ ct.evento }}</td>{% endif %}
+                                <td class="v">{{ ct.vr_fmt }}</td>
+                            </tr>
                             {% endfor %}
-                            <tr class="tot"><td>Total Bloqueado</td><td class="v">{{ c.total_fmt }}</td></tr>
+                            <tr class="tot">
+                                <td>Total Bloqueado</td>
+                                {% if c.situacao %}<td></td>{% endif %}
+                                <td class="v">{{ c.total_fmt }}</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>

@@ -918,7 +918,9 @@ def _dados_bloqueio_diario(dia):
             g['memo_sei'] = memo
 
         vrd = Decimal(str(vr)) if vr is not None else Decimal('0')
-        g['contas'].append({'conta': (conta or ''), 'vr_fmt': _fmt_vr(vrd), 'valor': vrd})
+        # Evento (D/T) só faz sentido na linha desbloqueada na data
+        g['contas'].append({'conta': (conta or ''), 'vr_fmt': _fmt_vr(vrd), 'valor': vrd,
+                            'evento': (evento if desb_na_data else '')})
         g['total'] += vrd
 
         if desb_na_data:
@@ -944,7 +946,7 @@ def _dados_bloqueio_diario(dia):
             for ct in g['contas']:
                 nome = (ct['conta'] or '').strip()
                 por_conta[nome] = por_conta.get(nome, Decimal('0')) + ct['valor']
-            g['contas'] = [{'conta': nome, 'vr_fmt': _fmt_vr(v), 'valor': v}
+            g['contas'] = [{'conta': nome, 'vr_fmt': _fmt_vr(v), 'valor': v, 'evento': ''}
                            for nome, v in por_conta.items()]
 
         # Conta corrente/Investimento em ordem alfabética (bloqueio e desbloqueio)
@@ -1016,22 +1018,25 @@ def bloqueio_diario_excel():
     verm = Font(bold=True, color='C0392B')
     F_MOEDA = '"R$"\\ #,##0.00'
 
+    # Colunas: A = Conta | B = Evento (D/T) | C = Valor | D = Situação
     ws.column_dimensions['A'].width = 46
-    ws.column_dimensions['B'].width = 22
-    ws.column_dimensions['C'].width = 34
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 22
+    ws.column_dimensions['D'].width = 34
 
-    ws.merge_cells('A1:C1')
+    ws.merge_cells('A1:D1')
     t = ws.cell(1, 1, f"Bloqueios do dia {_fmt_data_ponto(dia)}")
     t.font = Font(bold=True, size=15, color='1F3A5F'); t.alignment = center
     ws.row_dimensions[1].height = 26
 
     def faixa_data(linha, texto):
-        """Faixa azul de data mesclada em A:B; aumenta a altura se o texto for longo."""
-        ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=2)
+        """Faixa azul de data mesclada em A:C; aumenta a altura se o texto for longo."""
+        ws.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=3)
         cel = ws.cell(linha, 1, texto)
         cel.font = branco_b; cel.fill = azul_hdr; cel.alignment = left
         ws.cell(linha, 2).fill = azul_hdr
-        if len(texto) > 60:
+        ws.cell(linha, 3).fill = azul_hdr
+        if len(texto) > 70:
             ws.row_dimensions[linha].height = 32
 
     lin = 3
@@ -1045,11 +1050,9 @@ def bloqueio_diario_excel():
             txt_bloq += f" - {c['memo_label']}: {c['memo_valor']}"
         faixa_data(lin, txt_bloq)
 
-        # Data do desbloqueio + Memo SEI do Desbloqueio (se houver)
+        # Data do desbloqueio + Memo SEI do Desbloqueio (o evento fica na tabela, por conta)
         if tem_desb:
             txt_desb = f"Data dos Desbloqueios/Transferências: {c['dt_transf']}"
-            if c['evento']:
-                txt_desb += f" - Evento: {c['evento']}"
             if c['memo_desb']:
                 txt_desb += f" - Memo SEI do Desbloqueio: {c['memo_desb']}"
             faixa_data(lin + 1, txt_desb)
@@ -1057,47 +1060,53 @@ def bloqueio_diario_excel():
         ini_bloco = lin
         base = lin + n_datas
 
-        # Processo/Vara/Autor (o memo agora fica nas faixas de data)
-        ws.merge_cells(start_row=base, start_column=1, end_row=base, end_column=2)
+        # Processo/Vara/Autor
+        ws.merge_cells(start_row=base, start_column=1, end_row=base, end_column=3)
         linha_proc = (f"Processo: {c['processo']}"
                       + (f"   ·   Vara: {c['vara']}" if c['vara'] else "")
                       + (f"   ·   Autor: {c['autor']}" if c['autor'] else ""))
         ws.cell(base, 1, linha_proc).alignment = left
 
         # Valor da ordem = total
+        ws.merge_cells(start_row=base + 1, start_column=1, end_row=base + 1, end_column=2)
         ws.cell(base + 1, 1, 'Valor da ordem:').font = azul_txt
-        vo = ws.cell(base + 1, 2, float(c['total_valor']))
+        vo = ws.cell(base + 1, 3, float(c['total_valor']))
         vo.number_format = F_MOEDA; vo.font = azul_txt; vo.alignment = right
 
         # Cabeçalho da tabela conta
-        ws.cell(base + 2, 1, 'Conta corrente/Investimento').font = azul_txt
-        ws.cell(base + 2, 1).fill = azul_claro; ws.cell(base + 2, 1).border = borda
-        h2 = ws.cell(base + 2, 2, 'Valor Bloqueado'); h2.font = azul_txt; h2.fill = azul_claro
+        h1 = ws.cell(base + 2, 1, 'Conta corrente/Investimento')
+        h1.font = azul_txt; h1.fill = azul_claro; h1.border = borda
+        he = ws.cell(base + 2, 2, 'Evento')
+        he.font = azul_txt; he.fill = azul_claro; he.border = borda; he.alignment = center
+        h2 = ws.cell(base + 2, 3, 'Valor Bloqueado'); h2.font = azul_txt; h2.fill = azul_claro
         h2.alignment = right; h2.border = borda
 
         # Linhas das contas
         rr = base + 3
         for ct in c['contas']:
             ws.cell(rr, 1, ct['conta']).border = borda
-            vb = ws.cell(rr, 2, float(ct['valor']))
+            ev = ws.cell(rr, 2, ct.get('evento') or '')
+            ev.alignment = center; ev.border = borda; ev.font = Font(bold=True)
+            vb = ws.cell(rr, 3, float(ct['valor']))
             vb.number_format = F_MOEDA; vb.alignment = right; vb.border = borda
             rr += 1
 
         # Total
         ws.cell(rr, 1, 'Total Bloqueado').font = azul_txt
         ws.cell(rr, 1).fill = cinza; ws.cell(rr, 1).border = borda
-        vt = ws.cell(rr, 2, float(c['total_valor']))
+        ws.cell(rr, 2).fill = cinza; ws.cell(rr, 2).border = borda
+        vt = ws.cell(rr, 3, float(c['total_valor']))
         vt.number_format = F_MOEDA; vt.font = azul_txt; vt.alignment = right; vt.fill = cinza; vt.border = borda
 
         fim_bloco = rr
 
-        # Situação: título na faixa azul + texto no corpo (coluna C)
-        ws.merge_cells(start_row=ini_bloco, start_column=3, end_row=ini_bloco + n_datas - 1, end_column=3)
-        stit = ws.cell(ini_bloco, 3, 'Situação')
+        # Situação: título na faixa azul + texto no corpo (coluna D)
+        ws.merge_cells(start_row=ini_bloco, start_column=4, end_row=ini_bloco + n_datas - 1, end_column=4)
+        stit = ws.cell(ini_bloco, 4, 'Situação')
         stit.font = branco_b; stit.fill = azul_hdr; stit.alignment = center
 
-        ws.merge_cells(start_row=base, start_column=3, end_row=fim_bloco, end_column=3)
-        sc = ws.cell(base, 3, c['situacao'] if tem_desb else '')
+        ws.merge_cells(start_row=base, start_column=4, end_row=fim_bloco, end_column=4)
+        sc = ws.cell(base, 4, c['situacao'] if tem_desb else '')
         sc.alignment = center; sc.font = verm; sc.border = borda
 
         lin = fim_bloco + 2
