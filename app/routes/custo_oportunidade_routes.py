@@ -63,20 +63,38 @@ def _montar_grafico_di_futuro(dt_atualizacao):
     Monta o dicionário do gráfico "DI Futuro Suavizada" a partir de
     BDG.FIN_TB004_GRAFICO_CUSTO_OPORT_TX_JUROS, para o pregão informado.
 
+    REGRA: o último mês do eixo X é SEMPRE o ANO_MES_LIMITE configurado em
+    BDG.FIN_TB006_CONFIG_CUSTO_OPORTUNIDADE ("Data Limite (até quando capturar)").
+      - Meses da FIN_TB004 posteriores ao limite são descartados (no SQL).
+      - Se a FIN_TB004 terminar antes do limite, o eixo X é completado mês a
+        mês até o limite, com valores None (o Chart.js não desenha ponto).
+      - Se o limite não estiver configurado, mostra tudo o que houver.
+
     Retorna dict pronto pra serializar via tojson:
       - labels    : ['09/2026', '10/2026', ...] em ordem cronológica (ASC)
       - dt_12sem  : rótulo da 12ª semana (= data do pregão)
       - dt_1sem   : rótulo da 1ª semana  (= pregão - 11 semanas)
       - series    : as 5 curvas (1:1 com as colunas numéricas da tabela)
 
-    A origem vem DESC por ANO_MES; ordeno ASC pra montar o eixo X cronológico.
     Retorna None quando não há dados (o card do gráfico some no template).
     Compatível com Python 3.9 e 3.12.
     """
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+
     if not dt_atualizacao:
         return None
 
-    sql = text("""
+    # 1. Data Limite (FIN_TB006) -> int YYYYMM ou None
+    ano_mes_limite = ConfigCustoOportunidade.obter_ano_mes_limite()
+
+    # 2. Lê a FIN_TB004 já cortada no limite (quando houver limite)
+    filtro_limite = ''
+    params = {'dt': dt_atualizacao}
+    if ano_mes_limite is not None:
+        filtro_limite = 'AND TRY_CAST([ANO_MES] AS INT) <= :limite'
+        params['limite'] = ano_mes_limite
+
+    sql = text(f"""
         SELECT
             [ANO_MES],
             [PRE_MEDIO_ATU],
@@ -86,25 +104,63 @@ def _montar_grafico_di_futuro(dt_atualizacao):
             [TX_SELIC]
         FROM [BDG].[FIN_TB004_GRAFICO_CUSTO_OPORT_TX_JUROS]
         WHERE [DT_ATUALIZACAO] = :dt
+          {filtro_limite}
         ORDER BY [ANO_MES] ASC;
     """)
-    linhas = db.session.execute(sql, {'dt': dt_atualizacao}).fetchall()
+    linhas = db.session.execute(sql, params).fetchall()
 
     if not linhas:
         return None
 
-    def _rotulo_ano_mes(ano_mes):
-        # '202609' (ou 202609) -> '09/2026'
+    def _am_int(ano_mes):
+        # '202609' / 202609 -> 202609 (int) ou None se inválido
         s = str(ano_mes or '').strip()
-        if len(s) != 6 or not s.isdigit():
-            return s
+        return int(s) if len(s) == 6 and s.isdigit() else None
+
+    def _rotulo(am_int):
+        # 202609 -> '09/2026'
+        s = f'{am_int:06d}'
         return f'{s[4:]}/{s[:4]}'
+
+    def _proximo_mes(am_int):
+        ano, mes = am_int // 100, am_int % 100
+        if mes == 12:
+            return (ano + 1) * 100 + 1
+        return ano * 100 + mes + 1
 
     def _num(v):
         # Decimal/None -> float/None (JSON não serializa Decimal)
         return float(v) if v is not None else None
 
-    labels = [_rotulo_ano_mes(l.ANO_MES) for l in linhas]
+    labels = []
+    series = {
+        'media_direx':  [],
+        'di_12sem':     [],
+        'media_di_fut': [],
+        'di_1sem':      [],
+        'selic':        [],
+    }
+
+    ultimo_am = None
+    for l in linhas:
+        am = _am_int(l.ANO_MES)
+        labels.append(_rotulo(am) if am is not None else str(l.ANO_MES))
+        series['media_direx'].append(_num(l.TX_MEDIA_DIREX))
+        series['di_12sem'].append(_num(l.PRE_MEDIO_ATU))
+        series['media_di_fut'].append(_num(l.TX_MEDIA_ATU))
+        series['di_1sem'].append(_num(l.PRE_MEDIO_PRIM_SEM))
+        series['selic'].append(_num(l.TX_SELIC))
+        if am is not None:
+            ultimo_am = am
+
+    # 3. Completa o eixo X até a Data Limite (último ponto = limite)
+    if ano_mes_limite is not None and ultimo_am is not None:
+        cursor = _proximo_mes(ultimo_am)
+        while cursor <= ano_mes_limite:
+            labels.append(_rotulo(cursor))
+            for chave in series:
+                series[chave].append(None)
+            cursor = _proximo_mes(cursor)
 
     # Rótulos de data da legenda (regra: 1ª semana = pregão - 11 semanas)
     dt_12sem = dt_atualizacao.strftime('%d/%m/%Y')
@@ -114,13 +170,7 @@ def _montar_grafico_di_futuro(dt_atualizacao):
         'labels': labels,
         'dt_12sem': dt_12sem,
         'dt_1sem': dt_1sem,
-        'series': {
-            'media_direx':  [_num(l.TX_MEDIA_DIREX)     for l in linhas],
-            'di_12sem':     [_num(l.PRE_MEDIO_ATU)      for l in linhas],
-            'media_di_fut': [_num(l.TX_MEDIA_ATU)       for l in linhas],
-            'di_1sem':      [_num(l.PRE_MEDIO_PRIM_SEM) for l in linhas],
-            'selic':        [_num(l.TX_SELIC)           for l in linhas],
-        },
+        'series': series,
     }
 
 
