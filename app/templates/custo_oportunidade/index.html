@@ -305,6 +305,58 @@
         </div>
     </div>
 
+    <!-- ================== PAINEL DATA LIMITE ================== -->
+    <div class="card co-section-card mb-4"
+         style="border-left: 4px solid #4e73df;">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-7">
+                    <h6 class="mb-1">
+                        <i class="fas fa-flag-checkered me-2 text-primary"></i>
+                        Passo 1 — Data Limite (até quando capturar)
+                    </h6>
+                    <p class="text-muted small mb-2">
+                        Define até qual mês/ano o bot deve construir a série de
+                        contratos DI1. <strong>Confira e, se necessário, altere
+                        antes de capturar os dados da B3</strong> (bot ou carga
+                        manual). Você só precisa alterar esse valor de vez em quando.
+                    </p>
+                    {% if ano_mes_limite %}
+                        <div>
+                            <span class="badge bg-primary" style="font-size: 0.85rem;">
+                                <i class="fas fa-check-circle me-1"></i>
+                                Limite atual:
+                                {{ ano_mes_limite|string }}
+                                ({{ ano_mes_limite // 100 }}/{{ '%02d'|format(ano_mes_limite % 100) }})
+                            </span>
+                        </div>
+                    {% else %}
+                        <div>
+                            <span class="badge bg-warning text-dark" style="font-size: 0.85rem;">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Não configurado — o bot ficará bloqueado
+                            </span>
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="col-md-5 text-md-end mt-3 mt-md-0">
+                    <div class="input-group" style="max-width: 320px; margin-left: auto;">
+                        <input type="month"
+                               id="inputAnoMesLimite"
+                               class="form-control"
+                               value="{% if ano_mes_limite %}{{ ano_mes_limite // 100 }}-{{ '%02d'|format(ano_mes_limite % 100) }}{% endif %}">
+                        <button id="btnSalvarLimite"
+                                type="button"
+                                class="btn btn-primary">
+                            <i class="fas fa-save me-1"></i>Salvar
+                        </button>
+                    </div>
+                    <div id="limiteFeedback" class="small mt-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card co-stat-card shadow-sm">
@@ -494,58 +546,6 @@
                             </a>
                         </div>
                     </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ================== PAINEL DATA LIMITE ================== -->
-    <div class="card co-section-card mb-4"
-         style="border-left: 4px solid #4e73df;">
-        <div class="card-body">
-            <div class="row align-items-center">
-                <div class="col-md-7">
-                    <h6 class="mb-1">
-                        <i class="fas fa-flag-checkered me-2 text-primary"></i>
-                        Data Limite (até quando capturar)
-                    </h6>
-                    <p class="text-muted small mb-2">
-                        Define até qual mês/ano o bot deve construir a série de
-                        contratos DI1. <strong>Obrigatório</strong> antes de
-                        capturar dados B3. Você só precisa alterar esse valor
-                        de vez em quando.
-                    </p>
-                    {% if ano_mes_limite %}
-                        <div>
-                            <span class="badge bg-primary" style="font-size: 0.85rem;">
-                                <i class="fas fa-check-circle me-1"></i>
-                                Limite atual:
-                                {{ ano_mes_limite|string }}
-                                ({{ ano_mes_limite // 100 }}/{{ '%02d'|format(ano_mes_limite % 100) }})
-                            </span>
-                        </div>
-                    {% else %}
-                        <div>
-                            <span class="badge bg-warning text-dark" style="font-size: 0.85rem;">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                Não configurado — o bot ficará bloqueado
-                            </span>
-                        </div>
-                    {% endif %}
-                </div>
-                <div class="col-md-5 text-md-end mt-3 mt-md-0">
-                    <div class="input-group" style="max-width: 320px; margin-left: auto;">
-                        <input type="month"
-                               id="inputAnoMesLimite"
-                               class="form-control"
-                               value="{% if ano_mes_limite %}{{ ano_mes_limite // 100 }}-{{ '%02d'|format(ano_mes_limite % 100) }}{% endif %}">
-                        <button id="btnSalvarLimite"
-                                type="button"
-                                class="btn btn-primary">
-                            <i class="fas fa-save me-1"></i>Salvar
-                        </button>
-                    </div>
-                    <div id="limiteFeedback" class="small mt-2"></div>
                 </div>
             </div>
         </div>
