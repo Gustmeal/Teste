@@ -205,6 +205,10 @@ def create_app():
     from app.routes.presenca_routes import presenca_bp
     app.register_blueprint(presenca_bp)
 
+    # Modelagem de Dados (admin e moderador)
+    from app.routes.modelagem_dados_routes import modelagem_dados_bp
+    app.register_blueprint(modelagem_dados_bp)
+
     from app.routes.analise_financeira_pf_routes import analise_financeira_pf_bp
     app.register_blueprint(analise_financeira_pf_bp)
 

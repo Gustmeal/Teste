@@ -50,6 +50,29 @@
             color: var(--primary-color) !important;
         }
 
+        /* ===== Seções da barra lateral (Minha conta / Administração / Dados) ===== */
+        .sidebar-menu .sidebar-secao {
+            margin: 1.1rem 1.5rem .35rem;
+            padding-top: .9rem;
+            border-top: 1px solid rgba(0, 0, 0, .08);
+            font-size: .7rem;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #8a94a6;
+        }
+        [data-theme="dark"] .sidebar-menu .sidebar-secao { border-top-color: rgba(255, 255, 255, .1); color: #9aa3b5; }
+        .sidebar-menu a { position: relative; }
+        .sidebar-menu .sidebar-badge {
+            position: absolute; right: 1.25rem; top: 50%; transform: translateY(-50%);
+            min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+            background: #dc3545; color: #fff; font-size: .72rem; font-weight: 700;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .dropdown-menu .dropdown-header {
+            font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+        }
+
         /* Melhorar visibilidade dos itens do menu dropdown */
         .dropdown-menu {
             background-color: rgba(255, 255, 255, 0.95);
@@ -89,32 +112,30 @@
                 <li><a href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt"></i> Conversor de Documentos</a></li>
                 <li><a href="{{ url_for('vinculacao.index') }}"><i class="fas fa-link"></i> Vinculação</a></li>
 
-                <li class="mt-3">
-                    <hr class="dropdown-divider mx-3">
-                </li>
-
+                <li class="sidebar-secao">Minha conta</li>
                 <li><a href="{{ url_for('auth.perfil') }}"><i class="fas fa-user"></i> Meu Perfil</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
+                <li><a href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock"></i> Trocar Senha</a></li>
 
-                {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
+                {% if current_user.perfil in ['admin', 'moderador'] %}
+                <li class="sidebar-secao">Administração</li>
                 <li><a href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users"></i> Gerenciar Usuários</a></li>
-                <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset</a></li>
+                <li><a href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key"></i> Solicitações de Reset
+                    {% if pendentes_count %}<span class="sidebar-badge">{{ pendentes_count }}</span>{% endif %}</a></li>
+                <li><a href="{{ url_for('presenca.painel') }}"><i class="fas fa-signal"></i> Usuários Online</a></li>
+                <li><a href="{{ url_for('notificacoes.index') }}"><i class="fas fa-bell"></i> Notificações</a></li>
+
+                <li class="sidebar-secao">Auditoria</li>
                 <li><a href="{{ url_for('audit.index') }}"><i class="fas fa-history"></i> Logs de Auditoria</a></li>
                 {% if current_user.perfil == 'admin' %}
                 <li><a href="{{ url_for('auditoria_v2.painel') }}"><i class="fas fa-shield-alt"></i> Auditoria V2</a></li>
                 {% endif %}
-                <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('presenca.painel') }}"><i class="fas fa-database me-2"></i>Usuários Online</a></li>
+
+                <li class="sidebar-secao">Dados</li>
+                <li><a href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database"></i> Catálogo de Tabelas e Dados</a></li>
+                <li><a href="{{ url_for('modelagem_dados.index') }}"><i class="fas fa-project-diagram"></i> Modelagem de Dados</a></li>
                 {% endif %}
 
-                {% if current_user.perfil in ['admin', 'moderador'] %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
-                        <i class="fas fa-bell"></i> Notificações
-                    </a>
-                </li>
-                {% endif %}
-
+                <li class="mt-2"><hr class="dropdown-divider mx-3"></li>
                 <li><a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
             </ul>
         </div>
@@ -180,23 +201,22 @@
                             <li><a class="dropdown-item" href="{{ url_for('converter.index') }}"><i class="fas fa-sync-alt me-2"></i> Conversor de Documentos</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.trocar_senha') }}"><i class="fas fa-lock me-2"></i> Trocar Senha</a></li>
 
-                            {% if current_user.perfil == 'admin' or current_user.perfil == 'moderador' %}
+                            {% if current_user.perfil in ['admin', 'moderador'] %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Administração</h6></li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.lista_usuarios') }}"><i class="fas fa-users me-2"></i> Gerenciar Usuários</a></li>
-                                                        <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.lista_solicitacoes_reset') }}"><i class="fas fa-key me-2"></i> Solicitações de Reset
+                                {% if pendentes_count %}<span class="badge rounded-pill bg-danger ms-1">{{ pendentes_count }}</span>{% endif %}</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('presenca.painel') }}"><i class="fas fa-signal me-2"></i> Usuários Online</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('notificacoes.index') }}"><i class="fas fa-bell me-2"></i> Notificações</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('audit.index') }}"><i class="fas fa-history me-2"></i> Logs de Auditoria</a></li>
                             {% if current_user.perfil == 'admin' %}
                             <li><a class="dropdown-item" href="{{ url_for('auditoria_v2.painel') }}"><i class="fas fa-shield-alt me-2"></i> Auditoria V2</a></li>
                             {% endif %}
-
-                            {% endif %}
-
-                            {% if current_user.perfil in ['admin', 'moderador'] %}
-                            <li class="nav-item">
-                                <a class="nav-link" href="{{ url_for('notificacoes.index') }}">
-                                    <i class="fas fa-bell"></i> Notificações
-                                </a>
-                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">Dados</h6></li>
+                            <li><a class="dropdown-item" href="{{ url_for('catalogo_dados.index') }}"><i class="fas fa-database me-2"></i> Catálogo de Tabelas e Dados</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('modelagem_dados.index') }}"><i class="fas fa-project-diagram me-2"></i> Modelagem de Dados</a></li>
                             {% endif %}
 
                             <li><hr class="dropdown-divider"></li>

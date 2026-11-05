@@ -1,0 +1,1699 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  /* =====================================================================
+     Modelagem de Dados — todo o CSS escopado em .mdl
+     ===================================================================== */
+  .mdl {
+    --mdl-bg: #f4f6fb;
+    --mdl-surface: #ffffff;
+    --mdl-surface-2: #f8fafc;
+    --mdl-ink: #0f172a;
+    --mdl-ink-2: #334155;
+    --mdl-muted: #64748b;
+    --mdl-line: #e2e8f0;
+    --mdl-line-2: #cbd5e1;
+    --mdl-accent: #1d4ed8;
+    --mdl-accent-soft: #e0e7ff;
+    --mdl-grid: rgba(15, 23, 42, .07);
+    --mdl-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 4px 14px rgba(15, 23, 42, .06);
+    --mdl-shadow-lg: 0 10px 40px rgba(15, 23, 42, .18);
+    --mdl-pk: #b45309;
+    --mdl-fk: #1d4ed8;
+    --mdl-inf: #d97706;
+    --mdl-lig-banco: #2563eb;
+    --mdl-lig-model: #7c3aed;
+    --mdl-lig-inf: #d97706;
+    --mdl-lig-view: #0d9488;
+    --mdl-mono: ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+    position: relative;
+    width: calc(100vw - 32px);
+    margin-left: calc(50% - 50vw + 16px);
+    margin-top: -0.75rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 560px;
+    background: var(--mdl-bg);
+    border: 1px solid var(--mdl-line);
+    border-radius: 16px;
+    overflow: hidden;
+    color: var(--mdl-ink);
+    font-family: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 14px;
+  }
+  html[data-theme="dark"] .mdl {
+    --mdl-bg: #0b1220;
+    --mdl-surface: #111a2e;
+    --mdl-surface-2: #0f172a;
+    --mdl-ink: #e5e9f2;
+    --mdl-ink-2: #c3cad8;
+    --mdl-muted: #8a94a8;
+    --mdl-line: #1f2a44;
+    --mdl-line-2: #2c3a5c;
+    --mdl-accent: #6d8cff;
+    --mdl-accent-soft: rgba(109, 140, 255, .16);
+    --mdl-grid: rgba(229, 233, 242, .06);
+    --mdl-shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    --mdl-shadow-lg: 0 10px 40px rgba(0, 0, 0, .55);
+    --mdl-pk: #f59e0b;
+    --mdl-fk: #7aa2ff;
+    --mdl-inf: #fbbf24;
+    --mdl-lig-banco: #60a5fa;
+    --mdl-lig-model: #a78bfa;
+    --mdl-lig-inf: #fbbf24;
+    --mdl-lig-view: #2dd4bf;
+  }
+  .mdl *, .mdl *::before, .mdl *::after { box-sizing: border-box; }
+  /* Os estilos globais do portal pintam h1-h6 e <p> com a cor primária: aqui não */
+  .mdl h2, .mdl h3, .mdl h4 { color: var(--mdl-ink) !important; text-shadow: none !important; }
+  .mdl p { text-shadow: none !important; }
+
+  /* ---------- Barra superior ---------- */
+  .mdl-top {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 18px; background: var(--mdl-surface);
+    border-bottom: 1px solid var(--mdl-line);
+  }
+  .mdl-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .mdl-brand-icon {
+    width: 40px; height: 40px; border-radius: 11px; flex: 0 0 auto;
+    display: grid; place-items: center; color: #fff; font-size: 17px;
+    background: linear-gradient(135deg, #1d4ed8, #4f46e5);
+    box-shadow: 0 6px 16px rgba(29, 78, 216, .35);
+  }
+  .mdl-title { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; color: var(--mdl-ink); }
+  .mdl-sub { margin: 2px 0 0; font-size: 12.5px; color: var(--mdl-muted) !important; }
+  .mdl-sub b { color: var(--mdl-ink-2); font-weight: 600; }
+  .mdl-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .mdl-stat {
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 6px 12px; border-radius: 10px; min-width: 78px;
+    background: var(--mdl-surface-2); border: 1px solid var(--mdl-line);
+  }
+  .mdl-stat strong { font-size: 16px; font-weight: 700; color: var(--mdl-ink); font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .mdl-stat span { font-size: 11px; color: var(--mdl-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .mdl-actions { display: flex; gap: 8px; align-items: center; }
+
+  .mdl-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 14px; border-radius: 9px;
+    border: 1px solid var(--mdl-line-2); background: var(--mdl-surface); color: var(--mdl-ink-2);
+    font-weight: 600; font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+  }
+  .mdl-btn:hover { background: var(--mdl-surface-2); border-color: var(--mdl-muted); color: var(--mdl-ink); }
+  .mdl-btn:disabled { opacity: .55; cursor: default; }
+  .mdl-btn.primario { background: var(--mdl-accent); border-color: var(--mdl-accent); color: #fff; }
+  .mdl-btn.primario:hover { filter: brightness(1.08); color: #fff; }
+  .mdl-btn.pequeno { height: 30px; padding: 0 10px; font-size: 12.5px; }
+  .mdl-btn.icone { width: 34px; padding: 0; justify-content: center; }
+  .mdl-btn .fa-spin { animation-duration: .9s; }
+
+  .mdl-menu { position: relative; }
+  .mdl-menu-lista {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 290px;
+    background: var(--mdl-surface); border: 1px solid var(--mdl-line); border-radius: 12px;
+    box-shadow: var(--mdl-shadow-lg); padding: 6px; display: none;
+  }
+  .mdl-menu.aberto .mdl-menu-lista { display: block; }
+  .mdl-menu-item {
+    display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left;
+    padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--mdl-ink); cursor: pointer;
+  }
+  .mdl-menu-item:hover { background: var(--mdl-surface-2); }
+  .mdl-menu-item:disabled { opacity: .45; cursor: default; background: transparent; }
+  .mdl-menu-item i { margin-top: 3px; width: 16px; color: var(--mdl-accent); }
+  .mdl-menu-item b { display: block; font-size: 13px; font-weight: 600; }
+  .mdl-menu-item small { display: block; font-size: 12px; color: var(--mdl-muted); }
+
+  /* ---------- Corpo ---------- */
+  .mdl-body { position: relative; flex: 1 1 auto; display: flex; min-height: 0; }
+
+  .mdl-side {
+    width: 300px; flex: 0 0 300px; display: flex; flex-direction: column; min-height: 0; overflow-y: auto;
+    background: var(--mdl-surface); border-right: 1px solid var(--mdl-line);
+  }
+  .mdl-side-scroll { padding: 14px 14px 6px; flex: 0 0 auto; }
+  .mdl-sec { margin-bottom: 16px; }
+  .mdl-sec-titulo {
+    font-size: 11px; font-weight: 700; color: var(--mdl-muted);
+    text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--mdl-muted) !important;
+  }
+  .mdl-busca { position: relative; }
+  .mdl-busca i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--mdl-muted); font-size: 13px; }
+  .mdl-busca kbd {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mdl-mono); font-size: 11px; color: var(--mdl-muted);
+    background: var(--mdl-surface-2); border: 1px solid var(--mdl-line); border-radius: 5px; padding: 1px 6px;
+  }
+  .mdl-input, .mdl-select {
+    width: 100%; height: 36px; border-radius: 9px; border: 1px solid var(--mdl-line-2);
+    background: var(--mdl-surface); color: var(--mdl-ink); font-size: 13px; padding: 0 10px;
+    outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .mdl-input { padding-left: 32px; padding-right: 34px; }
+  .mdl-input:focus, .mdl-select:focus { border-color: var(--mdl-accent); box-shadow: 0 0 0 3px var(--mdl-accent-soft); }
+
+  .mdl-check {
+    display: flex; align-items: center; gap: 9px; padding: 6px 2px; cursor: pointer;
+    font-size: 13px; color: var(--mdl-ink-2); user-select: none;
+  }
+  .mdl-check input { width: 15px; height: 15px; accent-color: var(--mdl-accent); margin: 0; cursor: pointer; }
+  .mdl-check .qtd { margin-left: auto; font-size: 12px; color: var(--mdl-muted); font-variant-numeric: tabular-nums; }
+  .mdl-legenda-traco { width: 26px; height: 0; border-top-width: 2.5px; border-top-color: currentColor; flex: 0 0 auto; }
+
+  .mdl-seg { display: flex; padding: 3px; background: var(--mdl-surface-2); border: 1px solid var(--mdl-line); border-radius: 10px; }
+  .mdl-seg button {
+    flex: 1; height: 30px; border: 0; border-radius: 7px; background: transparent;
+    font-size: 12.5px; font-weight: 600; color: var(--mdl-muted); cursor: pointer;
+  }
+  .mdl-seg button.ativo { background: var(--mdl-surface); color: var(--mdl-ink); box-shadow: var(--mdl-shadow); }
+
+  .mdl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mdl-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+    border-radius: 999px; border: 1px solid var(--mdl-line-2); background: var(--mdl-surface);
+    font-size: 12px; font-weight: 600; color: var(--mdl-muted); cursor: pointer;
+  }
+  .mdl-chip .bola { width: 8px; height: 8px; border-radius: 50%; }
+  .mdl-chip.ativo { color: var(--mdl-ink); border-color: var(--mdl-accent); background: var(--mdl-accent-soft); }
+
+  .mdl-avisos { margin: 0 0 14px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px;
+    background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+  html[data-theme="dark"] .mdl-avisos { background: rgba(251, 146, 60, .12); color: #fdba74; border-color: rgba(251, 146, 60, .3); }
+  .mdl-avisos ul { margin: 6px 0 0; padding-left: 16px; }
+
+  .mdl-lista-wrap { border-top: 1px solid var(--mdl-line); display: flex; flex-direction: column; flex: 1 0 auto; }
+  .mdl-lista-head { padding: 10px 14px 6px; position: sticky; top: 0; background: var(--mdl-surface); z-index: 1; }
+  .mdl-lista { padding: 0 8px 70px; }
+  .mdl-lista-item {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    padding: 6px 8px; border: 0; border-radius: 7px; background: transparent;
+    color: var(--mdl-ink-2); cursor: pointer; font-size: 12.5px;
+  }
+  .mdl-lista-item:hover { background: var(--mdl-surface-2); color: var(--mdl-ink); }
+  .mdl-lista-item.sel { background: var(--mdl-accent-soft); color: var(--mdl-ink); }
+  .mdl-lista-item .nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mdl-mono); font-size: 12px; }
+  .mdl-lista-item .nome em { font-style: normal; color: var(--mdl-muted); }
+  .mdl-lista-item .tipo { width: 16px; text-align: center; font-size: 11px; color: var(--mdl-muted); }
+  .mdl-lista-item .n { font-size: 11px; color: var(--mdl-muted); font-variant-numeric: tabular-nums; }
+  .mdl-lista-vazia { padding: 16px 10px; color: var(--mdl-muted); font-size: 12.5px; text-align: center; }
+
+  /* ---------- Área do diagrama ---------- */
+  .mdl-canvas {
+    position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; cursor: grab;
+    background-color: var(--mdl-bg);
+    background-image: radial-gradient(var(--mdl-grid) 1.1px, transparent 1.2px);
+    background-size: 22px 22px;
+    touch-action: none;
+  }
+  .mdl-canvas.arrastando { cursor: grabbing; }
+  .mdl-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .mdl-svg { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+  .mdl-svg path.lig { fill: none; stroke-width: 1.6; opacity: .85; transition: opacity .15s, stroke-width .15s; }
+  .mdl-svg path.hit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
+  .mdl-svg .t-FK_BANCO { stroke: var(--mdl-lig-banco); }
+  .mdl-svg .t-FK_MODEL { stroke: var(--mdl-lig-model); }
+  .mdl-svg .t-INFERIDA { stroke: var(--mdl-lig-inf); stroke-dasharray: 6 5; }
+  .mdl-svg .t-VIEW { stroke: var(--mdl-lig-view); stroke-dasharray: 2 4; stroke-linecap: round; }
+  .mdl-svg path.lig.desativada { opacity: .45; }
+
+  .mdl-card {
+    position: absolute; background: var(--mdl-surface); border: 1px solid var(--mdl-line-2);
+    border-radius: 10px; box-shadow: var(--mdl-shadow); overflow: hidden;
+    transition: box-shadow .15s, border-color .15s, opacity .15s;
+    user-select: none;
+  }
+  .mdl-card:hover { box-shadow: var(--mdl-shadow-lg); }
+  .mdl-card-h {
+    position: relative; height: 44px; padding: 6px 10px 6px 14px; cursor: move;
+    background: var(--mdl-surface-2); border-bottom: 1px solid var(--mdl-line);
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .mdl-card-h::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--cor, var(--mdl-accent)); }
+  .mdl-card-nome { font-family: var(--mdl-mono); font-size: 12.5px; font-weight: 700; color: var(--mdl-ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.25; }
+  .mdl-card-meta { display: flex; gap: 6px; align-items: center; font-size: 10.5px; color: var(--mdl-muted); line-height: 1.3; white-space: nowrap; overflow: hidden; }
+  .mdl-tag {
+    display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 4px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    background: var(--mdl-line); color: var(--mdl-ink-2);
+  }
+  .mdl-tag.view { background: rgba(13, 148, 136, .15); color: var(--mdl-lig-view); }
+  .mdl-tag.model { background: rgba(124, 58, 237, .14); color: var(--mdl-lig-model); }
+  .mdl-tag.nao { background: rgba(220, 38, 38, .12); color: #dc2626; }
+  .mdl-tag.ext { background: rgba(100, 116, 139, .18); color: var(--mdl-muted); }
+  .mdl-row {
+    display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 10px;
+    font-size: 12px; border-bottom: 1px solid transparent;
+  }
+  .mdl-row:nth-child(even) { background: color-mix(in srgb, var(--mdl-surface-2) 55%, transparent); }
+  .mdl-row .ic { width: 14px; text-align: center; font-size: 10px; flex: 0 0 auto; }
+  .mdl-row .ic.pk { color: var(--mdl-pk); }
+  .mdl-row .ic.fk { color: var(--mdl-fk); }
+  .mdl-row .ic.inf { color: var(--mdl-inf); }
+  .mdl-row .cn { flex: 1; min-width: 0; font-family: var(--mdl-mono); color: var(--mdl-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mdl-row.pk .cn { font-weight: 700; color: var(--mdl-ink); }
+  .mdl-row .ct { font-family: var(--mdl-mono); font-size: 10.5px; color: var(--mdl-muted); white-space: nowrap; }
+  .mdl-row .ct.nn::after { content: ' •'; color: var(--mdl-muted); }
+  .mdl-card-f { height: 24px; padding: 0 10px; display: flex; align-items: center; font-size: 11px; color: var(--mdl-muted); border-top: 1px dashed var(--mdl-line); }
+  .mdl-card.nao-localizada { border-style: dashed; }
+  .mdl-card.nao-localizada .mdl-card-h { background: transparent; }
+
+  .mdl-card.busca { box-shadow: 0 0 0 3px #facc15, var(--mdl-shadow-lg); }
+  .mdl-card.sel { border-color: var(--mdl-accent); box-shadow: 0 0 0 3px var(--mdl-accent-soft), var(--mdl-shadow-lg); }
+
+  /* Destaque ao passar o mouse / tabela selecionada */
+  .mdl-world.foco .mdl-card { opacity: .22; }
+  .mdl-world.foco .mdl-card.ativo { opacity: 1; }
+  .mdl-world.foco path.lig { opacity: .08; }
+  .mdl-world.foco path.lig.ativo { opacity: 1; stroke-width: 2.4; }
+
+  /* Zoom muito afastado: esconde o texto das colunas (menos pintura na tela) */
+  .mdl-world.longe .mdl-row > * { visibility: hidden; }
+  .mdl-world.longe .mdl-card-meta { visibility: hidden; }
+
+  /* Controles flutuantes */
+  .mdl-ctrl {
+    position: absolute; right: 14px; top: 14px; z-index: 20; transition: right .22s ease; display: flex; align-items: center; gap: 4px;
+    padding: 4px; border-radius: 12px; background: var(--mdl-surface); border: 1px solid var(--mdl-line); box-shadow: var(--mdl-shadow);
+  }
+  .mdl-ctrl .zoom { min-width: 52px; text-align: center; font-size: 12px; font-weight: 600; color: var(--mdl-ink-2); font-variant-numeric: tabular-nums; }
+  .mdl-ctrl .mdl-btn { border-color: transparent; height: 32px; }
+  .mdl-ctrl .sep { width: 1px; height: 20px; background: var(--mdl-line); margin: 0 2px; }
+
+  .mdl-mini {
+    position: absolute; left: 14px; bottom: 14px; z-index: 20; width: 200px; height: 130px;
+    border-radius: 12px; overflow: hidden; background: var(--mdl-surface); border: 1px solid var(--mdl-line); box-shadow: var(--mdl-shadow);
+    cursor: pointer;
+  }
+  .mdl-mini canvas { width: 100%; height: 100%; display: block; }
+
+  .mdl-banner {
+    position: absolute; left: 14px; top: 14px; z-index: 25; max-width: calc(100% - 280px);
+    display: none; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 999px;
+    background: var(--mdl-ink); color: var(--mdl-surface); font-size: 12.5px; box-shadow: var(--mdl-shadow-lg);
+    white-space: nowrap;
+  }
+  .mdl-banner.visivel { display: flex; }
+  .mdl-banner > span { overflow: hidden; text-overflow: ellipsis; }
+  .mdl-banner b { font-family: var(--mdl-mono); }
+  .mdl-banner button { height: 26px; padding: 0 10px; border: 0; border-radius: 999px; background: var(--mdl-surface); color: var(--mdl-ink); font-weight: 600; font-size: 12px; cursor: pointer; }
+
+  .mdl-estado {
+    position: absolute; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--mdl-bg) 82%, transparent); backdrop-filter: blur(2px);
+  }
+  .mdl-estado.visivel { display: flex; }
+  .mdl-estado-box { text-align: center; max-width: 420px; padding: 24px; }
+  .mdl-estado-box i { font-size: 28px; color: var(--mdl-accent); margin-bottom: 12px; }
+  .mdl-estado-box h3 { font-size: 16px; font-weight: 700; margin: 0 0 6px; color: var(--mdl-ink); }
+  .mdl-estado-box p { font-size: 13px; color: var(--mdl-muted) !important; margin: 0 0 14px; }
+  .mdl-estado-box.erro i { color: #dc2626; }
+
+  /* ---------- Painel de detalhes ---------- */
+  .mdl-det {
+    position: absolute; top: 0; right: 0; bottom: 0; z-index: 40; width: 420px; max-width: 100%;
+    background: var(--mdl-surface); border-left: 1px solid var(--mdl-line); box-shadow: var(--mdl-shadow-lg);
+    transform: translateX(105%); transition: transform .22s ease; display: flex; flex-direction: column;
+  }
+  .mdl-det.aberto { transform: translateX(0); }
+  .mdl-body.det-aberto .mdl-ctrl { right: 434px; }
+  .mdl-det-h { padding: 16px 18px 12px; border-bottom: 1px solid var(--mdl-line); }
+  .mdl-det-h .linha { display: flex; align-items: flex-start; gap: 10px; }
+  .mdl-det-h h4 { margin: 0; font-family: var(--mdl-mono); font-size: 14.5px; font-weight: 700; color: var(--mdl-ink); word-break: break-all; flex: 1; }
+  .mdl-det-h .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .mdl-det-acoes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .mdl-det-corpo { overflow-y: auto; padding: 6px 18px 90px; flex: 1 1 auto; }
+  .mdl-det-sec { margin-top: 16px; }
+  .mdl-det-sec h5 { font-size: 11px; font-weight: 700; color: var(--mdl-muted) !important; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px; display: flex; gap: 6px; align-items: center; }
+  .mdl-det-sec h5 .n { background: var(--mdl-surface-2); border: 1px solid var(--mdl-line); border-radius: 999px; padding: 0 7px; font-size: 10.5px; }
+  .mdl-tab { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .mdl-tab th { text-align: left; font-weight: 600; color: var(--mdl-muted); font-size: 11px; padding: 6px 6px; border-bottom: 1px solid var(--mdl-line); position: sticky; top: 0; background: var(--mdl-surface); }
+  .mdl-tab td { padding: 5px 6px; border-bottom: 1px solid var(--mdl-line); vertical-align: top; color: var(--mdl-ink-2); }
+  .mdl-tab td.mono { font-family: var(--mdl-mono); font-size: 11.5px; }
+  .mdl-tab td .padrao { display: block; color: var(--mdl-muted); font-size: 10.5px; margin-top: 2px; word-break: break-all; }
+  .mdl-tab tr.pk td.mono:first-of-type { font-weight: 700; color: var(--mdl-ink); }
+  .mdl-ref {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 9px; margin-bottom: 4px;
+    border: 1px solid var(--mdl-line); border-radius: 8px; background: var(--mdl-surface); color: var(--mdl-ink-2); cursor: pointer; font-size: 12px;
+  }
+  .mdl-ref:hover { border-color: var(--mdl-accent); background: var(--mdl-accent-soft); }
+  .mdl-ref .traco { width: 18px; height: 0; border-top: 2.5px solid currentColor; flex: 0 0 auto; }
+  .mdl-ref .txt { flex: 1; min-width: 0; }
+  .mdl-ref .txt b { display: block; font-family: var(--mdl-mono); font-size: 11.5px; color: var(--mdl-ink); word-break: break-all; }
+  .mdl-ref .txt small { display: block; font-family: var(--mdl-mono); font-size: 10.5px; color: var(--mdl-muted); word-break: break-all; }
+  .mdl-ref.estatico { cursor: default; }
+  .mdl-ref.estatico:hover { border-color: var(--mdl-line); background: var(--mdl-surface); }
+  .mdl-pilulas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mdl-pilula { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; background: var(--mdl-surface-2); border: 1px solid var(--mdl-line); color: var(--mdl-ink-2); }
+  .mdl-pilula.mono { font-family: var(--mdl-mono); font-size: 11px; }
+  .mdl-vazio { font-size: 12px; color: var(--mdl-muted) !important; margin: 0; }
+
+  .mdl-toast {
+    position: absolute; left: 50%; bottom: 22px; transform: translate(-50%, 20px); z-index: 70;
+    padding: 9px 16px; border-radius: 10px; background: var(--mdl-ink); color: var(--mdl-surface);
+    font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    box-shadow: var(--mdl-shadow-lg);
+  }
+  .mdl-toast.visivel { opacity: 1; transform: translate(-50%, 0); }
+  .mdl-toast.erro { background: #dc2626; color: #fff; }
+
+  .mdl-so-mobile { display: none !important; }
+  @media (max-width: 991px) {
+    .mdl { width: 100%; margin-left: 0; }
+    .mdl-side { position: absolute; left: 0; top: 0; bottom: 0; z-index: 45; transform: translateX(-102%); transition: transform .2s; box-shadow: var(--mdl-shadow-lg); }
+    .mdl-side.aberto { transform: translateX(0); }
+    .mdl-stats { display: none; }
+    .mdl-mini { display: none; }
+    .mdl-so-mobile { display: inline-flex !important; }
+  }
+</style>
+
+<div class="mdl" id="mdl">
+  <!-- Barra superior -->
+  <div class="mdl-top">
+    <button type="button" class="mdl-btn icone mdl-so-mobile js-ignore-loading" id="mdlAbrirFiltros" title="Filtros">
+      <i class="fas fa-sliders-h"></i>
+    </button>
+    <div class="mdl-brand">
+      <div class="mdl-brand-icon"><i class="fas fa-project-diagram"></i></div>
+      <div>
+        <h2 class="mdl-title">Modelagem de Dados</h2>
+        <p class="mdl-sub" id="mdlSub">Carregando…</p>
+      </div>
+    </div>
+
+    <div class="mdl-stats" id="mdlStats"></div>
+
+    <div class="mdl-actions">
+      <button type="button" class="mdl-btn js-ignore-loading" id="mdlAtualizar" title="Ler de novo os models, as rotas e o banco">
+        <i class="fas fa-sync-alt"></i> Atualizar
+      </button>
+      <div class="mdl-menu" id="mdlMenuExportar">
+        <button type="button" class="mdl-btn primario js-ignore-loading" id="mdlBtnExportar" disabled>
+          <i class="fas fa-file-code"></i> Exportar SQL <i class="fas fa-chevron-down" style="font-size:10px"></i>
+        </button>
+        <div class="mdl-menu-lista">
+          <button type="button" class="mdl-menu-item js-ignore-loading" data-exportar="visiveis">
+            <i class="fas fa-eye"></i>
+            <span><b>Tabelas do diagrama</b><small id="mdlExpVisiveis">—</small></span>
+          </button>
+          <button type="button" class="mdl-menu-item js-ignore-loading" data-exportar="todas">
+            <i class="fas fa-layer-group"></i>
+            <span><b>Toda a modelagem</b><small id="mdlExpTodas">—</small></span>
+          </button>
+          <button type="button" class="mdl-menu-item js-ignore-loading" data-exportar="selecionada">
+            <i class="fas fa-table"></i>
+            <span><b>Tabela selecionada</b><small id="mdlExpSel">Selecione uma tabela no diagrama</small></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mdl-body" id="mdlBody">
+    <!-- Filtros -->
+    <aside class="mdl-side" id="mdlSide">
+      <div class="mdl-side-scroll">
+        <div id="mdlAvisos"></div>
+
+        <div class="mdl-sec">
+          <div class="mdl-busca">
+            <i class="fas fa-search"></i>
+            <input type="text" class="mdl-input" id="mdlBusca" placeholder="Buscar tabela ou coluna" autocomplete="off">
+            <kbd>/</kbd>
+          </div>
+        </div>
+
+        <div class="mdl-sec">
+          <p class="mdl-sec-titulo">Aplicativo</p>
+          <select class="mdl-select" id="mdlModulo"></select>
+          <label class="mdl-check" style="margin-top:6px">
+            <input type="checkbox" id="mdlVizinhos" checked>
+            Incluir tabelas ligadas
+          </label>
+        </div>
+
+        <div class="mdl-sec">
+          <p class="mdl-sec-titulo">Colunas no diagrama</p>
+          <div class="mdl-seg" id="mdlModo">
+            <button type="button" class="js-ignore-loading" data-modo="chaves">Só chaves</button>
+            <button type="button" class="js-ignore-loading" data-modo="todas">Todas</button>
+          </div>
+          <label class="mdl-check" style="margin-top:6px">
+            <input type="checkbox" id="mdlSoltas">
+            Ocultar tabelas sem ligação
+          </label>
+        </div>
+
+        <div class="mdl-sec">
+          <p class="mdl-sec-titulo">Ligações</p>
+          <div id="mdlTipos"></div>
+        </div>
+
+        <div class="mdl-sec">
+          <p class="mdl-sec-titulo">Schemas</p>
+          <div class="mdl-chips" id="mdlSchemas"></div>
+        </div>
+      </div>
+
+      <div class="mdl-lista-wrap">
+        <div class="mdl-lista-head"><p class="mdl-sec-titulo" style="margin:0">No diagrama <span id="mdlQtdLista"></span></p></div>
+        <div class="mdl-lista" id="mdlLista"></div>
+      </div>
+    </aside>
+
+    <!-- Diagrama -->
+    <div class="mdl-canvas" id="mdlCanvas">
+      <div class="mdl-world" id="mdlWorld">
+        <svg class="mdl-svg" id="mdlSvg" xmlns="http://www.w3.org/2000/svg">
+          <defs id="mdlDefs"></defs>
+          <g id="mdlLigacoes"></g>
+        </svg>
+        <div id="mdlCards"></div>
+      </div>
+
+      <div class="mdl-banner" id="mdlBanner">
+        <span>Vizinhança de <b id="mdlBannerNome"></b></span>
+        <button type="button" class="js-ignore-loading" id="mdlSairFoco">Sair</button>
+      </div>
+
+      <div class="mdl-mini" id="mdlMini" title="Mapa: clique para navegar"><canvas id="mdlMiniCanvas"></canvas></div>
+
+      <div class="mdl-ctrl">
+        <button type="button" class="mdl-btn icone js-ignore-loading" id="mdlZoomMenos" title="Diminuir zoom"><i class="fas fa-minus"></i></button>
+        <span class="zoom" id="mdlZoom">100%</span>
+        <button type="button" class="mdl-btn icone js-ignore-loading" id="mdlZoomMais" title="Aumentar zoom"><i class="fas fa-plus"></i></button>
+        <span class="sep"></span>
+        <button type="button" class="mdl-btn icone js-ignore-loading" id="mdlAjustar" title="Ajustar à tela"><i class="fas fa-expand"></i></button>
+        <button type="button" class="mdl-btn icone js-ignore-loading" id="mdlReorganizar" title="Reorganizar o diagrama"><i class="fas fa-magic"></i></button>
+      </div>
+
+      <div class="mdl-estado visivel" id="mdlEstado">
+        <div class="mdl-estado-box" id="mdlEstadoBox">
+          <i class="fas fa-circle-notch fa-spin"></i>
+          <h3>Montando a modelagem</h3>
+          <p>Lendo os models, as rotas e o catálogo do banco.</p>
+        </div>
+      </div>
+
+      <div class="mdl-toast" id="mdlToast"></div>
+    </div>
+
+    <!-- Detalhes da tabela -->
+    <aside class="mdl-det" id="mdlDet" aria-hidden="true">
+      <div class="mdl-det-h" id="mdlDetH"></div>
+      <div class="mdl-det-corpo" id="mdlDetCorpo"></div>
+    </aside>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/vendor/dagre-0.8.5.min.js') }}"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ================================================================
+  // Endereços (gerados pelo Flask) e constantes de desenho
+  // ================================================================
+  var URL_DADOS = {{ url_for('modelagem_dados.dados') | tojson }};
+  var URL_EXPORTAR = {{ url_for('modelagem_dados.exportar_sql') | tojson }};
+
+  var ALT_CAB = 44, ALT_LINHA = 22, ALT_RODAPE = 24, MAX_LINHAS_TODAS = 40;
+  var ZOOM_MIN = 0.12, ZOOM_MAX = 2.2, ZOOM_LONGE = 0.42;
+  var CHAVE_PREF = 'mdl_preferencias_v1';
+
+  // Cores e rótulos de cada tipo de ligação (somente aparência)
+  var TIPOS_LIG = [
+    { id: 'FK_BANCO', rotulo: 'FK no banco', estilo: 'solid', cssVar: '--mdl-lig-banco' },
+    { id: 'FK_MODEL', rotulo: 'FK só no model', estilo: 'solid', cssVar: '--mdl-lig-model' },
+    { id: 'INFERIDA', rotulo: 'Inferida pelo nome', estilo: 'dashed', cssVar: '--mdl-lig-inf' },
+    { id: 'VIEW', rotulo: 'View lê a tabela', estilo: 'dotted', cssVar: '--mdl-lig-view' }
+  ];
+  var PALETA_SCHEMA = ['#2563eb', '#ea580c', '#059669', '#9333ea', '#db2777', '#0891b2', '#65a30d', '#b45309'];
+
+  // ================================================================
+  // Estado
+  // ================================================================
+  var E = {
+    dados: null, porId: {}, ligPorTabela: {}, corSchema: {},
+    filtro: { busca: '', modulo: '', vizinhos: true, schemas: {}, tipos: {}, modo: 'chaves', ocultarSoltas: false, foco: null },
+    visiveis: [], visivelSet: {}, ligVisiveis: [],
+    pos: {}, tam: {}, view: { x: 40, y: 40, k: 1 },
+    sel: null, elCards: {}, elLig: {}, ligDoCard: {}
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var canvas = $('mdlCanvas'), world = $('mdlWorld'), gLig = $('mdlLigacoes'), boxCards = $('mdlCards');
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function fmt(n) { return Number(n || 0).toLocaleString('pt-BR'); }
+  function corVar(nome) { return getComputedStyle($('mdl')).getPropertyValue(nome).trim() || '#2563eb'; }
+
+  function lerPref() {
+    try { return JSON.parse(localStorage.getItem(CHAVE_PREF) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function salvarPref() {
+    try {
+      localStorage.setItem(CHAVE_PREF, JSON.stringify({ modo: E.filtro.modo, tipos: E.filtro.tipos, vizinhos: E.filtro.vizinhos }));
+    } catch (e) { /* armazenamento indisponível: segue sem lembrar */ }
+  }
+
+  var timerToast = null;
+  function toast(msg, erro) {
+    var t = $('mdlToast');
+    t.textContent = msg;
+    t.className = 'mdl-toast visivel' + (erro ? ' erro' : '');
+    clearTimeout(timerToast);
+    timerToast = setTimeout(function () { t.className = 'mdl-toast' + (erro ? ' erro' : ''); }, 3200);
+  }
+
+  // Ocupa a largura útil da janela (fora do .container) e a altura até o rodapé da tela
+  function ajustarAltura() {
+    var el = $('mdl');
+    var larguraTela = document.documentElement.clientWidth; // sem a barra de rolagem
+    if (larguraTela >= 992) {
+      var esquerdaPai = el.parentElement.getBoundingClientRect().left;
+      el.style.width = (larguraTela - 32) + 'px';
+      el.style.marginLeft = (16 - esquerdaPai) + 'px';
+    } else {
+      el.style.width = '';
+      el.style.marginLeft = '';
+    }
+    var alt = Math.max(560, window.innerHeight - el.getBoundingClientRect().top - 16);
+    el.style.height = alt + 'px';
+  }
+
+  // ================================================================
+  // Carregamento dos dados (backend)
+  // ================================================================
+  function estado(tipo, titulo, texto, comBotao) {
+    var box = $('mdlEstadoBox');
+    if (!tipo) { $('mdlEstado').classList.remove('visivel'); return; }
+    var icone = tipo === 'carregando' ? 'fa-circle-notch fa-spin' : (tipo === 'erro' ? 'fa-exclamation-triangle' : 'fa-filter');
+    box.className = 'mdl-estado-box' + (tipo === 'erro' ? ' erro' : '');
+    box.innerHTML = '<i class="fas ' + icone + '"></i><h3>' + esc(titulo) + '</h3><p>' + esc(texto) + '</p>' +
+      (comBotao ? '<button type="button" class="mdl-btn js-ignore-loading" id="mdlEstadoBtn">' + esc(comBotao) + '</button>' : '');
+    $('mdlEstado').classList.add('visivel');
+    var b = $('mdlEstadoBtn');
+    if (b) {
+      b.addEventListener('click', function (ev) {
+        ev.stopImmediatePropagation();
+        if (tipo === 'erro') { carregar(false); } else { limparFiltros(); }
+      });
+    }
+  }
+
+  function carregar(forcar) {
+    var btn = $('mdlAtualizar');
+    btn.disabled = true;
+    btn.querySelector('i').classList.add('fa-spin');
+    estado('carregando', forcar ? 'Atualizando a modelagem' : 'Montando a modelagem',
+      'Lendo os models, as rotas e o catálogo do banco.');
+    fetch(URL_DADOS + (forcar ? '?atualizar=1' : ''), {
+      headers: { 'X-Silent-Request': 'true', 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (!r.ok) { throw new Error(j.erro || ('Erro ' + r.status)); }
+          return j;
+        });
+      })
+      .then(function (dados) {
+        receberDados(dados);
+        if (forcar) { toast('Modelagem atualizada.'); }
+      })
+      .catch(function (err) {
+        estado('erro', 'Não foi possível montar a modelagem', err.message || String(err), 'Tentar de novo');
+      })
+      .then(function () {
+        btn.disabled = false;
+        btn.querySelector('i').classList.remove('fa-spin');
+      });
+  }
+
+  function receberDados(dados) {
+    E.dados = dados;
+    E.porId = {};
+    E.ligPorTabela = {};
+    dados.tabelas.forEach(function (t) { E.porId[t.id] = t; E.ligPorTabela[t.id] = []; });
+    dados.ligacoes.forEach(function (l) {
+      if (E.ligPorTabela[l.de]) { E.ligPorTabela[l.de].push(l); }
+      if (l.para !== l.de && E.ligPorTabela[l.para]) { E.ligPorTabela[l.para].push(l); }
+    });
+
+    // Cores por schema (na ordem em que aparecem)
+    var schemas = [];
+    dados.tabelas.forEach(function (t) { if (schemas.indexOf(t.schema) < 0) { schemas.push(t.schema); } });
+    schemas.sort();
+    E.corSchema = {};
+    var schemasAntes = E.filtro.schemas;
+    E.filtro.schemas = {};
+    schemas.forEach(function (s, i) {
+      E.corSchema[s] = PALETA_SCHEMA[i % PALETA_SCHEMA.length];
+      E.filtro.schemas[s] = schemasAntes.hasOwnProperty(s) ? schemasAntes[s] : true;
+    });
+
+    if (E.sel && !E.porId[E.sel]) { fecharDetalhes(); }
+    if (E.filtro.foco && !E.porId[E.filtro.foco]) { E.filtro.foco = null; }
+
+    montarCabecalho();
+    montarFiltros();
+    E.pos = {};
+    aplicarFiltros(true);
+    $('mdlBtnExportar').disabled = false;
+  }
+
+  // ================================================================
+  // Cabeçalho, filtros e avisos
+  // ================================================================
+  function montarCabecalho() {
+    var d = E.dados, r = d.resumo, lig = r.ligacoes || {};
+    var totalLig = 0;
+    Object.keys(lig).forEach(function (k) { totalLig += lig[k]; });
+    $('mdlSub').innerHTML = 'Banco <b>' + esc(d.banco) + '</b> · ' + fmt(r.arquivos_rotas) + ' arquivos de rotas lidos · gerado em ' +
+      esc(d.gerado_em) + ' (' + fmt(r.tempo_ms) + ' ms)';
+    var itens = [
+      [r.tabelas, 'Tabelas'], [r.views, 'Views'], [totalLig, 'Ligações'], [r.modulos, 'Aplicativos']
+    ];
+    if (r.nao_localizadas) { itens.push([r.nao_localizadas, 'Não localizadas']); }
+    $('mdlStats').innerHTML = itens.map(function (i) {
+      return '<div class="mdl-stat"><strong>' + fmt(i[0]) + '</strong><span>' + esc(i[1]) + '</span></div>';
+    }).join('');
+    $('mdlExpTodas').textContent = fmt(d.tabelas.length) + ' objetos (tabelas e views)';
+
+    var av = d.avisos || [];
+    $('mdlAvisos').innerHTML = av.length ? '<div class="mdl-avisos"><b><i class="fas fa-exclamation-triangle"></i> Atenção</b><ul>' +
+      av.map(function (a) { return '<li>' + esc(a) + '</li>'; }).join('') + '</ul></div>' : '';
+  }
+
+  function montarFiltros() {
+    var d = E.dados;
+
+    // Aplicativos (vindos das rotas)
+    var semModulo = d.tabelas.filter(function (t) { return !t.modulos.length; }).length;
+    var opcoes = ['<option value="">Todos os aplicativos (' + fmt(d.tabelas.length) + ')</option>'];
+    var porCategoria = {};
+    d.modulos.forEach(function (m) {
+      var cat = m.categoria || 'Aplicativos';
+      (porCategoria[cat] = porCategoria[cat] || []).push(m);
+    });
+    Object.keys(porCategoria).sort().forEach(function (cat) {
+      opcoes.push('<optgroup label="' + esc(cat) + '">');
+      porCategoria[cat].forEach(function (m) {
+        opcoes.push('<option value="' + esc(m.id) + '">' + esc(m.nome) + ' (' + fmt(m.qtd_tabelas) + ')</option>');
+      });
+      opcoes.push('</optgroup>');
+    });
+    if (semModulo) {
+      opcoes.push('<option value="__sem_rota__">Só nos models, sem rota (' + fmt(semModulo) + ')</option>');
+    }
+    var sel = $('mdlModulo');
+    sel.innerHTML = opcoes.join('');
+    if (E.filtro.modulo && !sel.querySelector('option[value="' + CSS.escape(E.filtro.modulo) + '"]')) { E.filtro.modulo = ''; }
+    sel.value = E.filtro.modulo;
+
+    // Tipos de ligação
+    var contagem = d.resumo.ligacoes || {};
+    $('mdlTipos').innerHTML = TIPOS_LIG.map(function (t) {
+      if (!E.filtro.tipos.hasOwnProperty(t.id)) { E.filtro.tipos[t.id] = true; }
+      return '<label class="mdl-check" style="color:var(' + t.cssVar + ')">' +
+        '<input type="checkbox" data-tipo="' + t.id + '"' + (E.filtro.tipos[t.id] ? ' checked' : '') + '>' +
+        '<span class="mdl-legenda-traco" style="border-top-style:' + t.estilo + '"></span>' +
+        '<span style="color:var(--mdl-ink-2)">' + esc(t.rotulo) + '</span>' +
+        '<span class="qtd">' + fmt(contagem[t.id] || 0) + '</span></label>';
+    }).join('');
+
+    // Schemas
+    var qtdSchema = {};
+    d.tabelas.forEach(function (t) { qtdSchema[t.schema] = (qtdSchema[t.schema] || 0) + 1; });
+    $('mdlSchemas').innerHTML = Object.keys(E.corSchema).map(function (s) {
+      return '<button type="button" class="mdl-chip js-ignore-loading' + (E.filtro.schemas[s] ? ' ativo' : '') + '" data-schema="' + esc(s) + '">' +
+        '<span class="bola" style="background:' + E.corSchema[s] + '"></span>' + esc(s) + ' <span style="opacity:.7">' + fmt(qtdSchema[s]) + '</span></button>';
+    }).join('');
+
+    // Modo das colunas e demais opções
+    Array.prototype.forEach.call($('mdlModo').querySelectorAll('button'), function (b) {
+      b.classList.toggle('ativo', b.getAttribute('data-modo') === E.filtro.modo);
+    });
+    $('mdlVizinhos').checked = E.filtro.vizinhos;
+    $('mdlSoltas').checked = E.filtro.ocultarSoltas;
+  }
+
+  function limparFiltros() {
+    E.filtro.modulo = ''; E.filtro.foco = null; E.filtro.ocultarSoltas = false; E.filtro.busca = '';
+    $('mdlBusca').value = '';
+    Object.keys(E.filtro.schemas).forEach(function (s) { E.filtro.schemas[s] = true; });
+    TIPOS_LIG.forEach(function (t) { E.filtro.tipos[t.id] = true; });
+    montarFiltros();
+    aplicarFiltros(true);
+  }
+
+  // ================================================================
+  // Filtros -> conjunto visível
+  // ================================================================
+  function ligacaoAtiva(l) { return !!E.filtro.tipos[l.tipo]; }
+
+  function aplicarFiltros(reorganizar) {
+    var d = E.dados, f = E.filtro;
+    if (!d) { return; }
+    var base = {};
+
+    if (f.foco) {
+      base[f.foco] = true;
+      (E.ligPorTabela[f.foco] || []).forEach(function (l) {
+        if (ligacaoAtiva(l)) { base[l.de] = true; base[l.para] = true; }
+      });
+    } else {
+      d.tabelas.forEach(function (t) {
+        if (!f.schemas[t.schema]) { return; }
+        if (f.modulo === '__sem_rota__') { if (t.modulos.length) { return; } }
+        else if (f.modulo && t.modulos.indexOf(f.modulo) < 0) { return; }
+        base[t.id] = true;
+      });
+      if (f.modulo && f.vizinhos) {
+        Object.keys(base).forEach(function (id) {
+          (E.ligPorTabela[id] || []).forEach(function (l) {
+            if (!ligacaoAtiva(l)) { return; }
+            var outro = l.de === id ? l.para : l.de;
+            var t = E.porId[outro];
+            if (t && f.schemas[t.schema]) { base[outro] = true; }
+          });
+        });
+      }
+    }
+
+    var ligs = d.ligacoes.filter(function (l) { return ligacaoAtiva(l) && base[l.de] && base[l.para]; });
+    if (f.ocultarSoltas && !f.foco) {
+      var comLig = {};
+      ligs.forEach(function (l) { comLig[l.de] = true; comLig[l.para] = true; });
+      Object.keys(base).forEach(function (id) { if (!comLig[id]) { delete base[id]; } });
+    }
+
+    E.visivelSet = base;
+    E.visiveis = d.tabelas.filter(function (t) { return base[t.id]; });
+    E.ligVisiveis = ligs;
+
+    $('mdlExpVisiveis').textContent = fmt(E.visiveis.length) + ' objeto(s) visível(is) agora';
+    $('mdlBanner').classList.toggle('visivel', !!f.foco);
+    if (f.foco) { $('mdlBannerNome').textContent = E.porId[f.foco].exibicao; }
+
+    calcularTamanhos();
+    if (reorganizar) { layout(); }
+    renderizar();
+    montarLista();
+    if (reorganizar) { ajustarTela(true); }
+
+    if (!E.visiveis.length) {
+      estado('vazio', 'Nada para mostrar', 'Nenhuma tabela atende aos filtros escolhidos.', 'Limpar filtros');
+    } else {
+      estado(null);
+    }
+  }
+
+  // ================================================================
+  // Tamanho de cada cartão (sem medir o DOM: calculado pelos dados)
+  // ================================================================
+  function colunasExibidas(t) {
+    if (E.filtro.modo === 'todas') { return t.colunas.slice(0, MAX_LINHAS_TODAS); }
+    return t.colunas.filter(function (c) { return c.pk || c.fk || c.fk_inferida; });
+  }
+
+  function calcularTamanhos() {
+    E.tam = {};
+    E.visiveis.forEach(function (t) {
+      var cols = colunasExibidas(t);
+      var maior = t.exibicao.length * 7.6 + 30;
+      cols.forEach(function (c) {
+        var w = c.nome.length * 7.2 + c.tipo.length * 6.4 + 60;
+        if (w > maior) { maior = w; }
+      });
+      var largura = Math.round(Math.max(230, Math.min(360, maior)));
+      var rodape = cols.length < t.colunas.length || !t.colunas.length;
+      var altura = ALT_CAB + cols.length * ALT_LINHA + (rodape ? ALT_RODAPE : 0) + 2;
+      E.tam[t.id] = { w: largura, h: altura, cols: cols, rodape: rodape };
+    });
+  }
+
+  // ================================================================
+  // Layout automático: componentes ligados com dagre, soltas em grade
+  // ================================================================
+  function layout() {
+    var ids = E.visiveis.map(function (t) { return t.id; });
+    var adj = {};
+    ids.forEach(function (id) { adj[id] = []; });
+    E.ligVisiveis.forEach(function (l) {
+      if (l.de !== l.para) { adj[l.de].push(l.para); adj[l.para].push(l.de); }
+    });
+
+    // Componentes conexos
+    var visto = {}, comps = [];
+    ids.forEach(function (id) {
+      if (visto[id]) { return; }
+      var fila = [id], comp = [];
+      visto[id] = true;
+      while (fila.length) {
+        var a = fila.pop();
+        comp.push(a);
+        adj[a].forEach(function (b) { if (!visto[b]) { visto[b] = true; fila.push(b); } });
+      }
+      comps.push(comp);
+    });
+
+    var blocos = [], soltas = [];
+    comps.forEach(function (comp) {
+      if (comp.length === 1) { soltas.push(comp[0]); return; }
+      blocos.push(layoutComponente(comp));
+    });
+    blocos.sort(function (a, b) { return (b.w * b.h) - (a.w * a.h); });
+    // Maior grupo de tabelas ligadas: é onde a tela abre quando o diagrama é grande
+    E.principal = blocos.length ? Object.keys(blocos[0].pos) : [];
+
+    var areaTotal = 0;
+    blocos.forEach(function (b) { areaTotal += b.w * b.h; });
+    soltas.forEach(function (id) { areaTotal += (E.tam[id].w + 40) * (E.tam[id].h + 40); });
+    var larguraAlvo = Math.max(1400, Math.sqrt(areaTotal) * 1.5);
+    blocos.forEach(function (b) { if (b.w > larguraAlvo) { larguraAlvo = b.w; } });
+
+    // Empacota os componentes em faixas
+    var x = 0, y = 0, altFaixa = 0, GAP = 90;
+    E.pos = {};
+    blocos.forEach(function (b) {
+      if (x > 0 && x + b.w > larguraAlvo) { x = 0; y += altFaixa + GAP; altFaixa = 0; }
+      Object.keys(b.pos).forEach(function (id) { E.pos[id] = { x: x + b.pos[id].x, y: y + b.pos[id].y }; });
+      x += b.w + GAP;
+      if (b.h > altFaixa) { altFaixa = b.h; }
+    });
+    if (blocos.length) { y += altFaixa + GAP * 1.4; }
+
+    // Tabelas sem ligação: grade ordenada por schema e nome
+    soltas.sort(function (a, b) {
+      var ta = E.porId[a], tb = E.porId[b];
+      return (ta.schema + ta.nome).localeCompare(tb.schema + tb.nome);
+    });
+    var colW = 0;
+    soltas.forEach(function (id) { if (E.tam[id].w > colW) { colW = E.tam[id].w; } });
+    var porLinha = Math.max(1, Math.floor((larguraAlvo + 40) / (colW + 40)));
+    var linhaY = y, maiorAlt = 0;
+    soltas.forEach(function (id, i) {
+      var col = i % porLinha;
+      if (col === 0 && i > 0) { linhaY += maiorAlt + 40; maiorAlt = 0; }
+      E.pos[id] = { x: col * (colW + 40), y: linhaY };
+      if (E.tam[id].h > maiorAlt) { maiorAlt = E.tam[id].h; }
+    });
+  }
+
+  function dagreComponente(comp, direcao) {
+    var g = new dagre.graphlib.Graph({ multigraph: false });
+    g.setGraph({ rankdir: direcao, nodesep: direcao === 'LR' ? 34 : 40, ranksep: direcao === 'LR' ? 110 : 90,
+      edgesep: 14, marginx: 0, marginy: 0 });
+    g.setDefaultEdgeLabel(function () { return {}; });
+    var no = {}, pos = {};
+    comp.forEach(function (id) { no[id] = true; g.setNode(id, { width: E.tam[id].w, height: E.tam[id].h }); });
+    E.ligVisiveis.forEach(function (l) {
+      // "pai -> filho": a tabela referenciada fica antes de quem a referencia
+      if (l.de !== l.para && no[l.de] && no[l.para]) { g.setEdge(l.para, l.de); }
+    });
+    dagre.layout(g);
+    comp.forEach(function (id) {
+      var n = g.node(id);
+      pos[id] = { x: n.x - n.width / 2, y: n.y - n.height / 2 };
+    });
+    return pos;
+  }
+
+  function caixa(comp, pos) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    comp.forEach(function (id) {
+      minX = Math.min(minX, pos[id].x); minY = Math.min(minY, pos[id].y);
+      maxX = Math.max(maxX, pos[id].x + E.tam[id].w); maxY = Math.max(maxY, pos[id].y + E.tam[id].h);
+    });
+    return { w: maxX - minX, h: maxY - minY };
+  }
+
+  function layoutComponente(comp) {
+    var pos = {};
+    if (window.dagre && comp.length > 1) {
+      // Primeiro da esquerda para a direita; se ficar uma coluna muito alta
+      // (uma tabela com muitas filhas), refaz de cima para baixo
+      pos = dagreComponente(comp, 'LR');
+      var bLR = caixa(comp, pos);
+      if (bLR.h > bLR.w * 2.2) {
+        var posTB = dagreComponente(comp, 'TB');
+        var bTB = caixa(comp, posTB);
+        if (Math.max(bTB.w, bTB.h) < Math.max(bLR.w, bLR.h)) { pos = posTB; }
+      }
+    } else {
+      // Sem a biblioteca: grade simples
+      var porLinha = Math.ceil(Math.sqrt(comp.length));
+      var cx = 0, cy = 0, alt = 0;
+      comp.forEach(function (id, i) {
+        if (i && i % porLinha === 0) { cx = 0; cy += alt + 60; alt = 0; }
+        pos[id] = { x: cx, y: cy };
+        cx += E.tam[id].w + 80;
+        if (E.tam[id].h > alt) { alt = E.tam[id].h; }
+      });
+    }
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    comp.forEach(function (id) {
+      minX = Math.min(minX, pos[id].x); minY = Math.min(minY, pos[id].y);
+      maxX = Math.max(maxX, pos[id].x + E.tam[id].w); maxY = Math.max(maxY, pos[id].y + E.tam[id].h);
+    });
+    comp.forEach(function (id) { pos[id] = { x: pos[id].x - minX, y: pos[id].y - minY }; });
+    return { pos: pos, w: maxX - minX, h: maxY - minY };
+  }
+
+  // ================================================================
+  // Desenho
+  // ================================================================
+  function htmlCartao(t) {
+    var tm = E.tam[t.id], p = E.pos[t.id];
+    var cor = E.corSchema[t.schema] || '#2563eb';
+    var tags = [];
+    if (t.tipo === 'VIEW') { tags.push('<span class="mdl-tag view">View</span>'); }
+    if (t.tipo === 'NAO_LOCALIZADA') { tags.push('<span class="mdl-tag nao">Não localizada</span>'); }
+    if (t.fonte_estrutura === 'MODEL') { tags.push('<span class="mdl-tag model">Só no model</span>'); }
+    if (t.banco) { tags.push('<span class="mdl-tag ext">Outro banco</span>'); }
+    var meta = tags.join('') + '<span>' + fmt(t.colunas.length) + ' colunas</span>' +
+      (t.modulos.length ? '<span>· ' + fmt(t.modulos.length) + ' app(s)</span>' : '');
+
+    var linhas = tm.cols.map(function (c) {
+      var ic = '', cls = '';
+      if (c.pk) { ic = '<i class="fas fa-key ic pk" title="Chave primária"></i>'; cls = ' pk'; }
+      else if (c.fk) { ic = '<i class="fas fa-link ic fk" title="Chave estrangeira"></i>'; }
+      else if (c.fk_inferida) { ic = '<i class="fas fa-link ic inf" title="Ligação inferida pelo nome"></i>'; }
+      else { ic = '<span class="ic"></span>'; }
+      return '<div class="mdl-row' + cls + '">' + ic + '<span class="cn" title="' + esc(c.nome) + '">' + esc(c.nome) +
+        '</span><span class="ct' + (c.nulo ? '' : ' nn') + '">' + esc(c.tipo) + '</span></div>';
+    }).join('');
+
+    var rodape = '';
+    if (tm.rodape) {
+      if (!t.colunas.length) {
+        rodape = t.tipo === 'NAO_LOCALIZADA' ? 'Citada nas rotas, não encontrada no banco' : 'Sem colunas';
+      } else if (E.filtro.modo === 'todas') {
+        rodape = '+ ' + fmt(t.colunas.length - tm.cols.length) + ' colunas no painel';
+      } else {
+        rodape = fmt(t.colunas.length - tm.cols.length) + ' outras colunas';
+      }
+      rodape = '<div class="mdl-card-f">' + esc(rodape) + '</div>';
+    }
+
+    return '<div class="mdl-card' + (t.tipo === 'NAO_LOCALIZADA' ? ' nao-localizada' : '') + (E.sel === t.id ? ' sel' : '') +
+      '" data-id="' + esc(t.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px;width:' + tm.w + 'px;height:' + tm.h + 'px;--cor:' + cor + '">' +
+      '<div class="mdl-card-h" data-arrasta="1"><div class="mdl-card-nome" title="' + esc(t.exibicao) + '">' + esc(t.exibicao) + '</div>' +
+      '<div class="mdl-card-meta">' + meta + '</div></div>' + linhas + rodape + '</div>';
+  }
+
+  function montarMarcadores() {
+    $('mdlDefs').innerHTML = TIPOS_LIG.map(function (t) {
+      var c = corVar(t.cssVar);
+      return '<marker id="mdl-m-' + t.id + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+        '<path d="M0,0 L10,5 L0,10 z" fill="' + c + '"/></marker>' +
+        '<marker id="mdl-o-' + t.id + '" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6">' +
+        '<circle cx="5" cy="5" r="3.2" fill="' + c + '"/></marker>';
+    }).join('');
+  }
+
+  function renderizar() {
+    boxCards.innerHTML = E.visiveis.map(htmlCartao).join('');
+    E.elCards = {};
+    Array.prototype.forEach.call(boxCards.children, function (el) { E.elCards[el.getAttribute('data-id')] = el; });
+
+    montarMarcadores();
+    E.elLig = {};
+    E.ligDoCard = {};
+    var partes = [];
+    E.ligVisiveis.forEach(function (l, i) {
+      var titulo = l.de + ' (' + (l.de_colunas.join(', ') || '-') + ') → ' + l.para + ' (' + (l.para_colunas.join(', ') || '-') + ')' +
+        ' · ' + rotuloTipo(l.tipo) + (l.nome ? ': ' + l.nome : '') + (l.desativada ? ' (desativada)' : '');
+      partes.push('<g data-i="' + i + '"><path class="lig t-' + l.tipo + (l.desativada ? ' desativada' : '') + '" ' +
+        'marker-end="url(#mdl-m-' + l.tipo + ')" marker-start="url(#mdl-o-' + l.tipo + ')"/>' +
+        '<path class="hit"><title>' + esc(titulo) + '</title></path></g>');
+    });
+    gLig.innerHTML = partes.join('');
+    Array.prototype.forEach.call(gLig.children, function (g) {
+      var l = E.ligVisiveis[+g.getAttribute('data-i')];
+      E.elLig[l.id] = { g: g, lig: g.firstChild, hit: g.lastChild, l: l };
+      (E.ligDoCard[l.de] = E.ligDoCard[l.de] || []).push(l.id);
+      if (l.para !== l.de) { (E.ligDoCard[l.para] = E.ligDoCard[l.para] || []).push(l.id); }
+    });
+    E.ligVisiveis.forEach(function (l) { desenharLigacao(l.id); });
+    aplicarView();
+    destacarBusca();
+    if (E.sel) { marcarFoco(E.sel, true); }
+  }
+
+  function rotuloTipo(tipo) {
+    for (var i = 0; i < TIPOS_LIG.length; i++) { if (TIPOS_LIG[i].id === tipo) { return TIPOS_LIG[i].rotulo; } }
+    return tipo;
+  }
+
+  // Y da linha da coluna dentro do cartão (ou o meio do cabeçalho)
+  function ancoraY(id, colunas) {
+    var tm = E.tam[id], p = E.pos[id];
+    if (colunas && colunas.length) {
+      var alvo = colunas[0].toUpperCase();
+      for (var i = 0; i < tm.cols.length; i++) {
+        if (tm.cols[i].nome.toUpperCase() === alvo) { return p.y + ALT_CAB + i * ALT_LINHA + ALT_LINHA / 2; }
+      }
+    }
+    return p.y + ALT_CAB / 2;
+  }
+
+  function desenharLigacao(lid) {
+    var r = E.elLig[lid];
+    if (!r) { return; }
+    var l = r.l, a = E.pos[l.de], b = E.pos[l.para], ta = E.tam[l.de], tb = E.tam[l.para];
+    if (!a || !b) { return; }
+    var y1 = ancoraY(l.de, l.de_colunas), y2 = ancoraY(l.para, l.para_colunas);
+    var d;
+    if (l.de === l.para) {
+      var xr = a.x + ta.w;
+      d = 'M' + xr + ',' + y1 + ' C' + (xr + 60) + ',' + (y1 - 10) + ' ' + (xr + 60) + ',' + (y2 + 30) + ' ' + xr + ',' + (y2 + 4);
+    } else {
+      var ca = a.x + ta.w / 2, cb = b.x + tb.w / 2;
+      var x1, x2, d1, d2;
+      if (b.x > a.x + ta.w + 20) { x1 = a.x + ta.w; x2 = b.x; d1 = 1; d2 = -1; }
+      else if (a.x > b.x + tb.w + 20) { x1 = a.x; x2 = b.x + tb.w; d1 = -1; d2 = 1; }
+      else {
+        // Sobrepostas na horizontal: saem pelo mesmo lado
+        if (ca <= cb) { x1 = a.x; x2 = b.x; d1 = -1; d2 = -1; } else { x1 = a.x + ta.w; x2 = b.x + tb.w; d1 = 1; d2 = 1; }
+      }
+      var curva = Math.max(50, Math.min(220, Math.abs(x2 - x1) / 2));
+      if (d1 === d2) { curva = 70; }
+      d = 'M' + x1 + ',' + y1 + ' C' + (x1 + d1 * curva) + ',' + y1 + ' ' + (x2 + d2 * curva) + ',' + y2 + ' ' + x2 + ',' + y2;
+    }
+    r.lig.setAttribute('d', d);
+    r.hit.setAttribute('d', d);
+  }
+
+  // ================================================================
+  // Visão (pan e zoom)
+  // ================================================================
+  var rafView = null;
+  function aplicarView() {
+    var v = E.view;
+    world.style.transform = 'translate(' + v.x + 'px,' + v.y + 'px) scale(' + v.k + ')';
+    var passo = 22 * v.k;
+    canvas.style.backgroundSize = passo + 'px ' + passo + 'px';
+    canvas.style.backgroundPosition = v.x + 'px ' + v.y + 'px';
+    world.classList.toggle('longe', v.k < ZOOM_LONGE);
+    $('mdlZoom').textContent = Math.round(v.k * 100) + '%';
+    if (!rafView) {
+      rafView = requestAnimationFrame(function () { rafView = null; desenharMini(); });
+    }
+  }
+
+  function zoomEm(fator, cx, cy) {
+    var v = E.view;
+    var k = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v.k * fator));
+    var r = canvas.getBoundingClientRect();
+    if (cx === undefined) { cx = r.width / 2; cy = r.height / 2; }
+    v.x = cx - (cx - v.x) * (k / v.k);
+    v.y = cy - (cy - v.y) * (k / v.k);
+    v.k = k;
+    aplicarView();
+  }
+
+  function limites(ids) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach(function (id) {
+      var p = E.pos[id], t = E.tam[id];
+      if (!p || !t) { return; }
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + t.w); maxY = Math.max(maxY, p.y + t.h);
+    });
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY, ok: minX !== Infinity };
+  }
+
+  // inicial=true: abre num zoom legível (mín. 55%); com muitas tabelas, enquadra o
+  // maior grupo ligado. O minimapa e o botão "Ajustar à tela" mostram o todo.
+  function ajustarTela(inicial) {
+    var usarPrincipal = inicial && E.visiveis.length > 40 && E.principal && E.principal.length > 1;
+    var ids = usarPrincipal ? E.principal : E.visiveis.map(function (t) { return t.id; });
+    var b = limites(ids);
+    if (!b.ok) { return; }
+    var r = canvas.getBoundingClientRect(), m = 60;
+    var k = Math.min((r.width - m * 2) / b.w, (r.height - m * 2) / b.h, 1.1);
+    k = Math.max(inicial ? 0.55 : ZOOM_MIN, k);
+    E.view.k = k;
+    E.view.x = (r.width - b.w * k) / 2 - b.x * k;
+    E.view.y = (r.height - b.h * k) / 2 - b.y * k;
+    if (b.h * k > r.height - m * 2) { E.view.y = m - b.y * k; }
+    if (b.w * k > r.width - m * 2) { E.view.x = m - b.x * k; }
+    aplicarView();
+  }
+
+  function centralizar(id, zoomMin) {
+    var p = E.pos[id], t = E.tam[id];
+    if (!p) { return; }
+    var r = canvas.getBoundingClientRect();
+    var painel = $('mdlDet').classList.contains('aberto') ? Math.min(420, r.width * 0.5) : 0;
+    if (zoomMin && E.view.k < zoomMin) { E.view.k = zoomMin; }
+    var k = E.view.k;
+    E.view.x = (r.width - painel) / 2 - (p.x + t.w / 2) * k;
+    E.view.y = r.height / 2 - (p.y + Math.min(t.h, r.height / k * 0.6) / 2) * k;
+    aplicarView();
+  }
+
+  // ================================================================
+  // Minimapa
+  // ================================================================
+  var mini = $('mdlMiniCanvas');
+  function desenharMini() {
+    if (!E.visiveis.length) { return; }
+    var dpr = window.devicePixelRatio || 1, W = 200, H = 130;
+    if (mini.width !== W * dpr) { mini.width = W * dpr; mini.height = H * dpr; }
+    var ctx = mini.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    var b = limites(E.visiveis.map(function (t) { return t.id; }));
+    if (!b.ok) { return; }
+    var pad = 8, s = Math.min((W - pad * 2) / b.w, (H - pad * 2) / b.h, 0.15);
+    var ox = pad + ((W - pad * 2) - b.w * s) / 2 - b.x * s, oy = pad + ((H - pad * 2) - b.h * s) / 2 - b.y * s;
+    E.mini = { s: s, ox: ox, oy: oy };
+    E.visiveis.forEach(function (t) {
+      var p = E.pos[t.id], tm = E.tam[t.id];
+      ctx.fillStyle = E.sel === t.id ? corVar('--mdl-accent') : (E.corSchema[t.schema] || '#94a3b8');
+      ctx.globalAlpha = E.sel === t.id ? 1 : 0.55;
+      ctx.fillRect(ox + p.x * s, oy + p.y * s, Math.max(1.5, tm.w * s), Math.max(1.5, tm.h * s));
+    });
+    ctx.globalAlpha = 1;
+    var r = canvas.getBoundingClientRect(), v = E.view;
+    ctx.strokeStyle = corVar('--mdl-ink');
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(ox + (-v.x / v.k) * s, oy + (-v.y / v.k) * s, (r.width / v.k) * s, (r.height / v.k) * s);
+  }
+
+  function navegarMini(ev) {
+    if (!E.mini) { return; }
+    var rr = mini.getBoundingClientRect();
+    var mx = (ev.clientX - rr.left - E.mini.ox) / E.mini.s, my = (ev.clientY - rr.top - E.mini.oy) / E.mini.s;
+    var r = canvas.getBoundingClientRect();
+    E.view.x = r.width / 2 - mx * E.view.k;
+    E.view.y = r.height / 2 - my * E.view.k;
+    aplicarView();
+  }
+
+  // ================================================================
+  // Destaques (mouse, seleção e busca)
+  // ================================================================
+  function marcarFoco(id, ligar) {
+    Array.prototype.forEach.call(boxCards.querySelectorAll('.mdl-card.ativo'), function (c) { c.classList.remove('ativo'); });
+    Array.prototype.forEach.call(gLig.querySelectorAll('path.lig.ativo'), function (p) { p.classList.remove('ativo'); });
+    if (!ligar || !id || !E.elCards[id]) { world.classList.remove('foco'); return; }
+    world.classList.add('foco');
+    E.elCards[id].classList.add('ativo');
+    (E.ligDoCard[id] || []).forEach(function (lid) {
+      var r = E.elLig[lid];
+      r.lig.classList.add('ativo');
+      if (E.elCards[r.l.de]) { E.elCards[r.l.de].classList.add('ativo'); }
+      if (E.elCards[r.l.para]) { E.elCards[r.l.para].classList.add('ativo'); }
+    });
+  }
+
+  function corresponde(t, termo) {
+    if (!termo) { return false; }
+    if (t.exibicao.toUpperCase().indexOf(termo) >= 0) { return true; }
+    for (var i = 0; i < t.colunas.length; i++) { if (t.colunas[i].nome.toUpperCase().indexOf(termo) >= 0) { return true; } }
+    return false;
+  }
+
+  function destacarBusca() {
+    var termo = E.filtro.busca;
+    E.visiveis.forEach(function (t) {
+      var el = E.elCards[t.id];
+      if (el) { el.classList.toggle('busca', !!termo && corresponde(t, termo)); }
+    });
+  }
+
+  function montarLista() {
+    var termo = E.filtro.busca;
+    var itens = E.visiveis.filter(function (t) { return !termo || corresponde(t, termo); });
+    $('mdlQtdLista').textContent = '(' + fmt(itens.length) + (termo ? ' de ' + fmt(E.visiveis.length) : '') + ')';
+    if (!itens.length) {
+      $('mdlLista').innerHTML = '<div class="mdl-lista-vazia">' + (termo ? 'Nada encontrado para essa busca.' : 'Sem tabelas no diagrama.') + '</div>';
+      return;
+    }
+    $('mdlLista').innerHTML = itens.map(function (t) {
+      var icone = t.tipo === 'VIEW' ? 'fa-eye' : (t.tipo === 'NAO_LOCALIZADA' ? 'fa-question' : 'fa-table');
+      return '<button type="button" class="mdl-lista-item js-ignore-loading' + (E.sel === t.id ? ' sel' : '') + '" data-id="' + esc(t.id) + '">' +
+        '<i class="fas ' + icone + ' tipo"></i><span class="nome"><em>' + esc(t.schema) + '.</em>' + esc(t.nome) + '</span>' +
+        '<span class="n">' + fmt(t.colunas.length) + '</span></button>';
+    }).join('');
+  }
+
+  // ================================================================
+  // Painel de detalhes
+  // ================================================================
+  function selecionar(id, centralizarTabela) {
+    if (!E.porId[id]) { return; }
+    if (E.sel && E.elCards[E.sel]) { E.elCards[E.sel].classList.remove('sel'); }
+    E.sel = id;
+    if (E.elCards[id]) { E.elCards[id].classList.add('sel'); }
+    marcarFoco(id, true);
+    Array.prototype.forEach.call($('mdlLista').querySelectorAll('.mdl-lista-item'), function (b) {
+      b.classList.toggle('sel', b.getAttribute('data-id') === id);
+    });
+    abrirDetalhes(E.porId[id]);
+    $('mdlExpSel').textContent = E.porId[id].exibicao;
+    if (centralizarTabela) {
+      if (!E.visivelSet[id]) { E.filtro.foco = id; aplicarFiltros(true); }
+      centralizar(id, 0.75);
+    }
+    desenharMini();
+  }
+
+  function fecharDetalhes() {
+    $('mdlDet').classList.remove('aberto');
+    $('mdlDet').setAttribute('aria-hidden', 'true');
+    $('mdlBody').classList.remove('det-aberto');
+    if (E.sel && E.elCards[E.sel]) { E.elCards[E.sel].classList.remove('sel'); }
+    E.sel = null;
+    marcarFoco(null, false);
+    $('mdlExpSel').textContent = 'Selecione uma tabela no diagrama';
+    Array.prototype.forEach.call($('mdlLista').querySelectorAll('.mdl-lista-item.sel'), function (b) { b.classList.remove('sel'); });
+    desenharMini();
+  }
+
+  function blocoRef(l, sentido) {
+    var outro = sentido === 'sai' ? l.para : l.de;
+    var t = E.porId[outro];
+    var cols = sentido === 'sai'
+      ? l.de_colunas.join(', ') + ' → ' + l.para_colunas.join(', ')
+      : l.de_colunas.join(', ') + ' → ' + l.para_colunas.join(', ');
+    var estilo = 'solid';
+    TIPOS_LIG.forEach(function (x) { if (x.id === l.tipo) { estilo = x.estilo; } });
+    var cor = TIPOS_LIG.filter(function (x) { return x.id === l.tipo; })[0];
+    var extra = [];
+    extra.push(rotuloTipo(l.tipo));
+    if (l.nome) { extra.push(l.nome); }
+    if (l.ao_excluir && l.ao_excluir !== 'NO_ACTION') { extra.push('ON DELETE ' + l.ao_excluir.replace(/_/g, ' ')); }
+    if (l.tipo === 'FK_BANCO' && l.tambem_no_model) { extra.push('também no model'); }
+    if (l.desativada) { extra.push('desativada'); }
+    return '<button type="button" class="mdl-ref js-ignore-loading" data-ir="' + esc(outro) + '" style="color:var(' + (cor ? cor.cssVar : '--mdl-accent') + ')">' +
+      '<span class="traco" style="border-top-style:' + estilo + '"></span><span class="txt"><b>' + esc(t ? t.exibicao : outro) + '</b>' +
+      (l.tipo === 'VIEW' ? '' : '<small>' + esc(cols) + '</small>') +
+      '<small>' + esc(extra.join(' · ')) + '</small></span><i class="fas fa-chevron-right" style="color:var(--mdl-muted);font-size:11px"></i></button>';
+  }
+
+  function abrirDetalhes(t) {
+    var tags = [];
+    tags.push('<span class="mdl-tag" style="background:' + (E.corSchema[t.schema] || '#64748b') + ';color:#fff">' + esc(t.schema) + '</span>');
+    tags.push('<span class="mdl-tag' + (t.tipo === 'VIEW' ? ' view' : (t.tipo === 'NAO_LOCALIZADA' ? ' nao' : '')) + '">' +
+      esc(t.tipo === 'NAO_LOCALIZADA' ? 'Não localizada no banco' : (t.tipo === 'VIEW' ? 'View' : 'Tabela')) + '</span>');
+    if (t.fonte_estrutura === 'MODEL') { tags.push('<span class="mdl-tag model">Estrutura lida do model</span>'); }
+    if (t.fonte_estrutura === 'BANCO') { tags.push('<span class="mdl-tag">Estrutura real do banco</span>'); }
+    if (t.banco) { tags.push('<span class="mdl-tag ext">Banco ' + esc(t.banco) + '</span>'); }
+
+    $('mdlDetH').innerHTML =
+      '<div class="linha"><h4>' + esc(t.exibicao) + '</h4>' +
+      '<button type="button" class="mdl-btn icone pequeno js-ignore-loading" id="mdlFecharDet" title="Fechar (Esc)"><i class="fas fa-times"></i></button></div>' +
+      '<div class="tags">' + tags.join('') + '</div>' +
+      '<div class="mdl-det-acoes">' +
+      '<button type="button" class="mdl-btn pequeno js-ignore-loading" data-acao="centralizar"><i class="fas fa-crosshairs"></i> Centralizar</button>' +
+      '<button type="button" class="mdl-btn pequeno js-ignore-loading" data-acao="vizinhanca"><i class="fas fa-sitemap"></i> Só a vizinhança</button>' +
+      '<button type="button" class="mdl-btn pequeno js-ignore-loading" data-acao="copiar"><i class="far fa-copy"></i> Copiar nome</button>' +
+      '<button type="button" class="mdl-btn pequeno primario js-ignore-loading" data-acao="exportar"><i class="fas fa-file-code"></i> SQL</button>' +
+      '</div>';
+
+    var html = [];
+
+    // Colunas
+    html.push('<div class="mdl-det-sec"><h5>Colunas <span class="n">' + fmt(t.colunas.length) + '</span></h5>');
+    if (t.colunas.length) {
+      html.push('<table class="mdl-tab"><thead><tr><th></th><th>Coluna</th><th>Tipo</th><th>Nulo</th></tr></thead><tbody>');
+      t.colunas.forEach(function (c) {
+        var ic = c.pk ? '<i class="fas fa-key" style="color:var(--mdl-pk)" title="Chave primária"></i>'
+          : (c.fk ? '<i class="fas fa-link" style="color:var(--mdl-fk)" title="Chave estrangeira"></i>'
+            : (c.fk_inferida ? '<i class="fas fa-link" style="color:var(--mdl-inf)" title="Ligação inferida"></i>' : ''));
+        var info = [];
+        if (c.identidade) { info.push('IDENTITY'); }
+        if (c.padrao) { info.push('Padrão: ' + c.padrao); }
+        if (c.calculada) { info.push('Calculada: ' + c.calculada); }
+        html.push('<tr class="' + (c.pk ? 'pk' : '') + '"><td style="width:18px">' + ic + '</td><td class="mono">' + esc(c.nome) +
+          (info.length ? '<span class="padrao">' + esc(info.join(' · ')) + '</span>' : '') + '</td>' +
+          '<td class="mono">' + esc(c.tipo) + '</td><td>' + (c.nulo ? 'Sim' : '<b>Não</b>') + '</td></tr>');
+      });
+      html.push('</tbody></table>');
+    } else {
+      html.push('<p class="mdl-vazio">' + (t.tipo === 'NAO_LOCALIZADA'
+        ? 'A tabela é citada no código das rotas, mas não foi encontrada no banco (nome digitado diferente, removida ou em outro banco).'
+        : 'Sem colunas.') + '</p>');
+    }
+    html.push('</div>');
+
+    // Ligações
+    var sai = [], entra = [];
+    (E.ligPorTabela[t.id] || []).forEach(function (l) {
+      if (l.de === t.id) { sai.push(l); }
+      if (l.para === t.id && l.de !== t.id) { entra.push(l); }
+    });
+    html.push('<div class="mdl-det-sec"><h5>' + (t.tipo === 'VIEW' ? 'Lê de / referencia' : 'Referencia') + ' <span class="n">' + fmt(sai.length) + '</span></h5>');
+    html.push(sai.length ? sai.map(function (l) { return blocoRef(l, 'sai'); }).join('') : '<p class="mdl-vazio">Nenhuma.</p>');
+    html.push('</div>');
+    html.push('<div class="mdl-det-sec"><h5>É referenciada por <span class="n">' + fmt(entra.length) + '</span></h5>');
+    html.push(entra.length ? entra.map(function (l) { return blocoRef(l, 'entra'); }).join('') : '<p class="mdl-vazio">Nenhuma.</p>');
+    html.push('</div>');
+
+    if (t.refs_fora && t.refs_fora.length) {
+      html.push('<div class="mdl-det-sec"><h5>FKs para fora da modelagem <span class="n">' + fmt(t.refs_fora.length) + '</span></h5>');
+      t.refs_fora.forEach(function (r) {
+        html.push('<div class="mdl-ref estatico"><span class="traco" style="color:var(--mdl-muted)"></span><span class="txt"><b>' + esc(r.para) + '</b>' +
+          '<small>' + esc(r.colunas.join(', ') + ' → ' + r.para_colunas.join(', ')) + '</small><small>' + esc(r.nome || '') + '</small></span></div>');
+      });
+      html.push('</div>');
+    }
+    if (t.view_le && t.view_le.length) {
+      html.push('<div class="mdl-det-sec"><h5>Objetos lidos pela view <span class="n">' + fmt(t.view_le.length) + '</span></h5><div class="mdl-pilulas">' +
+        t.view_le.map(function (n) { return '<span class="mdl-pilula mono">' + esc(n) + '</span>'; }).join('') + '</div></div>');
+    }
+
+    // Índices
+    var ind = (t.uniques || []).map(function (u) { return { nome: u.nome, tipo: 'UNIQUE', colunas: u.colunas, inc: [] }; })
+      .concat((t.indices || []).map(function (i) { return { nome: i.nome, tipo: i.unico ? 'Índice único' : 'Índice', colunas: i.colunas, inc: i.incluidas }; }));
+    if (ind.length) {
+      html.push('<div class="mdl-det-sec"><h5>Índices e restrições <span class="n">' + fmt(ind.length) + '</span></h5>' +
+        '<table class="mdl-tab"><thead><tr><th>Nome</th><th>Colunas</th></tr></thead><tbody>');
+      ind.forEach(function (i) {
+        html.push('<tr><td class="mono">' + esc(i.nome) + '<span class="padrao">' + esc(i.tipo) + '</span></td><td class="mono">' + esc(i.colunas.join(', ')) +
+          (i.inc && i.inc.length ? '<span class="padrao">Inclui: ' + esc(i.inc.join(', ')) + '</span>' : '') + '</td></tr>');
+      });
+      html.push('</tbody></table></div>');
+    }
+
+    // Uso no portal
+    var nomesMod = {};
+    E.dados.modulos.forEach(function (m) { nomesMod[m.id] = m; });
+    html.push('<div class="mdl-det-sec"><h5>Aplicativos que usam <span class="n">' + fmt(t.modulos.length) + '</span></h5>');
+    html.push(t.modulos.length ? '<div class="mdl-pilulas">' + t.modulos.map(function (m) {
+      var info = nomesMod[m];
+      return '<span class="mdl-pilula" title="' + esc(info ? info.arquivos.join(', ') : m) + '">' + esc(info ? info.nome : m) + '</span>';
+    }).join('') + '</div>' : '<p class="mdl-vazio">Nenhuma rota usa esta tabela diretamente (só existe no model).</p>');
+    html.push('</div>');
+
+    var origens = { MODEL: 'Model SQLAlchemy', ROTA_ORM: 'Rota via ORM', ROTA_SQL: 'SQL escrito na rota' };
+    html.push('<div class="mdl-det-sec"><h5>Onde foi encontrada</h5><div class="mdl-pilulas">' +
+      t.origens.map(function (o) { return '<span class="mdl-pilula">' + esc(origens[o] || o) + '</span>'; }).join('') +
+      t.models.map(function (m) { return '<span class="mdl-pilula mono">' + esc(m) + '</span>'; }).join('') + '</div></div>');
+
+    $('mdlDetCorpo').innerHTML = html.join('');
+    $('mdlDetCorpo').scrollTop = 0;
+    $('mdlDet').classList.add('aberto');
+    $('mdlDet').setAttribute('aria-hidden', 'false');
+    $('mdlBody').classList.add('det-aberto');
+  }
+
+  // ================================================================
+  // Exportação SQL
+  // ================================================================
+  function exportar(ids, rotulo) {
+    if (!ids.length) { toast('Nada para exportar.', true); return; }
+    var btn = $('mdlBtnExportar');
+    btn.disabled = true;
+    $('mdlMenuExportar').classList.remove('aberto');
+    toast('Gerando o script SQL…');
+    fetch(URL_EXPORTAR, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ tabelas: ids })
+    })
+      .then(function (r) {
+        if (!r.ok) {
+          return r.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.erro || ('Erro ' + r.status)); });
+        }
+        var disp = r.headers.get('Content-Disposition') || '';
+        var m = /filename="?([^";]+)"?/i.exec(disp);
+        return r.blob().then(function (b) { return { blob: b, nome: m ? m[1] : 'modelagem.sql' }; });
+      })
+      .then(function (arq) {
+        var url = URL.createObjectURL(arq.blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = arq.nome; a.className = 'js-ignore-loading';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        toast('Script SQL gerado: ' + rotulo + '.');
+      })
+      .catch(function (err) { toast(err.message || String(err), true); })
+      .then(function () { btn.disabled = false; });
+  }
+
+  // ================================================================
+  // Eventos
+  // ================================================================
+  function pararLoading(ev) { if (ev) { ev.stopImmediatePropagation(); } }
+
+  $('mdlAtualizar').addEventListener('click', function (ev) { pararLoading(ev); carregar(true); });
+
+  $('mdlBtnExportar').addEventListener('click', function (ev) {
+    pararLoading(ev);
+    $('mdlMenuExportar').classList.toggle('aberto');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-exportar="selecionada"]'), function (b) { b.disabled = !E.sel; });
+  });
+  document.addEventListener('click', function (ev) {
+    if (!$('mdlMenuExportar').contains(ev.target)) { $('mdlMenuExportar').classList.remove('aberto'); }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-exportar]'), function (b) {
+    b.addEventListener('click', function (ev) {
+      pararLoading(ev);
+      var tipo = b.getAttribute('data-exportar');
+      if (tipo === 'visiveis') { exportar(E.visiveis.map(function (t) { return t.id; }), fmt(E.visiveis.length) + ' objeto(s)'); }
+      if (tipo === 'todas') { exportar(E.dados.tabelas.map(function (t) { return t.id; }), 'toda a modelagem'); }
+      if (tipo === 'selecionada' && E.sel) { exportar([E.sel], E.porId[E.sel].exibicao); }
+    });
+  });
+
+  var timerBusca = null;
+  $('mdlBusca').addEventListener('input', function () {
+    clearTimeout(timerBusca);
+    var v = this.value;
+    timerBusca = setTimeout(function () {
+      E.filtro.busca = v.trim().toUpperCase();
+      destacarBusca();
+      montarLista();
+    }, 120);
+  });
+  $('mdlBusca').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      var termo = this.value.trim().toUpperCase();
+      E.filtro.busca = termo;
+      var alvo = E.visiveis.filter(function (t) { return corresponde(t, termo); })[0];
+      if (!alvo) { alvo = E.dados.tabelas.filter(function (t) { return corresponde(t, termo); })[0]; }
+      if (alvo) { selecionar(alvo.id, true); } else { toast('Nenhuma tabela encontrada.', true); }
+    }
+  });
+
+  $('mdlModulo').addEventListener('change', function () {
+    E.filtro.modulo = this.value; E.filtro.foco = null; fecharDetalhes(); aplicarFiltros(true);
+  });
+  $('mdlVizinhos').addEventListener('change', function () { E.filtro.vizinhos = this.checked; salvarPref(); aplicarFiltros(true); });
+  $('mdlSoltas').addEventListener('change', function () { E.filtro.ocultarSoltas = this.checked; aplicarFiltros(true); });
+
+  $('mdlModo').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button[data-modo]');
+    if (!b) { return; }
+    pararLoading(ev);
+    E.filtro.modo = b.getAttribute('data-modo');
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) { x.classList.toggle('ativo', x === b); });
+    salvarPref();
+    aplicarFiltros(true);
+  });
+  $('mdlTipos').addEventListener('change', function (ev) {
+    var tipo = ev.target.getAttribute('data-tipo');
+    if (!tipo) { return; }
+    E.filtro.tipos[tipo] = ev.target.checked;
+    salvarPref();
+    aplicarFiltros(true);
+  });
+  $('mdlSchemas').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-schema]');
+    if (!b) { return; }
+    pararLoading(ev);
+    var s = b.getAttribute('data-schema');
+    E.filtro.schemas[s] = !E.filtro.schemas[s];
+    b.classList.toggle('ativo', E.filtro.schemas[s]);
+    aplicarFiltros(true);
+  });
+  $('mdlLista').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-id]');
+    if (!b) { return; }
+    pararLoading(ev);
+    selecionar(b.getAttribute('data-id'), true);
+    if (window.innerWidth < 992) { $('mdlSide').classList.remove('aberto'); }
+  });
+
+  $('mdlSairFoco').addEventListener('click', function (ev) {
+    pararLoading(ev);
+    var manter = E.sel;
+    E.filtro.foco = null;
+    aplicarFiltros(true);
+    if (manter && E.visivelSet[manter]) { selecionar(manter, false); centralizar(manter); }
+  });
+  $('mdlAbrirFiltros').addEventListener('click', function (ev) { pararLoading(ev); $('mdlSide').classList.toggle('aberto'); });
+
+  $('mdlDet').addEventListener('click', function (ev) {
+    var fechar = ev.target.closest('#mdlFecharDet');
+    if (fechar) { pararLoading(ev); fecharDetalhes(); return; }
+    var ir = ev.target.closest('[data-ir]');
+    if (ir) { pararLoading(ev); selecionar(ir.getAttribute('data-ir'), true); return; }
+    var ac = ev.target.closest('[data-acao]');
+    if (!ac || !E.sel) { return; }
+    pararLoading(ev);
+    var acao = ac.getAttribute('data-acao'), t = E.porId[E.sel];
+    if (acao === 'centralizar') { centralizar(E.sel, 0.75); }
+    if (acao === 'vizinhanca') { var id = E.sel; E.filtro.foco = id; aplicarFiltros(true); selecionar(id, false); }
+    if (acao === 'exportar') { exportar([E.sel], t.exibicao); }
+    if (acao === 'copiar') {
+      var texto = t.exibicao;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(function () { toast('Nome copiado.'); }, function () { toast(texto); });
+      } else { toast(texto); }
+    }
+  });
+
+  $('mdlZoomMais').addEventListener('click', function (ev) { pararLoading(ev); zoomEm(1.2); });
+  $('mdlZoomMenos').addEventListener('click', function (ev) { pararLoading(ev); zoomEm(1 / 1.2); });
+  $('mdlAjustar').addEventListener('click', function (ev) { pararLoading(ev); ajustarTela(false); });
+  $('mdlReorganizar').addEventListener('click', function (ev) {
+    pararLoading(ev); layout(); renderizar(); ajustarTela(true); toast('Diagrama reorganizado.');
+  });
+
+  canvas.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    var r = canvas.getBoundingClientRect();
+    var fator = Math.exp(-ev.deltaY * (ev.deltaMode === 1 ? 0.05 : 0.0016));
+    zoomEm(fator, ev.clientX - r.left, ev.clientY - r.top);
+  }, { passive: false });
+
+  // Pan do fundo e arraste dos cartões
+  var arraste = null;
+  canvas.addEventListener('pointerdown', function (ev) {
+    if (ev.button !== 0) { return; }
+    if (ev.target.closest('.mdl-ctrl, .mdl-mini, .mdl-banner, .mdl-estado')) { return; }
+    var card = ev.target.closest('.mdl-card');
+    if (card) {
+      var id = card.getAttribute('data-id');
+      arraste = { tipo: 'card', id: id, sx: ev.clientX, sy: ev.clientY, px: E.pos[id].x, py: E.pos[id].y, moveu: false };
+    } else {
+      arraste = { tipo: 'pan', sx: ev.clientX, sy: ev.clientY, vx: E.view.x, vy: E.view.y, moveu: false };
+      canvas.classList.add('arrastando');
+    }
+    canvas.setPointerCapture(ev.pointerId);
+  });
+  var rafArraste = null;
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!arraste) {
+      var c = ev.target.closest && ev.target.closest('.mdl-card');
+      var idHover = c ? c.getAttribute('data-id') : null;
+      if (idHover !== E.hover) {
+        E.hover = idHover;
+        if (idHover) { marcarFoco(idHover, true); } else { marcarFoco(E.sel, !!E.sel); }
+      }
+      return;
+    }
+    var dx = ev.clientX - arraste.sx, dy = ev.clientY - arraste.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) { arraste.moveu = true; }
+    if (arraste.tipo === 'pan') {
+      E.view.x = arraste.vx + dx; E.view.y = arraste.vy + dy;
+      aplicarView();
+    } else if (arraste.moveu) {
+      var id = arraste.id;
+      E.pos[id] = { x: arraste.px + dx / E.view.k, y: arraste.py + dy / E.view.k };
+      if (!rafArraste) {
+        rafArraste = requestAnimationFrame(function () {
+          rafArraste = null;
+          var el = E.elCards[id];
+          if (el && E.pos[id]) {
+            el.style.left = E.pos[id].x + 'px';
+            el.style.top = E.pos[id].y + 'px';
+            (E.ligDoCard[id] || []).forEach(desenharLigacao);
+          }
+        });
+      }
+    }
+  });
+  function fimArraste(ev) {
+    if (!arraste) { return; }
+    var a = arraste;
+    arraste = null;
+    canvas.classList.remove('arrastando');
+    if (!a.moveu) {
+      if (a.tipo === 'card') {
+        // Dois cliques seguidos no mesmo cartão: centraliza e aproxima
+        var agora = Date.now();
+        if (E.ultimoClique && E.ultimoClique.id === a.id && agora - E.ultimoClique.t < 350) {
+          centralizar(a.id, 0.9);
+          E.ultimoClique = null;
+        } else {
+          E.ultimoClique = { id: a.id, t: agora };
+          selecionar(a.id, false);
+        }
+      } else if (E.sel) { fecharDetalhes(); }
+    } else {
+      desenharMini();
+    }
+  }
+  canvas.addEventListener('pointerup', fimArraste);
+  canvas.addEventListener('pointercancel', fimArraste);
+  canvas.addEventListener('pointerleave', function () {
+    if (!arraste && E.hover) { E.hover = null; marcarFoco(E.sel, !!E.sel); }
+  });
+  $('mdlMini').addEventListener('pointerdown', function (ev) {
+    ev.stopPropagation();
+    navegarMini(ev);
+    var mover = function (e) { navegarMini(e); };
+    var soltar = function () { window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar); };
+    window.addEventListener('pointermove', mover);
+    window.addEventListener('pointerup', soltar);
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    var noCampo = /INPUT|SELECT|TEXTAREA/.test((document.activeElement || {}).tagName || '');
+    if (ev.key === '/' && !noCampo) { ev.preventDefault(); $('mdlBusca').focus(); $('mdlBusca').select(); }
+    if (ev.key === 'Escape') {
+      if ($('mdlMenuExportar').classList.contains('aberto')) { $('mdlMenuExportar').classList.remove('aberto'); return; }
+      if (E.sel) { fecharDetalhes(); return; }
+      if (E.filtro.foco) { $('mdlSairFoco').click(); }
+    }
+  });
+
+  // Tema claro/escuro: redesenha as setas com as cores novas
+  new MutationObserver(function () { if (E.dados) { montarMarcadores(); desenharMini(); } })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  var timerResize = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(timerResize);
+    timerResize = setTimeout(function () { ajustarAltura(); desenharMini(); }, 120);
+  });
+
+  // ================================================================
+  // Início
+  // ================================================================
+  var pref = lerPref();
+  if (pref.modo === 'chaves' || pref.modo === 'todas') { E.filtro.modo = pref.modo; }
+  if (pref.tipos && typeof pref.tipos === 'object') { E.filtro.tipos = pref.tipos; }
+  if (typeof pref.vizinhos === 'boolean') { E.filtro.vizinhos = pref.vizinhos; }
+  Array.prototype.forEach.call($('mdlModo').querySelectorAll('button'), function (b) {
+    b.classList.toggle('ativo', b.getAttribute('data-modo') === E.filtro.modo);
+  });
+  ajustarAltura();
+  carregar(false);
+})();
+</script>
+{% endblock %}
