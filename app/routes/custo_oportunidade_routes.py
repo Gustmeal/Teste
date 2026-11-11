@@ -2,19 +2,30 @@
 """
 Rotas do módulo Custo de Oportunidade.
 
-Pipeline:
-  1. Baixa CSV "ConsolidatedTradesDerivatives" da B3.
+Pipeline (bot B3 e carga manual usam a MESMA lógica):
+  1. Baixa CSV "ConsolidatedTradesDerivatives" da B3 (ou recebe o manual).
   2. Filtra DI1 e mapeia preços médios por ANO_MES.
-  3. CONSTRÓI uma SÉRIE MENSAL COMPLETA de 105 meses consecutivos,
-     começando em (DT_ATUALIZACAO + 1 mês).
+  3. CONSTRÓI uma SÉRIE MENSAL CONTÍNUA começando em (DT_ATUALIZACAO + 1 mês)
+     e indo até o MAIOR entre:
+       - o último vencimento DI1 presente no CSV (captura TUDO da B3);
+       - a Data Limite (ANO_MES_LIMITE da FIN_TB006).
      - Meses presentes no CSV → usa contrato e preço real.
      - Meses AUSENTES no CSV → cria contrato virtual (DI1+letraCME+ano)
        sem preço, será interpolado.
-  4. Aplica interpolação linear nos vazios (regras início/meio/fim EMGEA).
-  5. Insere as 105 linhas no banco.
-  6. Recalcula TAXA_MEDIA APENAS do pregão atual (foto histórica).
-  7. Aplica horizonte retroativo na base inteira (limpa eventuais sobras
-     além de 105 meses em pregões antigos).
+  4. Aplica interpolação linear nos vazios (regras início/meio/fim EMGEA)
+     na série INTEIRA (inclusive depois da Data Limite).
+  5. Insere a série inteira na FIN_TB001 (nada é apagado).
+  6. Recalcula TAXA_MEDIA e TAXA_MEDIA_MENSAL do pregão atual (linha a
+     linha, para todos os meses salvos).
+  7. MEDIA_MENSAL / CUSTO_DE_OPURTUNIDADE (FIN_TB003) usam SOMENTE os
+     meses com ANO_MES <= Data Limite.
+
+REGRA DA DATA LIMITE:
+  Tudo é salvo, mas tudo o que o aplicativo MOSTRA ou CALCULA (tabela da
+  tela, gráficos, média mensal, custo de oportunidade, nota técnica) usa
+  apenas ANO_MES <= ANO_MES_LIMITE. O filtro é aplicado na leitura, com o
+  limite vigente no momento — se o limite for estendido depois, os meses
+  já salvos passam a valer sem precisar recapturar.
 
 Compatível com Python 3.9 e 3.12.
 """
@@ -40,9 +51,6 @@ custo_oportunidade_bp = Blueprint(
     url_prefix='/custo-oportunidade'
 )
 
-# Quantidade de meses na série completa (regra de negócio EMGEA)
-HORIZONTE_MESES = 105
-
 # Código de mês dos contratos futuros (padrão CME/B3)
 MES_CONTRATO = {
     'F': 1, 'G': 2, 'H': 3, 'J': 4, 'K': 5, 'M': 6,
@@ -53,6 +61,34 @@ MES_CONTRATO = {
 @custo_oportunidade_bp.context_processor
 def inject_current_year():
     return {'current_year': datetime.utcnow().year}
+
+
+# =========================================================================
+# FILTRO DA DATA LIMITE (usado em telas e cálculos)
+# =========================================================================
+def _ano_mes_para_int(ano_mes):
+    """'202609' / 202609 -> 202609 (int). None se inválido."""
+    s = str(ano_mes or '').strip()
+    return int(s) if len(s) == 6 and s.isdigit() else None
+
+
+def _filtrar_ate_limite(registros, ano_mes_limite):
+    """
+    Mantém só os registros com ANO_MES <= ano_mes_limite.
+
+    Os meses depois da Data Limite continuam salvos na FIN_TB001, mas
+    não entram em nada que o aplicativo mostra ou calcula.
+    Sem limite configurado (None), devolve a lista inteira.
+    Registros com ANO_MES inválido são descartados quando há limite.
+    """
+    if ano_mes_limite is None:
+        return list(registros)
+    filtrados = []
+    for r in registros:
+        am = _ano_mes_para_int(getattr(r, 'ANO_MES', None))
+        if am is not None and am <= ano_mes_limite:
+            filtrados.append(r)
+    return filtrados
 
 
 # =========================================================================
@@ -193,8 +229,13 @@ def _montar_grafico_di_12_semanas():
       - series : { '27/05/2026': [...], ... } valores alinhados ao eixo X
       - selic  : [...] Selic (COPOM) alinhada ao eixo X
     Retorna None se a view não tiver dados.
+
+    REGRA: só entram meses com ANO_MES <= Data Limite (FIN_TB006). Os meses
+    depois do limite ficam salvos na FIN_TB001, mas não aparecem no gráfico.
     Compatível com Python 3.9 e 3.12.
     """
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+
     # 1. Lê as 12 curvas da view
     sql_view = text("""
         SELECT
@@ -206,6 +247,11 @@ def _montar_grafico_di_12_semanas():
         ORDER BY [SEMANA] ASC, [ANO_MES] ASC;
     """)
     linhas = db.session.execute(sql_view).fetchall()
+
+    # Corta na Data Limite (mesma regra da tabela e dos cálculos)
+    linhas = _filtrar_ate_limite(
+        linhas, ConfigCustoOportunidade.obter_ano_mes_limite()
+    )
     if not linhas:
         return None
 
@@ -324,12 +370,20 @@ def index():
         dt_exibida = datas_disponiveis[0] if datas_disponiveis else None
 
     # 5. Buscar registros + média do pregão exibido
+    #    Só mostra ANO_MES <= Data Limite. Os meses depois do limite estão
+    #    salvos na FIN_TB001, mas só são contados (aviso no card).
+    ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
     registros = []
+    qtd_alem_limite = 0
     media_pregao = None
     if dt_exibida:
         registros_brutos = CustoOportunidade.listar_por_data_atualizacao(dt_exibida)
+        registros_ate_limite = _filtrar_ate_limite(
+            registros_brutos, ano_mes_limite_int
+        )
+        qtd_alem_limite = len(registros_brutos) - len(registros_ate_limite)
         registros = sorted(
-            registros_brutos,
+            registros_ate_limite,
             key=lambda r: (r.ANO_MES or '999999')
         )
         media_pregao = CustoOportunidadeMedia.obter_por_data(dt_exibida)
@@ -356,8 +410,7 @@ def index():
     pregoes_distintos = len(datas_disponiveis)
     dt_mais_recente = datas_disponiveis[0] if datas_disponiveis else None
 
-    # 9. Data limite configurada (FIN_TB006)
-    ano_mes_limite_int = ConfigCustoOportunidade.obter_ano_mes_limite()
+    # 9. Data limite configurada (FIN_TB006) — já lida no passo 5
 
     # 10. NOVO: dados do gráfico "DI Futuro Suavizada" (FIN_TB004)
     #     Sempre do pregão exibido; None se não houver dados na tabela.
@@ -369,6 +422,7 @@ def index():
     response = make_response(render_template(
         'custo_oportunidade/index.html',
         registros=registros,
+        qtd_alem_limite=qtd_alem_limite,
         datas_disponiveis=datas_disponiveis,
         datas_com_status=datas_com_status,
         dt_exibida=dt_exibida,
@@ -406,7 +460,8 @@ def executar_bot():
                            'Verifique a conexão ou tente novamente.'
             }), 500
 
-        # 2. Processar (gera série completa de 105 meses) e inserir
+        # 2. Processar (série contínua até o último vencimento do CSV ou a
+        #    Data Limite, o que for maior), interpolar e inserir TUDO
         inseridos, ignorados, interpolados, virtuais = _processar_csv(
             caminho_csv, dt_atualizacao
         )
@@ -440,14 +495,8 @@ def executar_bot():
             print(f'[CustoOportunidade] FALHA MEDIA_MENSAL: {e_media}')
             media_mensal_pregao = None
 
-        # 6. Limpar pregões antigos que tenham sobras além de 105 meses
-        try:
-            linhas_excluidas = _aplicar_horizonte_meses_global()
-            print(f'[CustoOportunidade] Horizonte aplicado retroativamente - '
-                  f'{linhas_excluidas} linha(s) excluída(s)')
-        except Exception as e_horiz:
-            print(f'[CustoOportunidade] FALHA horizonte: {e_horiz}')
-            linhas_excluidas = 0
+        # 6. (REMOVIDO) Não apaga mais nada depois da Data Limite: tudo fica
+        #    salvo na FIN_TB001 e o limite é aplicado só na leitura/cálculo.
 
         # 7. Auditoria
         registrar_log(
@@ -469,7 +518,6 @@ def executar_bot():
                 'media_mensal_pregao': (
                     str(media_mensal_pregao) if media_mensal_pregao is not None else None
                 ),
-                'linhas_excluidas_horizonte': linhas_excluidas,
                 'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d')
             }
         )
@@ -483,8 +531,9 @@ def executar_bot():
         return jsonify({
             'success': True,
             'message': (
-                f'Carga realizada! {inseridos} linha(s) na série de {HORIZONTE_MESES} meses '
+                f'Carga realizada! {inseridos} linha(s) salvas '
                 f'({virtuais} virtual(is), {interpolados} interpolado(s)). '
+                f'Cálculos consideram só os meses até a Data Limite. '
                 f'TAXA_MEDIA: {linhas_taxa_atualizadas} | '
                 f'TAXA_MEDIA_MENSAL: {linhas_mensal} | '
                 f'MEDIA_MENSAL do pregão: '
@@ -500,7 +549,6 @@ def executar_bot():
             'media_mensal_pregao': (
                 str(media_mensal_pregao) if media_mensal_pregao is not None else None
             ),
-            'linhas_excluidas_horizonte': linhas_excluidas,
             'dt_atualizacao': dt_atualizacao.strftime('%d/%m/%Y')
         })
 
@@ -666,7 +714,7 @@ def _baixar_csv_b3():
 
 
 # =========================================================================
-# PROCESSAMENTO DO CSV — CONSTRÓI SÉRIE COMPLETA DE 105 MESES
+# PROCESSAMENTO DO CSV — SÉRIE COMPLETA (tudo da B3, interpolada)
 # =========================================================================
 def _ler_csv_b3(caminho_csv):
     """
@@ -743,20 +791,22 @@ def _ler_csv_b3(caminho_csv):
 
 def _processar_csv(caminho_csv, dt_atualizacao):
     """
-    Lê CSV → filtra DI1 → constrói série mensal contínua até ANO_MES_LIMITE
-    configurado pelo usuário → interpola vazios → insere no banco.
+    Lê CSV → filtra DI1 → constrói série mensal contínua → interpola
+    vazios → insere TUDO no banco.
 
     Início da série: DT_ATUALIZACAO + 1 mês
-    Fim da série:    ANO_MES_LIMITE (lido de FIN_TB006_CONFIG)
+    Fim da série:    o MAIOR entre
+                       - o último vencimento DI1 presente no CSV
+                       - ANO_MES_LIMITE (FIN_TB006)
 
-    Diferente da versão antiga (que fixava 105 meses), agora a quantidade
-    de meses na série DIMINUI naturalmente conforme o tempo avança em
-    direção à data limite.
+    Ou seja: captura todos os contratos da B3 (mesmo depois da Data
+    Limite), passa tudo pela interpolação e salva. A Data Limite NÃO corta
+    mais a captura; ela só é aplicada nas telas e nos cálculos (leitura).
 
     Retorna (inseridos, ignorados, interpolados, virtuais).
-    Lança Exception se ANO_MES_LIMITE não estiver configurado.
+    Lança Exception se ANO_MES_LIMITE não estiver configurado ou já tiver
+    passado (sem limite válido os cálculos ficariam sem meses).
     """
-    import pandas as pd
     from app.models.mes_instrumento import MesInstrumento
     from app.models.config_custo_oportunidade import ConfigCustoOportunidade
 
@@ -774,16 +824,14 @@ def _processar_csv(caminho_csv, dt_atualizacao):
     if ano_mes_limite is None:
         raise Exception(
             'A Data Limite não está configurada. Configure no campo '
-            '"Data Limite (até quando capturar)" antes de capturar dados.'
+            '"Data Limite" antes de capturar dados.'
         )
 
-    # 3. Calcular janela da série
     # Início = DT_ATUALIZACAO + 1 mês
     ano_mes_inicio = _somar_meses_em_ano_mes(
         dt_atualizacao.year * 100 + dt_atualizacao.month,
         1
     )
-
     if ano_mes_inicio > ano_mes_limite:
         raise Exception(
             f'A Data Limite ({ano_mes_limite}) já passou em relação ao '
@@ -791,16 +839,7 @@ def _processar_csv(caminho_csv, dt_atualizacao):
             f'Atualize a Data Limite para uma data futura.'
         )
 
-    # Quantidade de meses = (limite - inicio) + 1 (inclusivo)
-    # Usa a mesma aritmética de _somar_meses_em_ano_mes (mês zero-based)
-    ano_i, mes_i = ano_mes_inicio // 100, ano_mes_inicio % 100
-    ano_f, mes_f = ano_mes_limite // 100, ano_mes_limite % 100
-    qtd_meses = (ano_f * 12 + (mes_f - 1)) - (ano_i * 12 + (mes_i - 1)) + 1
-
-    print(f'[CustoOportunidade] Série dinâmica: {ano_mes_inicio} até '
-          f'{ano_mes_limite} = {qtd_meses} mês(es)')
-
-    # 4. Carregar mapas de meses
+    # 3. Mapa número do mês -> letra do contrato
     registros_meses = MesInstrumento.query.all()
     mapa_nr_para_letra = {
         int(r.NR_MES): (r.COD_MES or '').strip().upper()
@@ -810,30 +849,74 @@ def _processar_csv(caminho_csv, dt_atualizacao):
     if not mapa_nr_para_letra:
         raise Exception('Tabela BDG.FIN_TB002_MESES_INSTRUMENTO incompleta.')
 
-    # 5. Indexar contratos DI1 do CSV por ANO_MES (int)
-    df = df[df['Instrumento financeiro'].notna()]
+    # 4. Indexar contratos DI1 do CSV por ANO_MES (int)
+    contratos_csv = _extrair_contratos_di1(df)
+    print(f'[CustoOportunidade] Contratos DI1 no CSV: {len(contratos_csv)}')
+
+    # 5. Série inteira + interpolação + insert (mesma rotina do manual)
+    return _montar_serie_e_inserir(
+        contratos_csv, dt_atualizacao, ano_mes_inicio,
+        ano_mes_limite, mapa_nr_para_letra
+    )
+
+
+def _extrair_contratos_di1(df):
+    """
+    Filtra as linhas DI1 do DataFrame e devolve
+    { ano_mes_int: {'inst': 'DI1F27', 'preco': Decimal} }.
+    """
+    df = df[df['Instrumento financeiro'].notna()].copy()
     df['Instrumento financeiro'] = df['Instrumento financeiro'].astype(str).str.strip()
     di1 = df[df['Instrumento financeiro'].str.startswith('DI1', na=False)]
 
-    contratos_csv = {}
+    contratos = {}
     for _, row in di1.iterrows():
         inst = str(row['Instrumento financeiro']).strip()
         ordinal = _vencto_para_ordinal(inst)
         if ordinal is None:
             continue
-        contratos_csv[ordinal] = {
+        contratos[ordinal] = {
             'inst': inst,
             'preco': _converter_preco_br(row['Preço médio']),
         }
+    return contratos
 
-    print(f'[CustoOportunidade] Contratos DI1 no CSV: {len(contratos_csv)}')
 
-    # 6. Construir série completa (qtd_meses linhas, dinâmico)
+def _montar_serie_e_inserir(contratos_csv, dt_atualizacao, ano_mes_inicio,
+                            ano_mes_limite, mapa_nr_para_letra):
+    """
+    Constrói a série mensal contínua, interpola e insere na FIN_TB001.
+
+    Fim da série = MAIOR entre o último vencimento com preço no CSV e a
+    Data Limite. Assim:
+      - Tudo o que a B3 publicou é salvo (mesmo depois do limite);
+      - Se o CSV terminar antes do limite, a regra FIM da interpolação
+        estende a série até o limite (como já era antes).
+    A interpolação roda na série inteira, então os meses vazios perto do
+    limite usam os contratos reais de depois do limite como âncora.
+
+    Retorna (inseridos, ignorados, interpolados, virtuais).
+    """
+    vencimentos_com_preco = [
+        am for am, c in contratos_csv.items()
+        if am >= ano_mes_inicio and c['preco'] is not None
+    ]
+    ultimo_vencimento = max(vencimentos_com_preco) if vencimentos_com_preco else None
+
+    ano_mes_fim = ano_mes_limite
+    if ultimo_vencimento is not None and ultimo_vencimento > ano_mes_fim:
+        ano_mes_fim = ultimo_vencimento
+
+    print(f'[CustoOportunidade] Série: {ano_mes_inicio} até {ano_mes_fim} '
+          f'(último vencimento no CSV: {ultimo_vencimento}, '
+          f'Data Limite: {ano_mes_limite})')
+
+    # 1. Série contínua mês a mês
     serie = []
     cursor = ano_mes_inicio
-    for _ in range(qtd_meses):
-        if cursor in contratos_csv:
-            real = contratos_csv[cursor]
+    while cursor <= ano_mes_fim:
+        real = contratos_csv.get(cursor)
+        if real is not None:
             serie.append({
                 'ano_mes_int': cursor,
                 'inst': real['inst'],
@@ -841,10 +924,9 @@ def _processar_csv(caminho_csv, dt_atualizacao):
                 'virtual': False,
             })
         else:
-            inst_virtual = _construir_inst_virtual(cursor, mapa_nr_para_letra)
             serie.append({
                 'ano_mes_int': cursor,
-                'inst': inst_virtual,
+                'inst': _construir_inst_virtual(cursor, mapa_nr_para_letra),
                 'preco': None,
                 'virtual': True,
             })
@@ -852,13 +934,15 @@ def _processar_csv(caminho_csv, dt_atualizacao):
 
     qtd_virtuais = sum(1 for s in serie if s['virtual'])
     qtd_vazios = sum(1 for s in serie if s['preco'] is None)
+    qtd_alem = sum(1 for s in serie if s['ano_mes_int'] > ano_mes_limite)
     print(f'[CustoOportunidade] Série montada: {len(serie)} linhas, '
-          f'{qtd_virtuais} virtual(is), {qtd_vazios} sem preço')
+          f'{qtd_virtuais} virtual(is), {qtd_vazios} sem preço, '
+          f'{qtd_alem} depois da Data Limite (salvas, fora dos cálculos)')
 
-    # 7. Interpolar
+    # 2. Interpolar (série inteira)
     interpolados = _interpolar_precos(serie)
 
-    # 8. Inserir
+    # 3. Inserir
     dt_carga = datetime.now().date()
     inseridos = 0
     ignorados = 0
@@ -869,8 +953,7 @@ def _processar_csv(caminho_csv, dt_atualizacao):
             ignorados += 1
             continue
 
-        ano_mes_int = entry['ano_mes_int']
-        ano_mes_str = f'{ano_mes_int:06d}'
+        ano_mes_str = f"{entry['ano_mes_int']:06d}"
         cod_mes_ano = entry['inst'][3:] if len(entry['inst']) > 3 else None
 
         ja_existe = CustoOportunidade.query.filter_by(
@@ -881,7 +964,7 @@ def _processar_csv(caminho_csv, dt_atualizacao):
             ignorados += 1
             continue
 
-        novo = CustoOportunidade(
+        db.session.add(CustoOportunidade(
             DT_CARGA=dt_carga,
             DT_ATUALIZACAO=dt_atualizacao,
             INST_FINANC=entry['inst'],
@@ -889,8 +972,7 @@ def _processar_csv(caminho_csv, dt_atualizacao):
             ANO_MES=ano_mes_str,
             COD_MES_ANO=cod_mes_ano,
             TAXA_MEDIA=None,
-        )
-        db.session.add(novo)
+        ))
         inseridos += 1
         if entry['virtual']:
             virtuais_inseridos += 1
@@ -955,38 +1037,6 @@ def _recalcular_taxa_media(dt_atualizacao):
         WHERE CO.DT_ATUALIZACAO = :dt_atualizacao;
     """)
     result = db.session.execute(sql, {'dt_atualizacao': dt_atualizacao})
-    db.session.commit()
-    return result.rowcount or 0
-
-
-# =========================================================================
-# HORIZONTE GLOBAL (limpa sobras retroativas)
-# =========================================================================
-def _aplicar_horizonte_meses_global():
-    """
-    Limpa contratos da tabela inteira cujo ANO_MES esteja além do
-    ANO_MES_LIMITE configurado em FIN_TB006_CONFIG_CUSTO_OPORTUNIDADE.
-
-    Diferente da versão antiga (que calculava limite por pregão usando
-    ANO_MES_MIN + 104), agora todos os pregões compartilham o mesmo
-    limite global definido pelo usuário.
-
-    Retorna a quantidade total de linhas excluídas.
-    Retorna 0 se ANO_MES_LIMITE não estiver configurado (não bloqueia).
-    """
-    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
-
-    limite = ConfigCustoOportunidade.obter_ano_mes_limite()
-    if limite is None:
-        return 0
-
-    sql = text("""
-        DELETE FROM [BDG].[FIN_TB001_CUSTO_OPORTUNIDADE]
-        WHERE ANO_MES IS NOT NULL
-          AND LEN(ANO_MES) = 6
-          AND CAST(ANO_MES AS INT) > :limite;
-    """)
-    result = db.session.execute(sql, {'limite': limite})
     db.session.commit()
     return result.rowcount or 0
 
@@ -1161,19 +1211,32 @@ def _calcular_e_salvar_media_mensal_pregao(dt_atualizacao):
     A flag REUNIAO NÃO é tocada (preserva valor anterior se já existia,
     ou usa o default 0 se for inserção nova).
 
+    REGRA DA DATA LIMITE: a média usa SOMENTE os meses com
+    ANO_MES <= ANO_MES_LIMITE (FIN_TB006). Os meses salvos depois do
+    limite não entram no custo de oportunidade. Sem limite configurado,
+    usa todos os meses do pregão.
+
     Retorna o valor da MEDIA_MENSAL gravada (Decimal) ou None se não
     houve registros válidos para calcular.
     """
-    # 1. Calcular AVG(TAXA_MEDIA_MENSAL)
-    sql_avg = text("""
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
+
+    # 1. Calcular AVG(TAXA_MEDIA_MENSAL) só até a Data Limite
+    ano_mes_limite = ConfigCustoOportunidade.obter_ano_mes_limite()
+    filtro_limite = ''
+    params = {'dt_atualizacao': dt_atualizacao}
+    if ano_mes_limite is not None:
+        filtro_limite = 'AND TRY_CAST([ANO_MES] AS INT) <= :limite'
+        params['limite'] = ano_mes_limite
+
+    sql_avg = text(f"""
         SELECT AVG([TAXA_MEDIA_MENSAL]) AS MEDIA
         FROM [BDG].[FIN_TB001_CUSTO_OPORTUNIDADE]
         WHERE [DT_ATUALIZACAO] = :dt_atualizacao
-          AND [TAXA_MEDIA_MENSAL] IS NOT NULL;
+          AND [TAXA_MEDIA_MENSAL] IS NOT NULL
+          {filtro_limite};
     """)
-    row = db.session.execute(
-        sql_avg, {'dt_atualizacao': dt_atualizacao}
-    ).fetchone()
+    row = db.session.execute(sql_avg, params).fetchone()
 
     media = row[0] if row else None
     if media is None:
@@ -1217,7 +1280,7 @@ def gerar_nota_tecnica():
       dt_atualizacao : YYYY-MM-DD - data do pregão de referência (atual)
 
     Lógica:
-      1. Busca os 105 registros do pregão atual (FIN_TB001).
+      1. Busca os registros do pregão atual (FIN_TB001), só até a Data Limite.
       2. Identifica o ÚLTIMO pregão marcado como COPOM (REUNIAO=1 em FIN_TB003).
       3. Busca os registros desse pregão COPOM em FIN_TB001.
       4. Pareia por ANO_MES e gera o PDF.
@@ -1228,7 +1291,12 @@ def gerar_nota_tecnica():
     """
     from flask import send_file, flash, redirect, url_for
     from app.models.custo_oportunidade_media import CustoOportunidadeMedia
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
     from app.utils.nota_tecnica_co_pdf import NotaTecnicaCustoOportunidadePDF
+
+    # Data Limite: a nota só considera ANO_MES <= limite (os meses depois
+    # do limite ficam salvos na FIN_TB001, mas fora do documento)
+    ano_mes_limite = ConfigCustoOportunidade.obter_ano_mes_limite()
 
     # 1. Parse e validação do parâmetro
     dt_str = (request.args.get('dt_atualizacao') or '').strip()
@@ -1242,8 +1310,11 @@ def gerar_nota_tecnica():
         flash('Data inválida.', 'danger')
         return redirect(url_for('custo_oportunidade.index'))
 
-    # 2. Buscar registros do pregão atual
-    registros_atuais = CustoOportunidade.listar_por_data_atualizacao(dt_pregao_atual)
+    # 2. Buscar registros do pregão atual (até a Data Limite)
+    registros_atuais = _filtrar_ate_limite(
+        CustoOportunidade.listar_por_data_atualizacao(dt_pregao_atual),
+        ano_mes_limite
+    )
     if not registros_atuais:
         flash(
             f'Nenhum registro encontrado para o pregão de '
@@ -1282,8 +1353,11 @@ def gerar_nota_tecnica():
 
     dt_pregao_copom = ultimo_copom.DT_ATUALIZACAO
 
-    # 4. Buscar registros do pregão COPOM em FIN_TB001
-    registros_copom = CustoOportunidade.listar_por_data_atualizacao(dt_pregao_copom)
+    # 4. Buscar registros do pregão COPOM em FIN_TB001 (até a Data Limite)
+    registros_copom = _filtrar_ate_limite(
+        CustoOportunidade.listar_por_data_atualizacao(dt_pregao_copom),
+        ano_mes_limite
+    )
     if not registros_copom:
         flash(
             f'O pregão COPOM marcado ({dt_pregao_copom.strftime("%d/%m/%Y")}) '
@@ -1685,7 +1759,7 @@ def upload_excel_manual():
         linhas_taxa_atualizadas = _recalcular_taxa_media(dt_atualizacao)
         linhas_mensal = _calcular_taxa_media_mensal(dt_atualizacao)
         media_mensal_pregao = _calcular_e_salvar_media_mensal_pregao(dt_atualizacao)
-        linhas_excluidas = _aplicar_horizonte_meses_global()
+        # Não apaga nada depois da Data Limite (limite aplicado só na leitura)
 
         registrar_log(
             acao='carga',
@@ -1701,7 +1775,6 @@ def upload_excel_manual():
                 'taxa_media_atualizadas': linhas_taxa_atualizadas,
                 'taxa_media_mensal_calculadas': linhas_mensal,
                 'media_mensal_pregao': str(media_mensal_pregao) if media_mensal_pregao is not None else None,
-                'linhas_excluidas_horizonte': linhas_excluidas,
                 'dt_atualizacao': dt_atualizacao.strftime('%Y-%m-%d')
             }
         )
@@ -1730,105 +1803,58 @@ def upload_excel_manual():
 
 
 def _processar_excel_manual(caminho_arquivo, dt_atualizacao):
+    """
+    Processa um CSV manual no layout simples (colunas 'Instrumento
+    financeiro' e 'Preço médio').
+
+    Usa EXATAMENTE a mesma regra do bot (_montar_serie_e_inserir):
+    captura tudo, interpola a série inteira e salva; a Data Limite só é
+    aplicada nas telas e nos cálculos.
+
+    Obs.: a rota /upload-excel-manual hoje chama _processar_csv; esta
+    função fica alinhada à mesma regra caso volte a ser usada.
+    """
     import pandas as pd
     from app.models.mes_instrumento import MesInstrumento
+    from app.models.config_custo_oportunidade import ConfigCustoOportunidade
 
     df = pd.read_csv(caminho_arquivo)
 
-    # Ajuste aqui conforme o layout do seu Excel
     colunas_esperadas = ['Instrumento financeiro', 'Preço médio']
     for col in colunas_esperadas:
         if col not in df.columns:
             raise Exception(f'Coluna obrigatória não encontrada: {col}')
 
+    ano_mes_limite = ConfigCustoOportunidade.obter_ano_mes_limite()
+    if ano_mes_limite is None:
+        raise Exception(
+            'A Data Limite não está configurada. Configure no campo '
+            '"Data Limite" antes de capturar dados.'
+        )
+
     mapa_nr_para_letra = MesInstrumento.carregar_mapa_invertido()
     if not mapa_nr_para_letra:
         raise Exception('Mapa de meses não encontrado.')
-
-    df = df[df['Instrumento financeiro'].notna()]
-    df['Instrumento financeiro'] = df['Instrumento financeiro'].astype(str).str.strip()
-    di1 = df[df['Instrumento financeiro'].str.startswith('DI1', na=False)]
-
-    contratos_csv = {}
-    for _, row in di1.iterrows():
-        inst = str(row['Instrumento financeiro']).strip()
-        ordinal = _vencto_para_ordinal(inst)
-        if ordinal is None:
-            continue
-        contratos_csv[ordinal] = {
-            'inst': inst,
-            'preco': _converter_preco_br(row['Preço médio']),
-        }
 
     ano_mes_inicio = _somar_meses_em_ano_mes(
         dt_atualizacao.year * 100 + dt_atualizacao.month,
         1
     )
-    ano_mes_fim = _somar_meses_em_ano_mes(ano_mes_inicio, HORIZONTE_MESES - 1)
-
-    serie = []
-    cursor = ano_mes_inicio
-    for _ in range(HORIZONTE_MESES):
-        if cursor in contratos_csv:
-            real = contratos_csv[cursor]
-            serie.append({
-                'ano_mes_int': cursor,
-                'inst': real['inst'],
-                'preco': real['preco'],
-                'virtual': False,
-            })
-        else:
-            inst_virtual = _construir_inst_virtual(cursor, mapa_nr_para_letra)
-            serie.append({
-                'ano_mes_int': cursor,
-                'inst': inst_virtual,
-                'preco': None,
-                'virtual': True,
-            })
-        cursor = _somar_meses_em_ano_mes(cursor, 1)
-
-    interpolados = _interpolar_precos(serie)
-
-    dt_carga = datetime.now().date()
-    inseridos = 0
-    ignorados = 0
-    virtuais_inseridos = 0
-
-    for entry in serie:
-        if entry['preco'] is None:
-            ignorados += 1
-            continue
-
-        ano_mes_int = entry['ano_mes_int']
-        ano_mes_str = f'{ano_mes_int:06d}'
-        cod_mes_ano = entry['inst'][3:] if len(entry['inst']) > 3 else None
-
-        ja_existe = CustoOportunidade.query.filter_by(
-            DT_ATUALIZACAO=dt_atualizacao,
-            INST_FINANC=entry['inst']
-        ).first()
-
-        if ja_existe:
-            ignorados += 1
-            continue
-
-        novo = CustoOportunidade(
-            DT_CARGA=dt_carga,
-            DT_ATUALIZACAO=dt_atualizacao,
-            INST_FINANC=entry['inst'],
-            VR_PRECO_MEDIA=entry['preco'],
-            ANO_MES=ano_mes_str,
-            COD_MES_ANO=cod_mes_ano,
-            TAXA_MEDIA=None,
+    if ano_mes_inicio > ano_mes_limite:
+        raise Exception(
+            f'A Data Limite ({ano_mes_limite}) já passou em relação ao '
+            f'pregão atual (que precisaria começar em {ano_mes_inicio}). '
+            f'Atualize a Data Limite para uma data futura.'
         )
-        db.session.add(novo)
-        inseridos += 1
-        if entry['virtual']:
-            virtuais_inseridos += 1
 
-    db.session.commit()
+    contratos_csv = _extrair_contratos_di1(df)
 
-    return inseridos, ignorados, interpolados, virtuais_inseridos
+    return _montar_serie_e_inserir(
+        contratos_csv, dt_atualizacao, ano_mes_inicio,
+        ano_mes_limite, mapa_nr_para_letra
+    )
+
+
 # =========================================================================
 # SALVAR ANO_MES_LIMITE (Data Limite até quando capturar)
 # =========================================================================
