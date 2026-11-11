@@ -11,8 +11,10 @@ class ConfigCustoOportunidade(db.Model):
 
     Chaves usadas hoje:
       - ANO_MES_LIMITE : YYYYMM (ex: '203501' = janeiro/2035)
-        Define até quando o bot deve pegar contratos DI1 na série mensal.
-        Substitui o antigo HORIZONTE_MESES fixo de 105 meses.
+        Define até qual mês as telas e os cálculos do módulo consideram os
+        contratos DI1. A captura (bot/manual) salva TODOS os vencimentos da
+        B3, interpolados; os meses depois do limite ficam na FIN_TB001 mas
+        fora dos cálculos. Substitui o antigo HORIZONTE_MESES fixo de 105.
 
     Estrutura:
       - CHAVE     varchar(50)  NOT NULL  *chave (PK)

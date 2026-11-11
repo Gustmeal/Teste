@@ -313,13 +313,15 @@
                 <div class="col-md-7">
                     <h6 class="mb-1">
                         <i class="fas fa-flag-checkered me-2 text-primary"></i>
-                        Passo 1 — Data Limite (até quando capturar)
+                        Passo 1 — Data Limite (até quando calcular)
                     </h6>
                     <p class="text-muted small mb-2">
-                        Define até qual mês/ano o bot deve construir a série de
-                        contratos DI1. <strong>Confira e, se necessário, altere
-                        antes de capturar os dados da B3</strong> (bot ou carga
-                        manual). Você só precisa alterar esse valor de vez em quando.
+                        A captura (bot ou carga manual) salva <strong>todos</strong>
+                        os contratos DI1 da B3, já interpolados. A Data Limite define
+                        até qual mês/ano a tabela, os gráficos, a média mensal, o
+                        custo de oportunidade e a nota técnica consideram os dados.
+                        Os meses depois do limite ficam guardados na base e passam a
+                        valer automaticamente se o limite for estendido.
                     </p>
                     {% if ano_mes_limite %}
                         <div>
@@ -388,6 +390,12 @@
                         <div>
                             <div class="text-muted small mb-1">Contratos exibidos</div>
                             <h5 class="mb-0">{{ registros|length }}</h5>
+                            {% if qtd_alem_limite %}
+                                <div class="text-muted small mt-1"
+                                     title="Salvos na base, fora dos cálculos e das telas">
+                                    + {{ qtd_alem_limite }} salvo(s) após a Data Limite
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
