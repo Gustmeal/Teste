@@ -1,6 +1,7 @@
 # app/routes/contas_contabeis_routes.py
 """
-Rotas do módulo Contas Contábeis (FCO x SISGEA x Balancete).
+Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
+(Chave de permissão/blueprint mantidas como 'contas_contabeis'.)
 
 1. Vinculação de contas  -> BDG.COR_TB031_FCO_CONTAS_CONTABEIS
    - Lista todas as contas (CO_CONTA, TIPO_PESSOA, ID_LINHA) com a descrição
@@ -9,14 +10,16 @@ Rotas do módulo Contas Contábeis (FCO x SISGEA x Balancete).
      (dropdown montado a partir da COR_TB030) e grava o ID_LINHA na COR_TB031.
    - Nova conta: INSERT de uma nova linha na COR_TB031.
 
-2. Balancete
+2. SISGEA x Balancete
    - Prévia atual   -> BDG.COR_VW004_FCO_VALORES_MES (só traz o mês mais recente)
    - Histórico      -> BDG.COR_TB032_FCO_DIFERENCAS  (todos os meses já gravados)
    - "Retirar de prévia": só grava se TODAS as linhas da view tiverem
      ID_PREVIA = 0. Copia a view para a COR_TB032 (sem o ID_PREVIA),
      calculando VR_DIFERENCA = VR_BALANCETE - VR_SISGEA.
    - Tabela de análise (igual à aba "Análise-SISGEA X BALANCETE" da planilha),
-     montada por DSC_LINHA, com filtros de linha e de tipo de pessoa.
+     montada por DSC_LINHA, mostrando só o TOTAL (SISGEA / Balancete /
+     Diferença). O filtro de tipo de pessoa aceita vários tipos ao mesmo
+     tempo (caixas de seleção); o total soma apenas os tipos marcados.
 
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
@@ -257,7 +260,7 @@ def _datas_historico():
     return datas
 
 
-def _buscar_linhas_balancete(fonte, dt_ref=None, id_linha=None, tipo_pessoa=None):
+def _buscar_linhas_balancete(fonte, dt_ref=None, id_linha=None, tipos=None):
     """
     Busca as linhas da view (prévia) ou da COR_TB032 (histórico), já com os
     filtros aplicados. Devolve lista de dicts com valores Decimal.
@@ -267,9 +270,13 @@ def _buscar_linhas_balancete(fonte, dt_ref=None, id_linha=None, tipo_pessoa=None
     if id_linha is not None:
         filtros.append('[ID_LINHA] = :id_linha')
         params['id_linha'] = id_linha
-    if tipo_pessoa:
-        filtros.append('LTRIM(RTRIM([TIPO_PESSOA])) = :tipo')
-        params['tipo'] = tipo_pessoa
+    if tipos:
+        # Um parâmetro por tipo marcado: IN (:tipo0, :tipo1, ...)
+        nomes = []
+        for i, t in enumerate(tipos):
+            nomes.append(':tipo{}'.format(i))
+            params['tipo{}'.format(i)] = t
+        filtros.append('LTRIM(RTRIM([TIPO_PESSOA])) IN ({})'.format(', '.join(nomes)))
 
     if fonte == FONTE_HISTORICO:
         if not dt_ref:
@@ -350,51 +357,30 @@ def _opcoes_filtro(fonte, dt_ref=None):
 
 def _montar_tabela(linhas_db):
     """
-    Monta a tabela dinâmica: uma linha por DSC_LINHA e, nas colunas, um grupo
-    (SISGEA / Balancete / Diferença) por TIPO_PESSOA + grupo Total (quando há
-    mais de um tipo). Todos os rótulos vêm dos dados.
+    Monta a tabela: uma linha por DSC_LINHA (ordem do ID_LINHA) com o TOTAL
+    de SISGEA / Balancete / Diferença somando os tipos de pessoa que vieram
+    do banco (já filtrados). Todos os rótulos vêm dos dados.
     """
-    tipos = sorted(set(l['tipo_pessoa'] for l in linhas_db))
-    mostrar_total = len(tipos) > 1
-
     def _zerado():
-        return {'sisgea': Decimal('0'), 'balancete': Decimal('0'), 'diferenca': Decimal('0'), 'tem': False}
+        return {'sisgea': Decimal('0'), 'balancete': Decimal('0'), 'diferenca': Decimal('0')}
 
     por_linha = {}
     ordem = []
+    totais = _zerado()
     for l in linhas_db:
         chave = l['id_linha']
         if chave not in por_linha:
-            por_linha[chave] = {
-                'id_linha': l['id_linha'],
-                'dsc_linha': l['dsc_linha'],
-                'tipos': {t: _zerado() for t in tipos},
-                'total': _zerado(),
-            }
+            por_linha[chave] = {'id_linha': l['id_linha'], 'dsc_linha': l['dsc_linha'], 'total': _zerado()}
             ordem.append(chave)
-        destino = [por_linha[chave]['tipos'][l['tipo_pessoa']], por_linha[chave]['total']]
-        for d in destino:
-            d['sisgea'] += l['vr_sisgea'] or Decimal('0')
-            d['balancete'] += l['vr_balancete'] or Decimal('0')
-            d['diferenca'] += l['vr_diferenca'] or Decimal('0')
-            d['tem'] = True
-
-    totais = {'tipos': {t: _zerado() for t in tipos}, 'total': _zerado()}
-    for chave in ordem:
-        item = por_linha[chave]
-        for t in tipos:
-            for campo in ('sisgea', 'balancete', 'diferenca'):
-                totais['tipos'][t][campo] += item['tipos'][t][campo]
-            totais['tipos'][t]['tem'] = totais['tipos'][t]['tem'] or item['tipos'][t]['tem']
-        for campo in ('sisgea', 'balancete', 'diferenca'):
-            totais['total'][campo] += item['total'][campo]
-        totais['total']['tem'] = totais['total']['tem'] or item['total']['tem']
+        for destino in (por_linha[chave]['total'], totais):
+            destino['sisgea'] += l['vr_sisgea'] or Decimal('0')
+            destino['balancete'] += l['vr_balancete'] or Decimal('0')
+            destino['diferenca'] += l['vr_diferenca'] or Decimal('0')
 
     return {
-        'tipos': tipos,
-        'mostrar_total': mostrar_total,
         'linhas': [por_linha[c] for c in ordem],
         'totais': totais,
+        'tipos_na_tabela': sorted(set(l['tipo_pessoa'] for l in linhas_db)),
     }
 
 
@@ -415,8 +401,13 @@ def _ler_filtros_balancete():
     if not ok:
         id_linha = None
 
-    tipo = (request.args.get('tipo') or '').strip()[:TAM_TIPO_PESSOA] or None
-    return fonte, datas, dt_ref, id_linha, tipo
+    # Vários tipos de pessoa (caixas de seleção): ?tipo=PF&tipo=PJ
+    tipos = []
+    for t in request.args.getlist('tipo'):
+        t = (t or '').strip()[:TAM_TIPO_PESSOA]
+        if t and t not in tipos:
+            tipos.append(t)
+    return fonte, datas, dt_ref, id_linha, tipos
 
 
 # =========================================================================
@@ -574,11 +565,13 @@ def vinculacao_nova():
 @sistema_requerido(SISTEMA)
 def balancete():
     db.session.expire_all()
-    fonte, datas, dt_ref, id_linha, tipo = _ler_filtros_balancete()
+    fonte, datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
 
     status = _status_previa()
     opcoes_linhas, opcoes_tipos = _opcoes_filtro(fonte, dt_ref)
-    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipo)
+    # Ignora tipos que não existem na origem escolhida (ex.: trocou a data)
+    tipos = [t for t in tipos if t in opcoes_tipos]
+    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipos)
     tabela = _montar_tabela(linhas_db)
 
     # Data exibida no título da tabela
@@ -598,7 +591,7 @@ def balancete():
         dt_ref=dt_ref,
         dt_tabela=dt_tabela,
         id_linha=id_linha,
-        tipo=tipo,
+        tipos=tipos,
         linha_escolhida=linha_escolhida,
         opcoes_linhas=opcoes_linhas,
         opcoes_tipos=opcoes_tipos,
@@ -726,8 +719,8 @@ def balancete_retirar_previa():
 @sistema_requerido(SISTEMA)
 def balancete_exportar():
     """Exporta para Excel a mesma tabela que está na tela (com os filtros)."""
-    fonte, _datas, dt_ref, id_linha, tipo = _ler_filtros_balancete()
-    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipo)
+    fonte, _datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
+    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipos)
     tabela = _montar_tabela(linhas_db)
 
     if fonte == FONTE_HISTORICO:
@@ -755,49 +748,25 @@ def balancete_exportar():
         titulo_fonte, ' - ' + dt_tabela.strftime('%d/%m/%Y') if dt_tabela else '')
     ws.cell(row=1, column=1, value=titulo).font = Font(bold=True, size=13)
 
-    grupos = list(tabela['tipos'])
-    if tabela['mostrar_total']:
-        grupos.append('TOTAL')
+    filtro_tipos = ', '.join(tipos) if tipos else 'Todos os tipos de pessoa'
+    ws.cell(row=2, column=1, value='Tipos de pessoa: {}'.format(filtro_tipos)).font = Font(italic=True, color='666666')
 
-    # Cabeçalho em 2 linhas: grupo (tipo de pessoa) e colunas
-    ws.cell(row=3, column=1, value='Linha')
-    ws.cell(row=3, column=2, value='Descrição')
-    ws.merge_cells(start_row=3, start_column=1, end_row=4, end_column=1)
-    ws.merge_cells(start_row=3, start_column=2, end_row=4, end_column=2)
-    col = 3
-    for g in grupos:
-        ws.cell(row=3, column=col, value=g)
-        ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 2)
-        for i, nome in enumerate(('SISGEA', 'Balancete', 'Diferença')):
-            ws.cell(row=4, column=col + i, value=nome)
-        col += 3
-    ultima_col = col - 1
-    for linha in (3, 4):
-        for c in range(1, ultima_col + 1):
-            cel = ws.cell(row=linha, column=c)
-            cel.fill = azul
-            cel.font = branco_negrito
-            cel.alignment = centro
-            cel.border = borda
-
-    def _valores(item):
-        valores = []
-        for g in tabela['tipos']:
-            v = item['tipos'][g]
-            valores += [v['sisgea'], v['balancete'], v['diferenca']] if v['tem'] else [None, None, None]
-        if tabela['mostrar_total']:
-            v = item['total']
-            valores += [v['sisgea'], v['balancete'], v['diferenca']]
-        return valores
+    cabecalho = ['Linha', 'Descrição', 'SISGEA', 'Balancete', 'Diferença']
+    for c, nome in enumerate(cabecalho, start=1):
+        cel = ws.cell(row=4, column=c, value=nome)
+        cel.fill = azul
+        cel.font = branco_negrito
+        cel.alignment = centro
+        cel.border = borda
+    ultima_col = len(cabecalho)
 
     linha_excel = 5
     for item in tabela['linhas']:
-        ws.cell(row=linha_excel, column=1, value=item['id_linha'])
-        ws.cell(row=linha_excel, column=2, value=item['dsc_linha'])
-        for i, v in enumerate(_valores(item)):
-            ws.cell(row=linha_excel, column=3 + i, value=float(v) if v is not None else None)
-        for c in range(1, ultima_col + 1):
-            cel = ws.cell(row=linha_excel, column=c)
+        v = item['total']
+        valores = [item['id_linha'], item['dsc_linha'],
+                   float(v['sisgea']), float(v['balancete']), float(v['diferenca'])]
+        for c, valor in enumerate(valores, start=1):
+            cel = ws.cell(row=linha_excel, column=c, value=valor)
             cel.border = borda
             if c >= 3:
                 cel.number_format = formato
@@ -805,8 +774,9 @@ def balancete_exportar():
 
     ws.cell(row=linha_excel, column=1, value='TOTAL')
     ws.merge_cells(start_row=linha_excel, start_column=1, end_row=linha_excel, end_column=2)
-    for i, v in enumerate(_valores(tabela['totais'])):
-        ws.cell(row=linha_excel, column=3 + i, value=float(v) if v is not None else None)
+    t = tabela['totais']
+    for c, valor in enumerate([float(t['sisgea']), float(t['balancete']), float(t['diferenca'])], start=3):
+        ws.cell(row=linha_excel, column=c, value=valor)
     for c in range(1, ultima_col + 1):
         cel = ws.cell(row=linha_excel, column=c)
         cel.fill = cinza
@@ -819,7 +789,7 @@ def balancete_exportar():
     ws.column_dimensions['B'].width = 48
     for c in range(3, ultima_col + 1):
         ws.column_dimensions[get_column_letter(c)].width = 19
-    ws.freeze_panes = 'C5'
+    ws.freeze_panes = 'A5'
 
     saida = BytesIO()
     wb.save(saida)
@@ -832,7 +802,7 @@ def balancete_exportar():
         acao='exportar',
         entidade='contas_contabeis_balancete',
         entidade_id=dt_tabela.isoformat() if dt_tabela else '',
-        descricao='Exportação da análise SISGEA x Balancete ({})'.format(titulo_fonte),
+        descricao='Exportação da análise SISGEA x Balancete ({}; tipos: {})'.format(titulo_fonte, filtro_tipos),
     )
     return send_file(
         saida,

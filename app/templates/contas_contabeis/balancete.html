@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Balancete - Contas Contábeis{% endblock %}
+{% block title %}SISGEA x Balancete - FCO{% endblock %}
 
 {% block content %}
 {# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
@@ -32,7 +32,7 @@
 
     <div class="mb-4">
         <h1 class="fw-bold header-with-back mb-1">
-            <i class="fas fa-balance-scale me-2"></i>Balancete
+            <i class="fas fa-balance-scale me-2"></i>SISGEA X BALANCETE
         </h1>
         <p class="text-muted mb-0">Retirada de prévia e análise SISGEA x Balancete por linha do FCO</p>
     </div>
@@ -102,7 +102,8 @@
     <!-- ============================================================ -->
     <!-- ANÁLISE SISGEA x BALANCETE                                   -->
     <!-- ============================================================ -->
-    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: hidden;">
+    {# Sem overflow: hidden no card para o menu de tipos de pessoa não ser cortado #}
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
             <div>
                 <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
@@ -112,12 +113,12 @@
                     {{ 'Prévia atual' if fonte == FONTE_PREVIA else 'Histórico' }}
                     {% if dt_tabela %} · referência {{ dt_tabela.strftime('%d/%m/%Y') }}{% endif %}
                     {% if linha_escolhida %} · {{ linha_escolhida.dsc_linha }}{% else %} · todas as linhas{% endif %}
-                    {% if tipo %} · {{ tipo }}{% endif %}
+                    · {% if tipos %}tipos: {{ tipos | join(', ') }}{% else %}todos os tipos de pessoa{% endif %}
                 </div>
             </div>
             {% if tabela.linhas %}
             <a class="btn btn-light btn-sm"
-               href="{{ url_for('contas_contabeis.balancete_exportar', fonte=fonte, dt=dt_ref.isoformat() if dt_ref else '', linha=id_linha if id_linha is not none else '', tipo=tipo or '') }}">
+               href="{{ url_for('contas_contabeis.balancete_exportar', fonte=fonte, dt=dt_ref.isoformat() if dt_ref else '', linha=id_linha if id_linha is not none else '', tipo=tipos) }}">
                 <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar Excel
             </a>
             {% endif %}
@@ -157,12 +158,32 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Tipo de pessoa</label>
-                    <select name="tipo" class="form-select form-select-sm js-filtro">
-                        <option value="">Todos</option>
-                        {% for t in opcoes_tipos %}
-                        <option value="{{ t }}" {% if t == tipo %}selected{% endif %}>{{ t }}</option>
-                        {% endfor %}
-                    </select>
+                    {# Caixas de seleção: pode marcar mais de um. Nenhum marcado = todos #}
+                    <div class="dropdown">
+                        <button class="form-select form-select-sm text-start js-ignore-loading" type="button" id="btnTipos"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {% if tipos %}{{ tipos | join(', ') }}{% else %}Todos{% endif %}
+                        </button>
+                        <div class="dropdown-menu p-2 shadow" aria-labelledby="btnTipos" style="min-width: 220px;">
+                            {% for t in opcoes_tipos %}
+                            <div class="form-check mb-1">
+                                <input class="form-check-input js-tipo" type="checkbox" name="tipo" value="{{ t }}"
+                                       id="tipo_{{ loop.index }}" {% if t in tipos %}checked{% endif %}>
+                                <label class="form-check-label" for="tipo_{{ loop.index }}">{{ t }}</label>
+                            </div>
+                            {% else %}
+                            <div class="text-muted small px-1">Nenhum tipo de pessoa nesta origem.</div>
+                            {% endfor %}
+                            {% if opcoes_tipos %}
+                            <hr class="my-2">
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-ignore-loading" id="btnTiposTodos">Todos</button>
+                                <button type="submit" class="btn btn-primary btn-sm flex-fill">Aplicar</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
                 <div class="col-md-1 d-grid">
                     <a href="{{ url_for('contas_contabeis.balancete', fonte=fonte) }}" class="btn btn-outline-secondary btn-sm" title="Limpar filtros">
@@ -171,35 +192,19 @@
                 </div>
             </form>
 
-            <!-- Tabela dinâmica -->
+            <!-- Tabela: apenas o total dos tipos de pessoa filtrados -->
             {% if tabela.linhas %}
-            {% set grupos = tabela.tipos %}
             {# Scroll próprio inline: o style.css global deixa .table-responsive com overflow: hidden #}
             <div class="cc-scroll" style="max-height: 640px; overflow: auto; width: 100%; border: 1px solid #e3e6f0; border-radius: 8px;">
                 <table class="table table-sm table-hover mb-0"
                        style="font-size: 0.82rem; border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%;">
                     <thead style="position: sticky; top: 0; z-index: 2;">
                         <tr>
-                            <th rowspan="2" style="{{ th_grupo }} min-width: 60px;">Linha</th>
-                            <th rowspan="2" style="{{ th_grupo }} min-width: 260px; text-align: left;">Descrição</th>
-                            {% for t in grupos %}
-                            <th colspan="3" style="{{ th_grupo }}">{{ t }}</th>
-                            {% endfor %}
-                            {% if tabela.mostrar_total %}
-                            <th colspan="3" style="{{ th_grupo }} background: #13855c; border-color: #17a673;">Total</th>
-                            {% endif %}
-                        </tr>
-                        <tr>
-                            {% for t in grupos %}
-                            <th style="{{ th_col }}">SISGEA</th>
-                            <th style="{{ th_col }}">Balancete</th>
-                            <th style="{{ th_col }}">Diferença</th>
-                            {% endfor %}
-                            {% if tabela.mostrar_total %}
-                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">SISGEA</th>
-                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">Balancete</th>
-                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">Diferença</th>
-                            {% endif %}
+                            <th style="{{ th_col }} min-width: 60px;">Linha</th>
+                            <th style="{{ th_col }} min-width: 300px; text-align: left;">Descrição</th>
+                            <th style="{{ th_col }} min-width: 160px;">SISGEA</th>
+                            <th style="{{ th_col }} min-width: 160px;">Balancete</th>
+                            <th style="{{ th_col }} min-width: 160px; background: #224abe;">Diferença</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -207,42 +212,26 @@
                         <tr>
                             <td style="text-align: center; color: #858796;">{{ item.id_linha }}</td>
                             <td style="font-weight: 600; color: #5a5c69; white-space: nowrap;">{{ item.dsc_linha }}</td>
-                            {% for t in grupos %}
-                            {% set v = item.tipos[t] %}
-                            <td style="{{ num }}">{{ valor(v.sisgea, v.tem) }}</td>
-                            <td style="{{ num }}">{{ valor(v.balancete, v.tem) }}</td>
-                            <td style="{{ num }} background: #fbfbfe; font-weight: 600;">{{ valor(v.diferenca, v.tem) }}</td>
-                            {% endfor %}
-                            {% if tabela.mostrar_total %}
-                            <td style="{{ num }} background: #f3fbf7;">{{ valor(item.total.sisgea) }}</td>
-                            <td style="{{ num }} background: #f3fbf7;">{{ valor(item.total.balancete) }}</td>
-                            <td style="{{ num }} background: #e6f7ef; font-weight: 700;">{{ valor(item.total.diferenca) }}</td>
-                            {% endif %}
+                            <td style="{{ num }}">{{ valor(item.total.sisgea) }}</td>
+                            <td style="{{ num }}">{{ valor(item.total.balancete) }}</td>
+                            <td style="{{ num }} background: #f3f5fc; font-weight: 700;">{{ valor(item.total.diferenca) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot style="position: sticky; bottom: 0; z-index: 1;">
-                        <tr style="background: #eaecf4; font-weight: 700;">
+                        <tr style="font-weight: 700;">
                             <td colspan="2" style="background: #eaecf4; border-top: 2px solid #4e73df;">TOTAL</td>
-                            {% for t in grupos %}
-                            {% set v = tabela.totais.tipos[t] %}
-                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.sisgea, v.tem) }}</td>
-                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.balancete, v.tem) }}</td>
-                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.diferenca, v.tem) }}</td>
-                            {% endfor %}
-                            {% if tabela.mostrar_total %}
-                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.sisgea) }}</td>
-                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.balancete) }}</td>
-                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.diferenca) }}</td>
-                            {% endif %}
+                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(tabela.totais.sisgea) }}</td>
+                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(tabela.totais.balancete) }}</td>
+                            <td style="{{ num }} background: #dde2f3; border-top: 2px solid #4e73df;">{{ valor(tabela.totais.diferenca) }}</td>
                         </tr>
                     </tfoot>
                 </table>
             </div>
             <div class="text-muted mt-2" style="font-size: 0.78rem;">
-                Diferença = Balancete − SISGEA.
+                Diferença = Balancete − SISGEA. Valores somados dos tipos de pessoa:
+                <strong>{{ tabela.tipos_na_tabela | join(', ') if tabela.tipos_na_tabela else '-' }}</strong>.
                 {% if fonte == FONTE_HISTORICO %}No histórico é exibida a diferença gravada na retirada de prévia (valor inteiro).{% endif %}
-            </div>
             {% else %}
             <div class="text-center text-muted py-4">
                 <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
@@ -304,13 +293,24 @@
         sel.addEventListener('change', function () {
             if (sel.id === 'selFonte') {
                 // Mudou a origem: limpa os demais filtros (as opções mudam)
-                form.querySelectorAll('select').forEach(function (s) {
+                form.querySelectorAll('select, .js-tipo').forEach(function (s) {
                     if (s.id !== 'selFonte') { s.disabled = true; }
                 });
             }
             form.submit();
         });
     });
+
+    // Tipos de pessoa: "Todos" desmarca as caixas (nenhuma marcada = todos)
+    const btnTiposTodos = document.getElementById('btnTiposTodos');
+    if (btnTiposTodos) {
+        btnTiposTodos.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            document.querySelectorAll('.js-tipo').forEach(function (c) { c.checked = false; });
+            form.submit();
+        });
+    }
 
     // Retirar de prévia
     const btnRetirar = document.getElementById('btnRetirarPrevia');

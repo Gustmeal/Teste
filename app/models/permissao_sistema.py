@@ -91,7 +91,7 @@ class PermissaoSistema(db.Model):
             'categoria': 'Gestão Contábil'
         },
         'contas_contabeis': {
-            'nome': 'Contas Contábeis',
+            'nome': 'FCO',
             'icone': 'fa-balance-scale',
             'descricao': 'Vinculação de contas ao FCO e conciliação SISGEA x Balancete',
             'categoria': 'Gestão Contábil'

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Vinculação de Contas - Contas Contábeis{% endblock %}
+{% block title %}Vinculação de Contas - FCO{% endblock %}
 
 {% block content %}
 {# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
@@ -16,7 +16,7 @@
     </a>
     <div class="d-flex gap-2">
         <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-outline-primary btn-sm">
-            <i class="fas fa-balance-scale me-1"></i> Balancete
+            <i class="fas fa-balance-scale me-1"></i> SISGEA X BALANCETE
         </a>
         <button type="button" class="btn btn-success btn-sm js-ignore-loading" id="btnNovaConta">
             <i class="fas fa-plus me-1"></i> Nova conta
