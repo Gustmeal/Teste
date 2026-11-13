@@ -90,6 +90,12 @@ class PermissaoSistema(db.Model):
             'descricao': 'Gerenciamento de códigos contábeis PDG',
             'categoria': 'Gestão Contábil'
         },
+        'contas_contabeis': {
+            'nome': 'Contas Contábeis',
+            'icone': 'fa-balance-scale',
+            'descricao': 'Vinculação de contas ao FCO e conciliação SISGEA x Balancete',
+            'categoria': 'Gestão Contábil'
+        },
         'demonstrativo_sucor': {
             'nome': 'Demonstrativos SUCOR',
             'icone': 'fa-chart-bar',

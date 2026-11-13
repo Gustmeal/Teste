@@ -212,6 +212,10 @@ def create_app():
     from app.routes.analise_financeira_pf_routes import analise_financeira_pf_bp
     app.register_blueprint(analise_financeira_pf_bp)
 
+    # Contas Contábeis (vinculação FCO e balancete SISGEA x Balancete)
+    from app.routes.contas_contabeis_routes import contas_contabeis_bp
+    app.register_blueprint(contas_contabeis_bp)
+
     # Auditoria V2 (telas)
     from app.routes.auditoria_v2_routes import auditoria_v2_bp
     app.register_blueprint(auditoria_v2_bp)

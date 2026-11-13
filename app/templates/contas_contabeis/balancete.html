@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}Balancete - Contas Contábeis{% endblock %}
+
+{% block content %}
+{# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set th_grupo = "background: #224abe; color: #fff; font-size: 0.78rem; font-weight: 700; text-align: center; vertical-align: middle; border: 1px solid #3a5fcd;" %}
+{% set th_col = "background: #4e73df; color: #fff; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; text-align: center; vertical-align: middle; border: 1px solid #3a5fcd; white-space: nowrap;" %}
+{% set num = "text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;" %}
+
+{% macro valor(v, tem=True) -%}
+    {%- if not tem or v is none -%}
+        <span class="text-muted">-</span>
+    {%- elif v < 0 -%}
+        <span style="color: #e74a3b;">{{ fmt(v) }}</span>
+    {%- else -%}
+        {{ fmt(v) }}
+    {%- endif -%}
+{%- endmacro %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('contas_contabeis.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-link me-1"></i> Vinculação de contas
+    </a>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="mb-4">
+        <h1 class="fw-bold header-with-back mb-1">
+            <i class="fas fa-balance-scale me-2"></i>Balancete
+        </h1>
+        <p class="text-muted mb-0">Retirada de prévia e análise SISGEA x Balancete por linha do FCO</p>
+    </div>
+
+    <div id="ccMensagem" style="display:none;"></div>
+
+    <!-- ============================================================ -->
+    <!-- RETIRAR DE PRÉVIA                                            -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                <i class="fas fa-file-export me-2"></i>Balancete em prévia
+            </h5>
+            <button type="button" class="btn btn-warning btn-sm js-ignore-loading" id="btnRetirarPrevia"
+                    {% if not status.qtd_total %}disabled{% endif %}>
+                <i class="fas fa-lock-open me-1"></i> Retirar de prévia
+            </button>
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+            {% if status.qtd_total %}
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Data de referência</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: #5a5c69;">
+                        {% if status.dt_max %}
+                            {% if status.dt_min and status.dt_min != status.dt_max %}
+                                {{ status.dt_min.strftime('%d/%m/%Y') }} a {{ status.dt_max.strftime('%d/%m/%Y') }}
+                            {% else %}
+                                {{ status.dt_max.strftime('%d/%m/%Y') }}
+                            {% endif %}
+                        {% else %}-{% endif %}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Linhas na view</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: #5a5c69;">{{ status.qtd_total | mil }}</div>
+                </div>
+                <div class="col-md-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Em prévia (ID_PREVIA ≠ 0)</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: {{ '#e74a3b' if status.qtd_previa else '#1cc88a' }};">
+                        {{ status.qtd_previa | mil }}
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Situação</div>
+                    <div class="mt-1">
+                        {% if status.ja_gravado %}
+                            <span class="badge bg-success">Já retirado de prévia</span>
+                        {% elif status.liberado %}
+                            <span class="badge bg-info text-dark">Liberado para retirar</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">Ainda em prévia</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="text-muted mt-3" style="font-size: 0.8rem;">
+                O botão só grava no histórico quando <strong>todas</strong> as linhas da prévia estiverem com ID_PREVIA = 0.
+            </div>
+            {% else %}
+            <div class="text-muted">A view do balancete não retornou nenhuma linha.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ANÁLISE SISGEA x BALANCETE                                   -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: hidden;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <div>
+                <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                    <i class="fas fa-table me-2"></i>Análise SISGEA x Balancete
+                </h5>
+                <div style="font-size: 0.8rem; opacity: 0.9;">
+                    {{ 'Prévia atual' if fonte == FONTE_PREVIA else 'Histórico' }}
+                    {% if dt_tabela %} · referência {{ dt_tabela.strftime('%d/%m/%Y') }}{% endif %}
+                    {% if linha_escolhida %} · {{ linha_escolhida.dsc_linha }}{% else %} · todas as linhas{% endif %}
+                    {% if tipo %} · {{ tipo }}{% endif %}
+                </div>
+            </div>
+            {% if tabela.linhas %}
+            <a class="btn btn-light btn-sm"
+               href="{{ url_for('contas_contabeis.balancete_exportar', fonte=fonte, dt=dt_ref.isoformat() if dt_ref else '', linha=id_linha if id_linha is not none else '', tipo=tipo or '') }}">
+                <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar Excel
+            </a>
+            {% endif %}
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+
+            <!-- Filtros -->
+            <form method="get" action="{{ url_for('contas_contabeis.balancete') }}" id="formFiltros" class="row g-3 align-items-end mb-3">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Origem</label>
+                    <select name="fonte" class="form-select form-select-sm js-filtro" id="selFonte">
+                        <option value="{{ FONTE_PREVIA }}" {% if fonte == FONTE_PREVIA %}selected{% endif %}>Prévia atual (view)</option>
+                        <option value="{{ FONTE_HISTORICO }}" {% if fonte == FONTE_HISTORICO %}selected{% endif %}
+                                {% if not datas_historico %}disabled{% endif %}>
+                            Histórico (retirados de prévia){% if not datas_historico %} - vazio{% endif %}
+                        </option>
+                    </select>
+                </div>
+                {% if fonte == FONTE_HISTORICO %}
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Data de referência</label>
+                    <select name="dt" class="form-select form-select-sm js-filtro">
+                        {% for d in datas_historico %}
+                        <option value="{{ d.isoformat() }}" {% if d == dt_ref %}selected{% endif %}>{{ d.strftime('%d/%m/%Y') }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Linha (DSC_LINHA)</label>
+                    <select name="linha" class="form-select form-select-sm js-filtro">
+                        <option value="">Todas as linhas</option>
+                        {% for o in opcoes_linhas %}
+                        <option value="{{ o.id_linha }}" {% if o.id_linha == id_linha %}selected{% endif %}>{{ o.id_linha }} - {{ o.dsc_linha }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Tipo de pessoa</label>
+                    <select name="tipo" class="form-select form-select-sm js-filtro">
+                        <option value="">Todos</option>
+                        {% for t in opcoes_tipos %}
+                        <option value="{{ t }}" {% if t == tipo %}selected{% endif %}>{{ t }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-1 d-grid">
+                    <a href="{{ url_for('contas_contabeis.balancete', fonte=fonte) }}" class="btn btn-outline-secondary btn-sm" title="Limpar filtros">
+                        <i class="fas fa-eraser"></i>
+                    </a>
+                </div>
+            </form>
+
+            <!-- Tabela dinâmica -->
+            {% if tabela.linhas %}
+            {% set grupos = tabela.tipos %}
+            <div class="table-responsive" style="max-height: 640px;">
+                <table class="table table-sm table-hover mb-0" style="font-size: 0.82rem; border-collapse: separate; border-spacing: 0;">
+                    <thead style="position: sticky; top: 0; z-index: 2;">
+                        <tr>
+                            <th rowspan="2" style="{{ th_grupo }} min-width: 60px;">Linha</th>
+                            <th rowspan="2" style="{{ th_grupo }} min-width: 260px; text-align: left;">Descrição</th>
+                            {% for t in grupos %}
+                            <th colspan="3" style="{{ th_grupo }}">{{ t }}</th>
+                            {% endfor %}
+                            {% if tabela.mostrar_total %}
+                            <th colspan="3" style="{{ th_grupo }} background: #13855c; border-color: #17a673;">Total</th>
+                            {% endif %}
+                        </tr>
+                        <tr>
+                            {% for t in grupos %}
+                            <th style="{{ th_col }}">SISGEA</th>
+                            <th style="{{ th_col }}">Balancete</th>
+                            <th style="{{ th_col }}">Diferença</th>
+                            {% endfor %}
+                            {% if tabela.mostrar_total %}
+                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">SISGEA</th>
+                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">Balancete</th>
+                            <th style="{{ th_col }} background: #1cc88a; border-color: #17a673;">Diferença</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in tabela.linhas %}
+                        <tr>
+                            <td style="text-align: center; color: #858796;">{{ item.id_linha }}</td>
+                            <td style="font-weight: 600; color: #5a5c69;">{{ item.dsc_linha }}</td>
+                            {% for t in grupos %}
+                            {% set v = item.tipos[t] %}
+                            <td style="{{ num }}">{{ valor(v.sisgea, v.tem) }}</td>
+                            <td style="{{ num }}">{{ valor(v.balancete, v.tem) }}</td>
+                            <td style="{{ num }} background: #fbfbfe; font-weight: 600;">{{ valor(v.diferenca, v.tem) }}</td>
+                            {% endfor %}
+                            {% if tabela.mostrar_total %}
+                            <td style="{{ num }} background: #f3fbf7;">{{ valor(item.total.sisgea) }}</td>
+                            <td style="{{ num }} background: #f3fbf7;">{{ valor(item.total.balancete) }}</td>
+                            <td style="{{ num }} background: #e6f7ef; font-weight: 700;">{{ valor(item.total.diferenca) }}</td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot style="position: sticky; bottom: 0; z-index: 1;">
+                        <tr style="background: #eaecf4; font-weight: 700;">
+                            <td colspan="2" style="background: #eaecf4; border-top: 2px solid #4e73df;">TOTAL</td>
+                            {% for t in grupos %}
+                            {% set v = tabela.totais.tipos[t] %}
+                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.sisgea, v.tem) }}</td>
+                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.balancete, v.tem) }}</td>
+                            <td style="{{ num }} background: #eaecf4; border-top: 2px solid #4e73df;">{{ valor(v.diferenca, v.tem) }}</td>
+                            {% endfor %}
+                            {% if tabela.mostrar_total %}
+                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.sisgea) }}</td>
+                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.balancete) }}</td>
+                            <td style="{{ num }} background: #d4f2e3; border-top: 2px solid #1cc88a;">{{ valor(tabela.totais.total.diferenca) }}</td>
+                            {% endif %}
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="text-muted mt-2" style="font-size: 0.78rem;">
+                Diferença = Balancete − SISGEA.
+                {% if fonte == FONTE_HISTORICO %}No histórico é exibida a diferença gravada na retirada de prévia (valor inteiro).{% endif %}
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                {% if fonte == FONTE_HISTORICO and not datas_historico %}
+                    Nenhum balancete foi retirado de prévia ainda.
+                {% else %}
+                    Nenhum dado encontrado para os filtros escolhidos.
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmação (substituir data já gravada) -->
+<div class="modal fade" id="modalConfirmar" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius: 12px;">
+            <div class="modal-header" style="background: #f6c23e;">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Confirmar substituição</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body" id="textoConfirmar"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary js-ignore-loading" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning js-ignore-loading" id="btnConfirmarSubstituir">
+                    <i class="fas fa-sync-alt me-1"></i> Substituir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function () {
+    const URL_RETIRAR = "{{ url_for('contas_contabeis.balancete_retirar_previa') }}";
+    const URL_HISTORICO = "{{ url_for('contas_contabeis.balancete', fonte=FONTE_HISTORICO) }}";
+    const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
+
+    function mostrarMensagem(tipo, texto) {
+        const el = document.getElementById('ccMensagem');
+        el.className = 'alert alert-' + tipo + ' mb-3';
+        el.textContent = texto;
+        el.style.display = 'block';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    // Filtros: troca de qualquer select recarrega a tabela
+    const form = document.getElementById('formFiltros');
+    document.querySelectorAll('.js-filtro').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            if (sel.id === 'selFonte') {
+                // Mudou a origem: limpa os demais filtros (as opções mudam)
+                form.querySelectorAll('select').forEach(function (s) {
+                    if (s.id !== 'selFonte') { s.disabled = true; }
+                });
+            }
+            form.submit();
+        });
+    });
+
+    // Retirar de prévia
+    const btnRetirar = document.getElementById('btnRetirarPrevia');
+    const modalConfirmar = new bootstrap.Modal(document.getElementById('modalConfirmar'));
+
+    function retirar(substituir) {
+        btnRetirar.disabled = true;
+        fetch(URL_RETIRAR, {method: 'POST', headers: HEADERS, body: JSON.stringify({substituir: substituir})})
+            .then(function (r) {
+                return r.json().catch(function () { return {sucesso: false, mensagem: 'Resposta inválida do servidor.'}; });
+            })
+            .then(function (d) {
+                if (d.sucesso) {
+                    mostrarMensagem('success', d.mensagem);
+                    setTimeout(function () {
+                        window.location.href = URL_HISTORICO + '&dt=' + encodeURIComponent(d.dt_referencia || '');
+                    }, 900);
+                } else if (d.precisa_confirmar) {
+                    document.getElementById('textoConfirmar').textContent = d.mensagem;
+                    modalConfirmar.show();
+                    btnRetirar.disabled = false;
+                } else {
+                    mostrarMensagem('danger', d.mensagem);
+                    btnRetirar.disabled = false;
+                }
+            })
+            .catch(function () {
+                mostrarMensagem('danger', 'Erro de comunicação com o servidor.');
+                btnRetirar.disabled = false;
+            });
+    }
+
+    btnRetirar.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        retirar(false);
+    });
+
+    document.getElementById('btnConfirmarSubstituir').addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        modalConfirmar.hide();
+        retirar(true);
+    });
+})();
+</script>
+{% endblock %}

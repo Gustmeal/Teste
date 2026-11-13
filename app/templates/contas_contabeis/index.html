@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Contas Contábeis - Portal GEINC{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="central-panel mt-3 fade-in">
+    <h1>Contas Contábeis</h1>
+    <p class="text-secondary">Vinculação das contas contábeis às linhas do FCO e conciliação SISGEA x Balancete</p>
+
+    <div class="row g-4 mt-4 justify-content-center">
+        <!-- Vinculação -->
+        <div class="col-md-5">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #4e73df;">
+                        <i class="fas fa-link"></i>
+                    </div>
+                    <h3 class="system-title mb-3">Vinculação de Contas</h3>
+                    <p class="text-muted mb-3">
+                        Vincule cada conta contábil a uma linha do FCO e cadastre novas contas.
+                    </p>
+                    <p class="mb-4" style="font-size: 0.9rem;">
+                        <span class="badge bg-primary">{{ resumo.qtd_contas | mil }} conta(s)</span>
+                        {% if resumo.qtd_sem_vinculo %}
+                        <span class="badge bg-warning text-dark">{{ resumo.qtd_sem_vinculo | mil }} sem vínculo</span>
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-link me-2"></i> Acessar Vinculação
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Balancete -->
+        <div class="col-md-5">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-5">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #1cc88a;">
+                        <i class="fas fa-balance-scale"></i>
+                    </div>
+                    <h3 class="system-title mb-3">Balancete</h3>
+                    <p class="text-muted mb-3">
+                        Retire o balancete de prévia e analise SISGEA x Balancete por linha do FCO.
+                    </p>
+                    <p class="mb-4" style="font-size: 0.9rem;">
+                        {% if resumo.status and resumo.status.qtd_total %}
+                            {% if resumo.status.dt_max %}
+                            <span class="badge bg-secondary">Ref. {{ resumo.status.dt_max.strftime('%d/%m/%Y') }}</span>
+                            {% endif %}
+                            {% if resumo.status.ja_gravado %}
+                            <span class="badge bg-success">Já retirado de prévia</span>
+                            {% elif resumo.status.liberado %}
+                            <span class="badge bg-info text-dark">Liberado para retirar</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark">Em prévia</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-light text-dark">Sem dados na prévia</span>
+                        {% endif %}
+                    </p>
+                    <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-balance-scale me-2"></i> Acessar Balancete
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .system-icon {
+        font-size: 3rem;
+        display: inline-block;
+        width: 90px;
+        height: 90px;
+        line-height: 90px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+    .home-card { transition: transform 0.3s ease; }
+    .home-card:hover { transform: translateY(-5px); }
+    .system-title { font-size: 1.5rem; font-weight: 600; }
+    .btn-access.btn-lg { padding: 14px 35px; font-size: 1.1rem; font-weight: 500; }
+</style>
+{% endblock %}
