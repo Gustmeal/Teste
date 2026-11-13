@@ -13,7 +13,7 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
 2. SISGEA x Balancete
    - Prévia atual   -> BDG.COR_VW004_FCO_VALORES_MES (só traz o mês mais recente)
    - Histórico      -> BDG.COR_TB032_FCO_DIFERENCAS  (todos os meses já gravados)
-   - "Retirar de prévia": só grava se TODAS as linhas da view tiverem
+   - "Guardar FCO": só grava se TODAS as linhas da view tiverem
      ID_PREVIA = 0. Copia a view para a COR_TB032 (sem o ID_PREVIA),
      calculando VR_DIFERENCA = VR_BALANCETE - VR_SISGEA.
    - Tabela de análise (igual à aba "Análise-SISGEA X BALANCETE" da planilha),
@@ -24,7 +24,7 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
 """
-from flask import Blueprint, render_template, request, jsonify, send_file
+from flask import Blueprint, render_template, request, jsonify, send_file, g
 from flask_login import login_required
 from app import db
 from app.auth.decorators import sistema_requerido
@@ -160,14 +160,18 @@ def _listar_contas():
 
 
 def _listar_tipos_pessoa_existentes():
-    """Tipos de pessoa já usados no banco (sugestões do campo da nova conta)."""
+    """
+    Tipos de pessoa já usados (sugestões do campo da nova conta).
+    Lê só tabelas (COR_TB031 + COR_TB032): a view é pesada e não precisa
+    ser executada para montar sugestões.
+    """
     sql = text(f"""
         SELECT DISTINCT LTRIM(RTRIM([TIPO_PESSOA])) AS TIPO_PESSOA
         FROM {TB_CONTAS}
         WHERE [TIPO_PESSOA] IS NOT NULL AND LTRIM(RTRIM([TIPO_PESSOA])) <> ''
         UNION
         SELECT DISTINCT LTRIM(RTRIM([TIPO_PESSOA]))
-        FROM {VW_VALORES_MES}
+        FROM {TB_DIFERENCAS}
         WHERE [TIPO_PESSOA] IS NOT NULL AND LTRIM(RTRIM([TIPO_PESSOA])) <> ''
     """)
     try:
@@ -208,41 +212,90 @@ def _ler_id_linha(valor):
 
 
 # ---------------------------- Consultas: balancete -----------------------
+#
+# DESEMPENHO: a COR_VW004 é uma view calculada (pesada). Antes cada tela a
+# executava 4 vezes (status, linhas do filtro, tipos do filtro e tabela).
+# Agora ela é lida UMA única vez por requisição (_ler_view, guardada em g) e
+# status, opções de filtro e tabela são montados em Python a partir dessas
+# linhas (poucas: linhas do FCO x tipos de pessoa). O histórico (COR_TB032)
+# é filtrado direto pela data, com o parâmetro do tipo date, sem CONVERT na
+# coluna (assim o SQL Server usa a chave primária).
 
-def _status_previa():
-    """Situação da view: datas, total de linhas e quantas ainda estão em prévia."""
+def _normalizar_linha(r, historico=False):
+    sisgea = _dec(r['VR_SISGEA'])
+    balancete = _dec(r['VR_BALANCETE'])
+    if historico and r.get('VR_DIFERENCA') is not None:
+        # Histórico: usa a diferença que foi gravada na tabela
+        diferenca = Decimal(int(r['VR_DIFERENCA']))
+    else:
+        # Prévia: diferença calculada aqui (Balancete - SISGEA)
+        diferenca = (balancete or Decimal('0')) - (sisgea or Decimal('0'))
+    return {
+        'dt_referencia': _para_date(r['DT_REFERENCIA']),
+        'tipo_pessoa': (r['TIPO_PESSOA'] or '').strip(),
+        'id_linha': int(r['ID_LINHA']),
+        'dsc_linha': (r['DSC_LINHA'] or '').strip(),
+        'vr_sisgea': sisgea,
+        'vr_balancete': balancete,
+        'vr_diferenca': diferenca,
+        'id_previa': r.get('ID_PREVIA'),
+    }
+
+
+def _ler_view():
+    """Executa a COR_VW004 uma única vez por requisição (cache em flask.g)."""
+    if getattr(g, '_cc_view', None) is not None:
+        return g._cc_view
     sql = text(f"""
-        SELECT
-            COUNT(1) AS QTD_TOTAL,
-            SUM(CASE WHEN [ID_PREVIA] = 0 THEN 0 ELSE 1 END) AS QTD_PREVIA,
-            MIN([DT_REFERENCIA]) AS DT_MIN,
-            MAX([DT_REFERENCIA]) AS DT_MAX,
-            SUM(CASE WHEN [DT_REFERENCIA] IS NULL THEN 1 ELSE 0 END) AS QTD_SEM_DATA
+        SELECT [DT_REFERENCIA], [TIPO_PESSOA], [ID_LINHA], [DSC_LINHA],
+               [VR_SISGEA], [VR_BALANCETE], [ID_PREVIA]
         FROM {VW_VALORES_MES}
     """)
-    r = db.session.execute(sql).mappings().first()
-    qtd_total = int(r['QTD_TOTAL'] or 0) if r else 0
-    qtd_previa = int(r['QTD_PREVIA'] or 0) if r else 0
-    dt_min = _para_date(r['DT_MIN']) if r else None
-    dt_max = _para_date(r['DT_MAX']) if r else None
+    linhas = [_normalizar_linha(dict(r)) for r in db.session.execute(sql).mappings().all()]
+    linhas.sort(key=lambda l: (l['id_linha'], l['tipo_pessoa']))
+    g._cc_view = linhas
+    return linhas
 
-    ja_gravado = False
-    if dt_max:
-        sql_existe = text(f"""
-            SELECT COUNT(1) FROM {TB_DIFERENCAS}
-            WHERE CONVERT(varchar(8), [DT_REFERENCIA], 112) = :dt
-        """)
-        ja_gravado = (db.session.execute(sql_existe, {'dt': dt_max.strftime('%Y%m%d')}).scalar() or 0) > 0
 
+def _ler_historico(dt_ref):
+    """Linhas da COR_TB032 de uma data (filtro direto na chave)."""
+    if not dt_ref:
+        return []
+    sql = text(f"""
+        SELECT [DT_REFERENCIA], [TIPO_PESSOA], [ID_LINHA], [DSC_LINHA],
+               [VR_SISGEA], [VR_BALANCETE], [VR_DIFERENCA]
+        FROM {TB_DIFERENCAS}
+        WHERE [DT_REFERENCIA] = :dt
+        ORDER BY [ID_LINHA], [TIPO_PESSOA]
+    """)
+    return [_normalizar_linha(dict(r), historico=True)
+            for r in db.session.execute(sql, {'dt': dt_ref}).mappings().all()]
+
+
+def _data_ja_guardada(dt_ref):
+    if not dt_ref:
+        return False
+    sql = text(f"SELECT TOP 1 1 FROM {TB_DIFERENCAS} WHERE [DT_REFERENCIA] = :dt")
+    return db.session.execute(sql, {'dt': dt_ref}).first() is not None
+
+
+def _status_previa():
+    """Situação da prévia (view): datas, total de linhas e quantas ainda estão em prévia."""
+    registros = _ler_view()
+    qtd_total = len(registros)
+    qtd_previa = sum(1 for r in registros if r['id_previa'] is None or int(r['id_previa']) != 0)
+    datas = sorted(set(r['dt_referencia'] for r in registros if r['dt_referencia']))
+    dt_min = datas[0] if datas else None
+    dt_max = datas[-1] if datas else None
     return {
         'qtd_total': qtd_total,
         'qtd_previa': qtd_previa,
         'qtd_liberada': qtd_total - qtd_previa,
         'dt_min': dt_min,
         'dt_max': dt_max,
-        'qtd_sem_data': int(r['QTD_SEM_DATA'] or 0) if r else 0,
+        'qtd_sem_data': sum(1 for r in registros if r['dt_referencia'] is None),
         'liberado': qtd_total > 0 and qtd_previa == 0,
-        'ja_gravado': ja_gravado,
+        'ja_gravado': _data_ja_guardada(dt_max),
     }
 
 
@@ -260,99 +313,30 @@ def _datas_historico():
     return datas
 
 
-def _buscar_linhas_balancete(fonte, dt_ref=None, id_linha=None, tipos=None):
-    """
-    Busca as linhas da view (prévia) ou da COR_TB032 (histórico), já com os
-    filtros aplicados. Devolve lista de dicts com valores Decimal.
-    """
-    filtros = []
-    params = {}
-    if id_linha is not None:
-        filtros.append('[ID_LINHA] = :id_linha')
-        params['id_linha'] = id_linha
-    if tipos:
-        # Um parâmetro por tipo marcado: IN (:tipo0, :tipo1, ...)
-        nomes = []
-        for i, t in enumerate(tipos):
-            nomes.append(':tipo{}'.format(i))
-            params['tipo{}'.format(i)] = t
-        filtros.append('LTRIM(RTRIM([TIPO_PESSOA])) IN ({})'.format(', '.join(nomes)))
-
+def _linhas_da_fonte(fonte, dt_ref=None):
+    """Todas as linhas da origem escolhida, sem filtro (view ou histórico)."""
     if fonte == FONTE_HISTORICO:
-        if not dt_ref:
-            return []
-        filtros.append('CONVERT(varchar(8), [DT_REFERENCIA], 112) = :dt')
-        params['dt'] = dt_ref.strftime('%Y%m%d')
-        where = ('WHERE ' + ' AND '.join(filtros)) if filtros else ''
-        sql = text(f"""
-            SELECT [DT_REFERENCIA], [TIPO_PESSOA], [ID_LINHA], [DSC_LINHA],
-                   [VR_SISGEA], [VR_BALANCETE], [VR_DIFERENCA]
-            FROM {TB_DIFERENCAS}
-            {where}
-            ORDER BY [ID_LINHA], [TIPO_PESSOA]
-        """)
-    else:
-        where = ('WHERE ' + ' AND '.join(filtros)) if filtros else ''
-        sql = text(f"""
-            SELECT [DT_REFERENCIA], [TIPO_PESSOA], [ID_LINHA], [DSC_LINHA],
-                   [VR_SISGEA], [VR_BALANCETE], [ID_PREVIA]
-            FROM {VW_VALORES_MES}
-            {where}
-            ORDER BY [ID_LINHA], [TIPO_PESSOA]
-        """)
-
-    linhas = []
-    for r in db.session.execute(sql, params).mappings().all():
-        sisgea = _dec(r['VR_SISGEA'])
-        balancete = _dec(r['VR_BALANCETE'])
-        if fonte == FONTE_HISTORICO and r['VR_DIFERENCA'] is not None:
-            # Histórico: usa a diferença que foi gravada na tabela
-            diferenca = Decimal(int(r['VR_DIFERENCA']))
-        else:
-            # Prévia: diferença calculada aqui (Balancete - SISGEA)
-            diferenca = (balancete or Decimal('0')) - (sisgea or Decimal('0'))
-        linhas.append({
-            'dt_referencia': _para_date(r['DT_REFERENCIA']),
-            'tipo_pessoa': (r['TIPO_PESSOA'] or '').strip(),
-            'id_linha': int(r['ID_LINHA']),
-            'dsc_linha': (r['DSC_LINHA'] or '').strip(),
-            'vr_sisgea': sisgea,
-            'vr_balancete': balancete,
-            'vr_diferenca': diferenca,
-        })
-    return linhas
+        return _ler_historico(dt_ref)
+    return _ler_view()
 
 
-def _opcoes_filtro(fonte, dt_ref=None):
-    """Linhas (ID/DSC) e tipos de pessoa existentes na fonte escolhida."""
-    if fonte == FONTE_HISTORICO:
-        if not dt_ref:
-            return [], []
-        origem = TB_DIFERENCAS
-        where = 'WHERE CONVERT(varchar(8), [DT_REFERENCIA], 112) = :dt'
-        params = {'dt': dt_ref.strftime('%Y%m%d')}
-    else:
-        origem = VW_VALORES_MES
-        where = ''
-        params = {}
-
-    sql_linhas = text(f"""
-        SELECT [ID_LINHA], MAX([DSC_LINHA]) AS DSC_LINHA
-        FROM {origem} {where}
-        GROUP BY [ID_LINHA]
-        ORDER BY [ID_LINHA]
-    """)
-    sql_tipos = text(f"""
-        SELECT DISTINCT LTRIM(RTRIM([TIPO_PESSOA])) AS TIPO_PESSOA
-        FROM {origem} {where}
-        ORDER BY 1
-    """)
-    linhas = [
-        {'id_linha': int(r['ID_LINHA']), 'dsc_linha': (r['DSC_LINHA'] or '').strip()}
-        for r in db.session.execute(sql_linhas, params).mappings().all()
-    ]
-    tipos = [r[0] for r in db.session.execute(sql_tipos, params).all() if r[0]]
+def _opcoes_filtro(linhas_fonte):
+    """Linhas (ID/DSC) e tipos de pessoa existentes na origem, montados em Python."""
+    por_id = {}
+    for l in linhas_fonte:
+        if l['id_linha'] not in por_id or (not por_id[l['id_linha']] and l['dsc_linha']):
+            por_id[l['id_linha']] = l['dsc_linha']
+    linhas = [{'id_linha': k, 'dsc_linha': por_id[k]} for k in sorted(por_id)]
+    tipos = sorted(set(l['tipo_pessoa'] for l in linhas_fonte if l['tipo_pessoa']))
     return linhas, tipos
+
+
+def _filtrar_linhas(linhas_fonte, id_linha=None, tipos=None):
+    return [
+        l for l in linhas_fonte
+        if (id_linha is None or l['id_linha'] == id_linha)
+        and (not tipos or l['tipo_pessoa'] in tipos)
+    ]
 
 
 def _montar_tabela(linhas_db):
@@ -567,11 +551,12 @@ def balancete():
     db.session.expire_all()
     fonte, datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
 
-    status = _status_previa()
-    opcoes_linhas, opcoes_tipos = _opcoes_filtro(fonte, dt_ref)
+    status = _status_previa()                  # 1ª (e única) leitura da view
+    linhas_fonte = _linhas_da_fonte(fonte, dt_ref)
+    opcoes_linhas, opcoes_tipos = _opcoes_filtro(linhas_fonte)
     # Ignora tipos que não existem na origem escolhida (ex.: trocou a data)
     tipos = [t for t in tipos if t in opcoes_tipos]
-    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipos)
+    linhas_db = _filtrar_linhas(linhas_fonte, id_linha, tipos)
     tabela = _montar_tabela(linhas_db)
 
     # Data exibida no título da tabela
@@ -602,68 +587,58 @@ def balancete():
     )
 
 
-@contas_contabeis_bp.route('/balancete/retirar-previa', methods=['POST'])
+@contas_contabeis_bp.route('/balancete/guardar-fco', methods=['POST'])
 @login_required
 @sistema_requerido(SISTEMA)
-def balancete_retirar_previa():
+def balancete_guardar_fco():
     """
-    Copia a COR_VW004 para a COR_TB032 somente se TODAS as linhas estiverem
-    com ID_PREVIA = 0. Se a data já existir na COR_TB032, pede confirmação
-    para substituir.
+    Guardar FCO: copia a COR_VW004 para a COR_TB032 somente se TODAS as linhas
+    estiverem com ID_PREVIA = 0. Se a data já existir na COR_TB032, pede
+    confirmação para substituir.
     """
     dados = request.get_json(silent=True) or {}
     substituir = bool(dados.get('substituir'))
 
     try:
-        sql = text(f"""
-            SELECT [DT_REFERENCIA], [TIPO_PESSOA], [ID_LINHA], [DSC_LINHA],
-                   [VR_SISGEA], [VR_BALANCETE], [ID_PREVIA]
-            FROM {VW_VALORES_MES}
-        """)
-        registros = db.session.execute(sql).mappings().all()
+        registros = _ler_view()   # uma única execução da view
 
         if not registros:
-            return _json_erro('A view do balancete não retornou nenhuma linha.')
+            return _json_erro('A view do FCO não retornou nenhuma linha.')
 
         # 1) Todas as linhas precisam estar com ID_PREVIA = 0
-        em_previa = [r for r in registros if r['ID_PREVIA'] is None or int(r['ID_PREVIA']) != 0]
+        em_previa = [r for r in registros if r['id_previa'] is None or int(r['id_previa']) != 0]
         if em_previa:
             return _json_erro(
-                'O balancete ainda está em prévia: {} de {} linha(s) com ID_PREVIA diferente de 0. '
-                'Nada foi gravado.'.format(len(em_previa), len(registros)),
+                'O FCO ainda está em prévia: {} de {} linha(s) com ID_PREVIA diferente de 0. '
+                'Nada foi guardado.'.format(len(em_previa), len(registros)),
                 422
             )
 
         # 2) Validações das chaves da COR_TB032 (DT_REFERENCIA, TIPO_PESSOA, ID_LINHA)
-        sem_data = [r for r in registros if _para_date(r['DT_REFERENCIA']) is None]
+        sem_data = [r for r in registros if r['dt_referencia'] is None]
         if sem_data:
-            return _json_erro('Existem {} linha(s) sem DT_REFERENCIA na view. Nada foi gravado.'.format(len(sem_data)), 422)
+            return _json_erro('Existem {} linha(s) sem DT_REFERENCIA na view. Nada foi guardado.'.format(len(sem_data)), 422)
 
         chaves = set()
         for r in registros:
-            chave = (_para_date(r['DT_REFERENCIA']), (r['TIPO_PESSOA'] or '').strip(), int(r['ID_LINHA']))
+            chave = (r['dt_referencia'], r['tipo_pessoa'], r['id_linha'])
             if chave in chaves:
                 return _json_erro(
-                    'A view tem linha repetida para {} / {} / linha {}. Nada foi gravado.'.format(
+                    'A view tem linha repetida para {} / {} / linha {}. Nada foi guardado.'.format(
                         chave[0].strftime('%d/%m/%Y'), chave[1], chave[2]), 422)
             chaves.add(chave)
 
         datas = sorted(set(c[0] for c in chaves))
         datas_txt = [d.strftime('%d/%m/%Y') for d in datas]
 
-        # 3) Data já gravada? Pede confirmação para substituir
-        sql_existe = text(f"""
-            SELECT COUNT(1) FROM {TB_DIFERENCAS}
-            WHERE CONVERT(varchar(8), [DT_REFERENCIA], 112) = :dt
-        """)
-        datas_existentes = [d for d in datas
-                            if (db.session.execute(sql_existe, {'dt': d.strftime('%Y%m%d')}).scalar() or 0) > 0]
+        # 3) Data já guardada? Pede confirmação para substituir
+        datas_existentes = [d for d in datas if _data_ja_guardada(d)]
         if datas_existentes and not substituir:
             return jsonify({
                 'sucesso': False,
                 'precisa_confirmar': True,
-                'mensagem': 'A data de referência {} já foi retirada de prévia antes. '
-                            'Deseja substituir os valores gravados pelos valores atuais da view?'.format(
+                'mensagem': 'O FCO de {} já foi guardado antes. '
+                            'Deseja substituir os valores guardados pelos valores atuais da view?'.format(
                                 ', '.join(d.strftime('%d/%m/%Y') for d in datas_existentes)),
             }), 409
 
@@ -672,8 +647,8 @@ def balancete_retirar_previa():
         for d in datas_existentes:
             res = db.session.execute(text(f"""
                 DELETE FROM {TB_DIFERENCAS}
-                WHERE CONVERT(varchar(8), [DT_REFERENCIA], 112) = :dt
-            """), {'dt': d.strftime('%Y%m%d')})
+                WHERE [DT_REFERENCIA] = :dt
+            """), {'dt': d})
             qtd_apagada += res.rowcount or 0
 
         sql_insert = text(f"""
@@ -682,36 +657,37 @@ def balancete_retirar_previa():
                  [VR_SISGEA], [VR_BALANCETE], [VR_DIFERENCA])
             VALUES (:dt, :tipo, :id_linha, :dsc, :sisgea, :balancete, :diferenca)
         """)
-        for r in registros:
-            db.session.execute(sql_insert, {
-                'dt': _para_date(r['DT_REFERENCIA']),
-                'tipo': (r['TIPO_PESSOA'] or '').strip(),
-                'id_linha': int(r['ID_LINHA']),
-                'dsc': (r['DSC_LINHA'] or '').strip(),
-                'sisgea': _dec(r['VR_SISGEA']),
-                'balancete': _dec(r['VR_BALANCETE']) if r['VR_BALANCETE'] is not None else Decimal('0'),
-                'diferenca': _calcular_diferenca_int(r['VR_BALANCETE'], r['VR_SISGEA']),
-            })
+        # Uma lista de parâmetros = executemany (um único envio ao banco)
+        lote = [{
+            'dt': r['dt_referencia'],
+            'tipo': r['tipo_pessoa'],
+            'id_linha': r['id_linha'],
+            'dsc': r['dsc_linha'],
+            'sisgea': r['vr_sisgea'],
+            'balancete': r['vr_balancete'] if r['vr_balancete'] is not None else Decimal('0'),
+            'diferenca': _calcular_diferenca_int(r['vr_balancete'], r['vr_sisgea']),
+        } for r in registros]
+        db.session.execute(sql_insert, lote)
         db.session.commit()
 
         registrar_log(
             acao='criar',
             entidade='contas_contabeis_balancete',
             entidade_id=','.join(d.strftime('%Y-%m-%d') for d in datas),
-            descricao='Balancete retirado de prévia ({}): {} linha(s) gravada(s){}'.format(
+            descricao='FCO guardado ({}): {} linha(s) gravada(s){}'.format(
                 ', '.join(datas_txt), len(registros),
                 ' substituindo {} linha(s)'.format(qtd_apagada) if qtd_apagada else ''),
             dados_novos={'datas': datas_txt, 'qtd_linhas': len(registros), 'substituidas': qtd_apagada},
         )
         return jsonify({
             'sucesso': True,
-            'mensagem': 'Balancete de {} retirado de prévia: {} linha(s) gravada(s).'.format(
+            'mensagem': 'FCO de {} guardado: {} linha(s) gravada(s).'.format(
                 ', '.join(datas_txt), len(registros)),
             'dt_referencia': datas[-1].isoformat(),
         })
     except Exception as e:
         db.session.rollback()
-        return _json_erro('Erro ao retirar o balancete de prévia: {}'.format(e), 500)
+        return _json_erro('Erro ao guardar o FCO: {}'.format(e), 500)
 
 
 @contas_contabeis_bp.route('/balancete/exportar')
@@ -720,7 +696,7 @@ def balancete_retirar_previa():
 def balancete_exportar():
     """Exporta para Excel a mesma tabela que está na tela (com os filtros)."""
     fonte, _datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
-    linhas_db = _buscar_linhas_balancete(fonte, dt_ref, id_linha, tipos)
+    linhas_db = _filtrar_linhas(_linhas_da_fonte(fonte, dt_ref), id_linha, tipos)
     tabela = _montar_tabela(linhas_db)
 
     if fonte == FONTE_HISTORICO:

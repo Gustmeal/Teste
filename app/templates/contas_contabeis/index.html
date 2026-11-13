@@ -47,7 +47,7 @@
                     </div>
                     <h3 class="system-title mb-3">SISGEA X BALANCETE</h3>
                     <p class="text-muted mb-3">
-                        Retire o balancete de prévia e analise SISGEA x Balancete por linha do FCO.
+                        Guarde o FCO do mês e analise SISGEA x Balancete por linha do FCO.
                     </p>
                     <p class="mb-4" style="font-size: 0.9rem;">
                         {% if resumo.status and resumo.status.qtd_total %}
@@ -55,9 +55,9 @@
                             <span class="badge bg-secondary">Ref. {{ resumo.status.dt_max.strftime('%d/%m/%Y') }}</span>
                             {% endif %}
                             {% if resumo.status.ja_gravado %}
-                            <span class="badge bg-success">Já retirado de prévia</span>
+                            <span class="badge bg-success">FCO já guardado</span>
                             {% elif resumo.status.liberado %}
-                            <span class="badge bg-info text-dark">Liberado para retirar</span>
+                            <span class="badge bg-info text-dark">Liberado para guardar</span>
                             {% else %}
                             <span class="badge bg-warning text-dark">Em prévia</span>
                             {% endif %}

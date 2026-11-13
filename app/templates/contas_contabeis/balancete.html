@@ -34,22 +34,22 @@
         <h1 class="fw-bold header-with-back mb-1">
             <i class="fas fa-balance-scale me-2"></i>SISGEA X BALANCETE
         </h1>
-        <p class="text-muted mb-0">Retirada de prévia e análise SISGEA x Balancete por linha do FCO</p>
+        <p class="text-muted mb-0">Guardar FCO e análise SISGEA x Balancete por linha do FCO</p>
     </div>
 
     <div id="ccMensagem" style="display:none;"></div>
 
     <!-- ============================================================ -->
-    <!-- RETIRAR DE PRÉVIA                                            -->
+    <!-- GUARDAR FCO                                                  -->
     <!-- ============================================================ -->
     <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
             <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
-                <i class="fas fa-file-export me-2"></i>Balancete em prévia
+                <i class="fas fa-file-export me-2"></i>FCO em prévia
             </h5>
-            <button type="button" class="btn btn-warning btn-sm js-ignore-loading" id="btnRetirarPrevia"
+            <button type="button" class="btn btn-warning btn-sm js-ignore-loading" id="btnGuardarFco"
                     {% if not status.qtd_total %}disabled{% endif %}>
-                <i class="fas fa-lock-open me-1"></i> Retirar de prévia
+                <i class="fas fa-save me-1"></i> Guardar FCO
             </button>
         </div>
         <div class="card-body" style="padding: 1.25rem;">
@@ -81,9 +81,9 @@
                     <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Situação</div>
                     <div class="mt-1">
                         {% if status.ja_gravado %}
-                            <span class="badge bg-success">Já retirado de prévia</span>
+                            <span class="badge bg-success">FCO já guardado</span>
                         {% elif status.liberado %}
-                            <span class="badge bg-info text-dark">Liberado para retirar</span>
+                            <span class="badge bg-info text-dark">Liberado para guardar</span>
                         {% else %}
                             <span class="badge bg-warning text-dark">Ainda em prévia</span>
                         {% endif %}
@@ -91,7 +91,7 @@
                 </div>
             </div>
             <div class="text-muted mt-3" style="font-size: 0.8rem;">
-                O botão só grava no histórico quando <strong>todas</strong> as linhas da prévia estiverem com ID_PREVIA = 0.
+                O botão <strong>Guardar FCO</strong> só grava no histórico quando <strong>todas</strong> as linhas da prévia estiverem com ID_PREVIA = 0.
             </div>
             {% else %}
             <div class="text-muted">A view do balancete não retornou nenhuma linha.</div>
@@ -133,7 +133,7 @@
                         <option value="{{ FONTE_PREVIA }}" {% if fonte == FONTE_PREVIA %}selected{% endif %}>Prévia atual (view)</option>
                         <option value="{{ FONTE_HISTORICO }}" {% if fonte == FONTE_HISTORICO %}selected{% endif %}
                                 {% if not datas_historico %}disabled{% endif %}>
-                            Histórico (retirados de prévia){% if not datas_historico %} - vazio{% endif %}
+                            Histórico (FCO guardados){% if not datas_historico %} - vazio{% endif %}
                         </option>
                     </select>
                 </div>
@@ -231,12 +231,12 @@
             <div class="text-muted mt-2" style="font-size: 0.78rem;">
                 Diferença = Balancete − SISGEA. Valores somados dos tipos de pessoa:
                 <strong>{{ tabela.tipos_na_tabela | join(', ') if tabela.tipos_na_tabela else '-' }}</strong>.
-                {% if fonte == FONTE_HISTORICO %}No histórico é exibida a diferença gravada na retirada de prévia (valor inteiro).{% endif %}
+                {% if fonte == FONTE_HISTORICO %}No histórico é exibida a diferença gravada ao guardar o FCO (valor inteiro).{% endif %}
             {% else %}
             <div class="text-center text-muted py-4">
                 <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
                 {% if fonte == FONTE_HISTORICO and not datas_historico %}
-                    Nenhum balancete foi retirado de prévia ainda.
+                    Nenhum FCO foi guardado ainda.
                 {% else %}
                     Nenhum dado encontrado para os filtros escolhidos.
                 {% endif %}
@@ -275,7 +275,7 @@
 {{ super() }}
 <script>
 (function () {
-    const URL_RETIRAR = "{{ url_for('contas_contabeis.balancete_retirar_previa') }}";
+    const URL_GUARDAR = "{{ url_for('contas_contabeis.balancete_guardar_fco') }}";
     const URL_HISTORICO = "{{ url_for('contas_contabeis.balancete', fonte=FONTE_HISTORICO) }}";
     const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
 
@@ -312,13 +312,13 @@
         });
     }
 
-    // Retirar de prévia
-    const btnRetirar = document.getElementById('btnRetirarPrevia');
+    // Guardar FCO
+    const btnGuardar = document.getElementById('btnGuardarFco');
     const modalConfirmar = new bootstrap.Modal(document.getElementById('modalConfirmar'));
 
-    function retirar(substituir) {
-        btnRetirar.disabled = true;
-        fetch(URL_RETIRAR, {method: 'POST', headers: HEADERS, body: JSON.stringify({substituir: substituir})})
+    function guardar(substituir) {
+        btnGuardar.disabled = true;
+        fetch(URL_GUARDAR, {method: 'POST', headers: HEADERS, body: JSON.stringify({substituir: substituir})})
             .then(function (r) {
                 return r.json().catch(function () { return {sucesso: false, mensagem: 'Resposta inválida do servidor.'}; });
             })
@@ -331,29 +331,29 @@
                 } else if (d.precisa_confirmar) {
                     document.getElementById('textoConfirmar').textContent = d.mensagem;
                     modalConfirmar.show();
-                    btnRetirar.disabled = false;
+                    btnGuardar.disabled = false;
                 } else {
                     mostrarMensagem('danger', d.mensagem);
-                    btnRetirar.disabled = false;
+                    btnGuardar.disabled = false;
                 }
             })
             .catch(function () {
                 mostrarMensagem('danger', 'Erro de comunicação com o servidor.');
-                btnRetirar.disabled = false;
+                btnGuardar.disabled = false;
             });
     }
 
-    btnRetirar.addEventListener('click', function (e) {
+    btnGuardar.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        retirar(false);
+        guardar(false);
     });
 
     document.getElementById('btnConfirmarSubstituir').addEventListener('click', function (e) {
         e.preventDefault();
         e.stopImmediatePropagation();
         modalConfirmar.hide();
-        retirar(true);
+        guardar(true);
     });
 })();
 </script>
