@@ -28,7 +28,7 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
      tempo (caixas de seleção); o total soma apenas os tipos marcados.
 
 3. Relatórios SISGEA (montagem do FCO, como a aba "CONCILIAÇÃO FCO X SISGEA")
-   - SISGEA (prévia)   -> BDG.COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA
+   - FCO Prévia       -> BDG.COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA
    - FCO Histórico     -> BDG.COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO
      (escolha da data de referência; a consulta já filtra pela data)
    - Tela interativa: agrupamento > item contábil > linhas, filtros de
@@ -1066,16 +1066,16 @@ def balancete_exportar():
 @login_required
 @sistema_requerido(SISTEMA)
 def relatorios():
-    """Página que reúne os relatórios: SISGEA (prévia, COR_VW007) e FCO Histórico (COR_VW008)."""
+    """Página que reúne os relatórios: FCO Prévia (COR_VW007) e FCO Histórico (COR_VW008)."""
     return render_template('contas_contabeis/relatorios.html')
 
 
 SISGEA_FONTES = {
     'previa': {
         'view': VW_SISGEA_PREVIA,
-        'titulo': 'SISGEA',
+        'titulo': 'FCO Prévia',
         'subtitulo': 'Montagem do FCO a partir do SISGEA - mês em prévia',
-        'arquivo': 'SISGEA',
+        'arquivo': 'FCO_Previa',
     },
     'historico': {
         'view': VW_SISGEA_HISTORICO,
