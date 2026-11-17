@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Vinculações - FCO{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('contas_contabeis.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="central-panel mt-3 fade-in">
+    <h1>Vinculações</h1>
+    <p class="text-secondary">Escolha qual vinculação deseja fazer com as linhas do FCO</p>
+
+    <div class="row g-4 mt-4 justify-content-center fco-grid">
+        <!-- SISGEA X BALANCETE (COR_TB031) -->
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #4e73df;">
+                        <i class="fas fa-balance-scale"></i>
+                    </div>
+                    <h3 class="system-title mb-3">SISGEA X BALANCETE</h3>
+                    <p class="text-muted mb-3">
+                        Vincule cada conta contábil a uma linha do FCO e cadastre novas contas.
+                    </p>
+                    <div class="fco-badges mb-4">
+                        <span class="badge bg-primary">{{ resumo.contas.qtd | mil }} conta(s)</span>
+                        {% if resumo.contas.sem %}
+                        <span class="badge bg-warning text-dark">{{ resumo.contas.sem | mil }} sem vínculo</span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-balance-scale me-2"></i>Acessar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SISGEA X FCO (COR_TB037) -->
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #6f42c1;">
+                        <i class="fas fa-project-diagram"></i>
+                    </div>
+                    <h3 class="system-title mb-3">SISGEA X FCO</h3>
+                    <p class="text-muted mb-3">
+                        Vincule cada linha contábil do SISGEA a uma linha do FCO e cadastre novas linhas.
+                    </p>
+                    <div class="fco-badges mb-4">
+                        <span class="badge bg-primary">{{ resumo.fco.qtd | mil }} linha(s)</span>
+                        {% if resumo.fco.sem %}
+                        <span class="badge bg-warning text-dark">{{ resumo.fco.sem | mil }} sem vínculo</span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.vinculacao_fco') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-project-diagram me-2"></i>Acessar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Grade 2 x 2 com largura controlada para os cards não esticarem demais */
+    .fco-grid { max-width: 900px; margin-left: auto; margin-right: auto; }
+
+    .system-icon {
+        font-size: 3rem;
+        display: inline-block;
+        width: 90px;
+        height: 90px;
+        line-height: 90px;
+        border-radius: 50%;
+        text-align: center;
+        color: white;
+    }
+    .home-card { transition: transform 0.3s ease; }
+    .home-card:hover { transform: translateY(-5px); }
+    .system-title { font-size: 1.3rem; font-weight: 600; }
+
+    /* Badges com altura mínima fixa: os cards de cima ficam alinhados entre si */
+    .fco-badges { font-size: 0.9rem; min-height: 1.6rem; }
+
+    /* Todos os botões com o mesmo tamanho, texto em uma linha só,
+       e sempre colados no rodapé do card (mt-auto no wrapper) */
+    /* inline-flex + justify-content: center → ícone e texto centralizados
+       (o custom.css aplica inline-flex alinhado à esquerda em .d-flex .btn) */
+    .btn-fco {
+        width: 200px;
+        padding: 12px 0;
+        font-size: 1rem;
+        font-weight: 500;
+        white-space: nowrap;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .btn-fco i { margin-right: 8px !important; }
+</style>
+{% endblock %}

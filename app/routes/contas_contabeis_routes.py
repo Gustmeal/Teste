@@ -10,6 +10,12 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
      (dropdown montado a partir da COR_TB030) e grava o ID_LINHA na COR_TB031.
    - Nova conta: INSERT de uma nova linha na COR_TB031.
 
+1b. Vinculação SISGEA X FCO -> BDG.COR_TB037_FCO_LINHAS_SISGEA
+   - Mesmo funcionamento da vinculação das contas: escolhe a linha do SISGEA
+     (ID_FCO_LINHA / DSC_FCO_LINHA) e grava o ID_LINHA da COR_TB030.
+   - pkLinhaContabil não aparece na tela; é usado só como chave do UPDATE.
+   - Nova linha: INSERT na COR_TB037 (pk por IDENTITY ou MAX + 1).
+
 2. SISGEA x Balancete
    - Prévia atual   -> BDG.COR_VW004_FCO_VALORES_MES (só traz o mês mais recente)
    - Histórico      -> BDG.COR_TB032_FCO_DIFERENCAS  (todos os meses já gravados)
@@ -22,8 +28,8 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
      tempo (caixas de seleção); o total soma apenas os tipos marcados.
 
 3. Relatórios SISGEA (montagem do FCO, como a aba "CONCILIAÇÃO FCO X SISGEA")
-   - SISGEA Prévia     -> BDG.COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA
-   - SISGEA Histórico  -> BDG.COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO
+   - SISGEA (prévia)   -> BDG.COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA
+   - FCO Histórico     -> BDG.COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO
      (escolha da data de referência; a consulta já filtra pela data)
    - Tela interativa: agrupamento > item contábil > linhas, filtros de
      agrupamento e item (vários ao mesmo tempo), busca, ocultar zerados,
@@ -58,6 +64,8 @@ SISTEMA = 'contas_contabeis'
 TB_ITENS = '[BDG].[COR_TB030_FCO_ITENS]'
 TB_CONTAS = '[BDG].[COR_TB031_FCO_CONTAS_CONTABEIS]'
 TB_DIFERENCAS = '[BDG].[COR_TB032_FCO_DIFERENCAS]'
+TB_LINHAS_SISGEA = '[BDG].[COR_TB037_FCO_LINHAS_SISGEA]'
+TB_LINHAS_SISGEA_OBJ = 'BDG.COR_TB037_FCO_LINHAS_SISGEA'
 VW_VALORES_MES = '[BDG].[COR_VW004_FCO_VALORES_MES]'
 VW_SISGEA_PREVIA = '[BDG].[COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA]'
 VW_SISGEA_HISTORICO = '[BDG].[COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO]'
@@ -552,6 +560,256 @@ def vinculacao_nova():
 
 
 # =========================================================================
+# VINCULAÇÕES (página com os botões de vinculação)
+# =========================================================================
+
+@contas_contabeis_bp.route('/vinculacoes')
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacoes():
+    """Página que reúne as vinculações: SISGEA X BALANCETE (COR_TB031) e SISGEA X FCO (COR_TB037)."""
+    db.session.expire_all()
+    resumo = {'contas': {'qtd': 0, 'sem': 0}, 'fco': {'qtd': 0, 'sem': 0}}
+    for chave, tabela in (('contas', TB_CONTAS), ('fco', TB_LINHAS_SISGEA)):
+        try:
+            r = db.session.execute(text(f"""
+                SELECT COUNT(1) AS QTD,
+                       SUM(CASE WHEN [ID_LINHA] IS NULL THEN 1 ELSE 0 END) AS SEM_VINCULO
+                FROM {tabela}
+            """)).mappings().first()
+            resumo[chave]['qtd'] = int(r['QTD'] or 0) if r else 0
+            resumo[chave]['sem'] = int(r['SEM_VINCULO'] or 0) if r else 0
+        except Exception as e:
+            db.session.rollback()
+            print(f"[contas_contabeis] Erro ao contar {tabela}: {e}")
+    return render_template('contas_contabeis/vinculacoes.html', resumo=resumo)
+
+
+# =========================================================================
+# VINCULAÇÃO SISGEA X FCO (COR_TB037 x COR_TB030)
+# =========================================================================
+
+def _metadados_tb037():
+    """
+    Tipo e tamanho das colunas da COR_TB037 lidos do próprio banco
+    (INFORMATION_SCHEMA), para validar e limitar os campos sem fixar nada
+    no código. Também diz se o pkLinhaContabil é IDENTITY.
+    """
+    sql = text("""
+        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'BDG' AND TABLE_NAME = 'COR_TB037_FCO_LINHAS_SISGEA'
+    """)
+    colunas = {}
+    for r in db.session.execute(sql).mappings().all():
+        tamanho = r['CHARACTER_MAXIMUM_LENGTH']
+        colunas[r['COLUMN_NAME'].upper()] = {
+            'tipo': (r['DATA_TYPE'] or '').lower(),
+            'tamanho': int(tamanho) if tamanho is not None and int(tamanho) > 0 else None,
+        }
+    identidade = db.session.execute(text(
+        "SELECT COLUMNPROPERTY(OBJECT_ID(:obj), 'pkLinhaContabil', 'IsIdentity')"
+    ), {'obj': TB_LINHAS_SISGEA_OBJ}).scalar()
+    return colunas, bool(identidade)
+
+
+TIPOS_INTEIROS = ('tinyint', 'smallint', 'int', 'bigint')
+TIPOS_NUMERICOS = TIPOS_INTEIROS + ('decimal', 'numeric', 'float', 'real', 'money', 'smallmoney')
+
+
+def _validar_campo_tb037(valor, meta, rotulo, obrigatorio=True):
+    """Valida um valor de acordo com o tipo da coluna. Retorna (ok, valor_convertido, mensagem)."""
+    texto = str(valor if valor is not None else '').strip()
+    if not texto:
+        if obrigatorio:
+            return False, None, 'Informe o campo {}.'.format(rotulo)
+        return True, None, ''
+    tipo = (meta or {}).get('tipo', '')
+    if tipo in TIPOS_INTEIROS:
+        try:
+            return True, int(texto), ''
+        except ValueError:
+            return False, None, 'O campo {} aceita apenas números inteiros.'.format(rotulo)
+    if tipo in TIPOS_NUMERICOS:
+        try:
+            return True, Decimal(texto.replace(',', '.')), ''
+        except Exception:
+            return False, None, 'O campo {} aceita apenas números.'.format(rotulo)
+    tamanho = (meta or {}).get('tamanho')
+    if tamanho and len(texto) > tamanho:
+        return False, None, 'O campo {} aceita no máximo {} caracteres.'.format(rotulo, tamanho)
+    return True, texto, ''
+
+
+def _listar_linhas_sisgea():
+    """Linhas da COR_TB037 com a descrição da linha do FCO (COR_TB030)."""
+    sql = text(f"""
+        SELECT L.[pkLinhaContabil], L.[ID_FCO_LINHA], L.[DSC_FCO_LINHA], L.[ID_LINHA], I.[DSC_LINHA]
+        FROM {TB_LINHAS_SISGEA} L
+        LEFT JOIN {TB_ITENS} I ON I.[ID_LINHA] = L.[ID_LINHA]
+    """)
+    linhas = []
+    for r in db.session.execute(sql).mappings().all():
+        linhas.append({
+            'pk': _txt(r['pkLinhaContabil']),
+            'id_fco_linha': _txt(r['ID_FCO_LINHA']),
+            'dsc_fco_linha': _txt(r['DSC_FCO_LINHA']),
+            'id_linha': int(r['ID_LINHA']) if r['ID_LINHA'] is not None else None,
+            'dsc_linha': _txt(r['DSC_LINHA']),
+        })
+    linhas.sort(key=lambda l: (_chave_ordem(l['id_fco_linha']), l['dsc_fco_linha'], _chave_ordem(l['pk'])))
+    return linhas
+
+
+def _buscar_linha_sisgea(pk):
+    sql = text(f"""
+        SELECT [pkLinhaContabil], [ID_FCO_LINHA], [DSC_FCO_LINHA], [ID_LINHA]
+        FROM {TB_LINHAS_SISGEA}
+        WHERE [pkLinhaContabil] = :pk
+    """)
+    return db.session.execute(sql, {'pk': pk}).mappings().first()
+
+
+@contas_contabeis_bp.route('/vinculacao-fco')
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco():
+    db.session.expire_all()
+    linhas = _listar_linhas_sisgea()
+    itens = _listar_itens()
+    try:
+        meta, _identidade = _metadados_tb037()
+    except Exception:
+        db.session.rollback()
+        meta = {}
+    qtd_sem_vinculo = sum(1 for l in linhas if l['id_linha'] is None)
+
+    def _limite(coluna):
+        m = meta.get(coluna) or {}
+        return {'numero': m.get('tipo') in TIPOS_NUMERICOS, 'tamanho': m.get('tamanho')}
+
+    return render_template(
+        'contas_contabeis/vinculacao_fco.html',
+        linhas=linhas,
+        itens=itens,
+        qtd_linhas=len(linhas),
+        qtd_sem_vinculo=qtd_sem_vinculo,
+        qtd_vinculadas=len(linhas) - qtd_sem_vinculo,
+        campo_id=_limite('ID_FCO_LINHA'),
+        campo_dsc=_limite('DSC_FCO_LINHA'),
+    )
+
+
+@contas_contabeis_bp.route('/vinculacao-fco/salvar', methods=['POST'])
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco_salvar():
+    """Grava o ID_LINHA (COR_TB030) na linha do SISGEA escolhida (COR_TB037)."""
+    dados = request.get_json(silent=True) or {}
+    pk = str(dados.get('pk') or '').strip()
+    ok, id_linha = _ler_id_linha(dados.get('id_linha'))
+
+    if not pk:
+        return _json_erro('Selecione a linha do SISGEA.')
+    if not ok:
+        return _json_erro('Linha do FCO inválida.')
+
+    try:
+        linha = _buscar_linha_sisgea(pk)
+        if not linha:
+            return _json_erro('Linha do SISGEA não encontrada.', 404)
+        if id_linha is not None and not _item_existe(id_linha):
+            return _json_erro('A linha {} não existe na tabela de itens do FCO.'.format(id_linha), 404)
+
+        rotulo = '{} - {}'.format(_txt(linha['ID_FCO_LINHA']), _txt(linha['DSC_FCO_LINHA']))
+        id_anterior = int(linha['ID_LINHA']) if linha['ID_LINHA'] is not None else None
+        if id_anterior == id_linha:
+            return jsonify({'sucesso': True, 'mensagem': 'A linha {} já estava vinculada a essa linha do FCO.'.format(rotulo)})
+
+        db.session.execute(text(f"""
+            UPDATE {TB_LINHAS_SISGEA}
+            SET [ID_LINHA] = :id_linha
+            WHERE [pkLinhaContabil] = :pk
+        """), {'id_linha': id_linha, 'pk': pk})
+        db.session.commit()
+
+        registrar_log(
+            acao='editar',
+            entidade='contas_contabeis_vinculacao_fco',
+            entidade_id=pk,
+            descricao='Vinculação SISGEA X FCO da linha {} alterada de {} para {}'.format(
+                rotulo,
+                id_anterior if id_anterior is not None else 'sem vínculo',
+                id_linha if id_linha is not None else 'sem vínculo'),
+            dados_antigos={'pkLinhaContabil': pk, 'ID_LINHA': id_anterior},
+            dados_novos={'pkLinhaContabil': pk, 'ID_LINHA': id_linha},
+        )
+        return jsonify({'sucesso': True, 'mensagem': 'Vinculação da linha {} salva com sucesso.'.format(rotulo)})
+    except Exception as e:
+        db.session.rollback()
+        return _json_erro('Erro ao salvar a vinculação: {}'.format(e), 500)
+
+
+@contas_contabeis_bp.route('/vinculacao-fco/nova', methods=['POST'])
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco_nova():
+    """Cria uma nova linha na COR_TB037 (ID_FCO_LINHA, DSC_FCO_LINHA, ID_LINHA)."""
+    dados = request.get_json(silent=True) or {}
+    ok_vinc, id_linha = _ler_id_linha(dados.get('id_linha'))
+    if not ok_vinc:
+        return _json_erro('Linha do FCO inválida.')
+
+    try:
+        meta, identidade = _metadados_tb037()
+        ok, id_fco, msg = _validar_campo_tb037(dados.get('id_fco_linha'), meta.get('ID_FCO_LINHA'), 'ID da linha do SISGEA')
+        if not ok:
+            return _json_erro(msg)
+        ok, dsc_fco, msg = _validar_campo_tb037(dados.get('dsc_fco_linha'), meta.get('DSC_FCO_LINHA'), 'descrição da linha do SISGEA')
+        if not ok:
+            return _json_erro(msg)
+        if isinstance(dsc_fco, str):
+            dsc_fco = dsc_fco.upper()
+
+        if id_linha is not None and not _item_existe(id_linha):
+            return _json_erro('A linha {} não existe na tabela de itens do FCO.'.format(id_linha), 404)
+
+        # Mesma linha (ID + descrição) já cadastrada?
+        existe = db.session.execute(text(f"""
+            SELECT TOP 1 1 FROM {TB_LINHAS_SISGEA}
+            WHERE [ID_FCO_LINHA] = :id AND LTRIM(RTRIM([DSC_FCO_LINHA])) = :dsc
+        """), {'id': id_fco, 'dsc': dsc_fco}).first()
+        if existe:
+            return _json_erro('A linha {} - {} já existe. Use a vinculação para alterar a linha do FCO.'.format(id_fco, dsc_fco), 409)
+
+        if identidade:
+            db.session.execute(text(f"""
+                INSERT INTO {TB_LINHAS_SISGEA} ([ID_FCO_LINHA], [DSC_FCO_LINHA], [ID_LINHA])
+                VALUES (:id, :dsc, :id_linha)
+            """), {'id': id_fco, 'dsc': dsc_fco, 'id_linha': id_linha})
+        else:
+            # pk sem IDENTITY: próximo número calculado na mesma instrução (com bloqueio)
+            db.session.execute(text(f"""
+                INSERT INTO {TB_LINHAS_SISGEA} ([pkLinhaContabil], [ID_FCO_LINHA], [DSC_FCO_LINHA], [ID_LINHA])
+                SELECT ISNULL(MAX([pkLinhaContabil]), 0) + 1, :id, :dsc, :id_linha
+                FROM {TB_LINHAS_SISGEA} WITH (UPDLOCK, HOLDLOCK)
+            """), {'id': id_fco, 'dsc': dsc_fco, 'id_linha': id_linha})
+        db.session.commit()
+
+        registrar_log(
+            acao='criar',
+            entidade='contas_contabeis_vinculacao_fco',
+            entidade_id='{}'.format(id_fco),
+            descricao='Nova linha SISGEA X FCO cadastrada: {} - {}'.format(id_fco, dsc_fco),
+            dados_novos={'ID_FCO_LINHA': id_fco, 'DSC_FCO_LINHA': dsc_fco, 'ID_LINHA': id_linha},
+        )
+        return jsonify({'sucesso': True, 'mensagem': 'Linha {} - {} cadastrada com sucesso.'.format(id_fco, dsc_fco)})
+    except Exception as e:
+        db.session.rollback()
+        return _json_erro('Erro ao cadastrar a linha: {}'.format(e), 500)
+
+
+# =========================================================================
 # BALANCETE (COR_VW004 / COR_TB032)
 # =========================================================================
 
@@ -807,15 +1065,15 @@ def balancete_exportar():
 SISGEA_FONTES = {
     'previa': {
         'view': VW_SISGEA_PREVIA,
-        'titulo': 'SISGEA Prévia',
+        'titulo': 'SISGEA',
         'subtitulo': 'Montagem do FCO a partir do SISGEA - mês em prévia',
-        'arquivo': 'SISGEA_Previa',
+        'arquivo': 'SISGEA',
     },
     'historico': {
         'view': VW_SISGEA_HISTORICO,
-        'titulo': 'SISGEA Histórico',
+        'titulo': 'FCO Histórico',
         'subtitulo': 'Montagem do FCO a partir do SISGEA - meses anteriores',
-        'arquivo': 'SISGEA_Historico',
+        'arquivo': 'FCO_Historico',
     },
 }
 
