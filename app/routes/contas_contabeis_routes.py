@@ -1062,6 +1062,14 @@ def balancete_exportar():
 # RELATÓRIOS SISGEA (COR_VW007 prévia / COR_VW008 histórico)
 # =========================================================================
 
+@contas_contabeis_bp.route('/relatorios')
+@login_required
+@sistema_requerido(SISTEMA)
+def relatorios():
+    """Página que reúne os relatórios: SISGEA (prévia, COR_VW007) e FCO Histórico (COR_VW008)."""
+    return render_template('contas_contabeis/relatorios.html')
+
+
 SISGEA_FONTES = {
     'previa': {
         'view': VW_SISGEA_PREVIA,

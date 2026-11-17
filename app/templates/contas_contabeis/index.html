@@ -14,7 +14,7 @@
     <p class="text-secondary">Vinculação das contas contábeis, conciliação SISGEA x Balancete e relatórios do SISGEA</p>
 
     <!-- Linha 1: módulos principais (Vinculações e SISGEA X BALANCETE) -->
-    <!-- Linha 2: relatórios (SISGEA e FCO Histórico)                    -->
+    <!-- Linha 2: Relatórios FCO (abre a página com SISGEA e FCO Histórico) -->
     <div class="row g-4 mt-4 justify-content-center fco-grid">
         <!-- Vinculação -->
         <div class="col-md-6">
@@ -78,40 +78,20 @@
             </div>
         </div>
 
-        <!-- SISGEA (prévia) -->
+        <!-- Relatórios FCO (SISGEA prévia + FCO Histórico) -->
         <div class="col-md-6">
             <div class="card home-card shadow h-100">
                 <div class="card-body text-center p-4 d-flex flex-column">
                     <div class="system-icon mx-auto mb-4" style="background-color: #f6c23e;">
-                        <i class="fas fa-hourglass-half"></i>
+                        <i class="fas fa-file-alt"></i>
                     </div>
-                    <h3 class="system-title mb-3">SISGEA</h3>
+                    <h3 class="system-title mb-3">Relatórios FCO</h3>
                     <p class="text-muted mb-4">
-                        Relatório da montagem do FCO a partir do SISGEA no mês em prévia, com exportação para Excel.
+                        SISGEA (mês em prévia) e FCO Histórico (meses anteriores), com exportação para Excel.
                     </p>
                     <div class="mt-auto">
-                        <a href="{{ url_for('contas_contabeis.sisgea', fonte='previa') }}" class="btn btn-access btn-fco">
-                            <i class="fas fa-hourglass-half me-2"></i>Acessar
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- FCO Histórico -->
-        <div class="col-md-6">
-            <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4 d-flex flex-column">
-                    <div class="system-icon mx-auto mb-4" style="background-color: #36b9cc;">
-                        <i class="fas fa-history"></i>
-                    </div>
-                    <h3 class="system-title mb-3">FCO Histórico</h3>
-                    <p class="text-muted mb-4">
-                        Montagem do FCO dos meses anteriores, com escolha da data de referência e exportação para Excel.
-                    </p>
-                    <div class="mt-auto">
-                        <a href="{{ url_for('contas_contabeis.sisgea', fonte='historico') }}" class="btn btn-access btn-fco">
-                            <i class="fas fa-history me-2"></i>Acessar
+                        <a href="{{ url_for('contas_contabeis.relatorios') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-file-alt me-2"></i>Acessar
                         </a>
                     </div>
                 </div>
