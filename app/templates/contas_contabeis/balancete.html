@@ -111,7 +111,7 @@
     <!-- ANÁLISE SISGEA x BALANCETE                                   -->
     <!-- ============================================================ -->
     {# Sem overflow: hidden no card para o menu de tipos de pessoa não ser cortado #}
-    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
+    <div class="card border-0 shadow-sm mb-4 cc-card-filtros" style="border-radius: 12px; overflow: visible;">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
             <div>
                 <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
@@ -277,6 +277,11 @@
 
 {% block scripts %}
 <style>
+    /* O style.css global deixa todo .card com overflow: hidden (e sobe o card no hover),
+       o que corta as listas dos filtros. Nos cards de filtro o overflow fica liberado. */
+    .cc-card-filtros { overflow: visible !important; position: relative; z-index: 20; }
+    .cc-card-filtros:hover { transform: none !important; }
+    .cc-card-filtros .dropdown-menu { z-index: 1060; }
     .cc-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
     .cc-scroll::-webkit-scrollbar-thumb { background: #b7c3e8; border-radius: 6px; }
     .cc-scroll::-webkit-scrollbar-track { background: #f1f3f9; }
