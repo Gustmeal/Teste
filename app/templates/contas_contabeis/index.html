@@ -13,11 +13,13 @@
     <h1>FCO</h1>
     <p class="text-secondary">Vinculação das contas contábeis, conciliação SISGEA x Balancete e relatórios do SISGEA</p>
 
-    <div class="row g-4 mt-4 justify-content-center">
+    <!-- Linha 1: módulos principais (Vinculação e SISGEA X BALANCETE) -->
+    <!-- Linha 2: relatórios novos (SISGEA Prévia e SISGEA Histórico)  -->
+    <div class="row g-4 mt-4 justify-content-center fco-grid">
         <!-- Vinculação -->
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
                     <div class="system-icon mx-auto mb-4" style="background-color: #4e73df;">
                         <i class="fas fa-link"></i>
                     </div>
@@ -25,23 +27,25 @@
                     <p class="text-muted mb-3">
                         Vincule cada conta contábil a uma linha do FCO e cadastre novas contas.
                     </p>
-                    <p class="mb-4" style="font-size: 0.9rem;">
+                    <div class="fco-badges mb-4">
                         <span class="badge bg-primary">{{ resumo.qtd_contas | mil }} conta(s)</span>
                         {% if resumo.qtd_sem_vinculo %}
                         <span class="badge bg-warning text-dark">{{ resumo.qtd_sem_vinculo | mil }} sem vínculo</span>
                         {% endif %}
-                    </p>
-                    <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-access btn-lg">
-                        <i class="fas fa-link me-2"></i> Acessar Vinculação
-                    </a>
+                    </div>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-link me-2"></i>Acessar
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Balancete -->
-        <div class="col-md-6 col-xl-3">
+        <!-- SISGEA X BALANCETE -->
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
                     <div class="system-icon mx-auto mb-4" style="background-color: #1cc88a;">
                         <i class="fas fa-balance-scale"></i>
                     </div>
@@ -49,7 +53,7 @@
                     <p class="text-muted mb-3">
                         Guarde o FCO do mês e analise SISGEA x Balancete por linha do FCO.
                     </p>
-                    <p class="mb-4" style="font-size: 0.9rem;">
+                    <div class="fco-badges mb-4">
                         {% if resumo.status and resumo.status.qtd_total %}
                             {% if resumo.status.dt_max %}
                             <span class="badge bg-secondary">Ref. {{ resumo.status.dt_max.strftime('%d/%m/%Y') }}</span>
@@ -64,18 +68,20 @@
                         {% else %}
                             <span class="badge bg-light text-dark">Sem dados na prévia</span>
                         {% endif %}
-                    </p>
-                    <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-access btn-lg">
-                        <i class="fas fa-balance-scale me-2"></i> Acessar SISGEA X BALANCETE
-                    </a>
+                    </div>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-balance-scale me-2"></i>Acessar
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- SISGEA Prévia -->
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
                     <div class="system-icon mx-auto mb-4" style="background-color: #f6c23e;">
                         <i class="fas fa-hourglass-half"></i>
                     </div>
@@ -83,17 +89,19 @@
                     <p class="text-muted mb-4">
                         Relatório da montagem do FCO a partir do SISGEA no mês em prévia, com exportação para Excel.
                     </p>
-                    <a href="{{ url_for('contas_contabeis.sisgea', fonte='previa') }}" class="btn btn-access btn-lg">
-                        <i class="fas fa-hourglass-half me-2"></i> Acessar
-                    </a>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.sisgea', fonte='previa') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-hourglass-half me-2"></i>Acessar
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- SISGEA Histórico -->
-        <div class="col-md-6 col-xl-3">
+        <div class="col-md-6">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
                     <div class="system-icon mx-auto mb-4" style="background-color: #36b9cc;">
                         <i class="fas fa-history"></i>
                     </div>
@@ -101,9 +109,11 @@
                     <p class="text-muted mb-4">
                         Montagem do FCO dos meses anteriores, com escolha da data de referência e exportação para Excel.
                     </p>
-                    <a href="{{ url_for('contas_contabeis.sisgea', fonte='historico') }}" class="btn btn-access btn-lg">
-                        <i class="fas fa-history me-2"></i> Acessar
-                    </a>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.sisgea', fonte='historico') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-history me-2"></i>Acessar
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -111,6 +121,9 @@
 </div>
 
 <style>
+    /* Grade 2 x 2 com largura controlada para os cards não esticarem demais */
+    .fco-grid { max-width: 900px; margin-left: auto; margin-right: auto; }
+
     .system-icon {
         font-size: 3rem;
         display: inline-block;
@@ -124,6 +137,18 @@
     .home-card { transition: transform 0.3s ease; }
     .home-card:hover { transform: translateY(-5px); }
     .system-title { font-size: 1.3rem; font-weight: 600; }
-    .btn-access.btn-lg { padding: 12px 26px; font-size: 1rem; font-weight: 500; }
+
+    /* Badges com altura mínima fixa: os cards de cima ficam alinhados entre si */
+    .fco-badges { font-size: 0.9rem; min-height: 1.6rem; }
+
+    /* Todos os botões com o mesmo tamanho, texto em uma linha só,
+       e sempre colados no rodapé do card (mt-auto no wrapper) */
+    .btn-fco {
+        width: 200px;
+        padding: 12px 0;
+        font-size: 1rem;
+        font-weight: 500;
+        white-space: nowrap;
+    }
 </style>
 {% endblock %}
