@@ -143,12 +143,18 @@
 
     /* Todos os botões com o mesmo tamanho, texto em uma linha só,
        e sempre colados no rodapé do card (mt-auto no wrapper) */
+    /* inline-flex + justify-content: center → ícone e texto centralizados
+       (o custom.css aplica inline-flex alinhado à esquerda em .d-flex .btn) */
     .btn-fco {
         width: 200px;
         padding: 12px 0;
         font-size: 1rem;
         font-weight: 500;
         white-space: nowrap;
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
     }
+    .btn-fco i { margin-right: 8px !important; }
 </style>
 {% endblock %}
