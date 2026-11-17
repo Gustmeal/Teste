@@ -21,10 +21,19 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
      Diferença). O filtro de tipo de pessoa aceita vários tipos ao mesmo
      tempo (caixas de seleção); o total soma apenas os tipos marcados.
 
+3. Relatórios SISGEA (montagem do FCO, como a aba "CONCILIAÇÃO FCO X SISGEA")
+   - SISGEA Prévia     -> BDG.COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA
+   - SISGEA Histórico  -> BDG.COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO
+     (escolha da data de referência; a consulta já filtra pela data)
+   - Tela interativa: agrupamento > item contábil > linhas, filtros de
+     agrupamento e item (vários ao mesmo tempo), busca, ocultar zerados,
+     visão agrupada ou tabela única com ordenação; exportação para Excel
+     com os mesmos filtros.
+
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
 """
-from flask import Blueprint, render_template, request, jsonify, send_file, g
+from flask import Blueprint, render_template, request, jsonify, send_file, g, abort
 from flask_login import login_required
 from app import db
 from app.auth.decorators import sistema_requerido
@@ -50,6 +59,8 @@ TB_ITENS = '[BDG].[COR_TB030_FCO_ITENS]'
 TB_CONTAS = '[BDG].[COR_TB031_FCO_CONTAS_CONTABEIS]'
 TB_DIFERENCAS = '[BDG].[COR_TB032_FCO_DIFERENCAS]'
 VW_VALORES_MES = '[BDG].[COR_VW004_FCO_VALORES_MES]'
+VW_SISGEA_PREVIA = '[BDG].[COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA]'
+VW_SISGEA_HISTORICO = '[BDG].[COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO]'
 
 # Limites das colunas (para validar antes de gravar)
 TAM_CO_CONTA = 15       # varchar(15)
@@ -779,6 +790,323 @@ def balancete_exportar():
         entidade='contas_contabeis_balancete',
         entidade_id=dt_tabela.isoformat() if dt_tabela else '',
         descricao='Exportação da análise SISGEA x Balancete ({}; tipos: {})'.format(titulo_fonte, filtro_tipos),
+    )
+    return send_file(
+        saida,
+        as_attachment=True,
+        download_name=nome,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+
+# =========================================================================
+# RELATÓRIOS SISGEA (COR_VW007 prévia / COR_VW008 histórico)
+# =========================================================================
+
+SISGEA_FONTES = {
+    'previa': {
+        'view': VW_SISGEA_PREVIA,
+        'titulo': 'SISGEA Prévia',
+        'subtitulo': 'Montagem do FCO a partir do SISGEA - mês em prévia',
+        'arquivo': 'SISGEA_Previa',
+    },
+    'historico': {
+        'view': VW_SISGEA_HISTORICO,
+        'titulo': 'SISGEA Histórico',
+        'subtitulo': 'Montagem do FCO a partir do SISGEA - meses anteriores',
+        'arquivo': 'SISGEA_Historico',
+    },
+}
+
+SISGEA_COLUNAS = """
+    [DT_REFERENCIA], [CD_AGRUPAMENTO], [ID_ITEM_CONTABIL], [DSC_ITEM_CONTABIL],
+    [ID_LINHA_CONTABIL], [DSC_LINHA_CONTABIL], [COD_EVENTO],
+    [SL_DEB], [VR_DEBITO], [SL_CRED], [VR_CREDITO]
+"""
+
+
+def _txt(valor):
+    """Texto limpo (None vira '')."""
+    if valor is None:
+        return ''
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    if isinstance(valor, Decimal) and valor == valor.to_integral_value():
+        valor = int(valor)
+    return str(valor).strip()
+
+
+def _chave_ordem(valor):
+    """Ordena códigos numéricos como número e o resto como texto."""
+    texto = _txt(valor)
+    try:
+        return (0, float(texto), texto)
+    except ValueError:
+        return (1, 0.0, texto)
+
+
+def _normalizar_sisgea(r):
+    return {
+        'dt': _para_date(r['DT_REFERENCIA']),
+        'agrup': _txt(r['CD_AGRUPAMENTO']),
+        'id_item': _txt(r['ID_ITEM_CONTABIL']),
+        'dsc_item': _txt(r['DSC_ITEM_CONTABIL']),
+        'id_linha': _txt(r['ID_LINHA_CONTABIL']),
+        'dsc_linha': _txt(r['DSC_LINHA_CONTABIL']),
+        'evento': _txt(r['COD_EVENTO']),
+        'sl_deb': _txt(r['SL_DEB']),
+        'vr_deb': _dec(r['VR_DEBITO']),
+        'sl_cred': _txt(r['SL_CRED']),
+        'vr_cred': _dec(r['VR_CREDITO']),
+    }
+
+
+def _num_excel(texto):
+    """No Excel, códigos só com dígitos vão como número (ex.: linha 0, SL 2)."""
+    if texto and texto.isdigit() and not (len(texto) > 1 and texto.startswith('0')):
+        return int(texto)
+    return texto or None
+
+
+def _ordenar_sisgea(linhas):
+    linhas.sort(key=lambda l: (_chave_ordem(l['agrup']), _chave_ordem(l['id_item']), _chave_ordem(l['id_linha'])))
+    return linhas
+
+
+def _sisgea_datas(fonte):
+    """Datas de referência disponíveis na view do histórico (mais recente primeiro)."""
+    sql = text(f"""
+        SELECT DISTINCT [DT_REFERENCIA]
+        FROM {SISGEA_FONTES[fonte]['view']}
+        WHERE [DT_REFERENCIA] IS NOT NULL
+        ORDER BY [DT_REFERENCIA] DESC
+    """)
+    datas = []
+    for r in db.session.execute(sql).all():
+        d = _para_date(r[0])
+        if d and d not in datas:
+            datas.append(d)
+    return datas
+
+
+def _sisgea_carregar(fonte, dt_pedida=None):
+    """
+    Lê a view escolhida e devolve (linhas, datas, dt_escolhida).
+    - Prévia: a view traz só o mês em prévia, então é lida inteira UMA vez e as
+      datas são tiradas das próprias linhas.
+    - Histórico: busca primeiro as datas e depois só a data escolhida
+      (filtro na consulta, para não trazer todos os meses).
+    """
+    view = SISGEA_FONTES[fonte]['view']
+    if fonte == 'historico':
+        datas = _sisgea_datas(fonte)
+        dt_escolhida = dt_pedida if dt_pedida in datas else (datas[0] if datas else None)
+        if not dt_escolhida:
+            return [], datas, None
+        sql = text(f"SELECT {SISGEA_COLUNAS} FROM {view} WHERE [DT_REFERENCIA] = :dt")
+        linhas = [_normalizar_sisgea(r) for r in db.session.execute(sql, {'dt': dt_escolhida}).mappings().all()]
+        return _ordenar_sisgea(linhas), datas, dt_escolhida
+
+    sql = text(f"SELECT {SISGEA_COLUNAS} FROM {view}")
+    todas = [_normalizar_sisgea(r) for r in db.session.execute(sql).mappings().all()]
+    datas = sorted(set(l['dt'] for l in todas if l['dt']), reverse=True)
+    dt_escolhida = dt_pedida if dt_pedida in datas else (datas[0] if datas else None)
+    if len(datas) > 1:
+        linhas = [l for l in todas if l['dt'] == dt_escolhida]
+    else:
+        linhas = todas
+    return _ordenar_sisgea(linhas), datas, dt_escolhida
+
+
+def _sisgea_filtrar(linhas, agrups=None, itens=None, busca='', ocultar_zerados=False):
+    """Mesmos filtros da tela, usados na exportação para Excel."""
+    busca = (busca or '').strip().lower()
+    resultado = []
+    for l in linhas:
+        if agrups and l['agrup'] not in agrups:
+            continue
+        if itens and l['id_item'] not in itens:
+            continue
+        if ocultar_zerados and not (l['vr_deb'] or 0) and not (l['vr_cred'] or 0):
+            continue
+        if busca:
+            alvo = ' '.join([l['agrup'], l['id_item'], l['dsc_item'], l['id_linha'],
+                             l['dsc_linha'], l['evento']]).lower()
+            if busca not in alvo:
+                continue
+        resultado.append(l)
+    return resultado
+
+
+@contas_contabeis_bp.route('/sisgea/<fonte>')
+@login_required
+@sistema_requerido(SISTEMA)
+def sisgea(fonte):
+    if fonte not in SISGEA_FONTES:
+        abort(404)
+    cfg = SISGEA_FONTES[fonte]
+    dt_pedida = _para_date(request.args.get('dt')) if request.args.get('dt') else None
+
+    erro = None
+    try:
+        linhas, datas, dt_escolhida = _sisgea_carregar(fonte, dt_pedida)
+    except Exception as e:
+        db.session.rollback()
+        linhas, datas, dt_escolhida = [], [], None
+        erro = 'Erro ao consultar a view {}: {}'.format(cfg['view'], e)
+
+    # Dados enviados ao front em JSON (o JS monta a tela e os filtros)
+    dados = [{
+        'a': l['agrup'], 'i': l['id_item'], 'di': l['dsc_item'],
+        'l': l['id_linha'], 'dl': l['dsc_linha'], 'ev': l['evento'],
+        'sd': l['sl_deb'], 'vd': float(l['vr_deb']) if l['vr_deb'] is not None else None,
+        'sc': l['sl_cred'], 'vc': float(l['vr_cred']) if l['vr_cred'] is not None else None,
+    } for l in linhas]
+
+    return render_template(
+        'contas_contabeis/sisgea.html',
+        fonte=fonte,
+        cfg=cfg,
+        outra_fonte='historico' if fonte == 'previa' else 'previa',
+        outra_cfg=SISGEA_FONTES['historico' if fonte == 'previa' else 'previa'],
+        datas=datas,
+        dt_escolhida=dt_escolhida,
+        dados=dados,
+        erro=erro,
+    )
+
+
+@contas_contabeis_bp.route('/sisgea/<fonte>/exportar')
+@login_required
+@sistema_requerido(SISTEMA)
+def sisgea_exportar(fonte):
+    """Excel com os filtros da tela: aba 'Relatório' (montagem) e aba 'Dados' (tabela com filtro)."""
+    if fonte not in SISGEA_FONTES:
+        abort(404)
+    cfg = SISGEA_FONTES[fonte]
+    dt_pedida = _para_date(request.args.get('dt')) if request.args.get('dt') else None
+    agrups = [a for a in request.args.getlist('agrup') if a]
+    itens = [i for i in request.args.getlist('item') if i]
+    busca = request.args.get('busca', '')
+    ocultar_zerados = request.args.get('zerados') == '1'
+
+    linhas, _datas, dt_escolhida = _sisgea_carregar(fonte, dt_pedida)
+    linhas = _sisgea_filtrar(linhas, agrups, itens, busca, ocultar_zerados)
+
+    wb = Workbook()
+    azul = PatternFill('solid', fgColor='224ABE')
+    azul_claro = PatternFill('solid', fgColor='DCE3F7')
+    cinza = PatternFill('solid', fgColor='F2F2F2')
+    branco_negrito = Font(bold=True, color='FFFFFF')
+    negrito = Font(bold=True)
+    fina = Side(style='thin', color='D9D9D9')
+    borda = Border(left=fina, right=fina, top=fina, bottom=fina)
+    centro = Alignment(horizontal='center', vertical='center')
+    formato = '#,##0.00;[Red]-#,##0.00'
+
+    filtros_txt = []
+    filtros_txt.append('Agrupamento: ' + (', '.join(agrups) if agrups else 'Todos'))
+    filtros_txt.append('Item contábil: ' + (', '.join(itens) if itens else 'Todos'))
+    if busca.strip():
+        filtros_txt.append('Busca: "{}"'.format(busca.strip()))
+    if ocultar_zerados:
+        filtros_txt.append('Linhas zeradas ocultas')
+
+    # ---------------- Aba 1: Relatório (montagem como no SISGEA) ----------------
+    ws = wb.active
+    ws.title = 'Relatório'
+    ws.cell(row=1, column=1, value='Fechamento Contábil Operacional - FCO - {}'.format(cfg['titulo'])).font = Font(bold=True, size=13)
+    ws.cell(row=2, column=1, value='Data de referência: {}'.format(
+        dt_escolhida.strftime('%d/%m/%Y') if dt_escolhida else '-'))
+    ws.cell(row=3, column=1, value=' | '.join(filtros_txt)).font = Font(italic=True, color='666666')
+    ws.cell(row=4, column=1, value='Gerado em {}'.format(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))).font = Font(italic=True, color='666666')
+
+    cab = ['Linha', 'Descrição', 'Evento', 'SL', 'Débito', 'SL', 'Crédito']
+    linha_excel = 6
+    agrup_atual = None
+    item_atual = None
+    for l in linhas:
+        if l['agrup'] != agrup_atual:
+            agrup_atual = l['agrup']
+            item_atual = None
+            if linha_excel > 6:
+                linha_excel += 1
+            ws.cell(row=linha_excel, column=1, value='Agrupamento {}'.format(agrup_atual))
+            ws.merge_cells(start_row=linha_excel, start_column=1, end_row=linha_excel, end_column=len(cab))
+            for c in range(1, len(cab) + 1):
+                ws.cell(row=linha_excel, column=c).fill = azul
+                ws.cell(row=linha_excel, column=c).font = branco_negrito
+            linha_excel += 1
+        if l['id_item'] != item_atual:
+            item_atual = l['id_item']
+            ws.cell(row=linha_excel, column=1, value='{} - {}'.format(l['id_item'], l['dsc_item']))
+            ws.merge_cells(start_row=linha_excel, start_column=1, end_row=linha_excel, end_column=2)
+            for c, nome in enumerate(cab[2:], start=3):
+                ws.cell(row=linha_excel, column=c, value=nome).alignment = centro
+            for c in range(1, len(cab) + 1):
+                cel = ws.cell(row=linha_excel, column=c)
+                cel.fill = azul_claro
+                cel.font = negrito
+                cel.border = borda
+            linha_excel += 1
+        valores = [_num_excel(l['id_linha']), l['dsc_linha'], l['evento'], _num_excel(l['sl_deb']),
+                   float(l['vr_deb']) if l['vr_deb'] is not None else None,
+                   _num_excel(l['sl_cred']),
+                   float(l['vr_cred']) if l['vr_cred'] is not None else None]
+        for c, v in enumerate(valores, start=1):
+            cel = ws.cell(row=linha_excel, column=c, value=v)
+            cel.border = borda
+            if c in (5, 7):
+                cel.number_format = formato
+            if c in (1, 3, 4, 6):
+                cel.alignment = centro
+        linha_excel += 1
+
+    if not linhas:
+        ws.cell(row=6, column=1, value='Nenhum dado para os filtros escolhidos.')
+
+    for col, largura in zip('ABCDEFG', (8, 46, 12, 6, 18, 6, 18)):
+        ws.column_dimensions[col].width = largura
+
+    # ---------------- Aba 2: Dados (tabela plana com autofiltro) ----------------
+    wd = wb.create_sheet('Dados')
+    cab_dados = ['DT_REFERENCIA', 'CD_AGRUPAMENTO', 'ID_ITEM_CONTABIL', 'DSC_ITEM_CONTABIL',
+                 'ID_LINHA_CONTABIL', 'DSC_LINHA_CONTABIL', 'COD_EVENTO',
+                 'SL_DEB', 'VR_DEBITO', 'SL_CRED', 'VR_CREDITO']
+    for c, nome in enumerate(cab_dados, start=1):
+        cel = wd.cell(row=1, column=c, value=nome)
+        cel.fill = azul
+        cel.font = branco_negrito
+        cel.alignment = centro
+    for n, l in enumerate(linhas, start=2):
+        valores = [l['dt'], _num_excel(l['agrup']), _num_excel(l['id_item']), l['dsc_item'],
+                   _num_excel(l['id_linha']), l['dsc_linha'], l['evento'], _num_excel(l['sl_deb']),
+                   float(l['vr_deb']) if l['vr_deb'] is not None else None,
+                   _num_excel(l['sl_cred']),
+                   float(l['vr_cred']) if l['vr_cred'] is not None else None]
+        for c, v in enumerate(valores, start=1):
+            cel = wd.cell(row=n, column=c, value=v)
+            if c == 1 and v:
+                cel.number_format = 'DD/MM/YYYY'
+            if c in (9, 11):
+                cel.number_format = formato
+    if linhas:
+        wd.auto_filter.ref = 'A1:{}{}'.format(get_column_letter(len(cab_dados)), len(linhas) + 1)
+    wd.freeze_panes = 'A2'
+    for c, largura in enumerate((13, 16, 16, 40, 16, 40, 12, 8, 18, 8, 18), start=1):
+        wd.column_dimensions[get_column_letter(c)].width = largura
+
+    saida = BytesIO()
+    wb.save(saida)
+    saida.seek(0)
+
+    nome = '{}_{}.xlsx'.format(cfg['arquivo'], dt_escolhida.strftime('%Y%m%d') if dt_escolhida else 'sem_data')
+    registrar_log(
+        acao='exportar',
+        entidade='contas_contabeis_sisgea',
+        entidade_id=dt_escolhida.isoformat() if dt_escolhida else '',
+        descricao='Exportação {} ({} linha(s); {})'.format(cfg['titulo'], len(linhas), ' | '.join(filtros_txt)),
     )
     return send_file(
         saida,

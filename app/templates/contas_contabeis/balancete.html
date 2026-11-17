@@ -23,9 +23,17 @@
     <a href="{{ url_for('contas_contabeis.index') }}" class="btn-back">
         <i class="fas fa-arrow-left"></i> Voltar
     </a>
-    <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-outline-primary btn-sm">
-        <i class="fas fa-link me-1"></i> Vinculação de contas
-    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('contas_contabeis.sisgea', fonte='previa') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-hourglass-half me-1"></i> SISGEA Prévia
+        </a>
+        <a href="{{ url_for('contas_contabeis.sisgea', fonte='historico') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-history me-1"></i> SISGEA Histórico
+        </a>
+        <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-link me-1"></i> Vinculação de contas
+        </a>
+    </div>
 </div>
 
 <div class="editais-container fade-in">
@@ -117,7 +125,8 @@
                 </div>
             </div>
             {% if tabela.linhas %}
-            <a class="btn btn-light btn-sm"
+            {# download: o auto-loading.js não abre o overlay (o arquivo baixa sem trocar de página) #}
+            <a class="btn btn-light btn-sm js-ignore-loading" download
                href="{{ url_for('contas_contabeis.balancete_exportar', fonte=fonte, dt=dt_ref.isoformat() if dt_ref else '', linha=id_linha if id_linha is not none else '', tipo=tipos) }}">
                 <i class="fas fa-file-excel me-1" style="color: #1d6f42;"></i> Exportar Excel
             </a>

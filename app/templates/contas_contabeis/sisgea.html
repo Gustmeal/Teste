@@ -1,0 +1,528 @@
+{% extends "base.html" %}
+
+{% block title %}{{ cfg.titulo }} - FCO{% endblock %}
+
+{% block content %}
+{# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set rot_kpi = "font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;" %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('contas_contabeis.index') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('contas_contabeis.sisgea', fonte=outra_fonte) }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas {{ 'fa-history' if outra_fonte == 'historico' else 'fa-hourglass-half' }} me-1"></i> {{ outra_cfg.titulo }}
+        </a>
+        <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-balance-scale me-1"></i> SISGEA X BALANCETE
+        </a>
+        <a href="#" id="btnExportar" class="btn btn-success btn-sm js-ignore-loading" download
+           {% if not dados %}style="pointer-events: none; opacity: 0.6;"{% endif %}>
+            <i class="fas fa-file-excel me-1"></i> Exportar Excel
+        </a>
+    </div>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="fw-bold header-with-back mb-1">
+                <i class="fas {{ 'fa-hourglass-half' if fonte == 'previa' else 'fa-history' }} me-2"></i>{{ cfg.titulo }}
+            </h1>
+            <p class="text-muted mb-0">{{ cfg.subtitulo }}</p>
+        </div>
+        {% if datas %}
+        <form method="get" action="{{ url_for('contas_contabeis.sisgea', fonte=fonte) }}" class="d-flex align-items-center gap-2">
+            <label for="selData" class="fw-semibold mb-0" style="font-size: 0.85rem; white-space: nowrap;">
+                <i class="far fa-calendar-alt me-1"></i> Data de referência
+            </label>
+            <select name="dt" id="selData" class="form-select form-select-sm" style="min-width: 150px;"
+                    onchange="this.form.submit()" {% if datas|length < 2 %}disabled{% endif %}>
+                {% for d in datas %}
+                <option value="{{ d.isoformat() }}" {% if d == dt_escolhida %}selected{% endif %}>{{ d.strftime('%d/%m/%Y') }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if erro %}
+    <div class="alert alert-danger">{{ erro }}</div>
+    {% endif %}
+
+    {% if dados %}
+    <!-- Indicadores (atualizados pelos filtros) -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #4e73df !important;">
+                <div class="card-body py-3">
+                    <div style="{{ rot_kpi }} color: #4e73df;">Agrupamentos</div>
+                    <div id="kpiAgrup" style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #36b9cc !important;">
+                <div class="card-body py-3">
+                    <div style="{{ rot_kpi }} color: #258391;">Itens contábeis</div>
+                    <div id="kpiItens" style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">-</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #1cc88a !important;">
+                <div class="card-body py-3">
+                    <div style="{{ rot_kpi }} color: #13855c;">Linhas exibidas</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">
+                        <span id="kpiLinhas">-</span>
+                        <span style="font-size: 0.85rem; color: #858796; font-weight: 500;">de {{ dados|length }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #f6c23e !important;">
+                <div class="card-body py-3">
+                    <div style="{{ rot_kpi }} color: #c99a06;">Data de referência</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">
+                        {{ dt_escolhida.strftime('%d/%m/%Y') if dt_escolhida else '-' }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
+        <div style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                <i class="fas fa-filter me-2"></i>Filtros
+            </h5>
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Agrupamento</label>
+                    <div class="dropdown">
+                        <button class="form-select form-select-sm text-start js-ignore-loading" type="button" id="btnAgrup"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Todos</button>
+                        <div class="dropdown-menu p-2 shadow" style="min-width: 260px;">
+                            <input type="text" class="form-control form-control-sm mb-2" id="buscaAgrup" placeholder="Pesquisar...">
+                            <div id="listaAgrup" style="max-height: 260px; overflow-y: auto;"></div>
+                            <hr class="my-2">
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-outline-primary btn-sm flex-fill js-ignore-loading" data-marcar="agrup">Marcar todos</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-ignore-loading" data-limpar="agrup">Limpar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Item contábil</label>
+                    <div class="dropdown">
+                        <button class="form-select form-select-sm text-start js-ignore-loading" type="button" id="btnItem"
+                                data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Todos</button>
+                        <div class="dropdown-menu p-2 shadow" style="min-width: 340px;">
+                            <input type="text" class="form-control form-control-sm mb-2" id="buscaItem" placeholder="Pesquisar...">
+                            <div id="listaItem" style="max-height: 260px; overflow-y: auto;"></div>
+                            <hr class="my-2">
+                            <div class="d-flex gap-1">
+                                <button type="button" class="btn btn-outline-primary btn-sm flex-fill js-ignore-loading" data-marcar="item">Marcar todos</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-ignore-loading" data-limpar="item">Limpar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <label for="busca" class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Busca</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        <input type="text" id="busca" class="form-control" placeholder="Linha, descrição ou evento...">
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-check form-switch mb-1">
+                        <input class="form-check-input" type="checkbox" id="chkZerados">
+                        <label class="form-check-label" for="chkZerados" style="font-size: 0.85rem;">Ocultar linhas zeradas</label>
+                    </div>
+                    <button type="button" class="btn btn-outline-secondary btn-sm js-ignore-loading" id="btnLimparFiltros">
+                        <i class="fas fa-eraser me-1"></i> Limpar filtros
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de visualização -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-primary js-ignore-loading" data-modo="agrupado">
+                <i class="fas fa-layer-group me-1"></i> Agrupado
+            </button>
+            <button type="button" class="btn btn-outline-primary js-ignore-loading" data-modo="tabela">
+                <i class="fas fa-table me-1"></i> Tabela única
+            </button>
+        </div>
+        <div class="d-flex gap-2" id="barraExpandir">
+            <button type="button" class="btn btn-outline-primary btn-sm js-ignore-loading" id="btnExpandir">
+                <i class="fas fa-expand-alt me-1"></i> Expandir tudo
+            </button>
+            <button type="button" class="btn btn-outline-primary btn-sm js-ignore-loading" id="btnRecolher">
+                <i class="fas fa-compress-alt me-1"></i> Recolher tudo
+            </button>
+        </div>
+    </div>
+
+    <div id="areaRelatorio"></div>
+
+    {% else %}
+    <div class="card border-0 shadow-sm" style="border-radius: 12px;">
+        <div class="card-body text-center text-muted py-5">
+            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+            Nenhum dado encontrado na view {{ cfg.titulo }}{% if dt_escolhida %} para {{ dt_escolhida.strftime('%d/%m/%Y') }}{% endif %}.
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script type="application/json" id="dadosSisgea">{{ dados | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<style>
+    .sg-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .sg-scroll::-webkit-scrollbar-thumb { background: #b7c3e8; border-radius: 6px; }
+    .sg-scroll::-webkit-scrollbar-track { background: #f1f3f9; }
+    .sg-agrup-cab { cursor: pointer; user-select: none; }
+    .sg-agrup-cab:hover { filter: brightness(1.08); }
+    .sg-seta { transition: transform 0.2s ease; display: inline-block; }
+    .sg-recolhido .sg-seta { transform: rotate(-90deg); }
+    .sg-recolhido .sg-corpo { display: none; }
+    .sg-tab td, .sg-tab th { padding: 0.35rem 0.6rem; vertical-align: middle; }
+    .sg-tab tbody tr:hover td { background: #f3f6fd; }
+    .sg-ordenavel { cursor: pointer; user-select: none; }
+    .sg-ordenavel:hover { background: #3a5fcd !important; }
+    mark.sg-mark { background: #fff3a3; padding: 0 1px; border-radius: 2px; }
+</style>
+<script>
+(function () {
+    const elDados = document.getElementById('dadosSisgea');
+    const DADOS = elDados ? JSON.parse(elDados.textContent) : [];
+    if (!DADOS.length) { return; }
+
+    const URL_EXPORTAR = "{{ url_for('contas_contabeis.sisgea_exportar', fonte=fonte) }}";
+    const DT = "{{ dt_escolhida.isoformat() if dt_escolhida else '' }}";
+
+    const fmt = new Intl.NumberFormat('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    const TH = 'background:#4e73df;color:#fff;font-size:0.72rem;font-weight:600;text-transform:uppercase;text-align:center;white-space:nowrap;border:1px solid #3a5fcd;';
+    const NUM = 'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;';
+
+    // ---------------- Estado da tela ----------------
+    const estado = {
+        agrups: new Set(), itens: new Set(), busca: '', zerados: false,
+        modo: 'agrupado', ordem: {col: null, dir: 1}, recolhidos: new Set()
+    };
+
+    function esc(t) {
+        return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+    function realce(t) {
+        const texto = esc(t);
+        if (!estado.busca) { return texto; }
+        const termo = esc(estado.busca).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return texto.replace(new RegExp('(' + termo + ')', 'gi'), '<mark class="sg-mark">$1</mark>');
+    }
+    function valor(v) {
+        if (v === null || v === undefined) { return '<span class="text-muted">-</span>'; }
+        if (v === 0) { return '<span style="color:#b7b9cc;">0,00</span>'; }
+        return v < 0 ? '<span style="color:#e74a3b;">' + fmt.format(v) + '</span>' : fmt.format(v);
+    }
+    function numOrd(t) {
+        const n = parseFloat(String(t).replace(',', '.'));
+        return isNaN(n) ? null : n;
+    }
+    function comparar(a, b) {
+        const na = numOrd(a), nb = numOrd(b);
+        if (na !== null && nb !== null) { return na - nb; }
+        return String(a).localeCompare(String(b), 'pt-BR', {numeric: true});
+    }
+
+    // ---------------- Opções dos filtros (vêm dos dados) ----------------
+    const opcoesAgrup = [];
+    const opcoesItem = new Map();
+    DADOS.forEach(function (d) {
+        if (opcoesAgrup.indexOf(d.a) === -1) { opcoesAgrup.push(d.a); }
+        if (!opcoesItem.has(d.i)) { opcoesItem.set(d.i, d.di); }
+    });
+    opcoesAgrup.sort(comparar);
+    const listaItens = Array.from(opcoesItem.keys()).sort(comparar);
+
+    function montarLista(idLista, chave, opcoes, rotulo) {
+        const el = document.getElementById(idLista);
+        el.innerHTML = opcoes.map(function (op, n) {
+            const id = idLista + '_' + n;
+            return '<div class="form-check mb-1" data-texto="' + esc((op + ' ' + rotulo(op)).toLowerCase()) + '">' +
+                '<input class="form-check-input" type="checkbox" value="' + esc(op) + '" id="' + id + '" data-chave="' + chave + '">' +
+                '<label class="form-check-label" for="' + id + '" style="font-size:0.85rem;">' + esc(rotulo(op)) + '</label></div>';
+        }).join('');
+    }
+    montarLista('listaAgrup', 'agrup', opcoesAgrup, function (a) { return a; });
+    montarLista('listaItem', 'item', listaItens, function (i) { return i + ' - ' + (opcoesItem.get(i) || ''); });
+
+    function textoBotao(conjunto, rotulo) {
+        if (!conjunto.size) { return 'Todos'; }
+        const lista = Array.from(conjunto);
+        return lista.length <= 2 ? lista.map(rotulo).join(', ') : lista.length + ' selecionados';
+    }
+    function atualizarBotoesFiltro() {
+        document.getElementById('btnAgrup').textContent = textoBotao(estado.agrups, function (a) { return a; });
+        document.getElementById('btnItem').textContent = textoBotao(estado.itens, function (i) { return i; });
+    }
+
+    document.querySelectorAll('#listaAgrup, #listaItem').forEach(function (lista) {
+        lista.addEventListener('change', function (e) {
+            const chk = e.target;
+            const alvo = chk.getAttribute('data-chave') === 'agrup' ? estado.agrups : estado.itens;
+            if (chk.checked) { alvo.add(chk.value); } else { alvo.delete(chk.value); }
+            atualizarBotoesFiltro();
+            render();
+        });
+    });
+    // Pesquisa dentro das listas de filtro
+    [['buscaAgrup', 'listaAgrup'], ['buscaItem', 'listaItem']].forEach(function (par) {
+        document.getElementById(par[0]).addEventListener('input', function () {
+            const termo = this.value.trim().toLowerCase();
+            document.querySelectorAll('#' + par[1] + ' .form-check').forEach(function (div) {
+                div.style.display = !termo || div.getAttribute('data-texto').indexOf(termo) !== -1 ? '' : 'none';
+            });
+        });
+    });
+    document.querySelectorAll('[data-marcar], [data-limpar]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const chave = btn.getAttribute('data-marcar') || btn.getAttribute('data-limpar');
+            const marcar = btn.hasAttribute('data-marcar');
+            const alvo = chave === 'agrup' ? estado.agrups : estado.itens;
+            const lista = chave === 'agrup' ? 'listaAgrup' : 'listaItem';
+            alvo.clear();
+            document.querySelectorAll('#' + lista + ' input').forEach(function (c) {
+                const visivel = c.closest('.form-check').style.display !== 'none';
+                c.checked = marcar && visivel;
+                if (c.checked) { alvo.add(c.value); }
+            });
+            atualizarBotoesFiltro();
+            render();
+        });
+    });
+
+    let tempoBusca = null;
+    document.getElementById('busca').addEventListener('input', function () {
+        const v = this.value;
+        clearTimeout(tempoBusca);
+        tempoBusca = setTimeout(function () { estado.busca = v.trim(); render(); }, 200);
+    });
+    document.getElementById('chkZerados').addEventListener('change', function () {
+        estado.zerados = this.checked;
+        render();
+    });
+    document.getElementById('btnLimparFiltros').addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        estado.agrups.clear(); estado.itens.clear(); estado.busca = ''; estado.zerados = false;
+        document.querySelectorAll('#listaAgrup input, #listaItem input').forEach(function (c) { c.checked = false; });
+        document.getElementById('busca').value = '';
+        document.getElementById('chkZerados').checked = false;
+        atualizarBotoesFiltro();
+        render();
+    });
+
+    // ---------------- Modo de visualização ----------------
+    document.querySelectorAll('[data-modo]').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            estado.modo = btn.getAttribute('data-modo');
+            document.querySelectorAll('[data-modo]').forEach(function (b) {
+                b.className = 'btn js-ignore-loading ' + (b === btn ? 'btn-primary' : 'btn-outline-primary');
+            });
+            document.getElementById('barraExpandir').style.visibility = estado.modo === 'agrupado' ? 'visible' : 'hidden';
+            render();
+        });
+    });
+    document.getElementById('btnExpandir').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        estado.recolhidos.clear();
+        document.querySelectorAll('.sg-agrup').forEach(function (c) { c.classList.remove('sg-recolhido'); });
+    });
+    document.getElementById('btnRecolher').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        document.querySelectorAll('.sg-agrup').forEach(function (c) {
+            c.classList.add('sg-recolhido');
+            estado.recolhidos.add(c.getAttribute('data-agrup'));
+        });
+    });
+
+    // ---------------- Filtro (mesma regra do back end na exportação) ----------------
+    function filtrar() {
+        const termo = estado.busca.toLowerCase();
+        return DADOS.filter(function (d) {
+            if (estado.agrups.size && !estado.agrups.has(d.a)) { return false; }
+            if (estado.itens.size && !estado.itens.has(d.i)) { return false; }
+            if (estado.zerados && !d.vd && !d.vc) { return false; }
+            if (termo) {
+                const alvo = [d.a, d.i, d.di, d.l, d.dl, d.ev].join(' ').toLowerCase();
+                if (alvo.indexOf(termo) === -1) { return false; }
+            }
+            return true;
+        });
+    }
+
+    function atualizarExportar() {
+        const p = new URLSearchParams();
+        if (DT) { p.append('dt', DT); }
+        estado.agrups.forEach(function (a) { p.append('agrup', a); });
+        estado.itens.forEach(function (i) { p.append('item', i); });
+        if (estado.busca) { p.append('busca', estado.busca); }
+        if (estado.zerados) { p.append('zerados', '1'); }
+        document.getElementById('btnExportar').setAttribute('href', URL_EXPORTAR + '?' + p.toString());
+    }
+
+    // ---------------- Visão agrupada (como o relatório do SISGEA) ----------------
+    function renderAgrupado(linhas) {
+        const grupos = [];
+        const porAgrup = new Map();
+        linhas.forEach(function (d) {
+            if (!porAgrup.has(d.a)) { porAgrup.set(d.a, {a: d.a, itens: new Map()}); grupos.push(porAgrup.get(d.a)); }
+            const g = porAgrup.get(d.a);
+            if (!g.itens.has(d.i)) { g.itens.set(d.i, {i: d.i, di: d.di, linhas: []}); }
+            g.itens.get(d.i).linhas.push(d);
+        });
+
+        return grupos.map(function (g) {
+            const qtdLinhas = Array.from(g.itens.values()).reduce(function (s, it) { return s + it.linhas.length; }, 0);
+            const recolhido = estado.recolhidos.has(g.a) ? ' sg-recolhido' : '';
+            const itensHtml = Array.from(g.itens.values()).map(function (it) {
+                const corpo = it.linhas.map(function (d) {
+                    return '<tr>' +
+                        '<td style="text-align:center;color:#858796;width:70px;">' + realce(d.l) + '</td>' +
+                        '<td style="font-weight:500;color:#5a5c69;">' + realce(d.dl) + '</td>' +
+                        '<td style="text-align:center;white-space:nowrap;">' + realce(d.ev) + '</td>' +
+                        '<td style="text-align:center;color:#858796;width:50px;">' + esc(d.sd) + '</td>' +
+                        '<td style="' + NUM + 'width:170px;">' + valor(d.vd) + '</td>' +
+                        '<td style="text-align:center;color:#858796;width:50px;">' + esc(d.sc) + '</td>' +
+                        '<td style="' + NUM + 'width:170px;">' + valor(d.vc) + '</td>' +
+                        '</tr>';
+                }).join('');
+                return '<div class="mb-3">' +
+                    '<div style="font-weight:700;color:#224abe;font-size:0.88rem;margin:0.25rem 0 0.4rem;">' +
+                    '<span class="badge" style="background:#dce3f7;color:#224abe;margin-right:6px;">' + realce(it.i) + '</span>' + realce(it.di) +
+                    '<span class="text-muted fw-normal ms-2" style="font-size:0.78rem;">(' + it.linhas.length + ' linha' + (it.linhas.length > 1 ? 's' : '') + ')</span></div>' +
+                    '<div class="sg-scroll" style="overflow-x:auto;">' +
+                    '<table class="table table-sm mb-0 sg-tab" style="font-size:0.82rem;min-width:820px;border:1px solid #e3e6f0;">' +
+                    '<thead><tr>' +
+                    '<th style="' + TH + '">Linha</th><th style="' + TH + 'text-align:left;">Descrição</th>' +
+                    '<th style="' + TH + '">Evento</th><th style="' + TH + '">SL</th><th style="' + TH + '">Débito</th>' +
+                    '<th style="' + TH + '">SL</th><th style="' + TH + '">Crédito</th>' +
+                    '</tr></thead><tbody>' + corpo + '</tbody></table></div></div>';
+            }).join('');
+
+            return '<div class="card border-0 shadow-sm mb-3 sg-agrup' + recolhido + '" data-agrup="' + esc(g.a) + '" style="border-radius:12px;">' +
+                '<div class="sg-agrup-cab d-flex justify-content-between align-items-center" ' +
+                'style="background:linear-gradient(135deg,#224abe,#4e73df);color:#fff;border-radius:12px 12px 0 0;padding:0.7rem 1.1rem;">' +
+                '<div><span class="sg-seta me-2"><i class="fas fa-chevron-down"></i></span>' +
+                '<strong>Agrupamento ' + realce(g.a) + '</strong></div>' +
+                '<div style="font-size:0.8rem;opacity:0.9;">' + g.itens.size + ' ite' + (g.itens.size > 1 ? 'ns' : 'm') +
+                ' · ' + qtdLinhas + ' linha' + (qtdLinhas > 1 ? 's' : '') + '</div></div>' +
+                '<div class="card-body sg-corpo" style="padding:1rem 1.1rem;">' + itensHtml + '</div></div>';
+        }).join('');
+    }
+
+    // ---------------- Visão tabela única (com ordenação) ----------------
+    const COLUNAS = [
+        {k: 'a', t: 'Agrupamento'}, {k: 'i', t: 'Item'}, {k: 'di', t: 'Descrição do item', esq: true},
+        {k: 'l', t: 'Linha'}, {k: 'dl', t: 'Descrição da linha', esq: true}, {k: 'ev', t: 'Evento'},
+        {k: 'sd', t: 'SL Déb.'}, {k: 'vd', t: 'Débito', num: true},
+        {k: 'sc', t: 'SL Créd.'}, {k: 'vc', t: 'Crédito', num: true}
+    ];
+    function renderTabela(linhas) {
+        const ord = estado.ordem;
+        if (ord.col) {
+            linhas = linhas.slice().sort(function (x, y) {
+                const a = x[ord.col], b = y[ord.col];
+                if (a === null || a === undefined) { return 1; }
+                if (b === null || b === undefined) { return -1; }
+                return (typeof a === 'number' && typeof b === 'number' ? a - b : comparar(a, b)) * ord.dir;
+            });
+        }
+        const cab = COLUNAS.map(function (c) {
+            const seta = ord.col === c.k ? (ord.dir === 1 ? ' <i class="fas fa-sort-up"></i>' : ' <i class="fas fa-sort-down"></i>') : ' <i class="fas fa-sort" style="opacity:0.4;"></i>';
+            return '<th class="sg-ordenavel" data-col="' + c.k + '" style="' + TH + (c.esq ? 'text-align:left;' : '') + '">' + c.t + seta + '</th>';
+        }).join('');
+        const corpo = linhas.map(function (d) {
+            return '<tr>' + COLUNAS.map(function (c) {
+                if (c.num) { return '<td style="' + NUM + '">' + valor(d[c.k]) + '</td>'; }
+                const estilo = c.esq ? 'white-space:nowrap;' : 'text-align:center;white-space:nowrap;';
+                return '<td style="' + estilo + '">' + realce(d[c.k]) + '</td>';
+            }).join('') + '</tr>';
+        }).join('');
+        return '<div class="card border-0 shadow-sm" style="border-radius:12px;">' +
+            '<div class="sg-scroll" style="max-height:640px;overflow:auto;border-radius:12px;">' +
+            '<table class="table table-sm mb-0 sg-tab" style="font-size:0.82rem;width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;">' +
+            '<thead style="position:sticky;top:0;z-index:2;"><tr>' + cab + '</tr></thead>' +
+            '<tbody>' + corpo + '</tbody></table></div></div>';
+    }
+
+    // ---------------- Desenho geral ----------------
+    const area = document.getElementById('areaRelatorio');
+    function render() {
+        const linhas = filtrar();
+        const agrups = new Set(linhas.map(function (d) { return d.a; }));
+        const itens = new Set(linhas.map(function (d) { return d.a + '|' + d.i; }));
+        document.getElementById('kpiAgrup').textContent = agrups.size.toLocaleString('pt-BR');
+        document.getElementById('kpiItens').textContent = itens.size.toLocaleString('pt-BR');
+        document.getElementById('kpiLinhas').textContent = linhas.length.toLocaleString('pt-BR');
+        atualizarExportar();
+
+        if (!linhas.length) {
+            area.innerHTML = '<div class="card border-0 shadow-sm" style="border-radius:12px;"><div class="card-body text-center text-muted py-5">' +
+                '<i class="fas fa-search fa-2x mb-2 d-block"></i>Nenhuma linha para os filtros escolhidos.</div></div>';
+            return;
+        }
+        area.innerHTML = estado.modo === 'agrupado' ? renderAgrupado(linhas) : renderTabela(linhas);
+    }
+
+    // Cliques dentro do relatório: recolher agrupamento e ordenar colunas
+    area.addEventListener('click', function (e) {
+        const cab = e.target.closest('.sg-agrup-cab');
+        if (cab) {
+            const card = cab.closest('.sg-agrup');
+            card.classList.toggle('sg-recolhido');
+            const chave = card.getAttribute('data-agrup');
+            if (card.classList.contains('sg-recolhido')) { estado.recolhidos.add(chave); } else { estado.recolhidos.delete(chave); }
+            return;
+        }
+        const th = e.target.closest('.sg-ordenavel');
+        if (th) {
+            const col = th.getAttribute('data-col');
+            if (estado.ordem.col === col) {
+                if (estado.ordem.dir === 1) { estado.ordem.dir = -1; } else { estado.ordem.col = null; estado.ordem.dir = 1; }
+            } else {
+                estado.ordem.col = col; estado.ordem.dir = 1;
+            }
+            render();
+        }
+    });
+
+    render();
+})();
+</script>
+{% endblock %}

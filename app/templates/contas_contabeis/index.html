@@ -11,13 +11,13 @@
 
 <div class="central-panel mt-3 fade-in">
     <h1>FCO</h1>
-    <p class="text-secondary">Vinculação das contas contábeis às linhas do FCO e conciliação SISGEA x Balancete</p>
+    <p class="text-secondary">Vinculação das contas contábeis, conciliação SISGEA x Balancete e relatórios do SISGEA</p>
 
     <div class="row g-4 mt-4 justify-content-center">
         <!-- Vinculação -->
-        <div class="col-md-5">
+        <div class="col-md-6 col-xl-3">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-5">
+                <div class="card-body text-center p-4">
                     <div class="system-icon mx-auto mb-4" style="background-color: #4e73df;">
                         <i class="fas fa-link"></i>
                     </div>
@@ -39,9 +39,9 @@
         </div>
 
         <!-- Balancete -->
-        <div class="col-md-5">
+        <div class="col-md-6 col-xl-3">
             <div class="card home-card shadow h-100">
-                <div class="card-body text-center p-5">
+                <div class="card-body text-center p-4">
                     <div class="system-icon mx-auto mb-4" style="background-color: #1cc88a;">
                         <i class="fas fa-balance-scale"></i>
                     </div>
@@ -71,6 +71,42 @@
                 </div>
             </div>
         </div>
+
+        <!-- SISGEA Prévia -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #f6c23e;">
+                        <i class="fas fa-hourglass-half"></i>
+                    </div>
+                    <h3 class="system-title mb-3">SISGEA Prévia</h3>
+                    <p class="text-muted mb-4">
+                        Relatório da montagem do FCO a partir do SISGEA no mês em prévia, com exportação para Excel.
+                    </p>
+                    <a href="{{ url_for('contas_contabeis.sisgea', fonte='previa') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-hourglass-half me-2"></i> Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- SISGEA Histórico -->
+        <div class="col-md-6 col-xl-3">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #36b9cc;">
+                        <i class="fas fa-history"></i>
+                    </div>
+                    <h3 class="system-title mb-3">SISGEA Histórico</h3>
+                    <p class="text-muted mb-4">
+                        Montagem do FCO dos meses anteriores, com escolha da data de referência e exportação para Excel.
+                    </p>
+                    <a href="{{ url_for('contas_contabeis.sisgea', fonte='historico') }}" class="btn btn-access btn-lg">
+                        <i class="fas fa-history me-2"></i> Acessar
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -87,7 +123,7 @@
     }
     .home-card { transition: transform 0.3s ease; }
     .home-card:hover { transform: translateY(-5px); }
-    .system-title { font-size: 1.5rem; font-weight: 600; }
-    .btn-access.btn-lg { padding: 14px 35px; font-size: 1.1rem; font-weight: 500; }
+    .system-title { font-size: 1.3rem; font-weight: 600; }
+    .btn-access.btn-lg { padding: 12px 26px; font-size: 1rem; font-weight: 500; }
 </style>
 {% endblock %}
