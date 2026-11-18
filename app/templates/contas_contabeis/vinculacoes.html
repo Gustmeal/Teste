@@ -65,6 +65,29 @@
                 </div>
             </div>
         </div>
+
+        <!-- FCO X BALANCETE (COR_TB041) -->
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #1cc88a;">
+                        <i class="fas fa-sitemap"></i>
+                    </div>
+                    <h3 class="system-title mb-3">FCO X BALANCETE</h3>
+                    <p class="text-muted mb-3">
+                        Vincule agrupamento, item e linha do FCO a uma conta contábil do balancete.
+                    </p>
+                    <div class="fco-badges mb-4">
+                        <span class="badge bg-primary">{{ resumo.fco_bal.qtd | mil }} vínculo(s)</span>
+                    </div>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.vinculacao_fco_balancete') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-sitemap me-2"></i>Acessar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 

@@ -18,6 +18,9 @@
         <a href="{{ url_for('contas_contabeis.vinculacao_fco') }}" class="btn btn-outline-primary btn-sm">
             <i class="fas fa-project-diagram me-1"></i> Vinculação SISGEA X FCO
         </a>
+        <a href="{{ url_for('contas_contabeis.vinculacao_fco_balancete') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-sitemap me-1"></i> Vinculação FCO X BALANCETE
+        </a>
         <a href="{{ url_for('contas_contabeis.balancete') }}" class="btn btn-outline-primary btn-sm">
             <i class="fas fa-balance-scale me-1"></i> Análise SISGEA X BALANCETE
         </a>
@@ -199,7 +202,7 @@
                     <label for="novaConta" class="form-label fw-semibold">Conta contábil <span class="text-danger">*</span></label>
                     <input type="text" id="novaConta" class="form-control" maxlength="{{ tam_co_conta }}"
                            placeholder="Ex.: 112.23.01.01.01">
-                    <div class="form-text">Máximo de {{ tam_co_conta }} caracteres.</div>
+                    <div class="form-text">Máximo de {{ tam_co_conta }} caracteres. A conta precisa existir no balancete (COR_TB012).</div>
                 </div>
                 <div class="mb-3">
                     <label for="novoTipo" class="form-label fw-semibold">Tipo de pessoa</label>

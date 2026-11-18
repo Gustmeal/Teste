@@ -16,6 +16,15 @@ Rotas do módulo FCO (vinculação de contas e SISGEA x Balancete).
    - pkLinhaContabil não aparece na tela; é usado só como chave do UPDATE.
    - Nova linha: INSERT na COR_TB037 (pk por IDENTITY ou MAX + 1).
 
+1c. Vinculação FCO X BALANCETE -> BDG.COR_TB041_FCO_VINC_ITEM_LINHA_CONTA
+   - Cada vínculo = agrupamento (COR_TB034) + item (COR_TB036) + linha
+     (COR_TB037) + conta contábil. Os nomes vêm das tabelas de parâmetro.
+   - A tabela não tem chave: a edição localiza o registro pelos 4 valores
+     originais.
+
+Regra para contas novas (SISGEA X BALANCETE e FCO X BALANCETE): a conta só
+pode ser incluída se existir no CO_CONTA da BDG.COR_TB012_BALANCETE.
+
 2. SISGEA x Balancete
    - Prévia atual   -> BDG.COR_VW004_FCO_VALORES_MES (só traz o mês mais recente)
    - Histórico      -> BDG.COR_TB032_FCO_DIFERENCAS  (todos os meses já gravados)
@@ -66,6 +75,10 @@ TB_CONTAS = '[BDG].[COR_TB031_FCO_CONTAS_CONTABEIS]'
 TB_DIFERENCAS = '[BDG].[COR_TB032_FCO_DIFERENCAS]'
 TB_LINHAS_SISGEA = '[BDG].[COR_TB037_FCO_LINHAS_SISGEA]'
 TB_LINHAS_SISGEA_OBJ = 'BDG.COR_TB037_FCO_LINHAS_SISGEA'
+TB_BALANCETE = '[BDG].[COR_TB012_BALANCETE]'
+TB_AGRUP_CONTABIL = '[BDG].[COR_TB034_FCO_AGRUPAMENTO_CONTABIL]'
+TB_ITENS_SISGEA = '[BDG].[COR_TB036_FCO_ITENS_SISGEA]'
+TB_VINC_ITEM_LINHA_CONTA = '[BDG].[COR_TB041_FCO_VINC_ITEM_LINHA_CONTA]'
 VW_VALORES_MES = '[BDG].[COR_VW004_FCO_VALORES_MES]'
 VW_SISGEA_PREVIA = '[BDG].[COR_VW007_FCO_MONTAGEM_SISGEA_PREVIA]'
 VW_SISGEA_HISTORICO = '[BDG].[COR_VW008_FCO_MONTAGEM_SISGEA_HISTORICO]'
@@ -212,6 +225,15 @@ def _buscar_conta(co_conta):
         WHERE [CO_CONTA] = :c
     """)
     return db.session.execute(sql, {'c': co_conta}).mappings().first()
+
+
+def _conta_existe_no_balancete(co_conta):
+    """A conta precisa existir no CO_CONTA da COR_TB012_BALANCETE (registros não excluídos)."""
+    sql = text(f"""
+        SELECT TOP 1 1 FROM {TB_BALANCETE}
+        WHERE LTRIM(RTRIM([CO_CONTA])) = :c AND [DELETED_AT] IS NULL
+    """)
+    return db.session.execute(sql, {'c': str(co_conta).strip()}).first() is not None
 
 
 def _ler_id_linha(valor):
@@ -537,6 +559,9 @@ def vinculacao_nova():
     try:
         if _buscar_conta(co_conta):
             return _json_erro('A conta {} já existe. Use a vinculação para alterar a linha.'.format(co_conta), 409)
+        if not _conta_existe_no_balancete(co_conta):
+            return _json_erro('A conta {} não existe no balancete (COR_TB012). '
+                              'Só é possível incluir contas que constam no balancete.'.format(co_conta), 422)
         if id_linha is not None and not _item_existe(id_linha):
             return _json_erro('A linha {} não existe na tabela de itens do FCO.'.format(id_linha), 404)
 
@@ -567,9 +592,10 @@ def vinculacao_nova():
 @login_required
 @sistema_requerido(SISTEMA)
 def vinculacoes():
-    """Página que reúne as vinculações: SISGEA X BALANCETE (COR_TB031) e SISGEA X FCO (COR_TB037)."""
+    """Página que reúne as vinculações: SISGEA X BALANCETE (COR_TB031), SISGEA X FCO (COR_TB037)
+    e FCO X BALANCETE (COR_TB041)."""
     db.session.expire_all()
-    resumo = {'contas': {'qtd': 0, 'sem': 0}, 'fco': {'qtd': 0, 'sem': 0}}
+    resumo = {'contas': {'qtd': 0, 'sem': 0}, 'fco': {'qtd': 0, 'sem': 0}, 'fco_bal': {'qtd': 0, 'sem': 0}}
     for chave, tabela in (('contas', TB_CONTAS), ('fco', TB_LINHAS_SISGEA)):
         try:
             r = db.session.execute(text(f"""
@@ -582,6 +608,12 @@ def vinculacoes():
         except Exception as e:
             db.session.rollback()
             print(f"[contas_contabeis] Erro ao contar {tabela}: {e}")
+    try:
+        resumo['fco_bal']['qtd'] = int(db.session.execute(
+            text(f"SELECT COUNT(1) FROM {TB_VINC_ITEM_LINHA_CONTA}")).scalar() or 0)
+    except Exception as e:
+        db.session.rollback()
+        print(f"[contas_contabeis] Erro ao contar {TB_VINC_ITEM_LINHA_CONTA}: {e}")
     return render_template('contas_contabeis/vinculacoes.html', resumo=resumo)
 
 
@@ -807,6 +839,265 @@ def vinculacao_fco_nova():
     except Exception as e:
         db.session.rollback()
         return _json_erro('Erro ao cadastrar a linha: {}'.format(e), 500)
+
+
+# =========================================================================
+# VINCULAÇÃO FCO X BALANCETE (COR_TB041 + parâmetros COR_TB034/036/037)
+# =========================================================================
+
+# Colunas da COR_TB041 -> (rótulo na tela, chave usada no JSON)
+COLS_TB041 = [
+    ('COD_AGRUP_SISGEA', 'agrupamento', 'agrup'),
+    ('ID_FCO_ITEM', 'item do FCO', 'item'),
+    ('ID_FCO_LINHA', 'linha do FCO', 'linha'),
+    ('CT_CONTABIL', 'conta contábil', 'conta'),
+]
+
+
+def _metadados_tabela(nome_tabela):
+    """Tipo e tamanho das colunas de uma tabela do schema BDG (INFORMATION_SCHEMA)."""
+    sql = text("""
+        SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'BDG' AND TABLE_NAME = :t
+    """)
+    colunas = {}
+    for r in db.session.execute(sql, {'t': nome_tabela}).mappings().all():
+        tamanho = r['CHARACTER_MAXIMUM_LENGTH']
+        colunas[r['COLUMN_NAME'].upper()] = {
+            'tipo': (r['DATA_TYPE'] or '').lower(),
+            'tamanho': int(tamanho) if tamanho is not None and int(tamanho) > 0 else None,
+        }
+    return colunas
+
+
+def _param_agrupamentos():
+    """COR_TB034: um item por COD_AGRUP_SISGEA, com a descrição do SISCONT."""
+    sql = text(f"""
+        SELECT [COD_AGRUP_SISGEA], MIN([DSC_AgrupamentoSISCONT]) AS DSC
+        FROM {TB_AGRUP_CONTABIL}
+        WHERE [COD_AGRUP_SISGEA] IS NOT NULL
+        GROUP BY [COD_AGRUP_SISGEA]
+    """)
+    lista = [{'cod': _txt(r['COD_AGRUP_SISGEA']), 'dsc': _txt(r['DSC'])}
+             for r in db.session.execute(sql).mappings().all()]
+    return sorted(lista, key=lambda x: _chave_ordem(x['cod']))
+
+
+def _param_itens_sisgea():
+    """COR_TB036: itens do FCO (ID_FCO / DSC_FCO)."""
+    sql = text(f"""
+        SELECT [ID_FCO], MIN([DSC_FCO]) AS DSC
+        FROM {TB_ITENS_SISGEA}
+        WHERE [ID_FCO] IS NOT NULL
+        GROUP BY [ID_FCO]
+    """)
+    lista = [{'cod': _txt(r['ID_FCO']), 'dsc': _txt(r['DSC'])}
+             for r in db.session.execute(sql).mappings().all()]
+    return sorted(lista, key=lambda x: _chave_ordem(x['cod']))
+
+
+def _param_linhas_sisgea():
+    """COR_TB037: linhas do FCO (ID_FCO_LINHA / DSC_FCO_LINHA)."""
+    sql = text(f"""
+        SELECT [ID_FCO_LINHA], MIN([DSC_FCO_LINHA]) AS DSC
+        FROM {TB_LINHAS_SISGEA}
+        WHERE [ID_FCO_LINHA] IS NOT NULL
+        GROUP BY [ID_FCO_LINHA]
+    """)
+    lista = [{'cod': _txt(r['ID_FCO_LINHA']), 'dsc': _txt(r['DSC'])}
+             for r in db.session.execute(sql).mappings().all()]
+    return sorted(lista, key=lambda x: _chave_ordem(x['cod']))
+
+
+def _listar_vinc_fco_balancete():
+    """COR_TB041 com os nomes dos parâmetros (OUTER APPLY evita duplicar linhas)."""
+    sql = text(f"""
+        SELECT V.[COD_AGRUP_SISGEA], V.[ID_FCO_ITEM], V.[ID_FCO_LINHA], V.[CT_CONTABIL],
+               A.DSC AS DSC_AGRUP, I.DSC AS DSC_ITEM, L.DSC AS DSC_LINHA
+        FROM {TB_VINC_ITEM_LINHA_CONTA} V
+        OUTER APPLY (SELECT TOP 1 [DSC_AgrupamentoSISCONT] AS DSC FROM {TB_AGRUP_CONTABIL}
+                     WHERE [COD_AGRUP_SISGEA] = V.[COD_AGRUP_SISGEA]) A
+        OUTER APPLY (SELECT TOP 1 [DSC_FCO] AS DSC FROM {TB_ITENS_SISGEA}
+                     WHERE [ID_FCO] = V.[ID_FCO_ITEM]) I
+        OUTER APPLY (SELECT TOP 1 [DSC_FCO_LINHA] AS DSC FROM {TB_LINHAS_SISGEA}
+                     WHERE [ID_FCO_LINHA] = V.[ID_FCO_LINHA]) L
+    """)
+    lista = []
+    for r in db.session.execute(sql).mappings().all():
+        lista.append({
+            'agrup': _txt(r['COD_AGRUP_SISGEA']), 'dsc_agrup': _txt(r['DSC_AGRUP']),
+            'item': _txt(r['ID_FCO_ITEM']), 'dsc_item': _txt(r['DSC_ITEM']),
+            'linha': _txt(r['ID_FCO_LINHA']), 'dsc_linha': _txt(r['DSC_LINHA']),
+            'conta': _txt(r['CT_CONTABIL']),
+        })
+    lista.sort(key=lambda x: (_chave_ordem(x['agrup']), _chave_ordem(x['item']),
+                              _chave_ordem(x['linha']), x['conta']))
+    return lista
+
+
+def _ler_valores_tb041(dados, prefixo=''):
+    """
+    Lê e valida os 4 campos (com o tipo da coluna vindo do banco).
+    Retorna (valores, mensagem_erro).
+    """
+    meta = _metadados_tabela('COR_TB041_FCO_VINC_ITEM_LINHA_CONTA')
+    valores = {}
+    for coluna, rotulo, chave in COLS_TB041:
+        ok, valor, msg = _validar_campo_tb037(dados.get(prefixo + chave), meta.get(coluna), rotulo)
+        if not ok:
+            return None, msg
+        valores[coluna] = valor
+    return valores, None
+
+
+def _where_tb041(prefixo='o_'):
+    """WHERE pelos 4 valores (a tabela não tem chave primária)."""
+    return ' AND '.join('[{c}] = :{p}{c}'.format(c=c, p=prefixo) for c, _r, _k in COLS_TB041)
+
+
+def _validar_parametros_tb041(v):
+    """Confere se cada valor existe na sua tabela de parâmetro e a conta no balancete."""
+    checagens = [
+        (TB_AGRUP_CONTABIL, 'COD_AGRUP_SISGEA', v['COD_AGRUP_SISGEA'], 'O agrupamento {} não existe na COR_TB034.'),
+        (TB_ITENS_SISGEA, 'ID_FCO', v['ID_FCO_ITEM'], 'O item {} não existe na COR_TB036.'),
+        (TB_LINHAS_SISGEA, 'ID_FCO_LINHA', v['ID_FCO_LINHA'], 'A linha {} não existe na COR_TB037.'),
+    ]
+    for tabela, coluna, valor, msg in checagens:
+        existe = db.session.execute(text(
+            'SELECT TOP 1 1 FROM {} WHERE [{}] = :v'.format(tabela, coluna)), {'v': valor}).first()
+        if not existe:
+            return msg.format(valor)
+    if not _conta_existe_no_balancete(v['CT_CONTABIL']):
+        return ('A conta {} não existe no balancete (COR_TB012). '
+                'Só é possível vincular contas que constam no balancete.'.format(v['CT_CONTABIL']))
+    return None
+
+
+@contas_contabeis_bp.route('/vinculacao-fco-balancete')
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco_balancete():
+    db.session.expire_all()
+    vinculos = _listar_vinc_fco_balancete()
+    try:
+        meta = _metadados_tabela('COR_TB041_FCO_VINC_ITEM_LINHA_CONTA')
+    except Exception:
+        db.session.rollback()
+        meta = {}
+    tam_conta = (meta.get('CT_CONTABIL') or {}).get('tamanho')
+    return render_template(
+        'contas_contabeis/vinculacao_fco_balancete.html',
+        vinculos=vinculos,
+        agrupamentos=_param_agrupamentos(),
+        itens=_param_itens_sisgea(),
+        linhas=_param_linhas_sisgea(),
+        qtd_vinculos=len(vinculos),
+        qtd_agrup=len(set(v['agrup'] for v in vinculos)),
+        qtd_contas=len(set(v['conta'] for v in vinculos)),
+        tam_conta=tam_conta,
+    )
+
+
+@contas_contabeis_bp.route('/vinculacao-fco-balancete/contas')
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco_balancete_contas():
+    """Busca de contas do balancete (COR_TB012) para o dropdown com pesquisa."""
+    termo = (request.args.get('q') or '').strip()
+    params = {}
+    filtro = ''
+    if termo:
+        filtro = 'AND LTRIM(RTRIM([CO_CONTA])) LIKE :q'
+        params['q'] = '%' + termo.replace('[', '[[]').replace('%', '[%]').replace('_', '[_]') + '%'
+    sql = text(f"""
+        SELECT DISTINCT TOP 50 LTRIM(RTRIM([CO_CONTA])) AS CO_CONTA
+        FROM {TB_BALANCETE}
+        WHERE [DELETED_AT] IS NULL AND [CO_CONTA] IS NOT NULL {filtro}
+        ORDER BY 1
+    """)
+    try:
+        contas = [r[0] for r in db.session.execute(sql, params).all() if r[0]]
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'results': [], 'erro': str(e)}), 500
+    return jsonify({'results': [{'id': c, 'text': c} for c in contas]})
+
+
+@contas_contabeis_bp.route('/vinculacao-fco-balancete/salvar', methods=['POST'])
+@login_required
+@sistema_requerido(SISTEMA)
+def vinculacao_fco_balancete_salvar():
+    """
+    Inclui um vínculo novo ou altera um existente na COR_TB041.
+    Alteração: o front manda os 4 valores originais (o_agrup, o_item, o_linha, o_conta).
+    """
+    dados = request.get_json(silent=True) or {}
+    editando = bool(dados.get('o_agrup') or dados.get('o_conta'))
+
+    try:
+        novos, msg = _ler_valores_tb041(dados)
+        if msg:
+            return _json_erro(msg)
+        if isinstance(novos['CT_CONTABIL'], str):
+            novos['CT_CONTABIL'] = novos['CT_CONTABIL'].strip()
+
+        msg = _validar_parametros_tb041(novos)
+        if msg:
+            return _json_erro(msg, 422)
+
+        antigos = None
+        if editando:
+            antigos, msg = _ler_valores_tb041(dados, prefixo='o_')
+            if msg:
+                return _json_erro('Vínculo original inválido: ' + msg)
+
+        # Já existe exatamente esse vínculo?
+        params_novos = {'o_' + c: v for c, v in novos.items()}
+        ja_existe = db.session.execute(text(
+            'SELECT TOP 1 1 FROM {} WHERE {}'.format(TB_VINC_ITEM_LINHA_CONTA, _where_tb041())), params_novos).first()
+        if ja_existe and (not editando or antigos != novos):
+            return _json_erro('Esse vínculo já existe (agrupamento {}, item {}, linha {}, conta {}).'.format(
+                novos['COD_AGRUP_SISGEA'], novos['ID_FCO_ITEM'], novos['ID_FCO_LINHA'], novos['CT_CONTABIL']), 409)
+        if editando and antigos == novos:
+            return jsonify({'sucesso': True, 'mensagem': 'Nada foi alterado.'})
+
+        if editando:
+            params = {'n_' + c: v for c, v in novos.items()}
+            params.update({'o_' + c: v for c, v in antigos.items()})
+            set_sql = ', '.join('[{c}] = :n_{c}'.format(c=c) for c, _r, _k in COLS_TB041)
+            res = db.session.execute(text('UPDATE {} SET {} WHERE {}'.format(
+                TB_VINC_ITEM_LINHA_CONTA, set_sql, _where_tb041())), params)
+            if not res.rowcount:
+                db.session.rollback()
+                return _json_erro('O vínculo original não foi encontrado (pode ter sido alterado por outra pessoa).', 404)
+            acao, descricao = 'editar', 'Vínculo FCO X BALANCETE alterado'
+        else:
+            colunas = ', '.join('[{}]'.format(c) for c, _r, _k in COLS_TB041)
+            valores = ', '.join(':n_{}'.format(c) for c, _r, _k in COLS_TB041)
+            db.session.execute(text('INSERT INTO {} ({}) VALUES ({})'.format(
+                TB_VINC_ITEM_LINHA_CONTA, colunas, valores)), {'n_' + c: v for c, v in novos.items()})
+            acao, descricao = 'criar', 'Novo vínculo FCO X BALANCETE'
+        db.session.commit()
+
+        def _json(d):
+            return {k: (str(v) if v is not None else None) for k, v in d.items()} if d else None
+
+        registrar_log(
+            acao=acao,
+            entidade='contas_contabeis_vinculacao_fco_balancete',
+            entidade_id='{}|{}|{}|{}'.format(novos['COD_AGRUP_SISGEA'], novos['ID_FCO_ITEM'],
+                                             novos['ID_FCO_LINHA'], novos['CT_CONTABIL']),
+            descricao='{}: agrupamento {}, item {}, linha {}, conta {}'.format(
+                descricao, novos['COD_AGRUP_SISGEA'], novos['ID_FCO_ITEM'], novos['ID_FCO_LINHA'], novos['CT_CONTABIL']),
+            dados_antigos=_json(antigos),
+            dados_novos=_json(novos),
+        )
+        return jsonify({'sucesso': True, 'mensagem': 'Vínculo {} com sucesso.'.format(
+            'alterado' if editando else 'incluído')})
+    except Exception as e:
+        db.session.rollback()
+        return _json_erro('Erro ao salvar o vínculo: {}'.format(e), 500)
 
 
 # =========================================================================

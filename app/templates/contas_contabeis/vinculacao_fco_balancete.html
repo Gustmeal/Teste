@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}Vinculação FCO X BALANCETE - FCO{% endblock %}
+
+{% block content %}
+{# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set th_tab = "background: #f8f9fc; color: #5a5c69; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 2px solid #e3e6f0; vertical-align: middle;" %}
+{% set rotulo = "font-size: 0.85rem;" %}
+
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('contas_contabeis.vinculacoes') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('contas_contabeis.vinculacao') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-balance-scale me-1"></i> Vinculação SISGEA X BALANCETE
+        </a>
+        <a href="{{ url_for('contas_contabeis.vinculacao_fco') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-project-diagram me-1"></i> Vinculação SISGEA X FCO
+        </a>
+        <button type="button" class="btn btn-success btn-sm js-ignore-loading" id="btnNovo">
+            <i class="fas fa-plus me-1"></i> Novo vínculo
+        </button>
+    </div>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="mb-4">
+        <h1 class="fw-bold header-with-back mb-1">
+            <i class="fas fa-sitemap me-2"></i>Vinculação FCO X BALANCETE
+        </h1>
+        <p class="text-muted mb-0">Vincule agrupamento, item e linha do FCO a uma conta contábil do balancete</p>
+    </div>
+
+    <div id="ccMensagem" style="display:none;"></div>
+
+    <!-- Indicadores -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #4e73df !important;">
+                <div class="card-body py-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #4e73df; text-transform: uppercase;">Vínculos cadastrados</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_vinculos | mil }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #1cc88a !important;">
+                <div class="card-body py-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #1cc88a; text-transform: uppercase;">Agrupamentos</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_agrup | mil }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #36b9cc !important;">
+                <div class="card-body py-3">
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #258391; text-transform: uppercase;">Contas contábeis</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_contas | mil }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VINCULAR                                                     -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px; overflow: visible;" id="cardVincular">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;" id="tituloForm">
+                <i class="fas fa-link me-2"></i>Novo vínculo
+            </h5>
+            <span class="badge bg-warning text-dark" id="badgeEdicao" style="display:none;">Editando vínculo</span>
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+            <div class="row g-3 align-items-end">
+                <div class="col-lg-3">
+                    <label for="selAgrup" class="form-label fw-semibold mb-1" style="{{ rotulo }}">Agrupamento</label>
+                    <select id="selAgrup" class="form-select" style="width: 100%;">
+                        <option value="">Selecione...</option>
+                        {% for a in agrupamentos %}
+                        <option value="{{ a.cod }}">{{ a.cod }} - {{ a.dsc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3">
+                    <label for="selItem" class="form-label fw-semibold mb-1" style="{{ rotulo }}">Item do FCO</label>
+                    <select id="selItem" class="form-select" style="width: 100%;">
+                        <option value="">Selecione...</option>
+                        {% for i in itens %}
+                        <option value="{{ i.cod }}">{{ i.cod }} - {{ i.dsc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3">
+                    <label for="selLinha" class="form-label fw-semibold mb-1" style="{{ rotulo }}">Linha do FCO</label>
+                    <select id="selLinha" class="form-select" style="width: 100%;">
+                        <option value="">Selecione...</option>
+                        {% for l in linhas %}
+                        <option value="{{ l.cod }}">{{ l.cod }} - {{ l.dsc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-3">
+                    <label for="selConta" class="form-label fw-semibold mb-1" style="{{ rotulo }}">
+                        Conta contábil <span class="text-muted fw-normal">(do balancete)</span>
+                    </label>
+                    {# Pesquisa direto na COR_TB012: só aparecem contas que existem no balancete #}
+                    <select id="selConta" class="form-select" style="width: 100%;"></select>
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="button" class="btn btn-outline-secondary js-ignore-loading" id="btnCancelar" style="display:none;">
+                    Cancelar edição
+                </button>
+                <button type="button" class="btn btn-primary js-ignore-loading" id="btnSalvar">
+                    <i class="fas fa-save me-1"></i> <span id="txtSalvar">Incluir vínculo</span>
+                </button>
+            </div>
+            {% if not agrupamentos or not itens or not linhas %}
+            <div class="alert alert-warning mt-3 mb-0" style="font-size: 0.85rem;">
+                Alguma tabela de parâmetro está vazia:
+                {% if not agrupamentos %}agrupamentos (COR_TB034) {% endif %}
+                {% if not itens %}itens (COR_TB036) {% endif %}
+                {% if not linhas %}linhas (COR_TB037){% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- LISTA DE VÍNCULOS                                            -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius: 12px;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                <i class="fas fa-list me-2"></i>Vínculos
+            </h5>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <select id="filtroAgrup" class="form-select form-select-sm" style="width: auto; max-width: 280px;">
+                    <option value="">Todos os agrupamentos</option>
+                    {% for a in agrupamentos %}
+                    <option value="{{ a.cod }}">{{ a.cod }} - {{ a.dsc }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" id="filtroTexto" class="form-control form-control-sm" style="width: 240px;"
+                       placeholder="Pesquisar item, linha ou conta...">
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {# Scroll próprio inline: o style.css global deixa .table-responsive com overflow: hidden #}
+            <div class="cc-scroll" style="max-height: 560px; overflow: auto; width: 100%;">
+                <table class="table table-hover table-sm mb-0 align-middle" id="tabVinculos"
+                       style="min-width: 1000px; white-space: nowrap;">
+                    <thead style="position: sticky; top: 0; z-index: 2; background: #f8f9fc;">
+                        <tr>
+                            <th style="{{ th_tab }} padding-left: 1.25rem;">Agrupamento</th>
+                            <th style="{{ th_tab }}">Item do FCO</th>
+                            <th style="{{ th_tab }}">Linha do FCO</th>
+                            <th style="{{ th_tab }}">Conta contábil</th>
+                            <th style="{{ th_tab }} text-align: center;">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in vinculos %}
+                        <tr data-agrup="{{ v.agrup }}"
+                            data-busca="{{ (v.agrup ~ ' ' ~ v.dsc_agrup ~ ' ' ~ v.item ~ ' ' ~ v.dsc_item ~ ' ' ~ v.linha ~ ' ' ~ v.dsc_linha ~ ' ' ~ v.conta) | lower }}">
+                            <td style="padding-left: 1.25rem;">
+                                <span class="fw-semibold">{{ v.agrup }}</span>
+                                <span class="text-muted">{{ ('- ' ~ v.dsc_agrup) if v.dsc_agrup else '(sem descrição na COR_TB034)' }}</span>
+                            </td>
+                            <td>
+                                <span class="fw-semibold">{{ v.item }}</span>
+                                <span class="text-muted">{{ ('- ' ~ v.dsc_item) if v.dsc_item else '(sem descrição na COR_TB036)' }}</span>
+                            </td>
+                            <td>
+                                <span class="fw-semibold">{{ v.linha }}</span>
+                                <span class="text-muted">{{ ('- ' ~ v.dsc_linha) if v.dsc_linha else '(sem descrição na COR_TB037)' }}</span>
+                            </td>
+                            <td style="font-weight: 600;">{{ v.conta }}</td>
+                            <td style="text-align: center;">
+                                <button type="button" class="btn btn-outline-primary btn-sm js-ignore-loading btn-editar"
+                                        data-agrup="{{ v.agrup }}" data-item="{{ v.item }}"
+                                        data-linha="{{ v.linha }}" data-conta="{{ v.conta }}" title="Alterar vínculo">
+                                    <i class="fas fa-pen"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">Nenhum vínculo cadastrado.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer bg-white text-muted" style="font-size: 0.8rem;">
+            <span id="qtdVisiveis">{{ qtd_vinculos | mil }}</span> vínculo(s) exibido(s)
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .cc-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .cc-scroll::-webkit-scrollbar-thumb { background: #b7c3e8; border-radius: 6px; }
+    .cc-scroll::-webkit-scrollbar-track { background: #f1f3f9; }
+    /* O style.css global deixa todo .card com overflow: hidden e sobe o card no hover */
+    #cardVincular { overflow: visible !important; position: relative; z-index: 20; }
+    #cardVincular:hover { transform: none !important; }
+    tr.cc-editando td { background: #fff8e1 !important; }
+</style>
+{{ super() }}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/pt-BR.js"></script>
+<script>
+(function () {
+    const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_salvar') }}";
+    const URL_CONTAS = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_contas') }}";
+    const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
+
+    // Vínculo que está sendo editado (os 4 valores originais) ou null para inclusão
+    let original = null;
+
+    function mostrarMensagem(tipo, texto) {
+        const el = document.getElementById('ccMensagem');
+        el.className = 'alert alert-' + tipo + ' mb-3';
+        el.textContent = texto;
+        el.style.display = 'block';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+
+    // ---------------- Select2 ----------------
+    const base = {theme: 'bootstrap-5', language: 'pt-BR', width: '100%'};
+    $('#selAgrup').select2(Object.assign({}, base, {placeholder: 'Selecione o agrupamento'}));
+    $('#selItem').select2(Object.assign({}, base, {placeholder: 'Selecione o item'}));
+    $('#selLinha').select2(Object.assign({}, base, {placeholder: 'Selecione a linha'}));
+    $('#selConta').select2(Object.assign({}, base, {
+        placeholder: 'Digite para pesquisar no balancete...',
+        allowClear: true,
+        minimumInputLength: 0,
+        ajax: {
+            url: URL_CONTAS,
+            dataType: 'json',
+            delay: 300,
+            headers: {'X-Silent-Request': 'true'},
+            data: function (p) { return {q: p.term || ''}; },
+            processResults: function (d) { return {results: d.results || []}; }
+        }
+    }));
+
+    function definirConta(conta) {
+        const $sel = $('#selConta');
+        $sel.empty();
+        if (conta) { $sel.append(new Option(conta, conta, true, true)); }
+        $sel.trigger('change');
+    }
+
+    function limparFormulario() {
+        original = null;
+        $('#selAgrup').val('').trigger('change');
+        $('#selItem').val('').trigger('change');
+        $('#selLinha').val('').trigger('change');
+        definirConta('');
+        document.getElementById('tituloForm').innerHTML = '<i class="fas fa-link me-2"></i>Novo vínculo';
+        document.getElementById('txtSalvar').textContent = 'Incluir vínculo';
+        document.getElementById('badgeEdicao').style.display = 'none';
+        document.getElementById('btnCancelar').style.display = 'none';
+        document.querySelectorAll('tr.cc-editando').forEach(function (tr) { tr.classList.remove('cc-editando'); });
+    }
+
+    // ---------------- Editar (lápis da tabela) ----------------
+    document.querySelectorAll('.btn-editar').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            limparFormulario();
+            original = {
+                agrup: btn.getAttribute('data-agrup'), item: btn.getAttribute('data-item'),
+                linha: btn.getAttribute('data-linha'), conta: btn.getAttribute('data-conta')
+            };
+            $('#selAgrup').val(original.agrup).trigger('change');
+            $('#selItem').val(original.item).trigger('change');
+            $('#selLinha').val(original.linha).trigger('change');
+            definirConta(original.conta);
+            document.getElementById('tituloForm').innerHTML = '<i class="fas fa-pen me-2"></i>Alterar vínculo';
+            document.getElementById('txtSalvar').textContent = 'Salvar alteração';
+            document.getElementById('badgeEdicao').style.display = '';
+            document.getElementById('btnCancelar').style.display = '';
+            btn.closest('tr').classList.add('cc-editando');
+            document.getElementById('cardVincular').scrollIntoView({behavior: 'smooth', block: 'start'});
+        });
+    });
+
+    document.getElementById('btnCancelar').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        limparFormulario();
+    });
+    document.getElementById('btnNovo').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        limparFormulario();
+        document.getElementById('cardVincular').scrollIntoView({behavior: 'smooth', block: 'start'});
+        setTimeout(function () { $('#selAgrup').select2('open'); }, 400);
+    });
+
+    // ---------------- Salvar (inclui ou altera) ----------------
+    const btnSalvar = document.getElementById('btnSalvar');
+    btnSalvar.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const corpo = {
+            agrup: $('#selAgrup').val(), item: $('#selItem').val(),
+            linha: $('#selLinha').val(), conta: $('#selConta').val()
+        };
+        const faltando = [];
+        if (!corpo.agrup) { faltando.push('agrupamento'); }
+        if (!corpo.item) { faltando.push('item'); }
+        if (!corpo.linha) { faltando.push('linha'); }
+        if (!corpo.conta) { faltando.push('conta contábil'); }
+        if (faltando.length) { mostrarMensagem('warning', 'Selecione: ' + faltando.join(', ') + '.'); return; }
+        if (original) {
+            corpo.o_agrup = original.agrup; corpo.o_item = original.item;
+            corpo.o_linha = original.linha; corpo.o_conta = original.conta;
+        }
+
+        btnSalvar.disabled = true;
+        fetch(URL_SALVAR, {method: 'POST', headers: HEADERS, body: JSON.stringify(corpo)})
+            .then(function (r) { return r.json().catch(function () { return {sucesso: false, mensagem: 'Resposta inválida do servidor.'}; }); })
+            .then(function (d) {
+                if (d.sucesso) {
+                    mostrarMensagem('success', d.mensagem);
+                    setTimeout(function () { window.location.reload(); }, 700);
+                } else {
+                    mostrarMensagem('danger', d.mensagem);
+                    btnSalvar.disabled = false;
+                }
+            })
+            .catch(function () {
+                mostrarMensagem('danger', 'Erro de comunicação com o servidor.');
+                btnSalvar.disabled = false;
+            });
+    });
+
+    // ---------------- Filtros da tabela ----------------
+    const filtroTexto = document.getElementById('filtroTexto');
+    const filtroAgrup = document.getElementById('filtroAgrup');
+    function filtrar() {
+        const termo = filtroTexto.value.trim().toLowerCase();
+        const agrup = filtroAgrup.value;
+        let visiveis = 0;
+        document.querySelectorAll('#tabVinculos tbody tr[data-busca]').forEach(function (tr) {
+            const mostrar = (!termo || tr.getAttribute('data-busca').indexOf(termo) !== -1)
+                && (!agrup || tr.getAttribute('data-agrup') === agrup);
+            tr.style.display = mostrar ? '' : 'none';
+            if (mostrar) { visiveis++; }
+        });
+        document.getElementById('qtdVisiveis').textContent = visiveis.toLocaleString('pt-BR');
+    }
+    filtroTexto.addEventListener('input', filtrar);
+    filtroAgrup.addEventListener('change', filtrar);
+})();
+</script>
+{% endblock %}
