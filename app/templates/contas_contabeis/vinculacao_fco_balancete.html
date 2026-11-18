@@ -22,8 +22,11 @@
         <a href="{{ url_for('contas_contabeis.vinculacao_fco') }}" class="btn btn-outline-primary btn-sm">
             <i class="fas fa-project-diagram me-1"></i> Vinculação SISGEA X FCO
         </a>
-        <button type="button" class="btn btn-success btn-sm js-ignore-loading" id="btnNovo">
+        <button type="button" class="btn btn-outline-success btn-sm js-ignore-loading" id="btnNovo">
             <i class="fas fa-plus me-1"></i> Novo vínculo
+        </button>
+        <button type="button" class="btn btn-success btn-sm js-ignore-loading" id="btnNovaConta">
+            <i class="fas fa-plus-circle me-1"></i> Nova conta
         </button>
     </div>
 </div>
@@ -203,6 +206,58 @@
         </div>
     </div>
 </div>
+
+<!-- ============================================================ -->
+<!-- MODAL NOVA CONTA (grava na própria COR_TB041)                -->
+<!-- ============================================================ -->
+<div class="modal fade" id="modalNovaConta" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="border-radius: 12px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #1cc88a, #13855c); color: #fff;">
+                <h5 class="modal-title" style="color: #fff !important;"><i class="fas fa-plus-circle me-2"></i>Nova conta - FCO X BALANCETE</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="ncConta" class="form-label fw-semibold">Conta contábil <span class="text-danger">*</span></label>
+                    <input type="text" id="ncConta" class="form-control" autocomplete="off"
+                           {% if tam_conta %}maxlength="{{ tam_conta }}"{% endif %} placeholder="Digite a conta contábil">
+                    <div id="ncContaStatus" class="form-text">A conta precisa existir no balancete (COR_TB012).</div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="ncAgrup" class="form-label fw-semibold">Agrupamento <span class="text-danger">*</span></label>
+                        <select id="ncAgrup" class="form-select" style="width: 100%;">
+                            <option value="">Selecione...</option>
+                            {% for a in agrupamentos %}<option value="{{ a.cod }}">{{ a.cod }} - {{ a.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ncItem" class="form-label fw-semibold">Item do FCO <span class="text-danger">*</span></label>
+                        <select id="ncItem" class="form-select" style="width: 100%;">
+                            <option value="">Selecione...</option>
+                            {% for i in itens %}<option value="{{ i.cod }}">{{ i.cod }} - {{ i.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="ncLinha" class="form-label fw-semibold">Linha do FCO <span class="text-danger">*</span></label>
+                        <select id="ncLinha" class="form-select" style="width: 100%;">
+                            <option value="">Selecione...</option>
+                            {% for l in linhas %}<option value="{{ l.cod }}">{{ l.cod }} - {{ l.dsc }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div id="ncMsg" class="mt-3" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary js-ignore-loading" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success js-ignore-loading" id="ncSalvar">
+                    <i class="fas fa-save me-1"></i> Salvar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -223,6 +278,7 @@
 (function () {
     const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_salvar') }}";
     const URL_CONTAS = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_contas') }}";
+    const URL_VERIFICAR = "{{ url_for('contas_contabeis.verificar_conta') }}";
     const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
 
     // Vínculo que está sendo editado (os 4 valores originais) ou null para inclusão
@@ -344,6 +400,97 @@
             .catch(function () {
                 mostrarMensagem('danger', 'Erro de comunicação com o servidor.');
                 btnSalvar.disabled = false;
+            });
+    });
+
+    // ---------------- Nova conta (modal) ----------------
+    const modalNC = new bootstrap.Modal(document.getElementById('modalNovaConta'));
+    const baseModal = Object.assign({}, base, {dropdownParent: $('#modalNovaConta')});
+    $('#ncAgrup').select2(Object.assign({}, baseModal, {placeholder: 'Selecione o agrupamento'}));
+    $('#ncItem').select2(Object.assign({}, baseModal, {placeholder: 'Selecione o item'}));
+    $('#ncLinha').select2(Object.assign({}, baseModal, {placeholder: 'Selecione a linha'}));
+
+    // Verificação no balancete enquanto digita (a gravação confere de novo)
+    const ncConta = document.getElementById('ncConta');
+    const ncStatus = document.getElementById('ncContaStatus');
+    let tempoVerif = null;
+    let contaOk = false;
+    function verificarConta() {
+        const conta = ncConta.value.trim();
+        contaOk = false;
+        if (!conta) {
+            ncStatus.className = 'form-text';
+            ncStatus.textContent = 'A conta precisa existir no balancete (COR_TB012).';
+            return;
+        }
+        ncStatus.className = 'form-text';
+        ncStatus.textContent = 'Verificando no balancete...';
+        fetch(URL_VERIFICAR + '?c=' + encodeURIComponent(conta), {headers: {'X-Silent-Request': 'true'}})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (ncConta.value.trim() !== conta) { return; }
+                contaOk = d.existe === true;
+                ncStatus.className = 'form-text fw-semibold ' + (contaOk ? 'text-success' : 'text-danger');
+                ncStatus.innerHTML = contaOk
+                    ? '<i class="fas fa-check-circle me-1"></i>Conta encontrada no balancete.'
+                    : '<i class="fas fa-times-circle me-1"></i>Conta não existe no balancete (COR_TB012). Não pode ser incluída.';
+            })
+            .catch(function () {
+                ncStatus.className = 'form-text text-warning';
+                ncStatus.textContent = 'Não foi possível verificar agora; a verificação será feita ao salvar.';
+            });
+    }
+    ncConta.addEventListener('input', function () {
+        clearTimeout(tempoVerif);
+        tempoVerif = setTimeout(verificarConta, 400);
+    });
+
+    document.getElementById('btnNovaConta').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        ncConta.value = '';
+        verificarConta();
+        $('#ncAgrup').val('').trigger('change');
+        $('#ncItem').val('').trigger('change');
+        $('#ncLinha').val('').trigger('change');
+        document.getElementById('ncMsg').style.display = 'none';
+        modalNC.show();
+    });
+
+    const ncSalvar = document.getElementById('ncSalvar');
+    function msgModal(tipo, texto) {
+        const el = document.getElementById('ncMsg');
+        el.className = 'alert alert-' + tipo + ' mb-0';
+        el.textContent = texto;
+        el.style.display = 'block';
+    }
+    ncSalvar.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        const corpo = {
+            conta: ncConta.value.trim(), agrup: $('#ncAgrup').val(),
+            item: $('#ncItem').val(), linha: $('#ncLinha').val()
+        };
+        const faltando = [];
+        if (!corpo.conta) { faltando.push('conta contábil'); }
+        if (!corpo.agrup) { faltando.push('agrupamento'); }
+        if (!corpo.item) { faltando.push('item'); }
+        if (!corpo.linha) { faltando.push('linha'); }
+        if (faltando.length) { msgModal('warning', 'Informe: ' + faltando.join(', ') + '.'); return; }
+
+        ncSalvar.disabled = true;
+        fetch(URL_SALVAR, {method: 'POST', headers: HEADERS, body: JSON.stringify(corpo)})
+            .then(function (r) { return r.json().catch(function () { return {sucesso: false, mensagem: 'Resposta inválida do servidor.'}; }); })
+            .then(function (d) {
+                if (d.sucesso) {
+                    msgModal('success', d.mensagem);
+                    setTimeout(function () { window.location.reload(); }, 700);
+                } else {
+                    msgModal('danger', d.mensagem);
+                    ncSalvar.disabled = false;
+                }
+            })
+            .catch(function () {
+                msgModal('danger', 'Erro de comunicação com o servidor.');
+                ncSalvar.disabled = false;
             });
     });
 

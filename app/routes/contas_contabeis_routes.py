@@ -1024,6 +1024,24 @@ def vinculacao_fco_balancete_contas():
     return jsonify({'results': [{'id': c, 'text': c} for c in contas]})
 
 
+@contas_contabeis_bp.route('/verificar-conta')
+@login_required
+@sistema_requerido(SISTEMA)
+def verificar_conta():
+    """
+    Verificação na hora (enquanto digita) se a conta existe no CO_CONTA da COR_TB012.
+    Usada nos formulários de conta nova. A gravação confere de novo no back end.
+    """
+    conta = (request.args.get('c') or '').strip()
+    if not conta:
+        return jsonify({'existe': False, 'conta': ''})
+    try:
+        return jsonify({'existe': _conta_existe_no_balancete(conta), 'conta': conta})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'existe': None, 'conta': conta, 'erro': str(e)}), 500
+
+
 @contas_contabeis_bp.route('/vinculacao-fco-balancete/salvar', methods=['POST'])
 @login_required
 @sistema_requerido(SISTEMA)

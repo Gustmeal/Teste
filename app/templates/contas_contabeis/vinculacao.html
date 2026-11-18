@@ -202,7 +202,8 @@
                     <label for="novaConta" class="form-label fw-semibold">Conta contábil <span class="text-danger">*</span></label>
                     <input type="text" id="novaConta" class="form-control" maxlength="{{ tam_co_conta }}"
                            placeholder="Ex.: 112.23.01.01.01">
-                    <div class="form-text">Máximo de {{ tam_co_conta }} caracteres. A conta precisa existir no balancete (COR_TB012).</div>
+                    <div class="form-text">Máximo de {{ tam_co_conta }} caracteres.</div>
+                    <div id="novaContaStatus" class="form-text">A conta precisa existir no balancete (COR_TB012).</div>
                 </div>
                 <div class="mb-3">
                     <label for="novoTipo" class="form-label fw-semibold">Tipo de pessoa</label>
@@ -252,6 +253,7 @@
 (function () {
     const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_salvar') }}";
     const URL_NOVA = "{{ url_for('contas_contabeis.vinculacao_nova') }}";
+    const URL_VERIFICAR = "{{ url_for('contas_contabeis.verificar_conta') }}";
     const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
 
     function mostrarMensagem(alvo, tipo, texto) {
@@ -330,10 +332,44 @@
         e.preventDefault();
         e.stopImmediatePropagation();
         document.getElementById('novaConta').value = '';
+        verificarNovaConta();
         document.getElementById('novoTipo').value = '';
         $('#novaLinha').val('').trigger('change');
         document.getElementById('msgModal').style.display = 'none';
         modal.show();
+    });
+
+    // Verificação no balancete enquanto digita (a gravação confere de novo no back end)
+    const campoNovaConta = document.getElementById('novaConta');
+    const statusNovaConta = document.getElementById('novaContaStatus');
+    let tempoVerif = null;
+    function verificarNovaConta() {
+        const conta = campoNovaConta.value.trim();
+        if (!conta) {
+            statusNovaConta.className = 'form-text';
+            statusNovaConta.textContent = 'A conta precisa existir no balancete (COR_TB012).';
+            return;
+        }
+        statusNovaConta.className = 'form-text';
+        statusNovaConta.textContent = 'Verificando no balancete...';
+        fetch(URL_VERIFICAR + '?c=' + encodeURIComponent(conta), {headers: {'X-Silent-Request': 'true'}})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (campoNovaConta.value.trim() !== conta) { return; }
+                const ok = d.existe === true;
+                statusNovaConta.className = 'form-text fw-semibold ' + (ok ? 'text-success' : 'text-danger');
+                statusNovaConta.innerHTML = ok
+                    ? '<i class="fas fa-check-circle me-1"></i>Conta encontrada no balancete.'
+                    : '<i class="fas fa-times-circle me-1"></i>Conta não existe no balancete (COR_TB012). Não pode ser incluída.';
+            })
+            .catch(function () {
+                statusNovaConta.className = 'form-text text-warning';
+                statusNovaConta.textContent = 'Não foi possível verificar agora; a verificação será feita ao salvar.';
+            });
+    }
+    campoNovaConta.addEventListener('input', function () {
+        clearTimeout(tempoVerif);
+        tempoVerif = setTimeout(verificarNovaConta, 400);
     });
 
     const btnSalvarNova = document.getElementById('btnSalvarNova');
