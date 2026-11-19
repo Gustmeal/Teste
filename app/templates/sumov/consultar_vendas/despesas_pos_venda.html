@@ -241,6 +241,15 @@
                                         onclick="salvarSituacao(this, event)">
                                     <i class="fas fa-save"></i>
                                 </button>
+                                {% set tem_texto = (r.comentario and r.comentario|trim) or (r.obs and r.obs|trim) %}
+                                <button type="button"
+                                        class="btn btn-sm {{ 'btn-primary' if tem_texto else 'btn-outline-primary' }} btn-comentario js-ignore-loading"
+                                        data-ocorrencia="{{ r.nr_ocorrencia }}"
+                                        data-comentario="{{ r.comentario | default('', true) }}"
+                                        title="{{ r.comentario if r.comentario else 'Comentário / Observação' }}"
+                                        onclick="abrirComentario(this, event)">
+                                    <i class="fas fa-comment-dots"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -295,6 +304,44 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal de Comentário / Observação (independente da situação) -->
+    <div class="modal fade" id="modalComentario" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border:none;border-radius:12px;">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-comment-dots me-2 text-primary"></i>Comentário e Observação
+                        <small class="text-muted ms-1">— Ocorr. <span id="comNrOcorrenciaTxt"></span></small>
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="comNrOcorrencia">
+
+                    <label for="comTexto" class="form-label fw-semibold">Comentário</label>
+                    <textarea id="comTexto" class="form-control" rows="4" maxlength="1000"
+                              placeholder="Digite o comentário (até 1000 caracteres)"></textarea>
+                    <div class="text-end mt-1 mb-3">
+                        <small class="text-muted"><span id="comContador">0</span>/1000</small>
+                    </div>
+
+                    <label for="comObs" class="form-label fw-semibold">Observação</label>
+                    <textarea id="comObs" class="form-control" rows="3" maxlength="500"
+                              placeholder="Digite a observação (até 500 caracteres)"></textarea>
+                    <div class="text-end mt-1">
+                        <small class="text-muted"><span id="comObsContador">0</span>/500</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" id="btnSalvarComentario" class="btn btn-success js-ignore-loading">
+                        <i class="fas fa-save me-1"></i> Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -312,7 +359,7 @@
     .dpv-bg-orange { background: linear-gradient(135deg, #f6c23e, #dda20a); }
 
     .dpv-table {
-        width: 100%; min-width: 1180px; margin-bottom: 0;
+        width: 100%; min-width: 1220px; margin-bottom: 0;
         border-collapse: collapse; table-layout: fixed;
     }
 
@@ -337,7 +384,7 @@
     .dpv-col-despesa      { width: 128px; }
     .dpv-col-venda        { width: 88px; }
     .dpv-col-registrada   { width: 155px; }
-    .dpv-col-classificar  { width: 205px; }
+    .dpv-col-classificar  { width: 245px; }
 
     .dpv-table td:nth-child(1),
     .dpv-table td:nth-child(2),
@@ -377,6 +424,7 @@
 <script>
     const URL_SALVAR = "{{ url_for('sumov.despesas_pos_venda_salvar') }}";
     const URL_PAGINA = "{{ url_for('sumov.despesas_pos_venda_pagina') }}";
+    const URL_COMENTARIO = "{{ url_for('sumov.despesas_pos_venda_comentario') }}";
     const SITUACOES = {{ situacoes_acerto | tojson }};
     let offsetAtual = {{ registros|length }};
 
@@ -429,7 +477,114 @@
             sel.value = idSituacao ? String(idSituacao) : '';
             sel.setAttribute('data-obs', obs || '');
         });
+        atualizarBotaoComentario(nr);
     }
+
+    // -------------------- Comentário / Observação --------------------
+    // Botão fica preenchido (azul) quando a ocorrência tem comentário ou observação.
+    // A OBS fica guardada no data-obs do select (mesmo campo usado na classificação).
+    function atualizarBotaoComentario(nr, comentario) {
+        document.querySelectorAll('button.btn-comentario[data-ocorrencia="' + nr + '"]').forEach(function (btn) {
+            if (comentario !== undefined) {
+                btn.setAttribute('data-comentario', comentario || '');
+            }
+            const row = btn.closest('tr');
+            const sel = row ? row.querySelector('select.sel-situacao') : null;
+            const com = (btn.getAttribute('data-comentario') || '').trim();
+            const obs = sel ? (sel.getAttribute('data-obs') || '').trim() : '';
+            btn.classList.toggle('btn-primary', !!(com || obs));
+            btn.classList.toggle('btn-outline-primary', !(com || obs));
+            btn.setAttribute('title', com || 'Comentário / Observação');
+        });
+    }
+
+    function abrirComentario(btn, ev) {
+        if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+        const nr = btn.getAttribute('data-ocorrencia');
+        const sel = btn.closest('tr').querySelector('select.sel-situacao');
+
+        document.getElementById('comNrOcorrencia').value = nr;
+        document.getElementById('comNrOcorrenciaTxt').textContent = nr;
+
+        const ta = document.getElementById('comTexto');
+        const taObs = document.getElementById('comObs');
+        ta.value = btn.getAttribute('data-comentario') || '';
+        taObs.value = sel ? (sel.getAttribute('data-obs') || '') : '';
+        document.getElementById('comContador').textContent = ta.value.length;
+        document.getElementById('comObsContador').textContent = taObs.value.length;
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('modalComentario')).show();
+        setTimeout(function () { ta.focus(); }, 300);
+    }
+
+    (function () {
+        const ta = document.getElementById('comTexto');
+        const taObs = document.getElementById('comObs');
+        if (ta) {
+            ta.addEventListener('input', function () {
+                document.getElementById('comContador').textContent = ta.value.length;
+            });
+        }
+        if (taObs) {
+            taObs.addEventListener('input', function () {
+                document.getElementById('comObsContador').textContent = taObs.value.length;
+            });
+        }
+
+        const btnSalvar = document.getElementById('btnSalvarComentario');
+        if (!btnSalvar) return;
+
+        btnSalvar.addEventListener('click', function (ev) {
+            if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+
+            const nr = document.getElementById('comNrOcorrencia').value;
+            const comentario = ta.value.trim();
+            const obs = taObs.value.trim();
+
+            const original = btnSalvar.innerHTML;
+            btnSalvar.disabled = true;
+            btnSalvar.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(function () { controller.abort(); }, 30000);
+
+            fetch(URL_COMENTARIO, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Silent-Request': 'true', 'Accept': 'application/json' },
+                body: JSON.stringify({ nr_ocorrencia: nr, comentario: comentario, obs: obs }),
+                signal: controller.signal
+            })
+            .then(function (resp) {
+                if (!resp.ok) { throw new Error('HTTP ' + resp.status); }
+                return resp.json();
+            })
+            .then(function (data) {
+                if (data.success) {
+                    document.querySelectorAll('select.sel-situacao[data-ocorrencia="' + nr + '"]').forEach(function (sel) {
+                        sel.setAttribute('data-obs', data.obs || '');
+                    });
+                    atualizarBotaoComentario(nr, data.comentario || '');
+                    mostrarToast(data.message, 'success');
+                    const inst = bootstrap.Modal.getInstance(document.getElementById('modalComentario'));
+                    if (inst) { inst.hide(); }
+                } else {
+                    mostrarToast(data.message || 'Erro ao salvar comentário.', 'danger');
+                }
+            })
+            .catch(function (err) {
+                if (err.name === 'AbortError') {
+                    mostrarToast('Tempo esgotado ao salvar. Tente novamente.', 'danger');
+                } else {
+                    mostrarToast('Erro ao salvar comentário: ' + err.message, 'danger');
+                }
+            })
+            .finally(function () {
+                clearTimeout(timeoutId);
+                btnSalvar.disabled = false;
+                btnSalvar.innerHTML = original;
+            });
+        });
+    })();
 
     function salvarSituacao(btn, ev) {
         // Impede o auto-loading.js de "adotar" o clique e prender o botão
@@ -544,6 +699,8 @@
             badge = '<span class="badge bg-secondary">Não classificada</span>';
         }
 
+        const temTexto = !!((r.comentario || '').trim() || (r.obs || '').trim());
+
         const tr = document.createElement('tr');
         tr.innerHTML =
             '<td>' + escapeHtml(r.nr_contrato) + '</td>' +
@@ -558,6 +715,11 @@
                 '<div class="dpv-classificar">' +
                     '<select class="form-select form-select-sm sel-situacao" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" data-obs="' + escapeHtml(r.obs || '') + '">' + opts + '</select>' +
                     '<button type="button" class="btn btn-sm btn-success js-ignore-loading" data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '" onclick="salvarSituacao(this, event)"><i class="fas fa-save"></i></button>' +
+                    '<button type="button" class="btn btn-sm ' + (temTexto ? 'btn-primary' : 'btn-outline-primary') + ' btn-comentario js-ignore-loading"' +
+                        ' data-ocorrencia="' + escapeHtml(r.nr_ocorrencia) + '"' +
+                        ' data-comentario="' + escapeHtml(r.comentario || '') + '"' +
+                        ' title="' + escapeHtml(r.comentario || 'Comentário / Observação') + '"' +
+                        ' onclick="abrirComentario(this, event)"><i class="fas fa-comment-dots"></i></button>' +
                 '</div>' +
             '</td>';
         return tr;

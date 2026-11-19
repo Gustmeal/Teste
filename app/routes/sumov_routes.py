@@ -5047,7 +5047,8 @@ def _buscar_pagina_despesas_pos_venda(filtros, offset, limit):
             VW.DT_VENDA, VW.DSC_SIT_VENDA,
             SIT.ID_SITUACAO AS ID_SITUACAO_ACERTO,
             SIT.DSC_SITUACAO AS DSC_SITUACAO_ACERTO,
-            SIT.OBS AS OBS
+            SIT.OBS AS OBS,
+            SIT.COMENTARIO AS COMENTARIO
         FROM [BDG].[MOV_VW010_PGTO_DESPESAS_POS_VENDA] VW
         LEFT JOIN [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA] SIT
             ON SIT.nrOcorrencia = VW.NR_OCORRENCIA
@@ -5096,6 +5097,7 @@ def _linha_despesa_para_dict(row):
         'id_situacao_acerto': row.ID_SITUACAO_ACERTO,
         'dsc_situacao_acerto': row.DSC_SITUACAO_ACERTO,
         'obs': row.OBS,  # NOVO
+        'comentario': row.COMENTARIO,
     }
 
 
@@ -5316,10 +5318,29 @@ def despesas_pos_venda_salvar():
         limpar = (id_raw is None or str(id_raw).strip() == '')
 
         if limpar:
-            db.session.execute(text("""
-                DELETE FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+            # Remove só a situação. Se a ocorrência tiver comentário ou
+            # observação, o registro é mantido (situação fica NULL);
+            # sem nenhum texto, o registro é apagado como antes.
+            atual = db.session.execute(text("""
+                SELECT COMENTARIO, OBS
+                FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
                 WHERE nrOcorrencia = :nr
-            """), {'nr': nr_ocorrencia})
+            """), {'nr': nr_ocorrencia}).fetchone()
+
+            comentario_atual = (atual.COMENTARIO or '').strip() if atual else ''
+            obs_atual = (atual.OBS or '').strip() if atual else ''
+
+            if comentario_atual or obs_atual:
+                db.session.execute(text("""
+                    UPDATE [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                    SET ID_SITUACAO = NULL, DSC_SITUACAO = NULL
+                    WHERE nrOcorrencia = :nr
+                """), {'nr': nr_ocorrencia})
+            else:
+                db.session.execute(text("""
+                    DELETE FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                    WHERE nrOcorrencia = :nr
+                """), {'nr': nr_ocorrencia})
             db.session.commit()
             registrar_log(
                 acao='excluir',
@@ -5328,7 +5349,9 @@ def despesas_pos_venda_salvar():
                 descricao='Classificação removida da ocorrência {}'.format(nr_ocorrencia)
             )
             return jsonify({'success': True, 'message': 'Classificação removida.',
-                            'id_situacao': None, 'dsc_situacao': None, 'obs': None})
+                            'id_situacao': None, 'dsc_situacao': None,
+                            'obs': obs_atual or None,
+                            'comentario': comentario_atual or None})
 
         try:
             id_situacao = int(id_raw)
@@ -5388,6 +5411,87 @@ def despesas_pos_venda_salvar():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'Erro ao salvar: {}'.format(str(e))}), 500
+
+
+@sumov_bp.route('/consultar-vendas/despesas-pos-venda/comentario', methods=['POST'])
+@login_required
+def despesas_pos_venda_comentario():
+    """
+    Grava COMENTARIO e OBS de uma ocorrência na MOV_TB054, independente
+    da situação de acerto (não altera ID_SITUACAO / DSC_SITUACAO).
+    - Se o registro já existe: atualiza os dois campos.
+    - Se não existe: cria o registro sem situação (situação NULL).
+    - Se tudo ficar vazio e não houver situação: o registro é apagado.
+    """
+    from sqlalchemy import text
+    from app.utils.audit import registrar_log
+
+    COMENTARIO_MAX = 1000        # limite da coluna COMENTARIO varchar(1000)
+    OBS_MAX = 500                # limite da coluna OBS varchar(500)
+
+    try:
+        data = request.get_json(silent=True) or {}
+        comentario = (data.get('comentario') or '').strip()[:COMENTARIO_MAX]
+        obs = (data.get('obs') or '').strip()[:OBS_MAX]
+
+        try:
+            nr_ocorrencia = int(data.get('nr_ocorrencia'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Número da ocorrência inválido.'}), 400
+
+        atual = db.session.execute(text("""
+            SELECT ID_SITUACAO
+            FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+            WHERE nrOcorrencia = :nr
+        """), {'nr': nr_ocorrencia}).fetchone()
+
+        params = {'nr': nr_ocorrencia,
+                  'comentario': comentario or None,
+                  'obs': obs or None}
+
+        if atual is None:
+            if not comentario and not obs:
+                return jsonify({'success': True, 'message': 'Nada para salvar.',
+                                'comentario': None, 'obs': None})
+            db.session.execute(text("""
+                INSERT INTO [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                    (nrOcorrencia, ID_SITUACAO, DSC_SITUACAO, OBS, COMENTARIO)
+                VALUES (:nr, NULL, NULL, :obs, :comentario)
+            """), params)
+            acao = 'criar'
+        elif atual.ID_SITUACAO is None and not comentario and not obs:
+            # Sem situação e sem textos: o registro não tem mais utilidade
+            db.session.execute(text("""
+                DELETE FROM [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                WHERE nrOcorrencia = :nr
+            """), {'nr': nr_ocorrencia})
+            acao = 'excluir'
+        else:
+            db.session.execute(text("""
+                UPDATE [BDG].[MOV_TB054_OCORRENCIA_SIT_NEGOCIACAO_PGTO_POSVENDA]
+                SET COMENTARIO = :comentario, OBS = :obs
+                WHERE nrOcorrencia = :nr
+            """), params)
+            acao = 'editar'
+
+        db.session.commit()
+
+        registrar_log(
+            acao=acao,
+            entidade='despesas_pos_venda_comentario',
+            entidade_id=nr_ocorrencia,
+            descricao='Comentário/observação {} na ocorrência {}'.format(
+                'removidos' if acao == 'excluir' else 'registrados', nr_ocorrencia)
+        )
+
+        return jsonify({'success': True, 'message': 'Comentário salvo com sucesso.',
+                        'comentario': comentario or None, 'obs': obs or None})
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao salvar comentário: {}'.format(str(e))}), 500
 
 
 # =============================================================================
