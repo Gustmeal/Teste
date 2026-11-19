@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}{{ cfg.titulo }} - Auditoria FCO{% endblock %}
+
+{% block content %}
+{# Estilos inline: forma confiável de sobrepor o CSS global do portal #}
+{% set cab_secao = "background: linear-gradient(135deg, #4e73df, #224abe); color: #fff; border-radius: 12px 12px 0 0; padding: 0.85rem 1.25rem;" %}
+{% set th_col = "background: #4e73df; color: #fff; font-size: 0.74rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; border: 1px solid #3a5fcd; vertical-align: middle;" %}
+{% set url_base = url_for('contas_contabeis.auditoria_relatorio', relatorio=relatorio) %}
+{% set url_export = url_for('contas_contabeis.auditoria_exportar', relatorio=relatorio) %}
+{% set ordem_args = ([('ordem', ordem_col), ('dir', ordem_dir)] if ordem_col else []) %}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('contas_contabeis.auditoria') }}" class="btn-back">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </a>
+    <div class="d-flex gap-2 flex-wrap">
+        {% for chave, titulo in outros %}
+        <a href="{{ url_for('contas_contabeis.auditoria_relatorio', relatorio=chave) }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-exchange-alt me-1"></i> {{ titulo }}
+        </a>
+        {% endfor %}
+        {# download: o auto-loading.js não abre o overlay (o arquivo baixa sem trocar de página) #}
+        <a href="{{ url_export }}?{{ (base_args + ordem_args) | urlencode }}" class="btn btn-success btn-sm js-ignore-loading" download
+           {% if not total %}style="pointer-events: none; opacity: 0.6;"{% endif %}>
+            <i class="fas fa-file-excel me-1"></i> Exportar Excel
+        </a>
+    </div>
+</div>
+
+<div class="editais-container fade-in">
+
+    <div class="mb-4">
+        <h1 class="fw-bold header-with-back mb-1">
+            <i class="fas {{ cfg.icone }} me-2" style="color: {{ cfg.cor }};"></i>{{ cfg.titulo }}
+        </h1>
+        <p class="text-muted mb-0">{{ cfg.subtitulo }}</p>
+    </div>
+
+    {% if erro %}<div class="alert alert-danger">{{ erro }}</div>{% endif %}
+
+    <!-- ============================================================ -->
+    <!-- RESUMO POR AGRUPAMENTO                                       -->
+    <!-- ============================================================ -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid {{ cfg.cor }} !important;">
+                <div class="card-body py-3">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;">Contratos encontrados</div>
+                    <div style="font-size: 1.9rem; font-weight: 700; color: #5a5c69;">{{ total | mil }}</div>
+                    <div style="font-size: 0.8rem; color: #858796;">
+                        {% if filtros_ativos %}{{ filtros_ativos }} filtro(s) aplicado(s){% else %}sem filtros{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-9">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px;">
+                <div class="card-body py-3">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;" class="mb-2">
+                        Por agrupamento <span class="fw-normal text-lowercase">(clique para filtrar)</span>
+                    </div>
+                    {% if resumo %}
+                    <div class="d-flex flex-wrap gap-2 cc-scroll" style="max-height: 110px; overflow-y: auto;">
+                        {% set maior = resumo[0].qtd if resumo else 1 %}
+                        {% for r in resumo %}
+                        <a href="{{ url_base }}?{{ ([('NO_AGRUPAMENTO', r.chave_nome)] + [('tam', tam_pagina)]) | urlencode }}"
+                           class="text-decoration-none" title="Filtrar pelo agrupamento {{ r.nome }}">
+                            <span class="badge" style="background: #eef2fc; color: #224abe; font-size: 0.82rem; font-weight: 600; padding: 0.45rem 0.7rem; border: 1px solid #c9d4f3;">
+                                {{ r.nome or '(vazio)' }}
+                                {% if r.cod %}<span class="text-muted fw-normal">({{ r.cod }})</span>{% endif %}
+                                <span class="badge ms-1" style="background: {{ cfg.cor }}; color: #fff;">{{ r.qtd | mil }}</span>
+                            </span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-muted" style="font-size: 0.85rem;">Nenhum contrato para os filtros escolhidos.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- FILTROS                                                      -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-4 cc-card-filtros" style="border-radius: 12px; overflow: visible;">
+        <div class="d-flex justify-content-between align-items-center" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                <i class="fas fa-filter me-2"></i>Filtros
+            </h5>
+            {% if filtros_ativos %}<span class="badge bg-light text-primary">{{ filtros_ativos }} ativo(s)</span>{% endif %}
+        </div>
+        <div class="card-body" style="padding: 1.25rem;">
+            <form method="get" action="{{ url_base }}" id="formFiltros">
+                {% if ordem_col %}
+                <input type="hidden" name="ordem" value="{{ ordem_col }}">
+                <input type="hidden" name="dir" value="{{ ordem_dir }}">
+                {% endif %}
+                <div class="row g-3 align-items-end">
+                    {% for f in filtros %}
+                    {% if f.tipo_filtro == 'multi' %}
+                    <div class="col-md-6 col-xl-3">
+                        <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">
+                            {{ f.rotulo }}
+                            {% if f.coluna == 'NO_AGRUPAMENTO' %}<i class="fas fa-star text-warning ms-1" title="Filtro principal"></i>{% endif %}
+                        </label>
+                        <div class="dropdown">
+                            <button class="form-select form-select-sm text-start js-ignore-loading" type="button"
+                                    data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                                    style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                {% if f.valor %}
+                                    {% if f.valor|length <= 2 %}
+                                        {% for v in f.valor %}{% for o in f.opcoes if o.valor == v %}{{ o.rotulo }}{% endfor %}{% if not loop.last %}, {% endif %}{% endfor %}
+                                    {% else %}{{ f.valor|length }} selecionados{% endif %}
+                                {% else %}Todos{% endif %}
+                            </button>
+                            <div class="dropdown-menu p-2 shadow" style="min-width: 260px;">
+                                {% if f.opcoes|length > 8 %}
+                                <input type="text" class="form-control form-control-sm mb-2 js-busca-opcao" placeholder="Pesquisar...">
+                                {% endif %}
+                                <div class="cc-scroll" style="max-height: 260px; overflow-y: auto;">
+                                    {% for o in f.opcoes %}
+                                    <div class="form-check mb-1 js-opcao" data-texto="{{ o.rotulo | lower }}">
+                                        <input class="form-check-input" type="checkbox" name="{{ f.coluna }}" value="{{ o.valor }}"
+                                               id="{{ f.coluna }}_{{ loop.index }}" {% if o.valor in f.valor %}checked{% endif %}>
+                                        <label class="form-check-label d-flex justify-content-between gap-3" for="{{ f.coluna }}_{{ loop.index }}" style="font-size: 0.85rem;">
+                                            <span>{{ o.rotulo }}</span><span class="text-muted">{{ o.qtd | mil }}</span>
+                                        </label>
+                                    </div>
+                                    {% else %}
+                                    <div class="text-muted small px-1">Sem valores na view.</div>
+                                    {% endfor %}
+                                </div>
+                                <hr class="my-2">
+                                <div class="d-flex gap-1">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm flex-fill js-ignore-loading js-limpar-opcoes">Limpar</button>
+                                    <button type="submit" class="btn btn-primary btn-sm flex-fill">Aplicar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% elif f.tipo_filtro == 'faixa' %}
+                    <div class="col-md-6 col-xl-3">
+                        <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">{{ f.rotulo }}</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">de</span>
+                            <input type="date" class="form-control" name="{{ f.coluna }}_de"
+                                   value="{{ f.valor.de.isoformat() if f.valor.de else '' }}">
+                            <span class="input-group-text">até</span>
+                            <input type="date" class="form-control" name="{{ f.coluna }}_ate"
+                                   value="{{ f.valor.ate.isoformat() if f.valor.ate else '' }}">
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="col-md-6 col-xl-3">
+                        <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">{{ f.rotulo }}</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control" name="{{ f.coluna }}" value="{{ f.valor or '' }}"
+                                   placeholder="Digite parte do número" maxlength="30">
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    <div class="col-md-6 col-xl-3">
+                        <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Linhas por página</label>
+                        <select name="tam" class="form-select form-select-sm">
+                            {% for t in tamanhos %}<option value="{{ t }}" {% if t == tam_pagina %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <a href="{{ url_base }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-eraser me-1"></i> Limpar filtros
+                    </a>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter me-1"></i> Aplicar filtros
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- TABELA                                                       -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mb-3" style="border-radius: 12px;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2" style="{{ cab_secao }}">
+            <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
+                <i class="fas fa-table me-2"></i>Contratos
+            </h5>
+            <div style="font-size: 0.8rem; opacity: 0.9;">
+                {% if total %}
+                    {{ ((pagina - 1) * tam_pagina + 1) | mil }}–{{ [pagina * tam_pagina, total] | min | mil }} de {{ total | mil }}
+                {% endif %}
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if linhas %}
+            {# Scroll próprio inline: o style.css global deixa .table-responsive com overflow: hidden #}
+            <div class="cc-scroll" style="max-height: 620px; overflow: auto; width: 100%;">
+                <table class="table table-sm table-hover mb-0" style="font-size: 0.85rem; min-width: 700px; border-collapse: separate; border-spacing: 0;">
+                    <thead style="position: sticky; top: 0; z-index: 2;">
+                        <tr>
+                            <th style="{{ th_col }} text-align: center; width: 60px;">#</th>
+                            {% for c, rot, tipo in colunas %}
+                            {% set prox_dir = 'desc' if (ordem_col == c and ordem_dir == 'asc') else 'asc' %}
+                            <th style="{{ th_col }} {{ 'text-align: left;' if tipo == 'texto' else 'text-align: center;' }}">
+                                <a href="{{ url_base }}?{{ (base_args + [('ordem', c), ('dir', prox_dir)]) | urlencode }}"
+                                   class="text-white text-decoration-none" title="Ordenar por {{ rot }}">
+                                    {{ rot }}
+                                    {% if ordem_col == c %}
+                                        <i class="fas fa-sort-{{ 'up' if ordem_dir == 'asc' else 'down' }} ms-1"></i>
+                                    {% else %}
+                                        <i class="fas fa-sort ms-1" style="opacity: 0.4;"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set inicio = (pagina - 1) * tam_pagina %}
+                        {% for linha in linhas %}
+                        <tr>
+                            <td style="text-align: center; color: #b7b9cc;">{{ (inicio + loop.index) | mil }}</td>
+                            {% for cel in linha %}
+                            <td style="{{ 'text-align: left;' if cel.tipo == 'texto' else 'text-align: center;' }} white-space: nowrap;">
+                                {% if cel.nulo %}
+                                    <span class="text-muted">-</span>
+                                {% elif cel.tipo == 'bit' %}
+                                    <span class="badge {{ 'bg-danger' if cel.texto == 'Sim' else 'bg-secondary' }}">{{ cel.texto }}</span>
+                                {% elif cel.tipo == 'texto' %}
+                                    <span class="fw-semibold" style="color: #224abe;">{{ cel.texto }}</span>
+                                {% else %}
+                                    {{ cel.texto }}
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-search fa-2x mb-2 d-block"></i>
+                Nenhum contrato encontrado{% if filtros_ativos %} para os filtros escolhidos{% endif %}.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Paginação -->
+    {% if total_paginas > 1 %}
+    {% set pag_args = base_args | rejectattr('0', 'equalto', 'pag') | list %}
+    <nav class="d-flex justify-content-center">
+        <ul class="pagination pagination-sm mb-0">
+            {% set ini = [1, pagina - 3] | max %}
+            {% set fim = [total_paginas, pagina + 3] | min %}
+            <li class="page-item {{ 'disabled' if pagina == 1 }}">
+                <a class="page-link" href="{{ url_base }}?{{ (pag_args + ordem_args + [('pag', 1)]) | urlencode }}" title="Primeira">&laquo;</a>
+            </li>
+            <li class="page-item {{ 'disabled' if pagina == 1 }}">
+                <a class="page-link" href="{{ url_base }}?{{ (pag_args + ordem_args + [('pag', pagina - 1)]) | urlencode }}">&lsaquo;</a>
+            </li>
+            {% for p in range(ini, fim + 1) %}
+            <li class="page-item {{ 'active' if p == pagina }}">
+                <a class="page-link" href="{{ url_base }}?{{ (pag_args + ordem_args + [('pag', p)]) | urlencode }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+            <li class="page-item {{ 'disabled' if pagina == total_paginas }}">
+                <a class="page-link" href="{{ url_base }}?{{ (pag_args + ordem_args + [('pag', pagina + 1)]) | urlencode }}">&rsaquo;</a>
+            </li>
+            <li class="page-item {{ 'disabled' if pagina == total_paginas }}">
+                <a class="page-link" href="{{ url_base }}?{{ (pag_args + ordem_args + [('pag', total_paginas)]) | urlencode }}" title="Última">&raquo;</a>
+            </li>
+        </ul>
+    </nav>
+    <div class="text-center text-muted mt-1" style="font-size: 0.8rem;">Página {{ pagina }} de {{ total_paginas }}</div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    /* O style.css global deixa todo .card com overflow: hidden e sobe o card no hover */
+    .cc-card-filtros { overflow: visible !important; position: relative; z-index: 20; }
+    .cc-card-filtros:hover { transform: none !important; }
+    .cc-card-filtros .dropdown-menu { z-index: 1060; }
+    .cc-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .cc-scroll::-webkit-scrollbar-thumb { background: #b7c3e8; border-radius: 6px; }
+    .cc-scroll::-webkit-scrollbar-track { background: #f1f3f9; }
+</style>
+{{ super() }}
+<script>
+(function () {
+    // Pesquisa dentro das listas de opções
+    document.querySelectorAll('.js-busca-opcao').forEach(function (campo) {
+        campo.addEventListener('input', function () {
+            const termo = campo.value.trim().toLowerCase();
+            campo.closest('.dropdown-menu').querySelectorAll('.js-opcao').forEach(function (div) {
+                div.style.display = !termo || div.getAttribute('data-texto').indexOf(termo) !== -1 ? '' : 'none';
+            });
+        });
+    });
+    // "Limpar" de cada lista desmarca as caixas daquele filtro
+    document.querySelectorAll('.js-limpar-opcoes').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            btn.closest('.dropdown-menu').querySelectorAll('input[type="checkbox"]').forEach(function (c) { c.checked = false; });
+        });
+    });
+    // Ao aplicar filtros, volta para a página 1 (campo pag não vai no formulário)
+})();
+</script>
+{% endblock %}

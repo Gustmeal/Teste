@@ -11,10 +11,10 @@
 
 <div class="central-panel mt-3 fade-in">
     <h1>FCO</h1>
-    <p class="text-secondary">Vinculação das contas contábeis, conciliação SISGEA x Balancete e relatórios do SISGEA</p>
+    <p class="text-secondary">Vinculações, conciliação SISGEA x Balancete, relatórios e auditoria do FCO</p>
 
     <!-- Linha 1: módulos principais (Vinculações e SISGEA X BALANCETE) -->
-    <!-- Linha 2: Relatórios FCO (abre a página com SISGEA e FCO Histórico) -->
+    <!-- Linha 2: Relatórios FCO e Auditoria -->
     <div class="row g-4 mt-4 justify-content-center fco-grid">
         <!-- Vinculação -->
         <div class="col-md-6">
@@ -92,6 +92,26 @@
                     <div class="mt-auto">
                         <a href="{{ url_for('contas_contabeis.relatorios') }}" class="btn btn-access btn-fco">
                             <i class="fas fa-file-alt me-2"></i>Acessar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auditoria (SD OPER ZERO + Baixa Não Marcada) -->
+        <div class="col-md-6">
+            <div class="card home-card shadow h-100">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="system-icon mx-auto mb-4" style="background-color: #e74a3b;">
+                        <i class="fas fa-search-dollar"></i>
+                    </div>
+                    <h3 class="system-title mb-3">Auditoria</h3>
+                    <p class="text-muted mb-4">
+                        SD OPER ZERO e Baixa Não Marcada (Evolução), com filtros e exportação para Excel.
+                    </p>
+                    <div class="mt-auto">
+                        <a href="{{ url_for('contas_contabeis.auditoria') }}" class="btn btn-access btn-fco">
+                            <i class="fas fa-search-dollar me-2"></i>Acessar
                         </a>
                     </div>
                 </div>

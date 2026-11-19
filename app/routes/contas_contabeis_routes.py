@@ -45,6 +45,14 @@ pode ser incluída se existir no CO_CONTA da BDG.COR_TB012_BALANCETE.
      visão agrupada ou tabela única com ordenação; exportação para Excel
      com os mesmos filtros.
 
+4. Auditoria
+   - SD OPER ZERO                   -> BDG.COR_VW009_FCO_AUDITORIA_SD_OPER_ZERO
+   - Baixa Não Marcada (Evolução)   -> BDG.COR_VW010_FCO_AUDITORIA_BAIXA_NAO_MARCADA_EVOLUCAO
+   - Filtros no back end (WHERE parametrizado), paginação no SQL Server
+     (OFFSET/FETCH), ordenação por coluna, resumo por agrupamento e
+     exportação para Excel com os mesmos filtros. NO_AGRUPAMENTO é filtro
+     nos dois relatórios.
+
 Todas as consultas usam text() parametrizado.
 Compatível com Python 3.9 e 3.12.
 """
@@ -1687,5 +1695,450 @@ def sisgea_exportar(fonte):
         saida,
         as_attachment=True,
         download_name=nome,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+
+
+
+# =========================================================================
+# AUDITORIA (COR_VW009 / COR_VW010)
+# =========================================================================
+#
+# Cada relatório é descrito por uma configuração (view, colunas e filtros).
+# A mesma rota e o mesmo template atendem os dois.
+#   tipo da coluna: 'data' | 'inteiro' | 'texto' | 'bit'
+#   filtro:
+#     'multi'  -> caixas de seleção com os valores que existem na view
+#     'faixa'  -> data de / até
+#     'contem' -> texto digitado (busca parcial)
+
+AUDITORIAS = {
+    'sd-oper-zero': {
+        'view': '[BDG].[COR_VW009_FCO_AUDITORIA_SD_OPER_ZERO]',
+        'titulo': 'SD OPER ZERO',
+        'subtitulo': 'Contratos com saldo devedor operacional zerado',
+        'icone': 'fa-equals',
+        'cor': '#e74a3b',
+        'arquivo': 'Auditoria_SD_Oper_Zero',
+        'colunas': [
+            ('DT_REFERENCIA', 'Data de referência', 'data'),
+            ('fkContratoSISCTR', 'Contrato SISCTR', 'inteiro'),
+            ('COD_AGRUPAMENTO', 'Cód. agrupamento', 'inteiro'),
+            ('NO_AGRUPAMENTO', 'Agrupamento', 'texto'),
+        ],
+        'filtros': [
+            ('NO_AGRUPAMENTO', 'multi'),
+            ('COD_AGRUPAMENTO', 'multi'),
+            ('DT_REFERENCIA', 'multi'),
+            ('fkContratoSISCTR', 'contem'),
+        ],
+        'ordem_padrao': ('NO_AGRUPAMENTO', 'fkContratoSISCTR'),
+    },
+    'baixa-nao-marcada': {
+        'view': '[BDG].[COR_VW010_FCO_AUDITORIA_BAIXA_NAO_MARCADA_EVOLUCAO]',
+        'titulo': 'Baixa Não Marcada (Evolução)',
+        'subtitulo': 'Contratos com baixa a prejuízo não marcada na evolução',
+        'icone': 'fa-flag',
+        'cor': '#f6c23e',
+        'arquivo': 'Auditoria_Baixa_Nao_Marcada_Evolucao',
+        'colunas': [
+            ('fkContratoSISCTR', 'Contrato SISCTR', 'inteiro'),
+            ('BT_CTR_BAIXADO_PREJ', 'Baixado a prejuízo', 'bit'),
+            ('DT_BAIXA_PREJUIZO', 'Data da baixa a prejuízo', 'data'),
+            ('COD_AGRUPAMENTO', 'Cód. agrupamento', 'inteiro'),
+            ('NO_AGRUPAMENTO', 'Agrupamento', 'texto'),
+        ],
+        'filtros': [
+            ('NO_AGRUPAMENTO', 'multi'),
+            ('COD_AGRUPAMENTO', 'multi'),
+            ('BT_CTR_BAIXADO_PREJ', 'multi'),
+            ('DT_BAIXA_PREJUIZO', 'faixa'),
+            ('fkContratoSISCTR', 'contem'),
+        ],
+        'ordem_padrao': ('NO_AGRUPAMENTO', 'fkContratoSISCTR'),
+    },
+}
+
+AUD_NULO = '__nulo__'                 # opção "(vazio)" nos filtros
+AUD_TAMANHOS_PAGINA = (50, 100, 250, 500)
+
+
+def _aud_cfg(relatorio):
+    cfg = AUDITORIAS.get(relatorio)
+    if not cfg:
+        abort(404)
+    return cfg
+
+
+def _aud_tipo(cfg, coluna):
+    for c, _rot, tipo in cfg['colunas']:
+        if c == coluna:
+            return tipo
+    return 'texto'
+
+
+def _aud_rotulo(cfg, coluna):
+    for c, rot, _tipo in cfg['colunas']:
+        if c == coluna:
+            return rot
+    return coluna
+
+
+def _aud_valor_tela(valor, tipo):
+    """Texto exibido na tela/Excel para um valor da view."""
+    if valor is None:
+        return '(vazio)'
+    if tipo == 'data':
+        d = _para_date(valor)
+        return d.strftime('%d/%m/%Y') if d else _txt(valor)
+    if tipo == 'bit':
+        return 'Sim' if bool(valor) else 'Não'
+    return _txt(valor)
+
+
+def _aud_valor_chave(valor, tipo):
+    """Valor usado no filtro (querystring) para uma opção."""
+    if valor is None:
+        return AUD_NULO
+    if tipo == 'data':
+        d = _para_date(valor)
+        return d.isoformat() if d else _txt(valor)
+    if tipo == 'bit':
+        return '1' if bool(valor) else '0'
+    return _txt(valor)
+
+
+def _aud_converter(texto, tipo):
+    """Converte o valor vindo da tela para o tipo da coluna (None = inválido)."""
+    if tipo == 'data':
+        return _para_date(texto)
+    if tipo in ('inteiro', 'bit'):
+        try:
+            return int(str(texto).strip())
+        except ValueError:
+            return None
+    return str(texto)
+
+
+def _aud_ler_filtros(cfg, args):
+    """Lê os filtros da querystring já validados."""
+    filtros = {}
+    for coluna, tipo_filtro in cfg['filtros']:
+        tipo = _aud_tipo(cfg, coluna)
+        if tipo_filtro == 'multi':
+            valores = []
+            for v in args.getlist(coluna):
+                v = (v or '').strip()
+                if v and v not in valores:
+                    valores.append(v)
+            filtros[coluna] = valores
+        elif tipo_filtro == 'faixa':
+            de = _para_date(args.get(coluna + '_de')) if args.get(coluna + '_de') else None
+            ate = _para_date(args.get(coluna + '_ate')) if args.get(coluna + '_ate') else None
+            filtros[coluna] = {'de': de, 'ate': ate}
+        else:
+            filtros[coluna] = (args.get(coluna) or '').strip()[:30]
+    return filtros
+
+
+def _aud_where(cfg, filtros):
+    """Monta o WHERE parametrizado a partir dos filtros."""
+    partes = []
+    params = {}
+    n = 0
+    for coluna, tipo_filtro in cfg['filtros']:
+        tipo = _aud_tipo(cfg, coluna)
+        valor = filtros.get(coluna)
+        if tipo_filtro == 'multi' and valor:
+            condicoes = []
+            nomes = []
+            for v in valor:
+                if v == AUD_NULO:
+                    condicoes.append('[{}] IS NULL'.format(coluna))
+                    continue
+                convertido = _aud_converter(v, tipo)
+                if convertido is None:
+                    continue
+                nome = 'f{}'.format(n)
+                n += 1
+                params[nome] = convertido
+                nomes.append(':' + nome)
+            if nomes:
+                if tipo == 'texto':
+                    condicoes.append('LTRIM(RTRIM([{}])) IN ({})'.format(coluna, ', '.join(nomes)))
+                else:
+                    condicoes.append('[{}] IN ({})'.format(coluna, ', '.join(nomes)))
+            if condicoes:
+                partes.append('(' + ' OR '.join(condicoes) + ')')
+        elif tipo_filtro == 'faixa' and valor:
+            if valor.get('de'):
+                params['f{}'.format(n)] = valor['de']
+                partes.append('[{}] >= :f{}'.format(coluna, n))
+                n += 1
+            if valor.get('ate'):
+                params['f{}'.format(n)] = valor['ate']
+                partes.append('[{}] <= :f{}'.format(coluna, n))
+                n += 1
+        elif tipo_filtro == 'contem' and valor:
+            texto = valor.replace('[', '[[]').replace('%', '[%]').replace('_', '[_]')
+            params['f{}'.format(n)] = '%' + texto + '%'
+            partes.append('CAST([{}] AS varchar(40)) LIKE :f{}'.format(coluna, n))
+            n += 1
+    return ('WHERE ' + ' AND '.join(partes)) if partes else '', params
+
+
+def _aud_opcoes(cfg):
+    """Valores existentes na view para cada filtro de caixas de seleção (com quantidade)."""
+    multis = [c for c, t in cfg['filtros'] if t == 'multi']
+    if not multis:
+        return {}
+    cols = ', '.join('[{}]'.format(c) for c in multis)
+    sql = text('SELECT {cols}, COUNT(1) AS QTD FROM {view} GROUP BY {cols}'.format(cols=cols, view=cfg['view']))
+    contagem = {c: {} for c in multis}
+    for r in db.session.execute(sql).mappings().all():
+        for c in multis:
+            tipo = _aud_tipo(cfg, c)
+            chave = _aud_valor_chave(r[c], tipo)
+            atual = contagem[c].get(chave)
+            if not atual:
+                contagem[c][chave] = {'valor': chave, 'rotulo': _aud_valor_tela(r[c], tipo),
+                                      'qtd': 0, 'ordem': r[c]}
+            contagem[c][chave]['qtd'] += int(r['QTD'] or 0)
+
+    opcoes = {}
+    for c in multis:
+        tipo = _aud_tipo(cfg, c)
+        lista = list(contagem[c].values())
+        if tipo == 'data':
+            # datas mais recentes primeiro; (vazio) no fim
+            lista.sort(key=lambda o: (o['ordem'] is None,
+                                      -(_para_date(o['ordem']).toordinal() if _para_date(o['ordem']) else 0)))
+        else:
+            lista.sort(key=lambda o: (o['ordem'] is None, _chave_ordem(o['ordem'])))
+        opcoes[c] = [{'valor': o['valor'], 'rotulo': o['rotulo'], 'qtd': o['qtd']} for o in lista]
+    return opcoes
+
+
+def _aud_resumo(cfg, where, params):
+    """Quantidade de contratos por agrupamento (já com os filtros)."""
+    sql = text("""
+        SELECT [COD_AGRUPAMENTO], [NO_AGRUPAMENTO], COUNT(1) AS QTD
+        FROM {view} {where}
+        GROUP BY [COD_AGRUPAMENTO], [NO_AGRUPAMENTO]
+    """.format(view=cfg['view'], where=where))
+    resumo = [{'cod': _txt(r['COD_AGRUPAMENTO']), 'nome': _txt(r['NO_AGRUPAMENTO']),
+               'chave_nome': _aud_valor_chave(r['NO_AGRUPAMENTO'], 'texto'), 'qtd': int(r['QTD'] or 0)}
+              for r in db.session.execute(sql, params).mappings().all()]
+    resumo.sort(key=lambda x: (-x['qtd'], x['nome']))
+    return resumo
+
+
+def _aud_ordem(cfg, args):
+    colunas = [c for c, _r, _t in cfg['colunas']]
+    col = args.get('ordem')
+    direcao = 'desc' if args.get('dir') == 'desc' else 'asc'
+    if col not in colunas:
+        col = None
+    if col:
+        extra = [c for c in cfg['ordem_padrao'] if c != col]
+        partes = ['[{}] {}'.format(col, direcao.upper())] + ['[{}]'.format(c) for c in extra]
+    else:
+        partes = ['[{}]'.format(c) for c in cfg['ordem_padrao']]
+    return col, direcao, ', '.join(partes)
+
+
+def _aud_linhas(cfg, where, params, order_by, offset=None, limite=None):
+    cols = ', '.join('[{}]'.format(c) for c, _r, _t in cfg['colunas'])
+    sql = 'SELECT {cols} FROM {view} {where} ORDER BY {ordem}'.format(
+        cols=cols, view=cfg['view'], where=where, ordem=order_by)
+    p = dict(params)
+    if limite is not None:
+        sql += ' OFFSET :_off ROWS FETCH NEXT :_lim ROWS ONLY'
+        p['_off'] = offset or 0
+        p['_lim'] = limite
+    return db.session.execute(text(sql), p).mappings().all()
+
+
+@contas_contabeis_bp.route('/auditoria')
+@login_required
+@sistema_requerido(SISTEMA)
+def auditoria():
+    """Página com os relatórios de auditoria do FCO."""
+    relatorios = [{'chave': k, 'titulo': v['titulo'], 'subtitulo': v['subtitulo'],
+                   'icone': v['icone'], 'cor': v['cor']} for k, v in AUDITORIAS.items()]
+    return render_template('contas_contabeis/auditoria.html', relatorios=relatorios)
+
+
+@contas_contabeis_bp.route('/auditoria/<relatorio>')
+@login_required
+@sistema_requerido(SISTEMA)
+def auditoria_relatorio(relatorio):
+    cfg = _aud_cfg(relatorio)
+    filtros = _aud_ler_filtros(cfg, request.args)
+    where, params = _aud_where(cfg, filtros)
+    ordem_col, ordem_dir, order_by = _aud_ordem(cfg, request.args)
+
+    try:
+        tam_pagina = int(request.args.get('tam', 100))
+    except ValueError:
+        tam_pagina = 100
+    if tam_pagina not in AUD_TAMANHOS_PAGINA:
+        tam_pagina = 100
+    try:
+        pagina = max(1, int(request.args.get('pag', 1)))
+    except ValueError:
+        pagina = 1
+
+    erro = None
+    opcoes, resumo, linhas, total = {}, [], [], 0
+    try:
+        opcoes = _aud_opcoes(cfg)
+        resumo = _aud_resumo(cfg, where, params)
+        total = sum(r['qtd'] for r in resumo)
+        total_paginas = max(1, (total + tam_pagina - 1) // tam_pagina)
+        pagina = min(pagina, total_paginas)
+        registros = _aud_linhas(cfg, where, params, order_by, (pagina - 1) * tam_pagina, tam_pagina)
+        for r in registros:
+            linhas.append([{'texto': _aud_valor_tela(r[c], t), 'tipo': t, 'nulo': r[c] is None}
+                           for c, _rot, t in cfg['colunas']])
+    except Exception as e:
+        db.session.rollback()
+        erro = 'Erro ao consultar a view: {}'.format(e)
+    total_paginas = max(1, (total + tam_pagina - 1) // tam_pagina)
+
+    # Descrição dos filtros para os campos da tela
+    filtros_tela = []
+    for coluna, tipo_filtro in cfg['filtros']:
+        filtros_tela.append({
+            'coluna': coluna, 'rotulo': _aud_rotulo(cfg, coluna), 'tipo_filtro': tipo_filtro,
+            'opcoes': opcoes.get(coluna, []), 'valor': filtros.get(coluna),
+        })
+    filtros_ativos = sum(1 for f in filtros_tela if (
+        (f['tipo_filtro'] == 'multi' and f['valor']) or
+        (f['tipo_filtro'] == 'faixa' and (f['valor']['de'] or f['valor']['ate'])) or
+        (f['tipo_filtro'] == 'contem' and f['valor'])))
+
+    # Querystring atual (sem paginação/ordem) para montar links
+    base_args = []
+    for k in request.args.keys():
+        if k in ('pag', 'ordem', 'dir'):
+            continue
+        for v in request.args.getlist(k):
+            base_args.append((k, v))
+
+    return render_template(
+        'contas_contabeis/auditoria_relatorio.html',
+        relatorio=relatorio, cfg=cfg, colunas=cfg['colunas'],
+        filtros=filtros_tela, filtros_ativos=filtros_ativos,
+        resumo=resumo, linhas=linhas, total=total,
+        pagina=pagina, total_paginas=total_paginas, tam_pagina=tam_pagina,
+        tamanhos=AUD_TAMANHOS_PAGINA, ordem_col=ordem_col, ordem_dir=ordem_dir,
+        base_args=base_args, outros=[(k, v['titulo']) for k, v in AUDITORIAS.items() if k != relatorio],
+        nulo=AUD_NULO, erro=erro,
+    )
+
+
+@contas_contabeis_bp.route('/auditoria/<relatorio>/exportar')
+@login_required
+@sistema_requerido(SISTEMA)
+def auditoria_exportar(relatorio):
+    """Excel com todas as linhas dos filtros da tela (aba Dados + aba Resumo por agrupamento)."""
+    cfg = _aud_cfg(relatorio)
+    filtros = _aud_ler_filtros(cfg, request.args)
+    where, params = _aud_where(cfg, filtros)
+    _c, _d, order_by = _aud_ordem(cfg, request.args)
+
+    registros = _aud_linhas(cfg, where, params, order_by)
+    resumo = _aud_resumo(cfg, where, params)
+
+    azul = PatternFill('solid', fgColor='224ABE')
+    cinza = PatternFill('solid', fgColor='F2F2F2')
+    branco_negrito = Font(bold=True, color='FFFFFF')
+    negrito = Font(bold=True)
+    centro = Alignment(horizontal='center', vertical='center')
+
+    # Texto dos filtros usados
+    desc_filtros = []
+    for coluna, tipo_filtro in cfg['filtros']:
+        tipo = _aud_tipo(cfg, coluna)
+        v = filtros.get(coluna)
+        rot = _aud_rotulo(cfg, coluna)
+        if tipo_filtro == 'multi' and v:
+            textos = ['(vazio)' if x == AUD_NULO else _aud_valor_tela(_aud_converter(x, tipo), tipo) for x in v]
+            desc_filtros.append('{}: {}'.format(rot, ', '.join(textos)))
+        elif tipo_filtro == 'faixa' and v and (v['de'] or v['ate']):
+            desc_filtros.append('{}: {} a {}'.format(
+                rot, v['de'].strftime('%d/%m/%Y') if v['de'] else '...',
+                v['ate'].strftime('%d/%m/%Y') if v['ate'] else '...'))
+        elif tipo_filtro == 'contem' and v:
+            desc_filtros.append('{} contém "{}"'.format(rot, v))
+    texto_filtros = ' | '.join(desc_filtros) if desc_filtros else 'Sem filtros'
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Dados'
+    ws.cell(row=1, column=1, value='Auditoria FCO - {}'.format(cfg['titulo'])).font = Font(bold=True, size=13)
+    ws.cell(row=2, column=1, value=texto_filtros).font = Font(italic=True, color='666666')
+    ws.cell(row=3, column=1, value='Gerado em {} · {} registro(s)'.format(
+        datetime.now().strftime('%d/%m/%Y %H:%M:%S'), len(registros))).font = Font(italic=True, color='666666')
+
+    linha_cab = 5
+    for i, (c, rot, _t) in enumerate(cfg['colunas'], start=1):
+        cel = ws.cell(row=linha_cab, column=i, value=rot)
+        cel.fill = azul
+        cel.font = branco_negrito
+        cel.alignment = centro
+    for n, r in enumerate(registros, start=linha_cab + 1):
+        for i, (c, _rot, t) in enumerate(cfg['colunas'], start=1):
+            v = r[c]
+            if t == 'data':
+                v = _para_date(v)
+            elif t == 'bit':
+                v = None if v is None else ('Sim' if bool(v) else 'Não')
+            elif t == 'inteiro' and v is not None:
+                v = int(v)
+            cel = ws.cell(row=n, column=i, value=v)
+            if t == 'data' and v:
+                cel.number_format = 'DD/MM/YYYY'
+            if t in ('data', 'bit', 'inteiro'):
+                cel.alignment = Alignment(horizontal='center')
+    ultima = linha_cab + len(registros)
+    ws.auto_filter.ref = 'A{}:{}{}'.format(linha_cab, get_column_letter(len(cfg['colunas'])), max(ultima, linha_cab))
+    ws.freeze_panes = 'A{}'.format(linha_cab + 1)
+    for i in range(1, len(cfg['colunas']) + 1):
+        ws.column_dimensions[get_column_letter(i)].width = 24
+
+    wr = wb.create_sheet('Resumo por agrupamento')
+    for i, nome in enumerate(('Cód. agrupamento', 'Agrupamento', 'Quantidade'), start=1):
+        cel = wr.cell(row=1, column=i, value=nome)
+        cel.fill = azul
+        cel.font = branco_negrito
+        cel.alignment = centro
+    for n, r in enumerate(resumo, start=2):
+        wr.cell(row=n, column=1, value=_num_excel(r['cod']))
+        wr.cell(row=n, column=2, value=r['nome'])
+        wr.cell(row=n, column=3, value=r['qtd'])
+    tot = len(resumo) + 2
+    wr.cell(row=tot, column=1, value='TOTAL')
+    wr.cell(row=tot, column=3, value=sum(r['qtd'] for r in resumo))
+    for i in range(1, 4):
+        wr.cell(row=tot, column=i).fill = cinza
+        wr.cell(row=tot, column=i).font = negrito
+    for col, larg in zip('ABC', (18, 30, 14)):
+        wr.column_dimensions[col].width = larg
+
+    saida = BytesIO()
+    wb.save(saida)
+    saida.seek(0)
+    registrar_log(
+        acao='exportar',
+        entidade='contas_contabeis_auditoria',
+        entidade_id=relatorio,
+        descricao='Exportação auditoria {} ({} registro(s); {})'.format(cfg['titulo'], len(registros), texto_filtros),
+    )
+    return send_file(
+        saida,
+        as_attachment=True,
+        download_name='{}_{}.xlsx'.format(cfg['arquivo'], datetime.now().strftime('%Y%m%d_%H%M')),
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
