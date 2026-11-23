@@ -59,6 +59,10 @@ TB_USU = 'BDG.APK_TB002_USUARIOS'
 TB_EMP = 'BDG.PES_TB001_EMPREGADOS'
 TB_CAL = '[BDDASHBOARDBI].BDG.PAR_TB020_CALENDARIO'
 
+# Área que executa as solicitações: só empregados dela aparecem em "Quem vai fazer / fez".
+# Vale se a sigla bater com o setor, a superintendência ou a diretoria do empregado.
+AREA_EXECUTORA = 'GEINC'
+
 TAMANHO_MAX_ARQUIVO = 15 * 1024 * 1024  # 15 MB
 EXTENSOES_PERMITIDAS = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'png', 'jpg', 'jpeg', 'gif',
                         'msg', 'eml', 'txt', 'zip', 'pptx', 'ppt', 'odt', 'p7s'}
@@ -314,6 +318,22 @@ SQL_USUARIOS = """
 
 def _usuarios_ativos():
     return _rows(SQL_USUARIOS + " WHERE U.ATIVO = 1 AND U.DELETED_AT IS NULL ORDER BY U.NOME")
+
+
+def _executores_area(manter_ids=None):
+    """
+    Usuários ativos da área executora (AREA_EXECUTORA), para "Quem vai fazer / fez".
+    manter_ids: executores já gravados na solicitação que devem continuar na lista
+    mesmo que tenham mudado de área (para a edição não perder ninguém).
+    """
+    manter = set(int(i) for i in (manter_ids or []))
+    sigla = AREA_EXECUTORA.upper()
+    lista = []
+    for u in _usuarios_ativos():
+        siglas = [(u.get(c) or '').strip().upper() for c in ('SG_SETOR', 'SG_SUPERINTENDENCIA', 'SG_DIRETORIA')]
+        if sigla in siglas or u['ID'] in manter:
+            lista.append(u)
+    return lista
 
 
 def _dados_usuario(usuario_id):
@@ -855,9 +875,21 @@ def api_area_usuario(usuario_id):
 
 
 def _render_form(sol=None, envolvidos=None, form=None):
+    atuais = [e['ID_USUARIO'] for e in (envolvidos or []) if e['PAPEL'] == 'EXECUTOR']
     return render_template('solicitacoes/form.html', sol=sol, envolvidos=envolvidos or [],
-                           usuarios=_usuarios_ativos(), cat=_catalogos(), form=form,
+                           usuarios=_usuarios_ativos(), executores_opcoes=_executores_area(atuais),
+                           area_executora=AREA_EXECUTORA, cat=_catalogos(), form=form,
                            hoje=date.today().strftime('%Y-%m-%d'))
+
+
+def _validar_executores(executores, envolvidos_atuais=None):
+    """Garante no back end que só entram executores da área executora (ou os que já estavam)."""
+    atuais = [e['ID_USUARIO'] for e in (envolvidos_atuais or []) if e['PAPEL'] == 'EXECUTOR']
+    permitidos = set(u['ID'] for u in _executores_area(atuais))
+    fora = [uid for uid, _ in executores if uid not in permitidos]
+    if fora:
+        return ['Só podem ser executores usuários da {}.'.format(AREA_EXECUTORA)]
+    return []
 
 
 @solicitacoes_bp.route('/nova', methods=['GET', 'POST'])
@@ -871,6 +903,7 @@ def nova():
         return _render_form()
 
     dados, executores, observadores, erros = _dados_formulario()
+    erros += _validar_executores(executores)
     solicitante = _dados_usuario(dados['ID_USUARIO_SOLICITANTE']) if dados['ID_USUARIO_SOLICITANTE'] else None
     if dados['ID_USUARIO_SOLICITANTE'] and not solicitante:
         erros.append('Usuário solicitante não encontrado.')
@@ -955,6 +988,7 @@ def editar(id_solicitacao):
         return _render_form(sol=sol, envolvidos=env)
 
     dados, executores, observadores, erros = _dados_formulario()
+    erros += _validar_executores(executores, env)
     solicitante = None
     if dados['ID_USUARIO_SOLICITANTE'] and dados['ID_USUARIO_SOLICITANTE'] != sol['ID_USUARIO_SOLICITANTE']:
         solicitante = _dados_usuario(dados['ID_USUARIO_SOLICITANTE'])
@@ -1617,7 +1651,7 @@ def _dados_termo(id_solicitacao):
         'rotulos': {'tipo': sol['tipo_rotulo'], 'categoria': sol['categoria_rotulo'],
                     'prioridade': sol['prioridade_rotulo'], 'canal': sol['canal_rotulo']},
         'orgao': 'EMGEA – Empresa Gestora de Ativos',
-        'area_executora': 'GEINC',
+        'area_executora': AREA_EXECUTORA,
         'executores': [{'nome': e['NO_USUARIO'], 'funcao': e['DS_FUNCAO']} for e in env if e['PAPEL'] == 'EXECUTOR'],
         'itens': [{'descricao': i['DESCRICAO'], 'concluido': i['FL_CONCLUIDO']} for i in itens],
         'linha_tempo': [{'data': r['CREATED_AT'],
@@ -1704,7 +1738,7 @@ def baixar_termo(id_solicitacao):
 @sistema_requerido(SISTEMA)
 def modelo_termo():
     formato = request.args.get('formato', 'docx')
-    dados = {'modelo': True, 'orgao': 'EMGEA – Empresa Gestora de Ativos', 'area_executora': 'GEINC'}
+    dados = {'modelo': True, 'orgao': 'EMGEA – Empresa Gestora de Ativos', 'area_executora': AREA_EXECUTORA}
     blocos = termo.montar_blocos(dados)
     rodape = termo.texto_rodape(dados)
     if formato == 'pdf':

@@ -159,7 +159,12 @@
                         <button type="button" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading" id="btnAddExecutor"><i class="fas fa-user-plus"></i> Adicionar executor</button>
                     </div>
                     <div class="sol-card-corpo">
-                        <div class="form-text mb-2" style="margin-top:0;">Um ou mais usuários. A função é opcional (ex.: desenvolvimento, testes, banco de dados, BI).</div>
+                        <div class="form-text mb-2" style="margin-top:0;">Um ou mais usuários da <b>{{ area_executora }}</b> ({{ executores_opcoes|length }} disponível(is)). A função é opcional (ex.: desenvolvimento, testes, banco de dados, BI).</div>
+                        {% if not executores_opcoes %}
+                        <div class="mb-2" style="font-size:.8rem;background:#fff8e1;border:1px solid #f6c23e;border-radius:10px;padding:.5rem .75rem;color:#5c4400;">
+                            <i class="fas fa-exclamation-triangle me-1"></i>Nenhum usuário ativo da {{ area_executora }} foi encontrado no cadastro de empregados.
+                        </div>
+                        {% endif %}
                         <div id="listaExecutores"></div>
                         <div class="mt-3">
                             <label class="form-label">Observadores <span style="font-weight:400;">(acompanham o andamento e comentam, sem alterar nada)</span></label>
@@ -322,8 +327,8 @@
 <template id="tplExecutor">
     <div class="sol-exec-linha">
         <select name="executor_id" class="form-select sol-sel-exec">
-            <option value="">Selecione o usuário...</option>
-            {% for u in usuarios %}<option value="{{ u.ID }}">{{ u.NOME }}</option>{% endfor %}
+            <option value="">Selecione o usuário da {{ area_executora }}...</option>
+            {% for u in executores_opcoes %}<option value="{{ u.ID }}">{{ u.NOME }}</option>{% endfor %}
         </select>
         <input type="text" name="executor_funcao" class="form-control" maxlength="60" placeholder="Função (opcional)" style="flex:0 1 40%;">
         <button type="button" class="sol-btn sol-btn-perigo sol-btn-sm js-ignore-loading sol-rem-exec" title="Remover"><i class="fas fa-times"></i></button>
