@@ -272,22 +272,20 @@ def _params_linha(item):
 @bloqueios_judiciais_bp.route('/vinculos-ordem')
 @login_required
 def vinculos_ordem():
-    """Lista os bloqueios com o MESMO processo e a MESMA data de depósito,
+    """Lista os bloqueios com o MESMO processo (qualquer data de depósito),
     pra o usuário escolher com quais o novo bloqueio fica na mesma Ordem."""
     processo = (request.args.get('processo') or '').strip()
-    dt_dep = _parse_data(request.args.get('dt_deposito'))
-    if not processo or not dt_dep:
+    if not processo:
         return jsonify({'success': False,
-                        'message': 'Informe o processo e a data do depósito antes de vincular.'}), 400
+                        'message': 'Informe o processo antes de vincular.'}), 400
 
     rows = db.session.execute(text(f"""
         SELECT DT_DEPOSITO, VR_BLOQUEADO, CONTA, PROCESSO, VARA, AUTOR,
                DT_DESBLOQUEIO, MEMO_SEI, ORDEM
         FROM {_TB}
         WHERE RTRIM(ISNULL(PROCESSO, '')) = RTRIM(:p)
-          AND CONVERT(varchar(8), DT_DEPOSITO, 112) = :d
-        ORDER BY ORDEM DESC, CONTA, VR_BLOQUEADO
-    """), {'p': processo, 'd': dt_dep.strftime('%Y%m%d')}).fetchall()
+        ORDER BY ORDEM DESC, DT_DEPOSITO DESC, CONTA, VR_BLOQUEADO
+    """), {'p': processo}).fetchall()
 
     itens = []
     for r in rows:
@@ -344,13 +342,13 @@ def incluir():
     try:
         ordem = None
         if vincular:
-            # Só aceita vincular com o MESMO processo e a MESMA data de depósito
+            # Só aceita vincular com o MESMO processo (a data de depósito pode ser qualquer uma)
             params_linhas = []
             for item in vinculos:
                 p = _params_linha(item)
                 if not p:
                     continue
-                if p['w_processo'] != processo or p['w_dep'] != dt_dep.strftime('%Y%m%d'):
+                if p['w_processo'] != processo:
                     continue
                 params_linhas.append(p)
             if not params_linhas:

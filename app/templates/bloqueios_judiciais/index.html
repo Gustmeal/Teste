@@ -296,11 +296,11 @@
             </div>
         </div>
 
-        <!-- Passo 2: escolher os bloqueios do mesmo processo e mesma data de depósito -->
+        <!-- Passo 2: escolher os bloqueios do mesmo processo (qualquer data de depósito) -->
         <div id="bjOrdemPasso2" style="display:none;">
             <p class="text-muted mb-2" style="font-size:.85rem;">
-                Bloqueios do processo <strong id="bjOrdemProc">—</strong> com depósito em
-                <strong id="bjOrdemData">—</strong>. Marque os que fazem parte da mesma Ordem.
+                Bloqueios do processo <strong id="bjOrdemProc">—</strong> (qualquer data de depósito).
+                Marque os que fazem parte da mesma Ordem.
                 Se algum já tiver Ordem, o código dela é reaproveitado.
             </p>
             <div id="bjOrdemLista"></div>
@@ -561,9 +561,8 @@ function _bjDataBr(iso) { return iso ? iso.split('-').reverse().join('/') : ''; 
 
 function bjOrdemSim() {
     var f = document.getElementById('formNovo');
-    var proc = f.PROCESSO.value.trim(), dep = f.DT_DEPOSITO.value;
+    var proc = f.PROCESSO.value.trim();
     document.getElementById('bjOrdemProc').textContent = proc;
-    document.getElementById('bjOrdemData').textContent = _bjDataBr(dep);
     var lista = document.getElementById('bjOrdemLista');
     lista.innerHTML = '<div class="text-muted py-2"><i class="fas fa-spinner fa-spin me-2"></i>Carregando...</div>';
     document.getElementById('bjOrdemPasso1').style.display = 'none';
@@ -571,22 +570,23 @@ function bjOrdemSim() {
     document.getElementById('bjOrdemBtnSalvar').disabled = true;
 
     var url = "{{ url_for('bloqueios_judiciais.vinculos_ordem') }}"
-            + '?processo=' + encodeURIComponent(proc) + '&dt_deposito=' + encodeURIComponent(dep);
+            + '?processo=' + encodeURIComponent(proc);
     fetch(url, { headers: { 'X-Silent-Request': 'true' } })
         .then(function (r) { return r.json(); })
         .then(function (d) {
             if (!d.success) { lista.innerHTML = '<div class="alert alert-danger mb-0">' + _bjEsc(d.message) + '</div>'; return; }
             bjOrdemItens = d.itens || [];
             if (!bjOrdemItens.length) {
-                lista.innerHTML = '<div class="alert alert-warning mb-0">Nenhum bloqueio encontrado com este processo '
-                    + 'e esta data de depósito. Volte e marque <strong>Não</strong>.</div>';
+                lista.innerHTML = '<div class="alert alert-warning mb-0">Nenhum bloqueio encontrado com este processo. '
+                    + 'Volte e marque <strong>Não</strong>.</div>';
                 return;
             }
-            var h = '<table class="bj-vinc"><thead><tr><th></th><th>Conta</th><th class="text-end">Valor Bloqueado</th>'
+            var h = '<table class="bj-vinc"><thead><tr><th></th><th>Data Depósito</th><th>Conta</th><th class="text-end">Valor Bloqueado</th>'
                   + '<th>Vara</th><th>Autor</th><th>Situação</th><th>Ordem</th></tr></thead><tbody>';
             bjOrdemItens.forEach(function (it, i) {
                 h += '<tr id="bjVincTr' + i + '">'
                    + '<td><input type="checkbox" class="form-check-input" id="bjVinc' + i + '" onchange="bjOrdemMarcou(' + i + ')"></td>'
+                   + '<td>' + _bjEsc(_bjDataBr(it.dep)) + '</td>'
                    + '<td><label for="bjVinc' + i + '" style="cursor:pointer;">' + _bjEsc(it.conta) + '</label></td>'
                    + '<td class="text-end">' + _bjEsc(it.vr_fmt) + '</td>'
                    + '<td>' + _bjEsc(it.vara) + '</td>'
