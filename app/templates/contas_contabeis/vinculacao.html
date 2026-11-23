@@ -129,14 +129,17 @@
             <h5 class="mb-0 fw-semibold" style="font-size: 1rem; color: #fff !important;">
                 <i class="fas fa-list me-2"></i>Contas contábeis
             </h5>
-            <div class="d-flex gap-2 align-items-center">
+            <div class="d-flex gap-2 align-items-center flex-wrap">
                 <select id="filtroSituacao" class="form-select form-select-sm" style="width: auto;">
-                    <option value="">Todas</option>
+                    <option value="">Todas as situações</option>
                     <option value="vinculada">Vinculadas</option>
                     <option value="sem">Sem vínculo</option>
                 </select>
                 <input type="text" id="filtroTexto" class="form-control form-control-sm" style="width: 240px;"
-                       placeholder="Pesquisar conta ou linha...">
+                       placeholder="Pesquisar em todas as colunas...">
+                <button type="button" class="btn btn-light btn-sm js-ignore-loading" id="btnLimparFiltros" title="Limpar filtros">
+                    <i class="fas fa-eraser"></i>
+                </button>
             </div>
         </div>
         <div class="card-body p-0">
@@ -152,15 +155,22 @@
                             <th style="{{ th_tab }}">Descrição da linha</th>
                             <th style="{{ th_tab }} text-align: center;">Ação</th>
                         </tr>
+                        <tr class="cc-filtros-coluna">
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><input type="text" class="form-control form-control-sm" data-coluna="0" data-modo="texto" placeholder="Conta..."></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="1" data-modo="exato"><option value="__todos__">Todos</option></select></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="2" data-modo="exato"><option value="__todos__">Todos</option></select></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="3" data-modo="exato"><option value="__todos__">Todos</option></select></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"></th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for c in contas %}
                         <tr data-situacao="{{ 'vinculada' if c.id_linha is not none else 'sem' }}"
                             data-busca="{{ (c.co_conta ~ ' ' ~ c.tipo_pessoa ~ ' ' ~ (c.id_linha if c.id_linha is not none else '') ~ ' ' ~ c.dsc_linha) | lower }}">
                             <td style="padding-left: 1.25rem; font-weight: 600;">{{ c.co_conta }}</td>
-                            <td>{{ c.tipo_pessoa or '-' }}</td>
-                            <td>{{ c.id_linha if c.id_linha is not none else '-' }}</td>
-                            <td>
+                            <td data-filtro="{{ c.tipo_pessoa or '' }}">{{ c.tipo_pessoa or '-' }}</td>
+                            <td data-filtro="{{ c.id_linha if c.id_linha is not none else 'Sem vínculo' }}">{{ c.id_linha if c.id_linha is not none else '-' }}</td>
+                            <td data-filtro="{{ (c.dsc_linha or '(linha não encontrada nos itens do FCO)') if c.id_linha is not none else 'Sem vínculo' }}">
                                 {% if c.id_linha is not none %}
                                     {{ c.dsc_linha or '(linha não encontrada nos itens do FCO)' }}
                                 {% else %}
@@ -249,6 +259,7 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/pt-BR.js"></script>
+<script src="{{ url_for('static', filename='js/filtro-tabela.js') }}"></script>
 <script>
 (function () {
     const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_salvar') }}";
@@ -398,24 +409,12 @@
             });
     });
 
-    // ---------------- Filtros da tabela ----------------
-    const filtroTexto = document.getElementById('filtroTexto');
-    const filtroSituacao = document.getElementById('filtroSituacao');
-    function filtrar() {
-        const termo = filtroTexto.value.trim().toLowerCase();
-        const situacao = filtroSituacao.value;
-        let visiveis = 0;
-        document.querySelectorAll('#tabContas tbody tr[data-busca]').forEach(function (tr) {
-            const okTexto = !termo || tr.getAttribute('data-busca').indexOf(termo) !== -1;
-            const okSituacao = !situacao || tr.getAttribute('data-situacao') === situacao;
-            const mostrar = okTexto && okSituacao;
-            tr.style.display = mostrar ? '' : 'none';
-            if (mostrar) { visiveis++; }
-        });
-        document.getElementById('qtdVisiveis').textContent = visiveis.toLocaleString('pt-BR');
-    }
-    filtroTexto.addEventListener('input', filtrar);
-    filtroSituacao.addEventListener('change', filtrar);
+    // ---------------- Filtros da tabela (app/static/js/filtro-tabela.js) ----------------
+    // Situação (vinculadas / sem vínculo), busca geral e um filtro por coluna no cabeçalho
+    CCFiltroTabela.iniciar({
+        tabela: 'tabContas', situacao: 'filtroSituacao', texto: 'filtroTexto',
+        contador: 'qtdVisiveis', limpar: 'btnLimparFiltros'
+    });
 })();
 </script>
 {% endblock %}

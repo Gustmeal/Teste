@@ -957,6 +957,38 @@ def _listar_vinc_fco_balancete():
             'linha': _txt(r['ID_FCO_LINHA']), 'dsc_linha': _txt(r['DSC_LINHA']),
             'conta': _txt(r['CT_CONTABIL']),
         })
+    # Contas do vínculo que existem no balancete (uma consulta só para todas)
+    contas_ok = set()
+    if lista:
+        sql_bal = text(f"""
+            SELECT DISTINCT LTRIM(RTRIM(B.[CO_CONTA])) AS CO_CONTA
+            FROM {TB_BALANCETE} B
+            WHERE B.[DELETED_AT] IS NULL
+              AND LTRIM(RTRIM(B.[CO_CONTA])) IN (
+                  SELECT LTRIM(RTRIM([CT_CONTABIL])) FROM {TB_VINC_ITEM_LINHA_CONTA})
+        """)
+        try:
+            contas_ok = set(_txt(r[0]) for r in db.session.execute(sql_bal).all())
+        except Exception as e:
+            db.session.rollback()
+            print(f"[contas_contabeis] Erro ao conferir contas no balancete: {e}")
+            contas_ok = None
+
+    # Situação: vinculado = agrupamento, item e linha encontrados nos parâmetros
+    # e conta existente no balancete; senão "sem vínculo" com o motivo
+    for v in lista:
+        pendencias = []
+        if not v['dsc_agrup']:
+            pendencias.append('agrupamento não encontrado')
+        if not v['dsc_item']:
+            pendencias.append('item não encontrado')
+        if not v['dsc_linha']:
+            pendencias.append('linha não encontrada')
+        if contas_ok is not None and v['conta'] not in contas_ok:
+            pendencias.append('conta fora do balancete')
+        v['pendencias'] = pendencias
+        v['situacao'] = 'sem' if pendencias else 'vinculada'
+
     lista.sort(key=lambda x: (_chave_ordem(x['agrup']), _chave_ordem(x['item']),
                               _chave_ordem(x['linha']), x['conta']))
     return lista
@@ -1021,6 +1053,7 @@ def vinculacao_fco_balancete():
         qtd_vinculos=len(vinculos),
         qtd_agrup=len(set(v['agrup'] for v in vinculos)),
         qtd_contas=len(set(v['conta'] for v in vinculos)),
+        qtd_sem_vinculo=sum(1 for v in vinculos if v['situacao'] == 'sem'),
         tam_conta=tam_conta,
     )
 
