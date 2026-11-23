@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Solicitações à Área{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+
+<style>
+    .sol-graf { position: relative; height: 270px; }
+    .sol-graf-alto { position: relative; height: 340px; }
+    .sol-rank-pos { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+        font-weight: 800; font-size: .75rem; background: var(--sol-fundo-2); border: 1px solid var(--sol-borda); }
+    .sol-mini-barra { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--sol-fundo-2); min-width: 110px; gap: 2px; }
+    .sol-mini-barra > span { display: block; height: 100%; }
+    .sol-legenda { display: flex; flex-wrap: wrap; gap: .8rem; font-size: .72rem; color: var(--sol-suave); }
+    .sol-legenda i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: .3rem; vertical-align: -1px; }
+</style>
+
+<div class="sol-app">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Solicitações</a>
+        <a class="sol-btn sol-btn-pri" href="{{ url_for('solicitacoes.nova') }}"><i class="fas fa-plus"></i> Nova solicitação</a>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 mb-4">
+        <div>
+            <h1 class="sol-titulo-pag"><i class="fas fa-chart-pie me-2" style="-webkit-text-fill-color:#4e73df;"></i>Dashboard de Solicitações</h1>
+            <div class="sol-sub">O que foi pedido à área, o que foi entregue e o que cada pessoa fez.</div>
+        </div>
+        <form method="get" class="d-flex gap-2 flex-wrap align-items-end">
+            <div>
+                <label class="form-label">Ano</label>
+                <select name="ano" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Todos</option>
+                    {% for a in anos %}<option value="{{ a }}" {% if filtros.ano == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Área</label>
+                <select name="area" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Todas</option>
+                    {% for a in areas %}<option value="{{ a }}" {% if filtros.area == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Tipo</label>
+                <select name="tipo" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Todos</option>
+                    {% for k, t in cat.tipos_entrega.items() %}<option value="{{ k }}" {% if filtros.tipo == k %}selected{% endif %}>{{ t.rotulo }}</option>{% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+
+    {# ======================= KPIs ======================= #}
+    {% macro pct(v) %}{{ ('%.1f'|format(v))|replace('.', ',') ~ '%' if v is not none else '—' }}{% endmacro %}
+    {% set lista_kpis = [
+        ('Solicitações', kpis.total, 'fa-layer-group', '#4e73df', kpis.aplicativos ~ ' aplicativos · ' ~ kpis.paineis ~ ' painéis', {}),
+        ('Em aberto', kpis.abertas, 'fa-hourglass-half', '#36b9cc', kpis.sem_ciencia ~ ' sem confirmação do solicitante', {'situacao': 'abertas'}),
+        ('Atrasadas', kpis.atrasadas, 'fa-exclamation-triangle', '#e74a3b', 'prazo vencido sem entrega', {'situacao': 'atrasadas'}),
+        ('Aguardando homologação', kpis.aguardando, 'fa-file-signature', '#f6c23e', 'entregues, esperando o solicitante', {'status': 'AGUARDANDO_HOMOLOGACAO'}),
+        ('Homologadas', kpis.homologadas, 'fa-check-double', '#1cc88a', kpis.nao_homologadas ~ ' não homologadas · ' ~ kpis.canceladas ~ ' canceladas', {'status': 'CONCLUIDA_HOMOLOGADA'}),
+    ] %}
+    <div class="row g-3 mb-3">
+        {% for rot, val, ico, cor, det, filtro in lista_kpis %}
+        <div class="col-6 col-lg">
+            <a class="sol-kpi" href="{{ url_for('solicitacoes.index', ano=filtros.ano or None, area=filtros.area or None, tipo=filtros.tipo or None, **filtro) }}">
+                <div class="ico" style="background:{{ cor }}1f;color:{{ cor }};"><i class="fas {{ ico }}"></i></div>
+                <div class="rot" style="max-width:72%;">{{ rot }}</div>
+                <div class="val">{{ val }}</div>
+                <div class="det">{{ det }}</div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="row g-3 mb-4">
+        {% for rot, val, ico, det in [
+            ('Taxa de homologação', pct(kpis.taxa_homologacao), 'fa-award', 'homologadas ÷ concluídas'),
+            ('Entregas no prazo', pct(kpis.taxa_prazo), 'fa-stopwatch', 'entregues até o prazo acordado/desejado'),
+            ('Tempo médio até concluir', (('%.1f'|format(kpis.lead_medio))|replace('.', ',') ~ ' dias') if kpis.lead_medio is not none else '—', 'fa-hourglass-end',
+                ((('%.1f'|format(kpis.lead_uteis))|replace('.', ',') ~ ' dias úteis') if kpis.lead_uteis is not none else 'dias corridos, do pedido à conclusão')),
+            ('Horas lançadas', ('%.1f'|format(kpis.horas))|replace('.', ','), 'fa-clock', 'soma das horas nas atualizações'),
+        ] %}
+        <div class="col-6 col-lg-3">
+            <div class="sol-kpi">
+                <div class="ico" style="background:var(--sol-azul-cla);color:var(--sol-azul);"><i class="fas {{ ico }}"></i></div>
+                <div class="rot">{{ rot }}</div>
+                <div class="val" style="font-size:1.45rem;">{{ val }}</div>
+                <div class="det">{{ det }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if kpis.total == 0 %}
+    <div class="sol-card"><div class="sol-vazio"><i class="fas fa-chart-bar"></i><div class="fw-bold">Sem solicitações para os filtros escolhidos</div></div></div>
+    {% else %}
+
+    {# ======================= GRÁFICOS ======================= #}
+    <div class="row g-4 mb-4">
+        <div class="col-xl-8">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Evolução mensal</h5><span class="sol-sub" style="font-size:.75rem;">{{ 'Ano ' ~ filtros.ano if filtros.ano else 'Últimos 12 meses' }}</span></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gMensal" aria-label="Solicitações recebidas e concluídas por mês"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Por status</h5></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gStatus" aria-label="Solicitações por status"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Por área solicitante</h5><span class="sol-sub" style="font-size:.75rem;">superintendência</span></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gArea" aria-label="Solicitações por área"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Aplicativo × Painel</h5></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gTipo" aria-label="Solicitações por tipo de entrega"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Abertas por tempo</h5><span class="sol-sub" style="font-size:.75rem;">desde o pedido</span></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gAging" aria-label="Solicitações abertas por tempo"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Abertas por prioridade</h5></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gPrioridade" aria-label="Abertas por prioridade"></canvas></div></div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5>Por categoria</h5></div>
+                <div class="sol-card-corpo"><div class="sol-graf"><canvas id="gCategoria" aria-label="Solicitações por categoria"></canvas></div></div>
+            </div>
+        </div>
+    </div>
+
+    {# ======================= POR PESSOA ======================= #}
+    <div class="sol-card mb-4">
+        <div class="sol-card-cab">
+            <h5><i class="fas fa-user-cog me-2" style="color:var(--sol-azul);"></i>O que cada pessoa fez</h5>
+            <div class="sol-legenda">
+                <span><i style="background:#1cc88a;"></i>Homologadas</span>
+                <span><i style="background:#e74a3b;"></i>Não homologadas</span>
+                <span><i style="background:#4e73df;"></i>Em aberto</span>
+            </div>
+        </div>
+        {% if pessoas %}
+        <div class="sol-card-corpo"><div class="sol-graf-alto" style="height:{{ [220, 46 * pessoas|length + 60]|max }}px;"><canvas id="gPessoas" aria-label="Solicitações por executor"></canvas></div></div>
+        <div class="table-responsive">
+            <table class="sol-tabela">
+                <thead>
+                    <tr>
+                        <th>#</th><th>Pessoa</th><th class="text-center">Participações</th><th>Distribuição</th>
+                        <th class="text-center">Homolog.</th><th class="text-center">Não homolog.</th><th class="text-center">Em aberto</th>
+                        <th class="text-center">Atrasadas</th><th class="text-center">Apps / Painéis</th><th class="text-end">Horas</th>
+                        <th class="text-center">Registros</th><th class="text-center">Taxa homolog.</th><th class="text-center">No prazo</th><th>Último registro</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for p in pessoas %}
+                <tr class="sol-clicavel sol-abrir-pessoa" data-id="{{ p.id }}" title="Ver as solicitações de {{ p.nome }}">
+                    <td><span class="sol-rank-pos">{{ loop.index }}</span></td>
+                    <td><div class="d-flex align-items-center gap-2"><span class="sol-avatar" data-avatar="{{ p.nome }}">{{ p.iniciais }}</span><b style="font-size:.84rem;">{{ p.nome }}</b></div></td>
+                    <td class="text-center fw-bold">{{ p.total }}</td>
+                    <td>
+                        {% if p.total %}
+                        <div class="sol-mini-barra" title="{{ p.homologadas }} homologadas · {{ p.nao_homologadas }} não homologadas · {{ p.abertas }} em aberto · {{ p.canceladas }} canceladas">
+                            <span style="width:{{ 100 * p.homologadas / p.total }}%;background:#1cc88a;"></span>
+                            <span style="width:{{ 100 * p.nao_homologadas / p.total }}%;background:#e74a3b;"></span>
+                            <span style="width:{{ 100 * p.abertas / p.total }}%;background:#4e73df;"></span>
+                            <span style="width:{{ 100 * p.canceladas / p.total }}%;background:#858796;"></span>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td class="text-center" style="color:#1cc88a;font-weight:700;">{{ p.homologadas }}</td>
+                    <td class="text-center" style="color:#e74a3b;font-weight:700;">{{ p.nao_homologadas }}</td>
+                    <td class="text-center">{{ p.abertas }}{% if p.aguardando %} <span class="sol-chip" title="aguardando homologação">{{ p.aguardando }} aguard.</span>{% endif %}</td>
+                    <td class="text-center">{% if p.atrasadas %}<span class="sol-badge" style="background:#e74a3b22;color:#e74a3b;">{{ p.atrasadas }}</span>{% else %}0{% endif %}</td>
+                    <td class="text-center" style="font-size:.8rem;">{{ p.aplicativos }} / {{ p.paineis }}</td>
+                    <td class="text-end">{{ ('%.1f'|format(p.horas))|replace('.', ',') }}</td>
+                    <td class="text-center">{{ p.registros }}</td>
+                    <td class="text-center">{{ pct(p.taxa_homologacao) }}</td>
+                    <td class="text-center">{{ pct(p.taxa_prazo) }}</td>
+                    <td style="font-size:.76rem;white-space:nowrap;">{{ p.ultimo_fmt or '—' }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="sol-vazio"><i class="fas fa-users"></i>Nenhum executor vinculado às solicitações filtradas.</div>
+        {% endif %}
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5><i class="fas fa-user-tag me-2" style="color:var(--sol-azul);"></i>Quem mais pede</h5></div>
+                <div class="table-responsive">
+                    <table class="sol-tabela">
+                        <thead><tr><th>Solicitante</th><th>Área</th><th class="text-center">Total</th><th class="text-center">Em aberto</th><th class="text-center">Homologadas</th></tr></thead>
+                        <tbody>
+                        {% for s in top_solicitantes %}
+                        <tr>
+                            <td><div class="d-flex align-items-center gap-2"><span class="sol-avatar" data-avatar="{{ s.nome }}">{{ (s.nome or '?')[:1] }}</span><span style="font-weight:600;font-size:.83rem;">{{ s.nome }}</span></div></td>
+                            <td><span class="sol-chip">{{ s.area }}</span></td>
+                            <td class="text-center fw-bold">{{ s.total }}</td>
+                            <td class="text-center">{{ s.abertas }}</td>
+                            <td class="text-center">{{ s.homologadas }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="sol-card h-100">
+                <div class="sol-card-cab"><h5><i class="fas fa-bell me-2" style="color:#e74a3b;"></i>Precisa de atenção</h5></div>
+                <div class="sol-card-corpo" style="padding-top:.3rem;">
+                    {% for s in atencao %}
+                    <a href="{{ url_for('solicitacoes.detalhe', id_solicitacao=s.ID_SOLICITACAO) }}" class="d-flex align-items-center gap-2 py-2" style="border-bottom:1px solid var(--sol-borda);text-decoration:none;color:var(--sol-texto);">
+                        <span class="sol-proto">{{ s.NU_PROTOCOLO }}</span>
+                        <span style="flex:1;font-size:.84rem;font-weight:600;" class="text-truncate">{{ s.TITULO }}</span>
+                        {% if s.atrasada %}
+                        <span class="sol-badge" style="background:#e74a3b22;color:#e74a3b;"><i class="fas fa-exclamation-triangle"></i>{{ s.situacao_prazo }}</span>
+                        {% else %}
+                        <span class="sol-badge" style="background:#f6c23e33;color:#8a6d00;"><i class="fas fa-file-signature"></i>Aguardando homologação</span>
+                        {% endif %}
+                    </a>
+                    {% else %}
+                    <div class="sol-vazio" style="padding:1.5rem;"><i class="fas fa-check-circle" style="color:#1cc88a;opacity:.7;"></i>Nada atrasado nem parado na homologação.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# Modal: solicitações de uma pessoa #}
+    <div class="modal fade" id="modalPessoa" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title" id="pessoaTitulo"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body" id="pessoaCorpo"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="dadosGraficos">{{ graficos|tojson }}</script>
+<script type="application/json" id="dadosPessoas">{{ pessoas_json|tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const G = JSON.parse(document.getElementById('dadosGraficos').textContent);
+    const P = JSON.parse(document.getElementById('dadosPessoas').textContent);
+    if (typeof Chart === 'undefined') return;
+
+    const escuro = document.documentElement.getAttribute('data-theme') === 'dark' || document.body.getAttribute('data-theme') === 'dark';
+    const corTexto = escuro ? '#94a3b8' : '#6b7280';
+    const corGrade = escuro ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.06)';
+    const superficie = escuro ? '#1e2130' : '#ffffff';
+    Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+    Chart.defaults.font.size = 11;
+    Chart.defaults.color = corTexto;
+    Chart.defaults.plugins.tooltip.backgroundColor = escuro ? '#0f172a' : '#1f2937';
+    Chart.defaults.plugins.tooltip.padding = 10;
+    Chart.defaults.plugins.tooltip.cornerRadius = 8;
+    Chart.defaults.plugins.legend.labels.boxWidth = 10;
+    Chart.defaults.plugins.legend.labels.boxHeight = 10;
+    Chart.defaults.plugins.legend.labels.useBorderRadius = true;
+    Chart.defaults.plugins.legend.labels.borderRadius = 3;
+
+    const eixos = function (horizontal, empilhado) {
+        const v = { beginAtZero: true, ticks: { precision: 0 }, grid: { color: corGrade }, border: { display: false }, stacked: !!empilhado };
+        const c = { grid: { display: false }, border: { color: corGrade }, stacked: !!empilhado };
+        return horizontal ? { x: v, y: c } : { x: c, y: v };
+    };
+    const barra = { borderRadius: 4, borderSkipped: 'start', maxBarThickness: 28, borderWidth: 0 };
+    const rosca = function (id, d) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels: d.rotulos, datasets: [{ data: d.valores, backgroundColor: d.cores, borderColor: superficie, borderWidth: 2, hoverOffset: 6 }] },
+            options: { maintainAspectRatio: false, cutout: '64%', plugins: { legend: { position: 'bottom' } } }
+        });
+    };
+
+    // Evolução mensal (mesma escala: quantidade de solicitações)
+    if (document.getElementById('gMensal')) {
+        new Chart(document.getElementById('gMensal'), {
+            type: 'line',
+            data: {
+                labels: G.mensal.rotulos,
+                datasets: [
+                    { label: 'Recebidas', data: G.mensal.abertas, borderColor: '#4e73df', backgroundColor: 'rgba(78,115,223,.10)', fill: true, tension: .35, cubicInterpolationMode: 'monotone', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#4e73df', pointBorderColor: superficie, pointBorderWidth: 2 },
+                    { label: 'Concluídas', data: G.mensal.concluidas, borderColor: '#6f42c1', backgroundColor: 'transparent', tension: .35, cubicInterpolationMode: 'monotone', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#6f42c1', pointBorderColor: superficie, pointBorderWidth: 2 },
+                    { label: 'Homologadas', data: G.mensal.homologadas, borderColor: '#1cc88a', backgroundColor: 'transparent', borderDash: [5, 4], tension: .35, cubicInterpolationMode: 'monotone', borderWidth: 2, pointRadius: 4, pointStyle: 'rectRot', pointBackgroundColor: '#1cc88a', pointBorderColor: superficie, pointBorderWidth: 2 }
+                ]
+            },
+            options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: eixos(false), plugins: { legend: { position: 'top', align: 'end' } } }
+        });
+    }
+
+    rosca('gStatus', G.status);
+    rosca('gTipo', G.tipo);
+
+    if (document.getElementById('gArea')) {
+        new Chart(document.getElementById('gArea'), {
+            type: 'bar',
+            data: { labels: G.area.rotulos, datasets: [
+                Object.assign({ label: 'Em aberto', data: G.area.abertas, backgroundColor: '#4e73df' }, barra),
+                Object.assign({ label: 'Finalizadas', data: G.area.finalizadas, backgroundColor: '#a5b4fc' }, barra)
+            ] },
+            options: { maintainAspectRatio: false, scales: eixos(false, true), plugins: { legend: { position: 'top', align: 'end' } } }
+        });
+    }
+    if (document.getElementById('gAging')) {
+        new Chart(document.getElementById('gAging'), {
+            type: 'bar',
+            data: { labels: G.aging.rotulos, datasets: [Object.assign({ label: 'Abertas', data: G.aging.valores,
+                backgroundColor: ['#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4338ca'] }, barra)] },
+            options: { maintainAspectRatio: false, indexAxis: 'y', scales: eixos(true), plugins: { legend: { display: false } } }
+        });
+    }
+    if (document.getElementById('gPrioridade')) {
+        new Chart(document.getElementById('gPrioridade'), {
+            type: 'bar',
+            data: { labels: G.prioridade.rotulos, datasets: [Object.assign({ label: 'Abertas', data: G.prioridade.valores, backgroundColor: G.prioridade.cores }, barra)] },
+            options: { maintainAspectRatio: false, scales: eixos(false), plugins: { legend: { display: false } } }
+        });
+    }
+    if (document.getElementById('gCategoria')) {
+        new Chart(document.getElementById('gCategoria'), {
+            type: 'bar',
+            data: { labels: G.categoria.rotulos, datasets: [Object.assign({ label: 'Solicitações', data: G.categoria.valores, backgroundColor: '#36b9cc' }, barra)] },
+            options: { maintainAspectRatio: false, indexAxis: 'y', scales: eixos(true), plugins: { legend: { display: false } } }
+        });
+    }
+    if (document.getElementById('gPessoas')) {
+        new Chart(document.getElementById('gPessoas'), {
+            type: 'bar',
+            data: { labels: G.pessoas.rotulos, datasets: [
+                Object.assign({ label: 'Homologadas', data: G.pessoas.homologadas, backgroundColor: '#1cc88a' }, barra),
+                Object.assign({ label: 'Não homologadas', data: G.pessoas.nao_homologadas, backgroundColor: '#e74a3b' }, barra),
+                Object.assign({ label: 'Em aberto', data: G.pessoas.abertas, backgroundColor: '#4e73df' }, barra)
+            ] },
+            options: {
+                maintainAspectRatio: false, indexAxis: 'y', scales: eixos(true, true),
+                plugins: { legend: { display: false },
+                           tooltip: { callbacks: { footer: function (itens) { const i = itens[0].dataIndex; return 'Horas lançadas: ' + String(G.pessoas.horas[i]).replace('.', ','); } } } }
+            }
+        });
+    }
+
+    // Detalhe por pessoa
+    const modal = new bootstrap.Modal(document.getElementById('modalPessoa'));
+    document.querySelectorAll('.sol-abrir-pessoa').forEach(function (tr) {
+        tr.addEventListener('click', function () {
+            const p = P[tr.dataset.id];
+            if (!p) return;
+            document.getElementById('pessoaTitulo').textContent = 'Solicitações de ' + p.nome;
+            document.getElementById('pessoaCorpo').innerHTML = p.solicitacoes.map(function (s) {
+                return '<a href="' + s.url + '" class="d-flex align-items-center gap-2 py-2" style="border-bottom:1px solid var(--sol-borda);text-decoration:none;color:var(--sol-texto);">' +
+                    '<span class="sol-proto">' + Sol.esc(s.protocolo) + '</span>' +
+                    '<span style="flex:1;font-size:.85rem;font-weight:600;">' + Sol.esc(s.titulo) + '<br><span style="font-weight:400;font-size:.74rem;color:var(--sol-suave);">' +
+                    Sol.esc(s.tipo) + ' · ' + Sol.esc(s.area) + ' · ' + s.pc + '%' + (s.atrasada ? ' · <b style="color:#e74a3b;">atrasada</b>' : '') + '</span></span>' +
+                    '<span class="sol-badge" style="background:' + s.cor + '22;color:' + s.cor + ';">' + Sol.esc(s.status) + '</span></a>';
+            }).join('') || '<div class="sol-vazio">Nenhuma solicitação.</div>';
+            Sol.pintarAvatares(document.getElementById('pessoaCorpo'));
+            modal.show();
+        });
+    });
+});
+</script>
+{% endblock %}

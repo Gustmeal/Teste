@@ -1,0 +1,1014 @@
+{% extends "base.html" %}
+
+{% block title %}{{ sol.NU_PROTOCOLO }} - Solicitações à Área{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+
+<style>
+    .sol-cabeca { position: relative; overflow: hidden; }
+    .sol-cabeca::before { content: ''; position: absolute; left: 0; top: 0; right: 0; height: 5px; background: var(--cor-status); }
+    .sol-stepper { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: .3rem 0 .2rem; }
+    .sol-step { flex: 1; min-width: 92px; text-align: center; position: relative; }
+    .sol-step::before { content: ''; position: absolute; top: 15px; left: -50%; right: 50%; height: 3px; background: var(--sol-borda); z-index: 0; }
+    .sol-step:first-child::before { display: none; }
+    .sol-step.feita::before, .sol-step.atual::before { background: linear-gradient(90deg, #1cc88a, #4e73df); }
+    .sol-step .bola { width: 32px; height: 32px; border-radius: 50%; margin: 0 auto .35rem; display: flex; align-items: center; justify-content: center;
+        background: var(--sol-fundo); border: 3px solid var(--sol-borda); color: var(--sol-suave); position: relative; z-index: 1; font-size: .78rem; font-weight: 800; }
+    .sol-step.feita .bola { background: #1cc88a; border-color: #1cc88a; color: #fff; }
+    .sol-step.atual .bola { background: var(--sol-azul); border-color: var(--sol-azul); color: #fff; box-shadow: 0 0 0 5px rgba(78,115,223,.2); }
+    .sol-step .nome { font-size: .72rem; font-weight: 700; color: var(--sol-suave); }
+    .sol-step.atual .nome { color: var(--sol-azul); }
+    .sol-step.feita .nome { color: #1cc88a; }
+
+    .sol-abas { border-bottom: 1px solid var(--sol-borda); gap: .25rem; padding: 0 .8rem; flex-wrap: nowrap; overflow-x: auto; }
+    .sol-abas .nav-link { border: none; border-bottom: 3px solid transparent; color: var(--sol-suave); font-weight: 700; font-size: .84rem;
+        padding: .85rem .8rem; white-space: nowrap; background: transparent; border-radius: 0; }
+    .sol-abas .nav-link.active { color: var(--sol-azul); border-bottom-color: var(--sol-azul); background: transparent; }
+    .sol-abas .qt { font-size: .68rem; background: var(--sol-fundo-2); border: 1px solid var(--sol-borda); border-radius: 99px; padding: 0 .4rem; margin-left: .25rem; }
+
+    .sol-composer { border: 1px solid var(--sol-borda); border-radius: 14px; background: var(--sol-fundo-2); padding: .8rem; }
+    .sol-composer textarea { border: none; background: transparent; resize: vertical; box-shadow: none !important; }
+    .sol-tipo-btn { border: 1.5px solid var(--sol-borda); background: var(--sol-fundo); border-radius: 99px; font-size: .75rem; font-weight: 700;
+        padding: .25rem .65rem; cursor: pointer; color: var(--sol-suave); }
+    .sol-tipo-btn.ativo { color: #fff; }
+
+    .sol-feed { position: relative; padding-left: 2.6rem; }
+    .sol-feed::before { content: ''; position: absolute; left: 17px; top: 0; bottom: 0; width: 2px; background: var(--sol-borda); }
+    .sol-evento { position: relative; margin-bottom: 1rem; }
+    .sol-evento .marco { position: absolute; left: -2.6rem; top: 2px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+        justify-content: center; color: #fff; font-size: .85rem; border: 3px solid var(--sol-fundo); box-shadow: 0 2px 6px rgba(0,0,0,.12); }
+    .sol-evento .caixa { background: var(--sol-fundo); border: 1px solid var(--sol-borda); border-radius: 12px; padding: .7rem .9rem; }
+    .sol-evento.interno .caixa { background: repeating-linear-gradient(-45deg, var(--sol-fundo), var(--sol-fundo) 10px, var(--sol-fundo-2) 10px, var(--sol-fundo-2) 20px);
+        border-style: dashed; }
+    .sol-evento.sistema .caixa { background: transparent; border: none; padding: .35rem 0; }
+    .sol-evento .meta { font-size: .74rem; color: var(--sol-suave); display: flex; gap: .45rem; align-items: center; flex-wrap: wrap; }
+    .sol-evento .texto { font-size: .88rem; margin-top: .3rem; white-space: pre-wrap; word-break: break-word; }
+    .sol-evento .acoes { opacity: 0; transition: opacity .15s; }
+    .sol-evento:hover .acoes { opacity: 1; }
+    .sol-filtro-feed { font-size: .74rem; font-weight: 700; border-radius: 99px; padding: .2rem .65rem; border: 1px solid var(--sol-borda);
+        background: var(--sol-fundo); color: var(--sol-suave); cursor: pointer; }
+    .sol-filtro-feed.ativo { background: var(--sol-azul); border-color: var(--sol-azul); color: #fff; }
+
+    .sol-item { display: flex; align-items: flex-start; gap: .7rem; padding: .65rem .2rem; border-bottom: 1px solid var(--sol-borda); }
+    .sol-check { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--sol-borda); display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0; cursor: default; background: var(--sol-fundo); color: #fff; font-size: .7rem; transition: all .15s; }
+    .sol-check.clicavel { cursor: pointer; }
+    .sol-check.clicavel:hover { border-color: #1cc88a; }
+    .sol-check.ok { background: #1cc88a; border-color: #1cc88a; }
+    .sol-item.ok .desc { text-decoration: line-through; color: var(--sol-suave); }
+
+    .sol-info-linha { display: flex; justify-content: space-between; gap: .8rem; padding: .45rem 0; border-bottom: 1px dashed var(--sol-borda); font-size: .83rem; }
+    .sol-info-linha:last-child { border-bottom: none; }
+    .sol-info-linha .r { color: var(--sol-suave); }
+    .sol-info-linha .v { font-weight: 700; text-align: right; }
+    .sol-pessoa { display: flex; gap: .65rem; align-items: center; padding: .45rem 0; }
+    .sol-pessoa .n { font-weight: 700; font-size: .85rem; line-height: 1.2; }
+    .sol-pessoa .s { font-size: .72rem; color: var(--sol-suave); }
+    .sol-grupo-tit { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--sol-suave); margin: .7rem 0 .2rem; }
+
+    .sol-aviso { border-radius: 14px; padding: 1rem 1.15rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    .sol-aviso .ic { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0; }
+    .sol-arquivo { display: flex; align-items: center; gap: .8rem; padding: .7rem .2rem; border-bottom: 1px solid var(--sol-borda); }
+    .sol-arquivo .ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .sol-decisao { border: 2px solid var(--sol-borda); border-radius: 14px; padding: 1rem; cursor: pointer; text-align: center; transition: all .15s; height: 100%; }
+    .sol-decisao:hover { transform: translateY(-2px); }
+    .sol-decisao.sim.ativa { border-color: #1cc88a; background: #ecfdf5; }
+    .sol-decisao.nao.ativa { border-color: #e74a3b; background: #fef2f2; }
+    [data-theme="dark"] .sol-decisao.sim.ativa { background: rgba(28,200,138,.15); }
+    [data-theme="dark"] .sol-decisao.nao.ativa { background: rgba(231,74,59,.15); }
+    .sol-desc-texto { white-space: pre-wrap; font-size: .92rem; line-height: 1.6; }
+</style>
+
+<div class="sol-app">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Solicitações</a>
+        <span class="sol-badge" style="background:{{ papel_info.cor }}1f;color:{{ papel_info.cor }};font-size:.78rem;">
+            <i class="fas {{ papel_info.icone }}"></i> Você está como: {{ papel_info.rotulo }}
+        </span>
+    </div>
+
+    {# ======================= CABEÇALHO ======================= #}
+    <div class="sol-card sol-cabeca mb-4" style="--cor-status: {{ sol.status_cor }};">
+        <div class="sol-card-corpo" style="padding-top:1.4rem;">
+            <div class="d-flex justify-content-between flex-wrap gap-3">
+                <div style="flex:1;min-width:280px;">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                        <span class="sol-proto" style="font-size:.85rem;">{{ sol.NU_PROTOCOLO }}</span>
+                        <span class="sol-badge" style="background:{{ sol.status_cor }}22;color:{{ sol.status_cor }};"><i class="fas {{ sol.status_icone }}"></i>{{ sol.status_rotulo }}</span>
+                        <span class="sol-badge" style="background:{{ sol.tipo_cor }}1f;color:{{ sol.tipo_cor }};"><i class="fas {{ sol.tipo_icone }}"></i>{{ sol.tipo_rotulo }}</span>
+                        <span class="sol-badge" style="background:{{ sol.prioridade_cor }}22;color:{{ sol.prioridade_cor }};"><i class="fas fa-flag"></i>Prioridade {{ sol.prioridade_rotulo }}</span>
+                        {% if sol.categoria_rotulo %}<span class="sol-chip">{{ sol.categoria_rotulo }}</span>{% endif %}
+                        {% if sol.atrasada %}<span class="sol-badge" style="background:#e74a3b;color:#fff;"><i class="fas fa-fire"></i>Atrasada</span>{% endif %}
+                    </div>
+                    <h2 style="font-weight:800;font-size:1.45rem;margin:0 0 .35rem;">{{ sol.TITULO }}</h2>
+                    <div class="d-flex flex-wrap gap-2 align-items-center" style="font-size:.8rem;color:var(--sol-suave);">
+                        {% if sol.NO_SISTEMA %}<span class="sol-chip"><i class="fas fa-cube"></i>{{ sol.NO_SISTEMA }}</span>{% endif %}
+                        {% for e in sol.etiquetas_lista %}<span class="sol-chip">#{{ e }}</span>{% endfor %}
+                        <span><i class="far fa-calendar me-1"></i>Pedido em {{ sol.DT_SOLICITACAO.strftime('%d/%m/%Y') if sol.DT_SOLICITACAO else '—' }}</span>
+                        {% if sol.canal_rotulo %}<span><i class="fas {{ sol.canal_icone }} me-1"></i>via {{ sol.canal_rotulo }}</span>{% endif %}
+                        {% if sol.NU_REFERENCIA %}<span><i class="fas fa-hashtag me-1"></i>{{ sol.NU_REFERENCIA }}</span>{% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 align-items-start">
+                    {% if permissoes.ciencia %}
+                    <button type="button" class="sol-btn sol-btn-pri js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalCiencia"><i class="fas fa-user-check"></i> Confirmar pedido</button>
+                    {% endif %}
+                    {% if permissoes.homologar %}
+                    <button type="button" class="sol-btn sol-btn-alerta js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalHomologar"><i class="fas fa-file-signature"></i> Homologar</button>
+                    {% endif %}
+                    {% if permissoes.entregar %}
+                    <button type="button" class="sol-btn sol-btn-ok js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalEntrega"><i class="fas fa-box-open"></i> {{ 'Atualizar entrega' if sol.STATUS == 'AGUARDANDO_HOMOLOGACAO' else 'Registrar entrega' }}</button>
+                    {% endif %}
+                    {% if permissoes.concluir %}
+                    <button type="button" class="sol-btn sol-btn-pri js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalConcluir"><i class="fas fa-flag-checkered"></i> Concluir</button>
+                    {% endif %}
+                    {% if permissoes.mudar_status %}
+                    <button type="button" class="sol-btn sol-btn-sec js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalStatus">
+                        <i class="fas {{ 'fa-undo' if sol.finalizada else 'fa-exchange-alt' }}"></i> {{ 'Reabrir' if sol.finalizada else 'Status' }}
+                    </button>
+                    {% endif %}
+                    {% if permissoes.baixar_termo %}
+                    <div class="dropdown">
+                        <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown"><i class="fas fa-file-contract"></i> Termo</button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" download href="{{ url_for('solicitacoes.baixar_termo', id_solicitacao=sol.ID_SOLICITACAO, formato='pdf') }}"><i class="far fa-file-pdf me-2 text-danger"></i>PDF para assinar</a></li>
+                            <li><a class="dropdown-item" download href="{{ url_for('solicitacoes.baixar_termo', id_solicitacao=sol.ID_SOLICITACAO, formato='docx') }}"><i class="far fa-file-word me-2 text-primary"></i>Word (editável)</a></li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                    {% if permissoes.editar %}
+                    <div class="dropdown">
+                        <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-h"></i></button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('solicitacoes.editar', id_solicitacao=sol.ID_SOLICITACAO) }}"><i class="fas fa-pen me-2"></i>Editar dados</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item text-danger js-ignore-loading" href="#" data-bs-toggle="modal" data-bs-target="#modalExcluir"><i class="fas fa-trash me-2"></i>Excluir solicitação</a></li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="sol-stepper mt-4">
+                {% for e in etapas %}
+                <div class="sol-step {% if e.feita %}feita{% elif e.atual %}atual{% endif %}">
+                    <div class="bola">{% if e.feita %}<i class="fas fa-check"></i>{% else %}{{ loop.index }}{% endif %}</div>
+                    <div class="nome">{{ e.rotulo }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {# ======================= AVISOS CONTEXTUAIS ======================= #}
+    {% if sol.finalizada %}
+    <div class="sol-aviso mb-4" style="background:{{ sol.status_cor }}14;border:1px solid {{ sol.status_cor }};">
+        <div class="ic" style="background:{{ sol.status_cor }};color:#fff;"><i class="fas {{ sol.status_icone }}"></i></div>
+        <div style="flex:1;">
+            <div class="fw-bold">{{ sol.status_rotulo }} em {{ sol.DT_CONCLUSAO.strftime('%d/%m/%Y %H:%M') if sol.DT_CONCLUSAO else '—' }}</div>
+            {% if sol.JUSTIFICATIVA_CONCLUSAO %}<div style="font-size:.85rem;">{{ sol.JUSTIFICATIVA_CONCLUSAO }}</div>{% endif %}
+            {% if sol.ST_HOMOLOGACAO_SOLICITANTE %}
+            <div style="font-size:.8rem;color:var(--sol-suave);">Parecer do solicitante: <b>{{ 'atende' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else 'não atende' }}</b>{% if sol.PARECER_SOLICITANTE %} — {{ sol.PARECER_SOLICITANTE }}{% endif %}</div>
+            {% endif %}
+        </div>
+    </div>
+    {% elif sol.STATUS == 'AGUARDANDO_HOMOLOGACAO' %}
+        {% if papel == 'SOLICITANTE' %}
+        <div class="sol-aviso mb-4" style="background:#fff8e1;border:1px solid #f6c23e;">
+            <div class="ic" style="background:#f6c23e;color:#3d2f00;"><i class="fas fa-box-open"></i></div>
+            <div style="flex:1;">
+                <div class="fw-bold" style="color:#5c4400;">
+                    {% if sol.ST_HOMOLOGACAO_SOLICITANTE %}Você registrou que a entrega {{ 'ATENDE' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else 'NÃO ATENDE' }} ao pedido.
+                    {% else %}A entrega está pronta! Verifique e homologue.{% endif %}
+                </div>
+                <div style="font-size:.84rem;color:#5c4400;">
+                    {% if sol.ST_HOMOLOGACAO_SOLICITANTE %}Baixe o termo, assine digitalmente e anexe a via assinada na aba <b>Homologação</b>.
+                    {% else %}Veja o resumo na aba <b>Homologação</b>. Ao homologar, o termo é gerado para você assinar digitalmente.{% endif %}
+                </div>
+            </div>
+            <button type="button" class="sol-btn sol-btn-alerta js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalHomologar"><i class="fas fa-file-signature"></i> {{ 'Refazer homologação' if sol.ST_HOMOLOGACAO_SOLICITANTE else 'Homologar agora' }}</button>
+        </div>
+        {% elif ve_interno %}
+        <div class="sol-aviso mb-4" style="background:#fff8e1;border:1px solid #f6c23e;">
+            <div class="ic" style="background:#f6c23e;color:#3d2f00;"><i class="fas fa-hourglass-half"></i></div>
+            <div style="flex:1;color:#5c4400;">
+                <div class="fw-bold">
+                    {% if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' %}O solicitante registrou que a entrega ATENDE.
+                    {% elif sol.ST_HOMOLOGACAO_SOLICITANTE == 'RECUSADA' %}O solicitante registrou que a entrega NÃO ATENDE.
+                    {% else %}Aguardando o parecer do solicitante.{% endif %}
+                </div>
+                <div style="font-size:.84rem;">
+                    {% if sol.PARECER_SOLICITANTE %}"{{ sol.PARECER_SOLICITANTE }}" · {% endif %}
+                    {{ termos_assinados|length }} termo(s) assinado(s) anexado(s). Quando tiver o termo assinado, conclua como homologada ou não homologada.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+    {% if permissoes.ciencia %}
+    <div class="sol-aviso mb-4" style="background:var(--sol-azul-cla);border:1px solid var(--sol-azul);">
+        <div class="ic" style="background:var(--sol-azul);color:#fff;"><i class="fas fa-user-check"></i></div>
+        <div style="flex:1;">
+            <div class="fw-bold">Confira se este registro corresponde ao que você pediu</div>
+            <div style="font-size:.84rem;color:var(--sol-suave);">Leia a descrição e o escopo. Se estiver correto, confirme; se não, deixe um comentário pedindo o ajuste.</div>
+        </div>
+        <button type="button" class="sol-btn sol-btn-pri js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalCiencia"><i class="fas fa-check"></i> Está correto</button>
+    </div>
+    {% endif %}
+
+    <div class="row g-4">
+        {# ======================= COLUNA PRINCIPAL ======================= #}
+        <div class="col-xl-8">
+            <div class="sol-card">
+                <ul class="nav sol-abas" role="tablist">
+                    <li class="nav-item"><button class="nav-link active js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaAndamento" type="button"><i class="fas fa-stream me-1"></i>Andamento<span class="qt">{{ interacoes|length }}</span></button></li>
+                    <li class="nav-item"><button class="nav-link js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaPedido" type="button"><i class="fas fa-align-left me-1"></i>Pedido</button></li>
+                    <li class="nav-item"><button class="nav-link js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaEscopo" type="button"><i class="far fa-check-square me-1"></i>Escopo<span class="qt">{{ stats.itens_ok }}/{{ stats.itens_total }}</span></button></li>
+                    <li class="nav-item"><button class="nav-link js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaHomologacao" type="button"><i class="fas fa-file-signature me-1"></i>Homologação</button></li>
+                    <li class="nav-item"><button class="nav-link js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaArquivos" type="button"><i class="fas fa-paperclip me-1"></i>Arquivos<span class="qt">{{ arquivos|length }}</span></button></li>
+                    {% if ve_interno %}
+                    <li class="nav-item"><button class="nav-link js-ignore-loading" data-bs-toggle="tab" data-bs-target="#abaHistorico" type="button"><i class="fas fa-history me-1"></i>Histórico<span class="qt">{{ historico|length }}</span></button></li>
+                    {% endif %}
+                </ul>
+
+                <div class="tab-content sol-card-corpo">
+                    {# ---------------- ANDAMENTO ---------------- #}
+                    <div class="tab-pane fade show active" id="abaAndamento">
+                        <div class="sol-composer mb-4">
+                            <div class="d-flex gap-2 align-items-start">
+                                <span class="sol-avatar sol-avatar-lg" data-avatar="{{ current_user.nome }}">{{ (current_user.nome or '?')[:1] }}</span>
+                                <textarea id="txtInteracao" class="form-control" rows="3" placeholder="{{ 'Registre o que foi feito, um marco, um impedimento ou comente...' if permissoes.atualizar else 'Escreva um comentário para a equipe...' }}"></textarea>
+                            </div>
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2" style="padding-left:48px;">
+                                <div class="d-flex flex-wrap gap-1" id="tiposInteracao">
+                                    {% for k, t in permissoes.tipos_interacao %}
+                                    <button type="button" class="sol-tipo-btn js-ignore-loading {% if loop.first %}ativo{% endif %}" data-tipo="{{ k }}" data-cor="{{ t.cor }}"
+                                            {% if loop.first %}style="background:{{ t.cor }};border-color:{{ t.cor }};"{% endif %}><i class="fas {{ t.icone }} me-1"></i>{{ t.rotulo }}</button>
+                                    {% endfor %}
+                                </div>
+                                <div class="d-flex flex-wrap gap-2 align-items-center">
+                                    {% if permissoes.atualizar %}
+                                    <div class="d-flex align-items-center gap-1" title="Percentual de conclusão (opcional)">
+                                        <i class="fas fa-percentage" style="color:var(--sol-suave);font-size:.8rem;"></i>
+                                        <input type="number" id="pcInteracao" class="form-control form-control-sm" min="0" max="100" placeholder="{{ sol.PC_CONCLUSAO }}" style="width:70px;">
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1" title="Horas trabalhadas (opcional)">
+                                        <i class="far fa-clock" style="color:var(--sol-suave);font-size:.8rem;"></i>
+                                        <input type="text" inputmode="decimal" id="horasInteracao" class="form-control form-control-sm" placeholder="h" style="width:62px;">
+                                    </div>
+                                    {% endif %}
+                                    {% if permissoes.marcar_interna %}
+                                    <div class="form-check mb-0" title="Registros internos não aparecem para o solicitante">
+                                        <input class="form-check-input" type="checkbox" id="internaInteracao">
+                                        <label class="form-check-label" for="internaInteracao" style="font-size:.78rem;"><i class="fas fa-lock me-1"></i>Interno</label>
+                                    </div>
+                                    {% endif %}
+                                    <button type="button" class="sol-btn sol-btn-pri sol-btn-sm js-ignore-loading" id="btnInteracao"><i class="fas fa-paper-plane"></i> Publicar</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-1 mb-3" id="filtrosFeed">
+                            <button type="button" class="sol-filtro-feed ativo js-ignore-loading" data-filtro="">Tudo</button>
+                            <button type="button" class="sol-filtro-feed js-ignore-loading" data-filtro="ATUALIZACAO,MARCO,IMPEDIMENTO,ENTREGA">Atualizações</button>
+                            <button type="button" class="sol-filtro-feed js-ignore-loading" data-filtro="COMENTARIO">Comentários</button>
+                            <button type="button" class="sol-filtro-feed js-ignore-loading" data-filtro="STATUS,HOMOLOGACAO">Status e homologação</button>
+                            {% if ve_interno %}<button type="button" class="sol-filtro-feed js-ignore-loading" data-filtro="interno"><i class="fas fa-lock me-1"></i>Internos</button>{% endif %}
+                        </div>
+
+                        {% if interacoes %}
+                        <div class="sol-feed">
+                            {% for i in interacoes %}
+                            <div class="sol-evento {% if i.FL_INTERNA %}interno{% endif %} {% if i.TIPO == 'SISTEMA' %}sistema{% endif %}" data-tipo="{{ i.TIPO }}" data-interno="{{ 1 if i.FL_INTERNA else 0 }}">
+                                <div class="marco" style="background:{{ i.status_novo_cor or i.cor }};"><i class="fas {{ i.icone }}"></i></div>
+                                <div class="caixa">
+                                    <div class="meta">
+                                        <b style="color:var(--sol-texto);">{{ i.NO_USUARIO or 'Sistema' }}</b>
+                                        <span class="sol-badge" style="background:{{ i.cor }}1f;color:{{ i.cor }};padding:.08rem .45rem;">{{ i.rotulo }}</span>
+                                        {% if i.FL_INTERNA %}<span class="sol-badge" style="background:#5a5c6922;color:#5a5c69;padding:.08rem .45rem;"><i class="fas fa-lock"></i>Interno</span>{% endif %}
+                                        {% if i.PC_CONCLUSAO is not none %}<span class="sol-chip"><i class="fas fa-tasks"></i>{{ i.PC_CONCLUSAO }}%</span>{% endif %}
+                                        {% if i.QT_HORAS %}<span class="sol-chip"><i class="far fa-clock"></i>{{ '%.1f'|format(i.QT_HORAS|float)|replace('.', ',') }} h</span>{% endif %}
+                                        <span title="{{ i.CREATED_AT.strftime('%d/%m/%Y %H:%M:%S') }}">· {{ i.CREATED_AT.strftime('%d/%m/%Y às %H:%M') }}</span>
+                                        {% if i.pode_excluir %}
+                                        <span class="acoes ms-auto"><a href="#" class="js-ignore-loading sol-excluir-int" data-id="{{ i.ID_INTERACAO }}" style="color:#e74a3b;" title="Excluir registro"><i class="far fa-trash-alt"></i></a></span>
+                                        {% endif %}
+                                    </div>
+                                    {% if i.TIPO == 'STATUS' and i.status_anterior_rotulo %}
+                                    <div class="d-flex align-items-center gap-2 mt-2" style="font-size:.78rem;">
+                                        <span class="sol-chip">{{ i.status_anterior_rotulo }}</span><i class="fas fa-long-arrow-alt-right" style="color:var(--sol-suave);"></i>
+                                        <span class="sol-badge" style="background:{{ i.status_novo_cor }}22;color:{{ i.status_novo_cor }};">{{ i.status_novo_rotulo }}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% if i.TEXTO %}<div class="texto">{{ i.TEXTO }}</div>{% endif %}
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="sol-vazio"><i class="fas fa-stream"></i>Nenhum registro ainda.</div>
+                        {% endif %}
+                    </div>
+
+                    {# ---------------- PEDIDO ---------------- #}
+                    <div class="tab-pane fade" id="abaPedido">
+                        <h6 class="fw-bold mb-2"><i class="fas fa-quote-left me-2" style="color:var(--sol-azul);"></i>O que foi pedido</h6>
+                        {% if sol.DESCRICAO %}
+                        <div class="sol-desc-texto mb-4" style="background:var(--sol-fundo-2);border-radius:12px;padding:1rem 1.1rem;border-left:4px solid var(--sol-azul);">{{ sol.DESCRICAO }}</div>
+                        {% else %}
+                        <div class="sol-vazio" style="padding:1rem;">Sem descrição detalhada.</div>
+                        {% endif %}
+                        <div class="row g-3">
+                            {% for rot, val, ico in [
+                                ('Tipo de entrega', sol.tipo_rotulo, sol.tipo_icone),
+                                ('Categoria', sol.categoria_rotulo or '—', 'fa-shapes'),
+                                ('Aplicativo / painel', sol.NO_SISTEMA or '—', 'fa-cube'),
+                                ('Prioridade', sol.prioridade_rotulo, 'fa-flag'),
+                                ('Impacto', sol.impacto_rotulo or '—', 'fa-bolt'),
+                                ('Complexidade', sol.complexidade_rotulo or '—', 'fa-puzzle-piece'),
+                                ('Canal de origem', sol.canal_rotulo or '—', sol.canal_icone),
+                                ('Referência (SEI / memorando)', sol.NU_REFERENCIA or '—', 'fa-hashtag'),
+                                ('Horas estimadas', (('%.1f'|format(sol.HORAS_ESTIMADAS|float))|replace('.', ',') ~ ' h') if sol.HORAS_ESTIMADAS else '—', 'far fa-clock'),
+                            ] %}
+                            <div class="col-md-4 col-6">
+                                <div style="background:var(--sol-fundo-2);border:1px solid var(--sol-borda);border-radius:12px;padding:.7rem .85rem;height:100%;">
+                                    <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--sol-suave);letter-spacing:.4px;"><i class="fas {{ ico }} me-1"></i>{{ rot }}</div>
+                                    <div style="font-weight:700;font-size:.9rem;margin-top:.15rem;">{{ val }}</div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="mt-3" style="font-size:.75rem;color:var(--sol-suave);">
+                            Registrada em {{ sol.CREATED_AT.strftime('%d/%m/%Y %H:%M') if sol.CREATED_AT else '—' }}
+                            {% if sol.UPDATED_AT %} · última alteração em {{ sol.UPDATED_AT.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+                        </div>
+                    </div>
+
+                    {# ---------------- ESCOPO ---------------- #}
+                    <div class="tab-pane fade" id="abaEscopo">
+                        {% if stats.itens_total %}
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <div class="sol-barra flex-grow-1" style="height:10px;"><div style="width:{{ stats.pc_itens }}%;background:linear-gradient(90deg,#1cc88a,#36b9cc);"></div></div>
+                            <span class="fw-bold">{{ stats.itens_ok }} de {{ stats.itens_total }} ({{ stats.pc_itens }}%)</span>
+                        </div>
+                        {% endif %}
+                        <div id="listaItens">
+                            {% for it in itens %}
+                            <div class="sol-item {% if it.FL_CONCLUIDO %}ok{% endif %}">
+                                <div class="sol-check {% if it.FL_CONCLUIDO %}ok{% endif %} {% if permissoes.marcar_itens and not sol.finalizada %}clicavel{% endif %}" data-id="{{ it.ID_ITEM }}">
+                                    {% if it.FL_CONCLUIDO %}<i class="fas fa-check"></i>{% endif %}
+                                </div>
+                                <div style="flex:1;">
+                                    <div class="desc" style="font-size:.9rem;">{{ it.DESCRICAO }}</div>
+                                    {% if it.FL_CONCLUIDO and it.DT_CONCLUSAO %}
+                                    <div style="font-size:.72rem;color:#1cc88a;"><i class="fas fa-check-circle me-1"></i>Concluído por {{ it.NO_USUARIO_CONCLUSAO }} em {{ it.DT_CONCLUSAO.strftime('%d/%m/%Y %H:%M') }}</div>
+                                    {% endif %}
+                                </div>
+                                {% if permissoes.gerir_itens %}
+                                <a href="#" class="js-ignore-loading sol-excluir-item" data-id="{{ it.ID_ITEM }}" style="color:#e74a3b;" title="Excluir item"><i class="far fa-trash-alt"></i></a>
+                                {% endif %}
+                            </div>
+                            {% else %}
+                            <div class="sol-vazio"><i class="far fa-check-square"></i>Nenhum item de escopo cadastrado.</div>
+                            {% endfor %}
+                        </div>
+                        {% if permissoes.gerir_itens and not sol.finalizada %}
+                        <div class="mt-3">
+                            <label class="form-label">Adicionar itens (um por linha)</label>
+                            <textarea id="txtNovoItem" class="form-control" rows="2" placeholder="Ex.: Tela de consulta com filtros"></textarea>
+                            <div class="text-end mt-2"><button type="button" class="sol-btn sol-btn-pri sol-btn-sm js-ignore-loading" id="btnNovoItem"><i class="fas fa-plus"></i> Adicionar</button></div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {# ---------------- HOMOLOGAÇÃO ---------------- #}
+                    <div class="tab-pane fade" id="abaHomologacao">
+                        {% set passos = [
+                            ('Entrega registrada', sol.DT_ENTREGA, 'fa-box-open'),
+                            ('Parecer do solicitante', sol.DT_HOMOLOGACAO_SOLICITANTE, 'fa-user-check'),
+                            ('Termo assinado anexado', termos_assinados[0].CREATED_AT if termos_assinados else none, 'fa-file-signature'),
+                            ('Conclusão', sol.DT_CONCLUSAO if sol.STATUS in cat.status_finais and sol.STATUS != 'CANCELADA' else none, 'fa-flag-checkered'),
+                        ] %}
+                        <div class="row g-2 mb-4">
+                            {% for rot, dt, ico in passos %}
+                            <div class="col-6 col-md-3">
+                                <div style="border-radius:12px;padding:.75rem;text-align:center;height:100%;border:1px solid {{ '#1cc88a' if dt else 'var(--sol-borda)' }};background:{{ '#1cc88a14' if dt else 'var(--sol-fundo-2)' }};">
+                                    <i class="fas {{ ico }} mb-1" style="color:{{ '#1cc88a' if dt else 'var(--sol-suave)' }};font-size:1.1rem;"></i>
+                                    <div style="font-size:.75rem;font-weight:700;">{{ rot }}</div>
+                                    <div style="font-size:.7rem;color:var(--sol-suave);">{{ dt.strftime('%d/%m/%Y %H:%M') if dt else 'pendente' }}</div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if sol.RESUMO_ENTREGA %}
+                        <h6 class="fw-bold"><i class="fas fa-box-open me-2" style="color:#fd7e14;"></i>O que foi entregue</h6>
+                        <div class="sol-desc-texto mb-3" style="background:var(--sol-fundo-2);border-radius:12px;padding:1rem 1.1rem;border-left:4px solid #fd7e14;">{{ sol.RESUMO_ENTREGA }}</div>
+                        {% if sol.LINK_ACESSO or sol.ORIENTACOES_USO %}
+                        <h6 class="fw-bold"><i class="fas fa-book-open me-2" style="color:var(--sol-azul);"></i>Como usar</h6>
+                        {% if sol.LINK_ACESSO %}<div class="mb-2"><span class="sol-chip" style="font-size:.8rem;"><i class="fas fa-link"></i>{{ sol.LINK_ACESSO }}</span></div>{% endif %}
+                        {% if sol.ORIENTACOES_USO %}<div class="sol-desc-texto mb-3">{{ sol.ORIENTACOES_USO }}</div>{% endif %}
+                        {% endif %}
+                        {% else %}
+                        <div class="sol-vazio" style="padding:1.5rem;"><i class="fas fa-box"></i>A entrega ainda não foi registrada.</div>
+                        {% endif %}
+
+                        {% if sol.ST_HOMOLOGACAO_SOLICITANTE %}
+                        <div class="sol-aviso mb-3" style="background:{{ '#ecfdf5' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else '#fef2f2' }};border:1px solid {{ '#1cc88a' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else '#e74a3b' }};color:#1f2937;">
+                            <div class="ic" style="background:{{ '#1cc88a' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else '#e74a3b' }};color:#fff;"><i class="fas {{ 'fa-thumbs-up' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else 'fa-thumbs-down' }}"></i></div>
+                            <div style="flex:1;">
+                                <div class="fw-bold">Solicitante: a entrega {{ 'ATENDE' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else 'NÃO ATENDE' }} ao pedido</div>
+                                <div style="font-size:.82rem;">{{ sol.PARECER_SOLICITANTE or 'Sem observações.' }} · {{ sol.DT_HOMOLOGACAO_SOLICITANTE.strftime('%d/%m/%Y %H:%M') }}</div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <div class="sol-grupo-tit"><i class="fas fa-file-pdf me-1"></i>Termos gerados</div>
+                                {% for a in termos_gerados %}
+                                <div class="sol-arquivo">
+                                    <div class="ic" style="background:#e74a3b1a;color:#e74a3b;"><i class="fas fa-file-pdf"></i></div>
+                                    <div style="flex:1;min-width:0;">
+                                        <div style="font-size:.83rem;font-weight:700;" class="text-truncate">Versão {{ a.NU_VERSAO }}{% if loop.first %} <span class="sol-badge" style="background:#1cc88a22;color:#1cc88a;">vigente</span>{% endif %}</div>
+                                        <div style="font-size:.7rem;color:var(--sol-suave);">{{ a.CREATED_AT.strftime('%d/%m/%Y %H:%M') }} · {{ (a.DS_OBSERVACAO or '')|replace('Código de verificação ', 'cód. ') }}</div>
+                                    </div>
+                                    <a class="sol-btn sol-btn-sec sol-btn-sm" download href="{{ url_for('solicitacoes.baixar_arquivo', id_arquivo=a.ID_ARQUIVO) }}"><i class="fas fa-download"></i></a>
+                                </div>
+                                {% else %}
+                                <div style="font-size:.8rem;color:var(--sol-suave);">Nenhum termo gerado ainda.</div>
+                                {% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <div class="sol-grupo-tit"><i class="fas fa-file-signature me-1"></i>Termos assinados</div>
+                                {% for a in termos_assinados %}
+                                <div class="sol-arquivo">
+                                    <div class="ic" style="background:#1cc88a1a;color:#1cc88a;"><i class="fas fa-file-signature"></i></div>
+                                    <div style="flex:1;min-width:0;">
+                                        <div style="font-size:.83rem;font-weight:700;" class="text-truncate" title="{{ a.NO_ARQUIVO }}">{{ a.NO_ARQUIVO }}</div>
+                                        <div style="font-size:.7rem;color:var(--sol-suave);">{{ a.NO_USUARIO }} · {{ a.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</div>
+                                    </div>
+                                    <a class="sol-btn sol-btn-sec sol-btn-sm" download href="{{ url_for('solicitacoes.baixar_arquivo', id_arquivo=a.ID_ARQUIVO) }}"><i class="fas fa-download"></i></a>
+                                </div>
+                                {% else %}
+                                <div style="font-size:.8rem;color:var(--sol-suave);">Nenhum termo assinado anexado.</div>
+                                {% endfor %}
+                                {% if ('TERMO_ASSINADO' in permissoes.tipos_arquivo|map('first')|list) and sol.DT_ENTREGA %}
+                                <button type="button" class="sol-btn sol-btn-ok sol-btn-sm mt-2 js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalArquivo" data-tipo-arquivo="TERMO_ASSINADO"><i class="fas fa-upload"></i> Anexar termo assinado</button>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="mt-4" style="background:var(--sol-azul-cla);border-radius:12px;padding:.85rem 1rem;font-size:.8rem;">
+                            <b style="color:var(--sol-azul);"><i class="fas fa-info-circle me-1"></i>Fluxo de homologação</b>
+                            <ol class="mb-0 mt-1 ps-3">
+                                <li>A equipe registra a entrega descrevendo o que foi feito (gera o termo).</li>
+                                <li>O solicitante testa e clica em <b>Homologar</b>, informando se atende ou não — o termo em PDF é baixado.</li>
+                                <li>O termo é assinado digitalmente (gov.br, SEI ou certificado) e anexado aqui.</li>
+                                <li>Administrador/moderador conclui como <b>homologada</b> ou <b>não homologada</b>.</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    {# ---------------- ARQUIVOS ---------------- #}
+                    <div class="tab-pane fade" id="abaArquivos">
+                        {% if permissoes.tipos_arquivo %}
+                        <div class="text-end mb-2">
+                            <button type="button" class="sol-btn sol-btn-pri sol-btn-sm js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalArquivo"><i class="fas fa-upload"></i> Enviar arquivo</button>
+                        </div>
+                        {% endif %}
+                        {% for a in arquivos %}
+                        <div class="sol-arquivo">
+                            <div class="ic" style="background:{{ a.cor }}1a;color:{{ a.cor }};"><i class="fas {{ a.icone }}"></i></div>
+                            <div style="flex:1;min-width:0;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span style="font-size:.85rem;font-weight:700;" class="text-truncate" title="{{ a.NO_ARQUIVO }}">{{ a.NO_ARQUIVO }}</span>
+                                    {% if a.FL_INTERNO %}<span class="sol-badge" style="background:#5a5c6922;color:#5a5c69;"><i class="fas fa-lock"></i>Interno</span>{% endif %}
+                                </div>
+                                <div style="font-size:.72rem;color:var(--sol-suave);">
+                                    <span style="color:{{ a.cor }};font-weight:700;">{{ a.rotulo }}</span> · {{ a.tamanho }} · {{ a.NO_USUARIO }} · {{ a.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}
+                                    {% if a.DS_OBSERVACAO %} · {{ a.DS_OBSERVACAO }}{% endif %}
+                                </div>
+                                <div style="font-size:.64rem;color:var(--sol-suave);font-family:monospace;" title="SHA-256 do arquivo">{{ a.HASH_SHA256[:24] if a.HASH_SHA256 else '' }}…</div>
+                            </div>
+                            <a class="sol-btn sol-btn-sec sol-btn-sm" download href="{{ url_for('solicitacoes.baixar_arquivo', id_arquivo=a.ID_ARQUIVO) }}" title="Baixar"><i class="fas fa-download"></i></a>
+                            {% if papel == 'GESTOR' %}
+                            <a href="#" class="sol-btn sol-btn-perigo sol-btn-sm js-ignore-loading sol-excluir-arq" data-id="{{ a.ID_ARQUIVO }}" title="Excluir"><i class="far fa-trash-alt"></i></a>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="sol-vazio"><i class="fas fa-folder-open"></i>Nenhum arquivo.</div>
+                        {% endfor %}
+                    </div>
+
+                    {# ---------------- HISTÓRICO (interno) ---------------- #}
+                    {% if ve_interno %}
+                    <div class="tab-pane fade" id="abaHistorico">
+                        <div class="mb-2" style="font-size:.8rem;color:var(--sol-suave);"><i class="fas fa-lock me-1"></i>Visível apenas para a equipe. Toda alteração de dados fica registrada aqui.</div>
+                        {% if historico %}
+                        <div class="table-responsive">
+                            <table class="sol-tabela">
+                                <thead><tr><th>Quando</th><th>Quem</th><th>Campo</th><th>Antes</th><th>Depois</th></tr></thead>
+                                <tbody>
+                                {% for h in historico %}
+                                <tr>
+                                    <td style="white-space:nowrap;font-size:.78rem;">{{ h.CREATED_AT.strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td style="font-size:.8rem;">{{ h.NO_USUARIO }}</td>
+                                    <td><span class="sol-chip">{{ h.CAMPO }}</span></td>
+                                    <td style="font-size:.8rem;color:#b91c1c;max-width:220px;word-break:break-word;">{{ (h.VALOR_ANTERIOR or '—')|truncate(160) }}</td>
+                                    <td style="font-size:.8rem;color:#047857;max-width:220px;word-break:break-word;">{{ (h.VALOR_NOVO or '—')|truncate(160) }}</td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="sol-vazio"><i class="fas fa-history"></i>Sem alterações registradas.</div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ======================= LATERAL ======================= #}
+        <div class="col-xl-4">
+            {# Progresso #}
+            <div class="sol-card mb-4">
+                <div class="sol-card-corpo d-flex align-items-center gap-3">
+                    {% set pc = sol.PC_CONCLUSAO or 0 %}
+                    <svg width="96" height="96" viewBox="0 0 36 36" style="flex-shrink:0;">
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--sol-borda)" stroke-width="3.2"></circle>
+                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="{{ sol.status_cor }}" stroke-width="3.2" stroke-linecap="round"
+                                stroke-dasharray="{{ pc }} {{ 100 - pc }}" stroke-dashoffset="25"></circle>
+                        <text x="18" y="20.5" text-anchor="middle" style="font-size:8px;font-weight:800;fill:var(--sol-texto);">{{ pc }}%</text>
+                    </svg>
+                    <div>
+                        <div style="font-size:.7rem;font-weight:800;text-transform:uppercase;color:var(--sol-suave);">Andamento</div>
+                        <div class="fw-bold" style="font-size:1.05rem;color:{{ sol.status_cor }};">{{ sol.status_rotulo }}</div>
+                        {% if stats.itens_total %}<div style="font-size:.78rem;color:var(--sol-suave);"><i class="far fa-check-square me-1"></i>{{ stats.itens_ok }}/{{ stats.itens_total }} itens do escopo</div>{% endif %}
+                        <div style="font-size:.78rem;color:var(--sol-suave);"><i class="far fa-comments me-1"></i>{{ stats.comentarios }} comentário(s) · {{ stats.atualizacoes }} atualização(ões)</div>
+                        {% if stats.impedimentos %}<div style="font-size:.78rem;color:#e74a3b;font-weight:700;"><i class="fas fa-exclamation-triangle me-1"></i>{{ stats.impedimentos }} impedimento(s) registrado(s)</div>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {# Prazos #}
+            <div class="sol-card mb-4">
+                <div class="sol-card-cab"><h5><i class="far fa-calendar-alt me-2" style="color:var(--sol-azul);"></i>Prazos</h5>
+                    <span class="sol-badge" style="background:{{ sol.situacao_prazo_cor }}22;color:{{ sol.situacao_prazo_cor }};">{{ sol.situacao_prazo }}</span>
+                </div>
+                <div class="sol-card-corpo" style="padding-top:.5rem;padding-bottom:.5rem;">
+                    {% for rot, val in [
+                        ('Data do pedido', sol.DT_SOLICITACAO.strftime('%d/%m/%Y') if sol.DT_SOLICITACAO else '—'),
+                        ('Prazo desejado', sol.DT_PRAZO_DESEJADO.strftime('%d/%m/%Y') if sol.DT_PRAZO_DESEJADO else '—'),
+                        ('Prazo acordado', sol.DT_PRAZO_ACORDADO.strftime('%d/%m/%Y') if sol.DT_PRAZO_ACORDADO else '—'),
+                        ('Início da execução', sol.DT_INICIO.strftime('%d/%m/%Y') if sol.DT_INICIO else '—'),
+                        ('Entrega', sol.DT_ENTREGA.strftime('%d/%m/%Y %H:%M') if sol.DT_ENTREGA else '—'),
+                        ('Conclusão', sol.DT_CONCLUSAO.strftime('%d/%m/%Y %H:%M') if sol.DT_CONCLUSAO else '—'),
+                        ('Dias ' ~ ('até concluir' if sol.finalizada else 'em aberto'), sol.dias_em_aberto),
+                    ] %}
+                    <div class="sol-info-linha"><span class="r">{{ rot }}</span><span class="v">{{ val }}</span></div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# Pessoas #}
+            <div class="sol-card mb-4">
+                <div class="sol-card-cab"><h5><i class="fas fa-users me-2" style="color:var(--sol-azul);"></i>Pessoas</h5></div>
+                <div class="sol-card-corpo" style="padding-top:.3rem;">
+                    <div class="sol-grupo-tit">Solicitante</div>
+                    <div class="sol-pessoa">
+                        <span class="sol-avatar sol-avatar-lg" data-avatar="{{ sol.NO_SOLICITANTE }}">{{ (sol.NO_SOLICITANTE or '?')[:1] }}</span>
+                        <div style="flex:1;">
+                            <div class="n">{{ sol.NO_SOLICITANTE }}</div>
+                            <div class="s">{{ sol.DS_CARGO_SOLICITANTE or '' }}</div>
+                            <div class="s"><i class="fas fa-sitemap me-1"></i><b>{{ sol.area_completa }}</b></div>
+                            {% if sol.EMAIL_SOLICITANTE %}<div class="s"><i class="far fa-envelope me-1"></i>{{ sol.EMAIL_SOLICITANTE }}</div>{% endif %}
+                        </div>
+                    </div>
+                    <div style="font-size:.74rem;" class="mb-1">
+                        {% if sol.DT_CIENCIA_SOLICITANTE %}
+                        <span style="color:#1cc88a;font-weight:700;"><i class="fas fa-user-check me-1"></i>Confirmou o pedido em {{ sol.DT_CIENCIA_SOLICITANTE.strftime('%d/%m/%Y %H:%M') }}</span>
+                        {% else %}
+                        <span style="color:#b45309;font-weight:700;"><i class="fas fa-user-clock me-1"></i>Ainda não confirmou o pedido</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="sol-grupo-tit">Executores ({{ executores|length }})</div>
+                    {% for e in executores %}
+                    <div class="sol-pessoa">
+                        <span class="sol-avatar" data-avatar="{{ e.NO_USUARIO }}">{{ e.iniciais }}</span>
+                        <div><div class="n">{{ e.NO_USUARIO }}</div>{% if e.DS_FUNCAO %}<div class="s">{{ e.DS_FUNCAO }}</div>{% endif %}</div>
+                    </div>
+                    {% else %}
+                    <div style="font-size:.8rem;color:var(--sol-suave);">Nenhum executor definido.</div>
+                    {% endfor %}
+
+                    {% if observadores %}
+                    <div class="sol-grupo-tit">Observadores</div>
+                    <div class="sol-avatares d-flex">
+                        {% for e in observadores %}<span class="sol-avatar" data-avatar="{{ e.NO_USUARIO }}" title="{{ e.NO_USUARIO }}">{{ e.iniciais }}</span>{% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# Horas (interno) #}
+            {% if ve_interno %}
+            <div class="sol-card mb-4">
+                <div class="sol-card-cab"><h5><i class="far fa-clock me-2" style="color:var(--sol-azul);"></i>Esforço <span style="font-weight:400;font-size:.75rem;color:var(--sol-suave);">(interno)</span></h5></div>
+                <div class="sol-card-corpo" style="padding-top:.5rem;">
+                    {% set est = sol.HORAS_ESTIMADAS|float if sol.HORAS_ESTIMADAS else 0 %}
+                    {% set lan = horas.total|float %}
+                    <div class="d-flex justify-content-between" style="font-size:.83rem;">
+                        <span>Lançadas: <b>{{ '%.1f'|format(lan)|replace('.', ',') }} h</b></span>
+                        <span style="color:var(--sol-suave);">Estimadas: {{ ('%.1f'|format(est)|replace('.', ',') ~ ' h') if est else '—' }}</span>
+                    </div>
+                    {% if est %}
+                    <div class="sol-barra mt-1 mb-2"><div style="width:{{ [100, (100 * lan / est)|round|int]|min }}%;{% if lan > est %}background:#e74a3b;{% endif %}"></div></div>
+                    {% endif %}
+                    {% for h in horas.por_pessoa %}
+                    <div class="sol-info-linha"><span class="r">{{ h.NO_USUARIO }}</span><span class="v">{{ '%.1f'|format(h.HORAS|float)|replace('.', ',') }} h <span style="font-weight:400;color:var(--sol-suave);">({{ h.REGISTROS }})</span></span></div>
+                    {% else %}
+                    <div style="font-size:.78rem;color:var(--sol-suave);" class="mt-1">Lance horas nas atualizações do andamento.</div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ======================= MODAIS ======================= #}
+    {% if permissoes.mudar_status %}
+    <div class="modal fade" id="modalStatus" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas {{ 'fa-undo' if sol.finalizada else 'fa-exchange-alt' }} me-2" style="color:var(--sol-azul);"></i>{{ 'Reabrir solicitação' if sol.finalizada else 'Mudar status' }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">Novo status</label>
+                    <div class="d-flex flex-column gap-2 mb-3">
+                        {% for k, st in status_manuais %}
+                        <label class="sol-opcao" data-grupo="status" style="padding:.6rem .8rem;align-items:center;">
+                            <input type="radio" name="novoStatus" value="{{ k }}" class="d-none">
+                            <span class="ico" style="background:{{ st.cor }};width:32px;height:32px;font-size:.85rem;border-radius:9px;"><i class="fas {{ st.icone }}"></i></span>
+                            <span class="fw-bold" style="font-size:.88rem;">{{ st.rotulo }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <label class="form-label">{{ 'Justificativa da reabertura *' if sol.finalizada else 'Observação' }}</label>
+                    <textarea id="txtStatus" class="form-control" rows="3" placeholder="{{ 'Obrigatória' if sol.finalizada else 'Obrigatória para Suspensa e Cancelada' }}"></textarea>
+                    {% if not sol.finalizada %}
+                    <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="internaStatus"><label class="form-check-label" for="internaStatus" style="font-size:.83rem;">Registro interno (o solicitante não vê)</label></div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnStatus"><i class="fas fa-check"></i> Confirmar</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.entregar %}
+    <div class="modal fade" id="modalEntrega" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas fa-box-open me-2" style="color:#fd7e14;"></i>Registrar entrega para homologação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="mb-3" style="font-size:.82rem;background:var(--sol-azul-cla);border-radius:10px;padding:.65rem .85rem;">
+                        Esse texto vai para o <b>Termo de Entrega e Homologação</b>. O status muda para <b>Aguardando homologação</b> e o solicitante passa a ver o botão <b>Homologar</b>.
+                        {% if stats.itens_total and stats.itens_ok < stats.itens_total %}<br><span style="color:#b45309;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> {{ stats.itens_total - stats.itens_ok }} item(ns) do escopo ainda não marcado(s) como concluído(s).</span>{% endif %}
+                    </div>
+                    <label class="form-label">O que foi feito *</label>
+                    <textarea id="txtResumo" class="form-control mb-3" rows="6" placeholder="Descreva as funcionalidades entregues, regras implementadas, dados utilizados...">{{ sol.RESUMO_ENTREGA or '' }}</textarea>
+                    <div class="row g-3">
+                        <div class="col-md-5"><label class="form-label">Endereço / caminho de acesso</label><input type="text" id="txtLink" class="form-control" maxlength="300" value="{{ sol.LINK_ACESSO or '' }}" placeholder="Ex.: Portal GEINC > Ferramentas > ..."></div>
+                        <div class="col-md-7"><label class="form-label">Orientações de uso</label><textarea id="txtOrientacoes" class="form-control" rows="3" placeholder="Opcional">{{ sol.ORIENTACOES_USO or '' }}</textarea></div>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-ok js-ignore-loading" id="btnEntrega"><i class="fas fa-paper-plane"></i> Enviar para homologação</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.concluir %}
+    <div class="modal fade" id="modalConcluir" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas fa-flag-checkered me-2" style="color:var(--sol-azul);"></i>Concluir solicitação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    {% if not termos_assinados %}
+                    <div class="mb-3" style="font-size:.8rem;background:#fff8e1;border:1px solid #f6c23e;border-radius:10px;padding:.6rem .8rem;color:#5c4400;">
+                        <i class="fas fa-exclamation-triangle me-1"></i>Nenhum termo assinado foi anexado ainda. Recomenda-se anexá-lo antes de concluir.
+                    </div>
+                    {% endif %}
+                    {% if sol.ST_HOMOLOGACAO_SOLICITANTE %}
+                    <div class="mb-3" style="font-size:.82rem;">Parecer do solicitante: <b style="color:{{ '#1cc88a' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else '#e74a3b' }};">{{ 'ATENDE' if sol.ST_HOMOLOGACAO_SOLICITANTE == 'APROVADA' else 'NÃO ATENDE' }}</b></div>
+                    {% endif %}
+                    <div class="row g-2 mb-3">
+                        {% for k in ['CONCLUIDA_HOMOLOGADA', 'CONCLUIDA_NAO_HOMOLOGADA'] %}
+                        {% set st = cat.status[k] %}
+                        <div class="col-6">
+                            <label class="sol-decisao {{ 'sim' if loop.first else 'nao' }}" data-grupo="resultado">
+                                <input type="radio" name="resultado" value="{{ k }}" class="d-none">
+                                <i class="fas {{ st.icone }} fa-2x mb-2" style="color:{{ st.cor }};"></i>
+                                <div class="fw-bold" style="font-size:.88rem;">{{ st.rotulo }}</div>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <label class="form-label">Justificativa <span id="justObrig" style="color:#e74a3b;display:none;">*</span></label>
+                    <textarea id="txtJustificativa" class="form-control" rows="3" placeholder="Obrigatória para não homologada"></textarea>
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnConcluir"><i class="fas fa-check"></i> Concluir</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.homologar %}
+    <div class="modal fade" id="modalHomologar" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas fa-file-signature me-2" style="color:#f6c23e;"></i>Homologar entrega</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p style="font-size:.85rem;">Depois de verificar a entrega, informe se ela atende ao que você pediu. O <b>termo em PDF</b> será baixado para você assinar digitalmente e anexar aqui.</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="sol-decisao sim" data-grupo="decisao"><input type="radio" name="decisao" value="APROVADA" class="d-none">
+                                <i class="fas fa-thumbs-up fa-2x mb-2" style="color:#1cc88a;"></i><div class="fw-bold">Atende</div><div style="font-size:.74rem;color:var(--sol-suave);">Homologo a entrega</div></label>
+                        </div>
+                        <div class="col-6">
+                            <label class="sol-decisao nao" data-grupo="decisao"><input type="radio" name="decisao" value="RECUSADA" class="d-none">
+                                <i class="fas fa-thumbs-down fa-2x mb-2" style="color:#e74a3b;"></i><div class="fw-bold">Não atende</div><div style="font-size:.74rem;color:var(--sol-suave);">Não homologo</div></label>
+                        </div>
+                    </div>
+                    <label class="form-label">Parecer <span id="parecerObrig" style="color:#e74a3b;display:none;">* explique o que não atende</span></label>
+                    <textarea id="txtParecer" class="form-control" rows="3" placeholder="Observações sobre a entrega"></textarea>
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-alerta js-ignore-loading" id="btnHomologar"><i class="fas fa-file-download"></i> Registrar e gerar termo</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.ciencia %}
+    <div class="modal fade" id="modalCiencia" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas fa-user-check me-2" style="color:var(--sol-azul);"></i>Confirmar pedido</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p style="font-size:.86rem;">Ao confirmar, você declara que a solicitação <b>{{ sol.NU_PROTOCOLO }}</b> — "{{ sol.TITULO }}" — descreve corretamente o que você pediu à área.</p>
+                    <label class="form-label">Observação (opcional)</label>
+                    <textarea id="txtCiencia" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnCiencia"><i class="fas fa-check"></i> Confirmar</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.tipos_arquivo %}
+    <div class="modal fade" id="modalArquivo" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title"><i class="fas fa-upload me-2" style="color:var(--sol-azul);"></i>Enviar arquivo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <label class="form-label">Tipo</label>
+                    <select id="tipoArquivo" class="form-select mb-3">
+                        {% for k, t in permissoes.tipos_arquivo %}<option value="{{ k }}">{{ t.rotulo }}</option>{% endfor %}
+                    </select>
+                    <label class="form-label">Arquivo(s)</label>
+                    <input type="file" id="inputArquivo" class="form-control mb-3" multiple>
+                    <label class="form-label">Observação</label>
+                    <input type="text" id="obsArquivo" class="form-control" maxlength="300" placeholder="Opcional">
+                    {% if ve_interno %}
+                    <div class="form-check mt-2"><input class="form-check-input" type="checkbox" id="internoArquivo"><label class="form-check-label" for="internoArquivo" style="font-size:.83rem;">Arquivo interno (o solicitante não vê)</label></div>
+                    {% endif %}
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnArquivo"><i class="fas fa-upload"></i> Enviar</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if permissoes.excluir %}
+    <div class="modal fade" id="modalExcluir" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title text-danger"><i class="fas fa-trash me-2"></i>Excluir solicitação</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <p style="font-size:.86rem;">A solicitação <b>{{ sol.NU_PROTOCOLO }}</b> sai das listas, mas o registro continua guardado no banco (exclusão lógica).</p>
+                    <label class="form-label">Motivo *</label>
+                    <textarea id="txtExcluir" class="form-control" rows="2"></textarea>
+                </div>
+                <div class="modal-footer"><button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button><button type="button" class="sol-btn sol-btn-perigo js-ignore-loading" id="btnExcluir"><i class="fas fa-trash"></i> Excluir</button></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const URL = {
+        interacao: '{{ url_for("solicitacoes.nova_interacao", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        excluirInteracao: '{{ url_for("solicitacoes.excluir_interacao", id_interacao=0) }}',
+        status: '{{ url_for("solicitacoes.mudar_status", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        entrega: '{{ url_for("solicitacoes.registrar_entrega", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        concluir: '{{ url_for("solicitacoes.concluir", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        homologar: '{{ url_for("solicitacoes.homologar", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        ciencia: '{{ url_for("solicitacoes.ciencia", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        novoItem: '{{ url_for("solicitacoes.novo_item", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        alternarItem: '{{ url_for("solicitacoes.alternar_item", id_item=0) }}',
+        excluirItem: '{{ url_for("solicitacoes.excluir_item", id_item=0) }}',
+        arquivo: '{{ url_for("solicitacoes.enviar_arquivo", id_solicitacao=sol.ID_SOLICITACAO) }}',
+        excluirArquivo: '{{ url_for("solicitacoes.excluir_arquivo", id_arquivo=0) }}',
+        excluir: '{{ url_for("solicitacoes.excluir", id_solicitacao=sol.ID_SOLICITACAO) }}'
+    };
+    const comId = function (url, id) { return url.replace('/0/', '/' + id + '/'); };
+
+    function recarregar(msg, aba) {
+        if (msg) Sol.toast(msg, 'sucesso');
+        if (aba) { try { sessionStorage.setItem('solAba', aba); } catch (e) { /* sem storage */ } }
+        setTimeout(function () { location.reload(); }, 650);
+    }
+    async function enviar(botao, url, dados, msg, aba) {
+        Sol.carregando(botao, true);
+        const r = await Sol.post(url, dados);
+        Sol.carregando(botao, false);
+        if (r.sucesso) {
+            if (r.aviso) Sol.toast(r.aviso, 'aviso');
+            recarregar(msg, aba);
+        } else { Sol.toast(r.mensagem || 'Não foi possível concluir a operação.', 'erro'); }
+        return r;
+    }
+    function clique(id, fn) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', function (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); fn(el, ev); });
+    }
+
+    // Volta para a aba em que a pessoa estava
+    try {
+        const aba = sessionStorage.getItem('solAba');
+        if (aba) { sessionStorage.removeItem('solAba'); const b = document.querySelector('[data-bs-target="' + aba + '"]'); if (b) new bootstrap.Tab(b).show(); }
+    } catch (e) { /* sem storage */ }
+
+    // Opções clicáveis (cartões)
+    document.querySelectorAll('.sol-opcao, .sol-decisao').forEach(function (op) {
+        op.addEventListener('click', function () {
+            const grupo = op.dataset.grupo;
+            document.querySelectorAll('[data-grupo="' + grupo + '"]').forEach(function (o) { o.classList.remove('ativa'); });
+            op.classList.add('ativa');
+            op.querySelector('input').checked = true;
+            if (grupo === 'resultado') document.getElementById('justObrig').style.display = op.querySelector('input').value === 'CONCLUIDA_NAO_HOMOLOGADA' ? 'inline' : 'none';
+            if (grupo === 'decisao') document.getElementById('parecerObrig').style.display = op.querySelector('input').value === 'RECUSADA' ? 'inline' : 'none';
+        });
+    });
+
+    // ----- Composer -----
+    let tipoAtual = (document.querySelector('.sol-tipo-btn.ativo') || {}).dataset ? document.querySelector('.sol-tipo-btn.ativo').dataset.tipo : 'COMENTARIO';
+    document.querySelectorAll('.sol-tipo-btn').forEach(function (b) {
+        b.addEventListener('click', function (ev) {
+            ev.stopImmediatePropagation();
+            document.querySelectorAll('.sol-tipo-btn').forEach(function (x) { x.classList.remove('ativo'); x.style.background = ''; x.style.borderColor = ''; });
+            b.classList.add('ativo'); b.style.background = b.dataset.cor; b.style.borderColor = b.dataset.cor;
+            tipoAtual = b.dataset.tipo;
+        });
+    });
+    clique('btnInteracao', function (btn) {
+        const texto = document.getElementById('txtInteracao').value.trim();
+        if (!texto) { Sol.toast('Escreva o texto do registro.', 'aviso'); return; }
+        const pc = document.getElementById('pcInteracao');
+        const horas = document.getElementById('horasInteracao');
+        const interna = document.getElementById('internaInteracao');
+        enviar(btn, URL.interacao, {
+            tipo: tipoAtual, texto: texto,
+            pc: pc ? pc.value : '', horas: horas ? horas.value : '',
+            interna: interna ? interna.checked : false
+        }, 'Registro publicado.', '#abaAndamento');
+    });
+
+    // Filtros do feed
+    document.querySelectorAll('.sol-filtro-feed').forEach(function (f) {
+        f.addEventListener('click', function (ev) {
+            ev.stopImmediatePropagation();
+            document.querySelectorAll('.sol-filtro-feed').forEach(function (x) { x.classList.remove('ativo'); });
+            f.classList.add('ativo');
+            const filtro = f.dataset.filtro;
+            document.querySelectorAll('.sol-evento').forEach(function (ev2) {
+                let mostrar = true;
+                if (filtro === 'interno') mostrar = ev2.dataset.interno === '1';
+                else if (filtro) mostrar = filtro.split(',').indexOf(ev2.dataset.tipo) >= 0;
+                ev2.style.display = mostrar ? '' : 'none';
+            });
+        });
+    });
+
+    document.querySelectorAll('.sol-excluir-int').forEach(function (a) {
+        a.addEventListener('click', function (ev) {
+            ev.preventDefault(); ev.stopImmediatePropagation();
+            if (!confirm('Excluir este registro da linha do tempo?')) return;
+            enviar(null, comId(URL.excluirInteracao, a.dataset.id), {}, 'Registro excluído.', '#abaAndamento');
+        });
+    });
+
+    // ----- Escopo -----
+    document.querySelectorAll('.sol-check.clicavel').forEach(function (c) {
+        c.addEventListener('click', async function (ev) {
+            ev.stopImmediatePropagation();
+            const r = await Sol.post(comId(URL.alternarItem, c.dataset.id), {});
+            if (r.sucesso) recarregar(null, '#abaEscopo'); else Sol.toast(r.mensagem, 'erro');
+        });
+    });
+    document.querySelectorAll('.sol-excluir-item').forEach(function (a) {
+        a.addEventListener('click', function (ev) {
+            ev.preventDefault(); ev.stopImmediatePropagation();
+            if (!confirm('Excluir este item do escopo?')) return;
+            enviar(null, comId(URL.excluirItem, a.dataset.id), {}, 'Item excluído.', '#abaEscopo');
+        });
+    });
+    clique('btnNovoItem', function (btn) {
+        enviar(btn, URL.novoItem, { descricao: document.getElementById('txtNovoItem').value }, 'Item(ns) adicionado(s).', '#abaEscopo');
+    });
+
+    // ----- Status / entrega / conclusão / homologação / ciência / exclusão -----
+    clique('btnStatus', function (btn) {
+        const sel = document.querySelector('input[name="novoStatus"]:checked');
+        if (!sel) { Sol.toast('Escolha o novo status.', 'aviso'); return; }
+        const interna = document.getElementById('internaStatus');
+        enviar(btn, URL.status, { status: sel.value, texto: document.getElementById('txtStatus').value,
+                                   interna: interna ? interna.checked : false }, 'Status atualizado.');
+    });
+    clique('btnEntrega', function (btn) {
+        enviar(btn, URL.entrega, { resumo: document.getElementById('txtResumo').value, link: document.getElementById('txtLink').value,
+                                   orientacoes: document.getElementById('txtOrientacoes').value }, 'Entrega registrada e enviada para homologação.', '#abaHomologacao');
+    });
+    clique('btnConcluir', function (btn) {
+        const sel = document.querySelector('input[name="resultado"]:checked');
+        if (!sel) { Sol.toast('Escolha o resultado da conclusão.', 'aviso'); return; }
+        enviar(btn, URL.concluir, { resultado: sel.value, justificativa: document.getElementById('txtJustificativa').value }, 'Solicitação concluída.');
+    });
+    clique('btnHomologar', async function (btn) {
+        const sel = document.querySelector('input[name="decisao"]:checked');
+        if (!sel) { Sol.toast('Informe se a entrega atende ou não.', 'aviso'); return; }
+        Sol.carregando(btn, true);
+        const r = await Sol.post(URL.homologar, { decisao: sel.value, parecer: document.getElementById('txtParecer').value });
+        Sol.carregando(btn, false);
+        if (!r.sucesso) { Sol.toast(r.mensagem, 'erro'); return; }
+        if (r.aviso) Sol.toast(r.aviso, 'aviso');
+        if (r.download) {
+            const a = document.createElement('a');
+            a.href = r.download; a.setAttribute('download', ''); a.className = 'js-ignore-loading';
+            document.body.appendChild(a); a.click(); a.remove();
+        }
+        Sol.toast('Homologação registrada. Assine o termo baixado e anexe a via assinada.', 'sucesso');
+        try { sessionStorage.setItem('solAba', '#abaHomologacao'); } catch (e) { /* sem storage */ }
+        setTimeout(function () { location.reload(); }, 2200);
+    });
+    clique('btnCiencia', function (btn) {
+        enviar(btn, URL.ciencia, { texto: document.getElementById('txtCiencia').value }, 'Obrigado! Pedido confirmado.');
+    });
+    clique('btnExcluir', async function (btn) {
+        Sol.carregando(btn, true);
+        const r = await Sol.post(URL.excluir, { motivo: document.getElementById('txtExcluir').value });
+        Sol.carregando(btn, false);
+        if (r.sucesso) { Sol.toast('Solicitação excluída.', 'sucesso'); setTimeout(function () { window.location = r.redirecionar; }, 700); }
+        else Sol.toast(r.mensagem, 'erro');
+    });
+
+    // ----- Arquivos -----
+    const modalArq = document.getElementById('modalArquivo');
+    if (modalArq) {
+        modalArq.addEventListener('show.bs.modal', function (ev) {
+            const origem = ev.relatedTarget;
+            const tipo = origem && origem.dataset ? origem.dataset.tipoArquivo : null;
+            if (tipo) document.getElementById('tipoArquivo').value = tipo;
+        });
+    }
+    clique('btnArquivo', async function (btn) {
+        const input = document.getElementById('inputArquivo');
+        if (!input.files.length) { Sol.toast('Selecione o arquivo.', 'aviso'); return; }
+        const fd = new FormData();
+        Array.from(input.files).forEach(function (f) { fd.append('arquivos', f); });
+        fd.append('tipo', document.getElementById('tipoArquivo').value);
+        fd.append('observacao', document.getElementById('obsArquivo').value);
+        const interno = document.getElementById('internoArquivo');
+        fd.append('interno', interno && interno.checked ? '1' : '0');
+        Sol.carregando(btn, true);
+        const r = await Sol.postForm(URL.arquivo, fd);
+        Sol.carregando(btn, false);
+        if (r.sucesso) recarregar('Arquivo(s) enviado(s).', document.getElementById('tipoArquivo').value === 'TERMO_ASSINADO' ? '#abaHomologacao' : '#abaArquivos');
+        else Sol.toast(r.mensagem, 'erro');
+    });
+    document.querySelectorAll('.sol-excluir-arq').forEach(function (a) {
+        a.addEventListener('click', function (ev) {
+            ev.preventDefault(); ev.stopImmediatePropagation();
+            if (!confirm('Excluir este arquivo?')) return;
+            enviar(null, comId(URL.excluirArquivo, a.dataset.id), {}, 'Arquivo excluído.', '#abaArquivos');
+        });
+    });
+});
+</script>
+{% endblock %}

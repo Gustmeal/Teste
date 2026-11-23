@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitações à Área - Portal GEINC{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+
+<style>
+    .sol-filtros .form-control, .sol-filtros .form-select { font-size: .83rem; padding-top: .4rem; padding-bottom: .4rem; }
+    .sol-alternador { display: inline-flex; background: var(--sol-fundo-2); border: 1px solid var(--sol-borda); border-radius: 10px; padding: 3px; }
+    .sol-alternador a { padding: .38rem .8rem; border-radius: 8px; font-size: .8rem; font-weight: 700; color: var(--sol-suave); text-decoration: none; }
+    .sol-alternador a.ativo { background: var(--sol-fundo); color: var(--sol-azul); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+    .sol-kanban { display: flex; gap: .9rem; overflow-x: auto; padding-bottom: .8rem; align-items: flex-start; }
+    .sol-coluna { min-width: 285px; max-width: 285px; background: var(--sol-fundo-2); border: 1px solid var(--sol-borda);
+        border-radius: 14px; display: flex; flex-direction: column; max-height: 78vh; }
+    .sol-coluna-cab { padding: .75rem .9rem; display: flex; align-items: center; justify-content: space-between;
+        border-bottom: 3px solid; border-radius: 14px 14px 0 0; background: var(--sol-fundo); }
+    .sol-coluna-cab .nome { font-weight: 800; font-size: .82rem; }
+    .sol-coluna-cab .qt { font-size: .72rem; font-weight: 800; padding: .1rem .5rem; border-radius: 99px; background: var(--sol-fundo-2); }
+    .sol-coluna-corpo { padding: .6rem; overflow-y: auto; flex: 1; min-height: 80px; transition: background .15s; }
+    .sol-coluna-corpo.sol-sobre { background: var(--sol-azul-cla); outline: 2px dashed var(--sol-azul); outline-offset: -6px; border-radius: 0 0 14px 14px; }
+    .sol-kcard { background: var(--sol-fundo); border: 1px solid var(--sol-borda); border-radius: 12px; padding: .75rem .8rem;
+        margin-bottom: .6rem; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.04); border-left: 4px solid; transition: transform .12s, box-shadow .12s; }
+    .sol-kcard:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(34,74,190,.12); }
+    .sol-kcard.arrastando { opacity: .45; }
+    .sol-kcard .tit { font-weight: 700; font-size: .85rem; line-height: 1.3; margin: .35rem 0 .45rem; }
+    .sol-kcard .rod { display: flex; justify-content: space-between; align-items: center; margin-top: .55rem; font-size: .72rem; color: var(--sol-suave); }
+    .sol-pend { border-radius: 14px; padding: .9rem 1.1rem; display: flex; gap: .9rem; align-items: flex-start; }
+</style>
+
+<div class="sol-app">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('main.geinc_index') }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="sol-btn sol-btn-sec js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalVerificar">
+                <i class="fas fa-shield-alt"></i> Verificar termo
+            </button>
+            <div class="dropdown">
+                <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown">
+                    <i class="fas fa-file-contract"></i> Modelo do termo
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" download href="{{ url_for('solicitacoes.modelo_termo', formato='docx') }}"><i class="far fa-file-word me-2 text-primary"></i>Word (.docx)</a></li>
+                    <li><a class="dropdown-item" download href="{{ url_for('solicitacoes.modelo_termo', formato='pdf') }}"><i class="far fa-file-pdf me-2 text-danger"></i>PDF</a></li>
+                </ul>
+            </div>
+            {% if gestor %}
+            <a download class="sol-btn sol-btn-sec" href="{{ url_for('solicitacoes.exportar', **request.args) }}">
+                <i class="fas fa-file-excel" style="color:#1d6f42;"></i> Exportar
+            </a>
+            <a class="sol-btn sol-btn-sec" href="{{ url_for('solicitacoes.dashboard') }}">
+                <i class="fas fa-chart-pie"></i> Dashboard
+            </a>
+            <a class="sol-btn sol-btn-pri" href="{{ url_for('solicitacoes.nova') }}">
+                <i class="fas fa-plus"></i> Nova solicitação
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <h1 class="sol-titulo-pag"><i class="fas fa-clipboard-check me-2" style="-webkit-text-fill-color:#4e73df;"></i>Solicitações à Área</h1>
+        <div class="sol-sub">
+            {% if gestor %}
+                Tudo o que foi pedido à área: quem pediu, andamento, quem executou e a homologação da entrega.
+            {% else %}
+                Acompanhe as solicitações que você fez ou em que você está envolvido.
+            {% endif %}
+        </div>
+    </div>
+
+    {# ---------------- Pendências do solicitante ---------------- #}
+    {% if pendencias.homologar or pendencias.ciencia %}
+    <div class="row g-3 mb-4">
+        {% if pendencias.homologar %}
+        <div class="col-lg-6">
+            <div class="sol-pend" style="background:#fff8e1;border:1px solid #f6c23e;color:#5c4400;">
+                <i class="fas fa-file-signature fa-lg mt-1"></i>
+                <div>
+                    <div class="fw-bold">{{ pendencias.homologar|length }} entrega(s) aguardando a sua homologação</div>
+                    <div style="font-size:.82rem;">
+                        {% for s in pendencias.homologar[:4] %}
+                        <a href="{{ url_for('solicitacoes.detalhe', id_solicitacao=s.ID_SOLICITACAO) }}" style="color:#5c4400;font-weight:600;">{{ s.NU_PROTOCOLO }}</a>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        — abra a solicitação e clique em <b>Homologar</b>.
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if pendencias.ciencia %}
+        <div class="col-lg-6">
+            <div class="sol-pend" style="background:#eef2ff;border:1px solid #4e73df;color:#1e3a8a;">
+                <i class="fas fa-user-check fa-lg mt-1"></i>
+                <div>
+                    <div class="fw-bold">{{ pendencias.ciencia|length }} solicitação(ões) aguardando a sua confirmação</div>
+                    <div style="font-size:.82rem;">
+                        Confira se o que foi registrado corresponde ao que você pediu:
+                        {% for s in pendencias.ciencia[:4] %}
+                        <a href="{{ url_for('solicitacoes.detalhe', id_solicitacao=s.ID_SOLICITACAO) }}" style="color:#1e3a8a;font-weight:600;">{{ s.NU_PROTOCOLO }}</a>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ---------------- KPIs (clicáveis = filtros rápidos) ---------------- #}
+    {% set kpis = [
+        ('Total', resumo.total, 'fa-layer-group', '#4e73df', {}),
+        ('Em aberto', resumo.abertas, 'fa-hourglass-half', '#36b9cc', {'situacao': 'abertas'}),
+        ('Atrasadas', resumo.atrasadas, 'fa-exclamation-triangle', '#e74a3b', {'situacao': 'atrasadas'}),
+        ('Aguardando homologação', resumo.aguardando, 'fa-file-signature', '#f6c23e', {'status': 'AGUARDANDO_HOMOLOGACAO'}),
+        ('Homologadas', resumo.homologadas, 'fa-check-double', '#1cc88a', {'status': 'CONCLUIDA_HOMOLOGADA'}),
+        ('Não homologadas', resumo.nao_homologadas, 'fa-times-circle', '#858796', {'status': 'CONCLUIDA_NAO_HOMOLOGADA'}),
+    ] %}
+    <div class="row g-3 mb-4">
+        {% for rot, val, ico, cor, filtro in kpis %}
+        <div class="col-6 col-md-4 col-xl-2">
+            <a class="sol-kpi js-ignore-loading" href="{{ url_for('solicitacoes.index', visao=filtros.visao, **filtro) }}">
+                <div class="ico" style="background:{{ cor }}1f;color:{{ cor }};"><i class="fas {{ ico }}"></i></div>
+                <div class="rot" style="max-width:70%;">{{ rot }}</div>
+                <div class="val" style="color:{{ cor }};">{{ val }}</div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ---------------- Filtros ---------------- #}
+    <form method="get" class="sol-card mb-4 sol-filtros" id="formFiltros">
+        <input type="hidden" name="visao" value="{{ filtros.visao }}">
+        <div class="sol-card-corpo">
+            <div class="row g-2 align-items-end">
+                <div class="{{ 'col-lg-2' if gestor else 'col-lg-4' }} col-md-6">
+                    <label class="form-label">Buscar</label>
+                    <div class="input-group">
+                        <span class="input-group-text" style="background:var(--sol-fundo-2);border-color:var(--sol-borda);border-radius:10px 0 0 10px;"><i class="fas fa-search" style="color:var(--sol-suave);"></i></span>
+                        <input type="text" name="q" value="{{ filtros.q }}" class="form-control" placeholder="Protocolo, título, solicitante, SEI...">
+                    </div>
+                </div>
+                <div class="col-lg-2 col-md-3 col-6">
+                    <label class="form-label">Situação</label>
+                    <select name="situacao" class="form-select">
+                        <option value="">Todas</option>
+                        <option value="abertas" {% if filtros.situacao == 'abertas' %}selected{% endif %}>Em aberto</option>
+                        <option value="atrasadas" {% if filtros.situacao == 'atrasadas' %}selected{% endif %}>Atrasadas</option>
+                        <option value="finalizadas" {% if filtros.situacao == 'finalizadas' %}selected{% endif %}>Finalizadas</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-3 col-6">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">Todos</option>
+                        {% for k, st in cat.status.items() %}
+                        <option value="{{ k }}" {% if filtros.status == k %}selected{% endif %}>{{ st.rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-1 col-md-3 col-6">
+                    <label class="form-label">Tipo</label>
+                    <select name="tipo" class="form-select">
+                        <option value="">Todos</option>
+                        {% for k, t in cat.tipos_entrega.items() %}
+                        <option value="{{ k }}" {% if filtros.tipo == k %}selected{% endif %}>{{ t.rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-1 col-md-3 col-6">
+                    <label class="form-label">Prioridade</label>
+                    <select name="prioridade" class="form-select">
+                        <option value="">Todas</option>
+                        {% for k, p in cat.prioridades.items() %}
+                        <option value="{{ k }}" {% if filtros.prioridade == k %}selected{% endif %}>{{ p.rotulo }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% if gestor %}
+                <div class="col-lg-1 col-md-3 col-6">
+                    <label class="form-label">Área</label>
+                    <select name="area" class="form-select">
+                        <option value="">Todas</option>
+                        {% for a in areas %}
+                        <option value="{{ a }}" {% if filtros.area == a %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-4 col-6">
+                    <label class="form-label">Executor</label>
+                    <select name="executor" class="form-select">
+                        <option value="">Todos</option>
+                        {% for e in executores_opcoes %}
+                        <option value="{{ e.ID_USUARIO }}" {% if filtros.executor == e.ID_USUARIO %}selected{% endif %}>{{ e.NO_USUARIO }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="col-lg-1 col-md-2 col-6">
+                    <label class="form-label">Ano</label>
+                    <select name="ano" class="form-select">
+                        <option value="">Todos</option>
+                        {% for a in anos %}
+                        <option value="{{ a }}" {% if filtros.ano == a %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 d-flex justify-content-between align-items-center flex-wrap gap-2 mt-2">
+                    <div class="sol-alternador">
+                        {% set args_sem_visao = request.args.to_dict() %}
+                        {% set _ = args_sem_visao.pop('visao', None) %}
+                        <a class="js-ignore-loading {% if filtros.visao == 'lista' %}ativo{% endif %}" href="{{ url_for('solicitacoes.index', visao='lista', **args_sem_visao) }}"><i class="fas fa-list me-1"></i>Lista</a>
+                        <a class="js-ignore-loading {% if filtros.visao == 'kanban' %}ativo{% endif %}" href="{{ url_for('solicitacoes.index', visao='kanban', **args_sem_visao) }}"><i class="fas fa-columns me-1"></i>Quadro</a>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <a href="{{ url_for('solicitacoes.index', visao=filtros.visao) }}" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading"><i class="fas fa-eraser"></i> Limpar</a>
+                        <button type="submit" class="sol-btn sol-btn-pri sol-btn-sm"><i class="fas fa-filter"></i> Filtrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# ---------------- LISTA ---------------- #}
+    {% if filtros.visao == 'lista' %}
+    <div class="sol-card">
+        <div class="sol-card-cab">
+            <h5><i class="fas fa-list-ul me-2" style="color:var(--sol-azul);"></i>{{ lista|length }} solicitação(ões)</h5>
+        </div>
+        {% if lista %}
+        <div class="table-responsive">
+            <table class="sol-tabela">
+                <thead>
+                    <tr>
+                        <th>Solicitação</th>
+                        <th>Tipo</th>
+                        <th>Solicitante / área</th>
+                        <th>Executores</th>
+                        <th>Status</th>
+                        <th style="min-width:120px;">Progresso</th>
+                        <th>Prazo</th>
+                        <th class="text-center"><i class="far fa-comments" title="Comentários"></i></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in lista %}
+                    <tr class="sol-clicavel" onclick="window.location='{{ url_for('solicitacoes.detalhe', id_solicitacao=s.ID_SOLICITACAO) }}'">
+                        <td style="max-width:360px;">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <span class="sol-proto">{{ s.NU_PROTOCOLO }}</span>
+                                <span title="Prioridade {{ s.prioridade_rotulo }}" style="width:9px;height:9px;border-radius:50%;background:{{ s.prioridade_cor }};display:inline-block;"></span>
+                                <span style="font-size:.72rem;color:var(--sol-suave);">{{ s.DT_SOLICITACAO.strftime('%d/%m/%Y') if s.DT_SOLICITACAO else '' }}</span>
+                            </div>
+                            <div class="fw-bold" style="line-height:1.3;">{{ s.TITULO }}</div>
+                            {% if s.NO_SISTEMA or s.etiquetas_lista %}
+                            <div class="mt-1 d-flex flex-wrap gap-1">
+                                {% if s.NO_SISTEMA %}<span class="sol-chip"><i class="fas fa-cube"></i>{{ s.NO_SISTEMA }}</span>{% endif %}
+                                {% for e in s.etiquetas_lista[:3] %}<span class="sol-chip">#{{ e }}</span>{% endfor %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td><span class="sol-badge" style="background:{{ s.tipo_cor }}1f;color:{{ s.tipo_cor }};"><i class="fas {{ s.tipo_icone }}"></i>{{ s.tipo_rotulo }}</span></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="sol-avatar" data-avatar="{{ s.NO_SOLICITANTE }}">{{ (s.NO_SOLICITANTE or '?')[:1] }}</span>
+                                <div>
+                                    <div style="font-weight:600;font-size:.83rem;">{{ s.NO_SOLICITANTE }}</div>
+                                    <div style="font-size:.72rem;color:var(--sol-suave);">{{ s.area_completa }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if s.executores %}
+                            <div class="sol-avatares d-flex">
+                                {% for e in s.executores[:4] %}
+                                <span class="sol-avatar" data-avatar="{{ e.NO_USUARIO }}" title="{{ e.NO_USUARIO }}{% if e.DS_FUNCAO %} — {{ e.DS_FUNCAO }}{% endif %}">{{ s.iniciais[loop.index0] }}</span>
+                                {% endfor %}
+                                {% if s.executores|length > 4 %}<span class="sol-avatar" style="background:#858796;">+{{ s.executores|length - 4 }}</span>{% endif %}
+                            </div>
+                            {% else %}<span style="font-size:.75rem;color:var(--sol-suave);">—</span>{% endif %}
+                        </td>
+                        <td><span class="sol-badge" style="background:{{ s.status_cor }}22;color:{{ s.status_cor }};"><i class="fas {{ s.status_icone }}"></i>{{ s.status_rotulo }}</span></td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="sol-barra flex-grow-1"><div style="width:{{ s.PC_CONCLUSAO or 0 }}%;"></div></div>
+                                <span style="font-size:.75rem;font-weight:700;">{{ s.PC_CONCLUSAO or 0 }}%</span>
+                            </div>
+                            {% if s.QT_ITENS %}<div style="font-size:.7rem;color:var(--sol-suave);margin-top:2px;"><i class="far fa-check-square"></i> {{ s.QT_ITENS_OK }}/{{ s.QT_ITENS }} itens</div>{% endif %}
+                        </td>
+                        <td>
+                            {% if s.prazo_ref %}<div style="font-size:.8rem;font-weight:600;">{{ s.prazo_ref.strftime('%d/%m/%Y') }}</div>{% endif %}
+                            <div style="font-size:.72rem;font-weight:700;color:{{ s.situacao_prazo_cor }};">{{ s.situacao_prazo }}</div>
+                        </td>
+                        <td class="text-center">
+                            {% if s.QT_COMENTARIOS %}<span class="sol-chip"><i class="far fa-comment"></i>{{ s.QT_COMENTARIOS }}</span>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="sol-vazio">
+            <i class="fas fa-inbox"></i>
+            <div class="fw-bold">Nenhuma solicitação encontrada</div>
+            <div style="font-size:.85rem;">Ajuste os filtros{% if gestor %} ou registre uma nova solicitação{% endif %}.</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {# ---------------- QUADRO (KANBAN) ---------------- #}
+    {% else %}
+    {% if gestor %}
+    <div class="mb-2" style="font-size:.8rem;color:var(--sol-suave);"><i class="fas fa-hand-pointer me-1"></i>Arraste um cartão para outra coluna para mudar o status. Entrega e conclusão são feitas na tela da solicitação.</div>
+    {% endif %}
+    <div class="sol-kanban">
+        {% for col in colunas %}
+        <div class="sol-coluna">
+            <div class="sol-coluna-cab" style="border-bottom-color:{{ col.cor }};">
+                <span class="nome"><i class="fas {{ col.icone }} me-1" style="color:{{ col.cor }};"></i>{{ col.rotulo }}</span>
+                <span class="qt">{{ col.itens|length }}</span>
+            </div>
+            <div class="sol-coluna-corpo" data-coluna="{{ col.chave }}" data-rotulo="{{ col.rotulo }}">
+                {% for s in col.itens %}
+                <div class="sol-kcard" style="border-left-color:{{ s.prioridade_cor }};" {% if gestor and not s.finalizada %}draggable="true"{% endif %}
+                     data-id="{{ s.ID_SOLICITACAO }}" data-status="{{ s.STATUS }}"
+                     data-url="{{ url_for('solicitacoes.detalhe', id_solicitacao=s.ID_SOLICITACAO) }}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="sol-proto">{{ s.NU_PROTOCOLO }}</span>
+                        <span class="sol-badge" style="background:{{ s.tipo_cor }}1f;color:{{ s.tipo_cor }};padding:.1rem .45rem;"><i class="fas {{ s.tipo_icone }}"></i>{{ s.tipo_rotulo }}</span>
+                    </div>
+                    <div class="tit">{{ s.TITULO }}</div>
+                    {% if col.chave == 'FINALIZADAS' %}
+                    <span class="sol-badge mb-2" style="background:{{ s.status_cor }}22;color:{{ s.status_cor }};"><i class="fas {{ s.status_icone }}"></i>{{ s.status_rotulo }}</span>
+                    {% endif %}
+                    <div style="font-size:.74rem;color:var(--sol-suave);"><i class="fas fa-user-tag me-1"></i>{{ s.NO_SOLICITANTE }} · <b>{{ s.area }}</b></div>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <div class="sol-barra flex-grow-1"><div style="width:{{ s.PC_CONCLUSAO or 0 }}%;"></div></div>
+                        <span style="font-size:.7rem;font-weight:700;">{{ s.PC_CONCLUSAO or 0 }}%</span>
+                    </div>
+                    <div class="rod">
+                        <div class="sol-avatares d-flex">
+                            {% for e in s.executores[:3] %}
+                            <span class="sol-avatar" style="width:24px;height:24px;font-size:.6rem;" data-avatar="{{ e.NO_USUARIO }}" title="{{ e.NO_USUARIO }}">{{ s.iniciais[loop.index0] }}</span>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex gap-2 align-items-center">
+                            {% if s.QT_COMENTARIOS %}<span><i class="far fa-comment"></i> {{ s.QT_COMENTARIOS }}</span>{% endif %}
+                            {% if s.QT_ITENS %}<span><i class="far fa-check-square"></i> {{ s.QT_ITENS_OK }}/{{ s.QT_ITENS }}</span>{% endif %}
+                            {% if s.prazo_ref and not s.finalizada %}
+                            <span style="color:{{ s.situacao_prazo_cor }};font-weight:700;" title="{{ s.situacao_prazo }}"><i class="far fa-clock"></i> {{ s.prazo_ref.strftime('%d/%m') }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center" style="font-size:.75rem;color:var(--sol-suave);padding:1rem 0;">Vazio</div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ---------------- Modal: mover no quadro ---------------- #}
+    <div class="modal fade" id="modalMover" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-exchange-alt me-2" style="color:var(--sol-azul);"></i>Mudar status</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">Mover para <b id="moverDestino"></b>.</p>
+                    <label class="form-label">Observação <span id="moverObrig" style="color:#e74a3b;display:none;">(obrigatória)</span></label>
+                    <textarea id="moverTexto" class="form-control" rows="3" placeholder="Opcional: vai para a linha do tempo da solicitação"></textarea>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="moverInterna">
+                        <label class="form-check-label" for="moverInterna" style="font-size:.83rem;">Registro interno (o solicitante não vê)</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="sol-btn sol-btn-sec" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnConfirmarMover"><i class="fas fa-check"></i> Confirmar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ---------------- Modal: verificar termo ---------------- #}
+    <div class="modal fade" id="modalVerificar" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-shield-alt me-2" style="color:var(--sol-azul);"></i>Verificar autenticidade do termo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p style="font-size:.85rem;color:var(--sol-suave);">Informe o código de verificação impresso no rodapé do termo (ex.: 81F5-D224-BF67-FEF9).</p>
+                    <div class="input-group">
+                        <input type="text" id="codigoVerificacao" class="form-control" style="font-family:monospace;text-transform:uppercase;" maxlength="19" placeholder="XXXX-XXXX-XXXX-XXXX">
+                        <button type="button" class="sol-btn sol-btn-pri js-ignore-loading" id="btnVerificar" style="border-radius:0 10px 10px 0;"><i class="fas fa-search"></i></button>
+                    </div>
+                    <div id="resultadoVerificacao" class="mt-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="application/json" id="solStatusManuais">{{ cat.status_manuais|list|tojson }}</script>
+<script type="application/json" id="solObrigaTexto">{{ cat.status_com_justificativa|list|tojson }}</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const manuais = JSON.parse(document.getElementById('solStatusManuais').textContent);
+    const obrigaTexto = JSON.parse(document.getElementById('solObrigaTexto').textContent);
+    const urlStatus = '{{ url_for("solicitacoes.mudar_status", id_solicitacao=0) }}';
+
+    // Clique no cartão abre a solicitação
+    document.querySelectorAll('.sol-kcard').forEach(function (card) {
+        card.addEventListener('click', function () { window.location = card.dataset.url; });
+        card.addEventListener('dragstart', function (e) {
+            card.classList.add('arrastando');
+            e.dataTransfer.setData('text/plain', card.dataset.id);
+            window._solArrastando = card;
+        });
+        card.addEventListener('dragend', function () { card.classList.remove('arrastando'); });
+    });
+
+    let pendente = null;
+    const modalMover = document.getElementById('modalMover') ? new bootstrap.Modal(document.getElementById('modalMover')) : null;
+    document.querySelectorAll('.sol-coluna-corpo').forEach(function (col) {
+        col.addEventListener('dragover', function (e) { if (window._solArrastando) { e.preventDefault(); col.classList.add('sol-sobre'); } });
+        col.addEventListener('dragleave', function () { col.classList.remove('sol-sobre'); });
+        col.addEventListener('drop', function (e) {
+            e.preventDefault();
+            col.classList.remove('sol-sobre');
+            const card = window._solArrastando;
+            window._solArrastando = null;
+            if (!card) return;
+            const destino = col.dataset.coluna;
+            if (destino === card.dataset.status) return;
+            if (manuais.indexOf(destino) < 0) {
+                Sol.toast('Para enviar à homologação ou concluir, abra a solicitação.', 'aviso');
+                return;
+            }
+            pendente = { id: card.dataset.id, status: destino };
+            document.getElementById('moverDestino').textContent = col.dataset.rotulo;
+            document.getElementById('moverTexto').value = '';
+            document.getElementById('moverInterna').checked = false;
+            document.getElementById('moverObrig').style.display = obrigaTexto.indexOf(destino) >= 0 ? 'inline' : 'none';
+            modalMover.show();
+        });
+    });
+
+    const btnMover = document.getElementById('btnConfirmarMover');
+    if (btnMover) {
+        btnMover.addEventListener('click', async function (ev) {
+            ev.stopImmediatePropagation();
+            if (!pendente) return;
+            Sol.carregando(btnMover, true);
+            const r = await Sol.post(urlStatus.replace('/0/', '/' + pendente.id + '/'), {
+                status: pendente.status,
+                texto: document.getElementById('moverTexto').value,
+                interna: document.getElementById('moverInterna').checked
+            });
+            Sol.carregando(btnMover, false);
+            if (r.sucesso) { Sol.toast('Status atualizado.', 'sucesso'); setTimeout(function () { location.reload(); }, 600); }
+            else { Sol.toast(r.mensagem || 'Erro ao mudar status.', 'erro'); }
+        });
+    }
+
+    // Verificação de termo
+    const btnVerificar = document.getElementById('btnVerificar');
+    async function verificar(ev) {
+        if (ev) ev.stopImmediatePropagation();
+        const codigo = document.getElementById('codigoVerificacao').value.trim();
+        const alvo = document.getElementById('resultadoVerificacao');
+        if (!codigo) return;
+        const resp = await fetch('{{ url_for("solicitacoes.verificar_termo") }}?codigo=' + encodeURIComponent(codigo),
+                                 { headers: { 'X-Silent-Request': 'true' } });
+        const r = await resp.json();
+        if (r.encontrado) {
+            const d = r.resultado;
+            alvo.innerHTML = '<div style="border:1px solid #1cc88a;background:#ecfdf5;border-radius:12px;padding:.8rem 1rem;color:#065f46;">' +
+                '<div class="fw-bold"><i class="fas fa-check-circle me-1"></i>Termo autêntico</div>' +
+                '<div style="font-size:.85rem;">' + Sol.esc(d.protocolo) + ' — ' + Sol.esc(d.titulo) + '<br>Versão ' + d.versao +
+                ' gerada em ' + Sol.esc(d.gerado_em) + ' por ' + Sol.esc(d.gerado_por) + '<br>Situação atual: <b>' + Sol.esc(d.status) + '</b>' +
+                (d.vigente ? '' : '<br><span style="color:#b45309;font-weight:700;"><i class="fas fa-exclamation-triangle"></i> Existe versão mais nova deste termo.</span>') +
+                '</div><a class="sol-btn sol-btn-sec sol-btn-sm mt-2" href="' + d.url + '">Abrir solicitação</a></div>';
+        } else {
+            alvo.innerHTML = '<div style="border:1px solid #e74a3b;background:#fef2f2;border-radius:12px;padding:.8rem 1rem;color:#991b1b;">' +
+                '<i class="fas fa-times-circle me-1"></i>Código não encontrado. O documento pode ter sido alterado.</div>';
+        }
+    }
+    if (btnVerificar) {
+        btnVerificar.addEventListener('click', verificar);
+        document.getElementById('codigoVerificacao').addEventListener('keydown', function (e) { if (e.key === 'Enter') verificar(e); });
+    }
+});
+</script>
+{% endblock %}

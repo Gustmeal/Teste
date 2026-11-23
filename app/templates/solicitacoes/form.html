@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Editar ' ~ sol.NU_PROTOCOLO if sol else 'Nova solicitação' }} - Solicitações à Área{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet">
+
+{# ---------- valores iniciais: 1º o que voltou do POST com erro, 2º o que está gravado ---------- #}
+{% macro v(campo_form, campo_sol, padrao='') -%}
+    {%- if form is not none and form.get(campo_form) is not none -%}{{ form.get(campo_form) }}
+    {%- elif sol and sol[campo_sol] is not none -%}
+        {%- if sol[campo_sol].strftime is defined -%}{{ sol[campo_sol].strftime('%Y-%m-%d') }}{%- else -%}{{ sol[campo_sol] }}{%- endif -%}
+    {%- else -%}{{ padrao }}{%- endif -%}
+{%- endmacro %}
+
+<style>
+    .sol-secao-num { width: 30px; height: 30px; border-radius: 9px; background: var(--sol-azul-cla); color: var(--sol-azul);
+        display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: .85rem; margin-right: .55rem; }
+    .sol-area-card { border: 1px dashed var(--sol-borda); border-radius: 12px; padding: .9rem 1rem; background: var(--sol-fundo-2); min-height: 92px; }
+    .sol-area-item .rot { font-size: .68rem; font-weight: 700; text-transform: uppercase; color: var(--sol-suave); letter-spacing: .4px; }
+    .sol-area-item .val { font-size: 1.05rem; font-weight: 800; color: var(--sol-azul); }
+    .sol-exec-linha { display: flex; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+    .sol-exec-linha .select2-container { flex: 1 1 55%; }
+    .sol-drop { border: 2px dashed var(--sol-borda); border-radius: 14px; padding: 1.4rem; text-align: center; cursor: pointer;
+        color: var(--sol-suave); transition: all .15s; background: var(--sol-fundo-2); }
+    .sol-drop.sobre { border-color: var(--sol-azul); background: var(--sol-azul-cla); color: var(--sol-azul); }
+    .sol-barra-salvar { position: sticky; bottom: 0; z-index: 20; background: var(--sol-fundo); border-top: 1px solid var(--sol-borda);
+        padding: .8rem 1.2rem; border-radius: 14px; box-shadow: 0 -6px 18px rgba(0,0,0,.06); }
+    .select2-container--bootstrap-5 .select2-selection { border-radius: 10px; min-height: 38px; font-size: .88rem; }
+    .sol-hist-item { font-size: .78rem; padding: .3rem 0; border-bottom: 1px dashed var(--sol-borda); }
+</style>
+
+<div class="sol-app">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('solicitacoes.detalhe', id_solicitacao=sol.ID_SOLICITACAO) if sol else url_for('solicitacoes.index') }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Voltar
+        </a>
+    </div>
+
+    <div class="mb-4">
+        <h1 class="sol-titulo-pag">
+            {% if sol %}Editar solicitação <span class="sol-proto" style="font-size:1rem;vertical-align:middle;-webkit-text-fill-color:#4e73df;">{{ sol.NU_PROTOCOLO }}</span>
+            {% else %}Nova solicitação{% endif %}
+        </h1>
+        <div class="sol-sub">Registre exatamente o que foi pedido, por quem e quando — esse registro protege a área e a pessoa que pediu.</div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" id="formSolicitacao" novalidate>
+        <div class="row g-4">
+            <div class="col-xl-8">
+
+                {# ================= 1. SOLICITANTE ================= #}
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><span class="sol-secao-num">1</span>Quem pediu</h5></div>
+                    <div class="sol-card-corpo">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Usuário solicitante *</label>
+                                <select name="solicitante_id" id="solicitante" class="form-select" required>
+                                    <option value="">Pesquise pelo nome ou e-mail...</option>
+                                    {% set sel_solic = (form.get('solicitante_id') if form is not none else (sol.ID_USUARIO_SOLICITANTE|string if sol else '')) %}
+                                    {% for u in usuarios %}
+                                    <option value="{{ u.ID }}" data-email="{{ u.EMAIL }}" data-area="{{ u.SG_SUPERINTENDENCIA or u.SG_SETOR or '' }}"
+                                            {% if sel_solic == u.ID|string %}selected{% endif %}>{{ u.NOME }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">A área é puxada automaticamente do cadastro de empregados.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Área do solicitante</label>
+                                <div class="sol-area-card" id="areaCard">
+                                    <div class="text-center" style="color:var(--sol-suave);font-size:.82rem;padding-top:.8rem;" id="areaVazia">
+                                        <i class="fas fa-sitemap me-1"></i> Selecione o solicitante
+                                    </div>
+                                    <div id="areaDados" style="display:none;">
+                                        <div class="row g-2 text-center">
+                                            <div class="col-4 sol-area-item"><div class="rot">Diretoria</div><div class="val" id="areaDir">—</div></div>
+                                            <div class="col-4 sol-area-item"><div class="rot">Superintendência</div><div class="val" id="areaSup">—</div></div>
+                                            <div class="col-4 sol-area-item"><div class="rot">Setor</div><div class="val" id="areaSet">—</div></div>
+                                        </div>
+                                        <div class="text-center mt-1" style="font-size:.75rem;color:var(--sol-suave);" id="areaCargo"></div>
+                                        <div class="text-center mt-1" style="font-size:.75rem;color:#b45309;display:none;" id="areaSem">
+                                            <i class="fas fa-exclamation-triangle"></i> Usuário sem vínculo no cadastro de empregados.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12" id="histSolicitante" style="display:none;">
+                                <div style="font-size:.75rem;font-weight:700;color:var(--sol-suave);text-transform:uppercase;" class="mb-1">
+                                    <i class="fas fa-history me-1"></i>Últimas solicitações desta pessoa
+                                </div>
+                                <div id="histLista"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# ================= 2. O QUE FOI PEDIDO ================= #}
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><span class="sol-secao-num">2</span>O que foi pedido</h5></div>
+                    <div class="sol-card-corpo">
+                        <label class="form-label">Tipo de entrega *</label>
+                        {% set tipo_sel = v('tipo_entrega', 'TIPO_ENTREGA')|trim %}
+                        <div class="row g-3 mb-3">
+                            {% for k, t in cat.tipos_entrega.items() %}
+                            <div class="col-md-6">
+                                <label class="sol-opcao {% if tipo_sel == k %}ativa{% endif %}" data-grupo="tipo">
+                                    <input type="radio" name="tipo_entrega" value="{{ k }}" class="d-none" {% if tipo_sel == k %}checked{% endif %}>
+                                    <span class="ico" style="background:{{ t.cor }};"><i class="fas {{ t.icone }}"></i></span>
+                                    <span>
+                                        <span class="d-block fw-bold" style="font-size:1rem;">{{ t.rotulo }}</span>
+                                        <span class="d-block" style="font-size:.8rem;color:var(--sol-suave);">{{ t.descricao }}</span>
+                                    </span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <label class="form-label">Título *</label>
+                                <input type="text" name="titulo" class="form-control" maxlength="200" required value="{{ v('titulo', 'TITULO') }}"
+                                       placeholder="Ex.: Painel de inadimplência por carteira">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Categoria</label>
+                                {% set cat_sel = v('categoria', 'CATEGORIA')|trim %}
+                                <select name="categoria" class="form-select">
+                                    <option value="">Selecione...</option>
+                                    {% for k, r in cat.categorias.items() %}
+                                    <option value="{{ k }}" {% if cat_sel == k %}selected{% endif %}>{{ r }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Descrição detalhada do pedido</label>
+                                <textarea name="descricao" class="form-control" rows="6" placeholder="Descreva o que foi pedido, com as palavras do solicitante sempre que possível: objetivo, regras, dados envolvidos, quem vai usar...">{{ v('descricao', 'DESCRICAO') }}</textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Nome do aplicativo / painel</label>
+                                <input type="text" name="no_sistema" class="form-control" maxlength="150" value="{{ v('no_sistema', 'NO_SISTEMA') }}"
+                                       placeholder="Ex.: SUMOV — Penalidades ANS">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Etiquetas</label>
+                                <input type="text" name="etiquetas" class="form-control" maxlength="300" value="{{ v('etiquetas', 'ETIQUETAS') }}"
+                                       placeholder="Separe por vírgula: bi, relatório, sumov">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {# ================= 3. EQUIPE ================= #}
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab">
+                        <h5><span class="sol-secao-num">3</span>Quem vai fazer / fez</h5>
+                        <button type="button" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading" id="btnAddExecutor"><i class="fas fa-user-plus"></i> Adicionar executor</button>
+                    </div>
+                    <div class="sol-card-corpo">
+                        <div class="form-text mb-2" style="margin-top:0;">Um ou mais usuários. A função é opcional (ex.: desenvolvimento, testes, banco de dados, BI).</div>
+                        <div id="listaExecutores"></div>
+                        <div class="mt-3">
+                            <label class="form-label">Observadores <span style="font-weight:400;">(acompanham o andamento e comentam, sem alterar nada)</span></label>
+                            {% if form is not none %}{% set obs_sel = form.getlist('observador_id') %}
+                            {% else %}{% set obs_sel = envolvidos|selectattr('PAPEL', 'equalto', 'OBSERVADOR')|map(attribute='ID_USUARIO')|map('string')|list %}{% endif %}
+                            <select name="observador_id" id="observadores" class="form-select" multiple>
+                                {% for u in usuarios %}
+                                <option value="{{ u.ID }}" {% if u.ID|string in obs_sel %}selected{% endif %}>{{ u.NOME }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                {% if not sol %}
+                {# ================= 4. ESCOPO + EVIDÊNCIAS (só na criação) ================= #}
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><span class="sol-secao-num">4</span>Escopo e evidências</h5></div>
+                    <div class="sol-card-corpo">
+                        <label class="form-label">Itens do escopo <span style="font-weight:400;">(um por linha — viram um checklist)</span></label>
+                        <textarea name="escopo" class="form-control mb-3" rows="5" placeholder="Tela de cadastro&#10;Importação da planilha&#10;Relatório em PDF">{{ form.get('escopo') if form is not none else '' }}</textarea>
+
+                        <label class="form-label">Evidências do pedido <span style="font-weight:400;">(e-mail, print do Teams, memorando...)</span></label>
+                        <div class="sol-drop" id="dropEvidencias">
+                            <i class="fas fa-cloud-upload-alt fa-2x mb-2 d-block"></i>
+                            <div class="fw-bold">Arraste os arquivos aqui ou clique para escolher</div>
+                            <div style="font-size:.75rem;">PDF, imagens, .msg, .eml, Office... até 15 MB cada</div>
+                        </div>
+                        <input type="file" name="evidencias" id="inputEvidencias" multiple class="d-none">
+                        <div id="listaEvidencias" class="mt-2"></div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" name="evidencia_interna" value="1" id="evidInterna">
+                            <label class="form-check-label" for="evidInterna" style="font-size:.83rem;">Evidências restritas à equipe (o solicitante não vê)</label>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            {# ================= COLUNA DIREITA ================= #}
+            <div class="col-xl-4">
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><i class="fas fa-tags me-2" style="color:var(--sol-azul);"></i>Classificação</h5></div>
+                    <div class="sol-card-corpo">
+                        <label class="form-label">Prioridade</label>
+                        {% set pri_sel = v('prioridade', 'PRIORIDADE', 'MEDIA')|trim %}
+                        <div class="sol-pilulas mb-3">
+                            {% for k, p in cat.prioridades.items() %}
+                            <label class="sol-pilula {% if pri_sel == k %}ativa{% endif %}" data-cor="{{ p.cor }}" data-grupo="prioridade"
+                                   {% if pri_sel == k %}style="background:{{ p.cor }};border-color:{{ p.cor }};"{% endif %}>
+                                <input type="radio" name="prioridade" value="{{ k }}" {% if pri_sel == k %}checked{% endif %}>{{ p.rotulo }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Impacto</label>
+                                {% set imp_sel = v('impacto', 'IMPACTO')|trim %}
+                                <select name="impacto" class="form-select">
+                                    <option value="">—</option>
+                                    {% for k, r in cat.impactos.items() %}<option value="{{ k }}" {% if imp_sel == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Complexidade</label>
+                                {% set cpx_sel = v('complexidade', 'COMPLEXIDADE')|trim %}
+                                <select name="complexidade" class="form-select">
+                                    <option value="">—</option>
+                                    {% for k, r in cat.complexidades.items() %}<option value="{{ k }}" {% if cpx_sel == k %}selected{% endif %}>{{ r }}</option>{% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><i class="fas fa-route me-2" style="color:var(--sol-azul);"></i>Origem</h5></div>
+                    <div class="sol-card-corpo">
+                        <label class="form-label">Como o pedido chegou</label>
+                        {% set canal_sel = v('canal_origem', 'CANAL_ORIGEM')|trim %}
+                        <div class="sol-pilulas mb-3">
+                            {% for k, c in cat.canais.items() %}
+                            <label class="sol-pilula {% if canal_sel == k %}ativa{% endif %}" data-cor="#4e73df" data-grupo="canal"
+                                   {% if canal_sel == k %}style="background:#4e73df;border-color:#4e73df;"{% endif %}>
+                                <input type="radio" name="canal_origem" value="{{ k }}" {% if canal_sel == k %}checked{% endif %}><i class="fas {{ c.icone }} me-1"></i>{{ c.rotulo }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Data do pedido *</label>
+                                <input type="date" name="dt_solicitacao" class="form-control" required value="{{ v('dt_solicitacao', 'DT_SOLICITACAO', hoje) }}" max="{{ hoje }}">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Nº SEI / referência</label>
+                                <input type="text" name="nu_referencia" class="form-control" maxlength="60" value="{{ v('nu_referencia', 'NU_REFERENCIA') }}" placeholder="Opcional">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sol-card mb-4">
+                    <div class="sol-card-cab"><h5><i class="far fa-calendar-alt me-2" style="color:var(--sol-azul);"></i>Prazos e esforço</h5></div>
+                    <div class="sol-card-corpo">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <label class="form-label">Prazo desejado</label>
+                                <input type="date" name="dt_prazo_desejado" class="form-control" value="{{ v('dt_prazo_desejado', 'DT_PRAZO_DESEJADO') }}">
+                                <div class="form-text">O que o solicitante pediu</div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Prazo acordado</label>
+                                <input type="date" name="dt_prazo_acordado" class="form-control" value="{{ v('dt_prazo_acordado', 'DT_PRAZO_ACORDADO') }}">
+                                <div class="form-text">O que a área se comprometeu</div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">Horas estimadas</label>
+                                <input type="text" inputmode="decimal" name="horas_estimadas" class="form-control" value="{{ v('horas_estimadas', 'HORAS_ESTIMADAS')|replace('.', ',') }}" placeholder="Ex.: 40">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sol-card mb-4" style="background:var(--sol-azul-cla);border-color:transparent;">
+                    <div class="sol-card-corpo" style="font-size:.8rem;">
+                        <div class="fw-bold mb-1" style="color:var(--sol-azul);"><i class="fas fa-shield-alt me-1"></i>Como isso protege a área</div>
+                        <ul class="mb-0 ps-3" style="color:var(--sol-texto);">
+                            <li>Protocolo único e data de cada pedido;</li>
+                            <li>O solicitante confirma no portal que o registro corresponde ao pedido;</li>
+                            <li>Toda alteração fica no histórico, com quem fez e quando;</li>
+                            <li>A entrega termina com termo de homologação assinado.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sol-barra-salvar d-flex justify-content-between align-items-center mt-2">
+            <div style="font-size:.8rem;color:var(--sol-suave);">* campos obrigatórios</div>
+            <div class="d-flex gap-2">
+                <a href="{{ url_for('solicitacoes.detalhe', id_solicitacao=sol.ID_SOLICITACAO) if sol else url_for('solicitacoes.index') }}" class="sol-btn sol-btn-sec">Cancelar</a>
+                <button type="submit" class="sol-btn sol-btn-pri js-ignore-loading" id="btnSalvar"><i class="fas fa-save"></i> {{ 'Salvar alterações' if sol else 'Registrar solicitação' }}</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{# Dados vindos do back end para o JS #}
+<script type="application/json" id="dadosUsuarios">{{ usuarios|map(attribute='ID')|list|tojson }}</script>
+{% if form is not none %}
+    {% set exec_ini = [] %}
+    {% set funcs = form.getlist('executor_funcao') %}
+    {% for uid in form.getlist('executor_id') %}{% set _ = exec_ini.append({'id': uid, 'funcao': funcs[loop.index0] if loop.index0 < funcs|length else ''}) %}{% endfor %}
+{% else %}
+    {% set exec_ini = [] %}
+    {% for e in envolvidos if e.PAPEL == 'EXECUTOR' %}{% set _ = exec_ini.append({'id': e.ID_USUARIO|string, 'funcao': e.DS_FUNCAO or ''}) %}{% endfor %}
+{% endif %}
+<script type="application/json" id="dadosExecutores">{{ exec_ini|tojson }}</script>
+
+<template id="tplExecutor">
+    <div class="sol-exec-linha">
+        <select name="executor_id" class="form-select sol-sel-exec">
+            <option value="">Selecione o usuário...</option>
+            {% for u in usuarios %}<option value="{{ u.ID }}">{{ u.NOME }}</option>{% endfor %}
+        </select>
+        <input type="text" name="executor_funcao" class="form-control" maxlength="60" placeholder="Função (opcional)" style="flex:0 1 40%;">
+        <button type="button" class="sol-btn sol-btn-perigo sol-btn-sm js-ignore-loading sol-rem-exec" title="Remover"><i class="fas fa-times"></i></button>
+    </div>
+</template>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/pt-BR.js"></script>
+<script>
+$(function () {
+    const urlArea = '{{ url_for("solicitacoes.api_area_usuario", usuario_id=0) }}';
+    const urlDetalhe = '{{ url_for("solicitacoes.detalhe", id_solicitacao=0) }}';
+    const opcoesSelect2 = { theme: 'bootstrap-5', language: 'pt-BR', width: '100%' };
+
+    // ---------- Solicitante + área automática ----------
+    function formatarUsuario(op) {
+        if (!op.id) return op.text;
+        const area = $(op.element).data('area');
+        const email = $(op.element).data('email');
+        return $('<div><div style="font-weight:600;">' + Sol.esc(op.text) + (area ? ' <span class="sol-chip ms-1">' + Sol.esc(area) + '</span>' : '') +
+                 '</div><div style="font-size:.72rem;opacity:.7;">' + Sol.esc(email || '') + '</div></div>');
+    }
+    $('#solicitante').select2($.extend({}, opcoesSelect2, {
+        templateResult: formatarUsuario,
+        matcher: function (params, data) {
+            if (!params.term || !data.id) return data;
+            const termo = params.term.toLowerCase();
+            const alvo = (data.text + ' ' + ($(data.element).data('email') || '') + ' ' + ($(data.element).data('area') || '')).toLowerCase();
+            return alvo.indexOf(termo) >= 0 ? data : null;
+        }
+    }));
+
+    async function carregarArea() {
+        const id = $('#solicitante').val();
+        if (!id) { $('#areaDados').hide(); $('#areaVazia').show(); $('#histSolicitante').hide(); return; }
+        $('#areaVazia').html('<span class="spinner-border spinner-border-sm"></span> Buscando área...');
+        const resp = await fetch(urlArea.replace('/0/', '/' + id + '/'), { headers: { 'X-Silent-Request': 'true' } });
+        const r = await resp.json();
+        if (!r.sucesso) { $('#areaVazia').text(r.mensagem || 'Não foi possível buscar a área.'); return; }
+        const u = r.usuario;
+        $('#areaDir').text(u.diretoria || '—');
+        $('#areaSup').text(u.superintendencia || '—');
+        $('#areaSet').text(u.setor || '—');
+        $('#areaCargo').text(u.cargo ? u.cargo + ' · ' + u.email : u.email);
+        $('#areaSem').toggle(!u.tem_area);
+        $('#areaVazia').hide(); $('#areaDados').fadeIn(150);
+
+        const hist = r.historico || [];
+        if (hist.length) {
+            $('#histLista').html(hist.map(function (h) {
+                return '<div class="sol-hist-item"><a href="' + urlDetalhe.replace('/0', '/' + h.ID_SOLICITACAO) +
+                       '" target="_blank" class="sol-proto me-2" style="text-decoration:none;">' + Sol.esc(h.NU_PROTOCOLO) + '</a>' + Sol.esc(h.TITULO) + '</div>';
+            }).join(''));
+            $('#histSolicitante').show();
+        } else { $('#histSolicitante').hide(); }
+    }
+    $('#solicitante').on('change', carregarArea);
+    if ($('#solicitante').val()) carregarArea();
+
+    // ---------- Cartões e pílulas de opção ----------
+    $(document).on('click', '.sol-opcao', function () {
+        const grupo = $(this).data('grupo');
+        $('.sol-opcao[data-grupo="' + grupo + '"]').removeClass('ativa');
+        $(this).addClass('ativa').find('input').prop('checked', true);
+    });
+    $(document).on('click', '.sol-pilula', function (e) {
+        e.preventDefault();
+        const grupo = $(this).data('grupo');
+        const jaAtiva = $(this).hasClass('ativa');
+        $('.sol-pilula[data-grupo="' + grupo + '"]').removeClass('ativa').css({ background: '', borderColor: '' }).find('input').prop('checked', false);
+        if (!jaAtiva || grupo === 'prioridade') {
+            $(this).addClass('ativa').css({ background: $(this).data('cor'), borderColor: $(this).data('cor') }).find('input').prop('checked', true);
+        }
+    });
+
+    // ---------- Executores (linhas dinâmicas) ----------
+    function addExecutor(id, funcao) {
+        const frag = document.getElementById('tplExecutor').content.cloneNode(true);
+        const linha = $(frag).children().first();
+        $('#listaExecutores').append(linha);
+        const sel = linha.find('select');
+        if (id) sel.val(String(id));
+        linha.find('input').val(funcao || '');
+        sel.select2(opcoesSelect2);
+    }
+    $('#btnAddExecutor').on('click', function (e) { e.stopImmediatePropagation(); addExecutor(); });
+    $(document).on('click', '.sol-rem-exec', function (e) { e.stopImmediatePropagation(); $(this).closest('.sol-exec-linha').remove(); });
+    const iniciais = JSON.parse(document.getElementById('dadosExecutores').textContent);
+    if (iniciais.length) { iniciais.forEach(function (x) { addExecutor(x.id, x.funcao); }); } else { addExecutor(); }
+
+    $('#observadores').select2($.extend({}, opcoesSelect2, { placeholder: 'Opcional' }));
+
+    // ---------- Evidências (arrastar e soltar) ----------
+    const drop = document.getElementById('dropEvidencias');
+    const input = document.getElementById('inputEvidencias');
+    if (drop && input) {
+        const dt = new DataTransfer();
+        function render() {
+            $('#listaEvidencias').html(Array.from(dt.files).map(function (f, i) {
+                return '<div class="d-flex justify-content-between align-items-center sol-hist-item"><span><i class="fas fa-paperclip me-2" style="color:var(--sol-azul);"></i>' +
+                       Sol.esc(f.name) + ' <span style="color:var(--sol-suave);">(' + Math.max(1, Math.round(f.size / 1024)) + ' KB)</span></span>' +
+                       '<button type="button" class="sol-btn sol-btn-perigo sol-btn-sm js-ignore-loading" data-rem="' + i + '"><i class="fas fa-times"></i></button></div>';
+            }).join(''));
+            input.files = dt.files;
+        }
+        function adicionar(lista) { Array.from(lista).forEach(function (f) { dt.items.add(f); }); render(); }
+        drop.addEventListener('click', function () { input.click(); });
+        input.addEventListener('change', function () { const novos = Array.from(input.files); input.value = ''; adicionar(novos); });
+        ['dragenter', 'dragover'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('sobre'); }); });
+        ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('sobre'); }); });
+        drop.addEventListener('drop', function (e) { adicionar(e.dataTransfer.files); });
+        $(document).on('click', '[data-rem]', function (e) {
+            e.stopImmediatePropagation();
+            dt.items.remove(parseInt($(this).data('rem'), 10)); render();
+        });
+    }
+
+    // ---------- Validação rápida antes de enviar ----------
+    $('#formSolicitacao').on('submit', function (e) {
+        const faltando = [];
+        if (!$('#solicitante').val()) faltando.push('solicitante');
+        if (!$('input[name="tipo_entrega"]:checked').val()) faltando.push('tipo de entrega (Aplicativo ou Painel)');
+        if (!$('input[name="titulo"]').val().trim()) faltando.push('título');
+        if (!$('input[name="dt_solicitacao"]').val()) faltando.push('data do pedido');
+        if (faltando.length) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            Sol.toast('Preencha: ' + faltando.join(', ') + '.', 'aviso');
+            return false;
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -220,6 +220,10 @@ def create_app():
     from app.routes.auditoria_v2_routes import auditoria_v2_bp
     app.register_blueprint(auditoria_v2_bp)
 
+    # Solicitações à Área (registro do que pedem à área, andamento e homologação)
+    from app.routes.solicitacoes_routes import solicitacoes_bp
+    app.register_blueprint(solicitacoes_bp)
+
     # Definir rota raiz para redirecionar para o portal GEINC
     @app.route('/')
     def index():

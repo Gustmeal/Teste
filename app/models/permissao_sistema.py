@@ -168,6 +168,12 @@ class PermissaoSistema(db.Model):
             'descricao': 'VPL da execução extrajudicial de contratos PF',
             'categoria': 'Gestão Financeira'
         },
+        'solicitacoes_area': {
+            'nome': 'Solicitações à Área',
+            'icone': 'fa-clipboard-check',
+            'descricao': 'Registro do que é pedido à área, andamento, entrega e homologação',
+            'categoria': 'Ferramentas'
+        },
 
     }
 
