@@ -35,6 +35,21 @@
             <i class="fas fa-arrow-left"></i> Voltar
         </a>
         <div class="d-flex gap-2 flex-wrap">
+            {% if gestor %}
+            <div class="dropdown">
+                <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown" style="border-color:#4e73df;color:#4e73df !important;">
+                    <i class="fas fa-graduation-cap"></i> Tutorial
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="{{ url_for('solicitacoes.tutorial', perfil='admin') }}"><i class="fas fa-user-shield me-2 text-primary"></i>Administradores e moderadores</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('solicitacoes.tutorial', perfil='usuario') }}"><i class="fas fa-user me-2 text-success"></i>Usuários (solicitantes)</a></li>
+                </ul>
+            </div>
+            {% else %}
+            <a class="sol-btn sol-btn-sec" href="{{ url_for('solicitacoes.tutorial', perfil='usuario') }}" style="border-color:#4e73df;color:#4e73df !important;" title="Passo a passo para acompanhar e homologar seus pedidos">
+                <i class="fas fa-graduation-cap"></i> Tutorial
+            </a>
+            {% endif %}
             <button type="button" class="sol-btn sol-btn-sec js-ignore-loading" data-bs-toggle="modal" data-bs-target="#modalVerificar">
                 <i class="fas fa-shield-alt"></i> Verificar termo
             </button>

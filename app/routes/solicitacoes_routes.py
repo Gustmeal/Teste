@@ -1986,3 +1986,40 @@ def dashboard():
                            pessoas_json=pessoas_json, top_solicitantes=top_solicitantes, atencao=atencao,
                            anos=anos, areas=areas, filtros={'ano': ano, 'area': area, 'tipo': tipo},
                            tem_dias_uteis=uteis is not None, cat=_catalogos())
+
+
+# =========================================================================
+# TUTORIAIS (somente leitura — não alteram dados)
+# =========================================================================
+ETAPAS_TUTORIAL = {
+    'admin': [
+        {'numero': 1, 'titulo_curto': 'Registrar o pedido'},
+        {'numero': 2, 'titulo_curto': 'Lista e quadro'},
+        {'numero': 3, 'titulo_curto': 'Atualizar o andamento'},
+        {'numero': 4, 'titulo_curto': 'Registrar a entrega'},
+        {'numero': 5, 'titulo_curto': 'Homologação e termo'},
+        {'numero': 6, 'titulo_curto': 'Concluir'},
+        {'numero': 7, 'titulo_curto': 'Dashboard'},
+    ],
+    'usuario': [
+        {'numero': 1, 'titulo_curto': 'Encontrar seus pedidos'},
+        {'numero': 2, 'titulo_curto': 'Confirmar o pedido'},
+        {'numero': 3, 'titulo_curto': 'Acompanhar'},
+        {'numero': 4, 'titulo_curto': 'Comentar'},
+        {'numero': 5, 'titulo_curto': 'Homologar'},
+        {'numero': 6, 'titulo_curto': 'Assinar e anexar'},
+    ],
+}
+
+
+@solicitacoes_bp.route('/tutorial')
+@login_required
+@sistema_requerido(SISTEMA)
+def tutorial():
+    """Tutorial do aplicativo: versão de administradores/moderadores e versão de usuários."""
+    gestor = _gestor()
+    perfil = request.args.get('perfil')
+    if perfil not in ('admin', 'usuario') or (perfil == 'admin' and not gestor):
+        perfil = 'admin' if gestor else 'usuario'
+    modelo = 'solicitacoes/tutorial_admin.html' if perfil == 'admin' else 'solicitacoes/tutorial_usuario.html'
+    return render_template(modelo, perfil=perfil, gestor=gestor, etapas=ETAPAS_TUTORIAL[perfil], cat=_catalogos())

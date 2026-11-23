@@ -1,0 +1,116 @@
+{# app/templates/solicitacoes/_tutorial_base.html — estilos e progresso compartilhados pelos tutoriais #}
+<style>
+    .tut-pagina { --tut-navy: #2c3e6b; --tut-navy-esc: #1a2744; }
+    .tut-pagina h1.tut-hero-titulo { color: #fff !important; text-shadow: none !important; -webkit-text-fill-color: #fff; }
+
+    .tut-hero { background: linear-gradient(135deg, var(--tut-navy) 0%, var(--tut-navy-esc) 100%); color: #fff; border-radius: 16px;
+        padding: 26px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 8px 24px rgba(26,39,68,.18); }
+    .tut-hero-icone { width: 62px; height: 62px; flex-shrink: 0; border-radius: 16px; background: rgba(255,255,255,.14);
+        border: 2px solid rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; }
+    .tut-hero-eyebrow { font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+    .tut-hero-titulo { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; margin: 2px 0 6px; }
+    .tut-hero-texto { color: rgba(255,255,255,.88) !important; max-width: 80ch; }
+    .tut-hero-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .tut-hero-chip { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.22); border-radius: 50px; padding: 6px 14px;
+        font-size: .85rem; color: #fff; text-decoration: none; }
+    a.tut-hero-chip:hover { background: rgba(255,255,255,.22); color: #fff; }
+
+    .tut-mapa { display: flex; align-items: center; gap: 10px; height: 100%; padding: 10px 12px; border-radius: 12px; background: var(--sol-fundo);
+        border: 1px solid var(--sol-borda); color: var(--sol-texto); text-decoration: none; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+        transition: transform .15s ease, border-color .15s ease; }
+    .tut-mapa:hover { transform: translateY(-2px); border-color: var(--tut-navy); color: var(--sol-texto); }
+    .tut-mapa-num { width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; background: var(--tut-navy); color: #fff; display: flex;
+        align-items: center; justify-content: center; font-weight: 700; font-size: .9rem; }
+    .tut-mapa-txt { font-size: .83rem; font-weight: 600; line-height: 1.25; flex: 1; min-width: 0; }
+    .tut-mapa-ok { color: #1cc88a; display: none; }
+    .tut-mapa.feito { border-color: #1cc88a; background: rgba(28,200,138,.08); }
+    .tut-mapa.feito .tut-mapa-num { background: #1cc88a; }
+    .tut-mapa.feito .tut-mapa-ok { display: inline; }
+    .tut-progresso { height: 8px; border-radius: 99px; background: var(--sol-fundo-2); border: 1px solid var(--sol-borda); overflow: hidden; }
+    .tut-progresso > div { height: 100%; background: linear-gradient(90deg, #1cc88a, #36b9cc); transition: width .4s ease; }
+
+    .tut-etapa { border: none; border-radius: 14px; overflow: hidden; scroll-margin-top: 80px; background: var(--sol-fundo); box-shadow: var(--sol-sombra); }
+    .tut-etapa-header { background: linear-gradient(135deg, var(--tut-navy) 0%, var(--tut-navy-esc) 100%); padding: 16px 20px; display: flex;
+        justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .tut-etapa-header h5 { color: #fff !important; }
+    .tut-etapa-num { width: 46px; height: 46px; flex-shrink: 0; border-radius: 12px; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.25);
+        color: #fff; font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .tut-etapa.feito .tut-etapa-num { background: #1cc88a; border-color: #1cc88a; }
+    .tut-feito { display: inline-flex; align-items: center; gap: 8px; margin: 0; cursor: pointer; user-select: none; background: rgba(255,255,255,.12);
+        border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 50px; padding: 5px 14px; font-size: .85rem; font-weight: 600; white-space: nowrap; }
+    .tut-etapa.feito .tut-feito { background: #1cc88a; border-color: #1cc88a; }
+    .tut-etapa-corpo { padding: 1.3rem 1.4rem; }
+
+    .tut-passos { list-style: none; counter-reset: passo; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 12px; }
+    .tut-passos li { counter-increment: passo; position: relative; padding-left: 40px; min-height: 28px; line-height: 1.55; overflow-wrap: anywhere; font-size: .92rem; }
+    .tut-passos li::before { content: counter(passo); position: absolute; left: 0; top: 0; width: 28px; height: 28px; border-radius: 50%;
+        background: rgba(44,62,107,.1); color: var(--tut-navy); font-weight: 700; font-size: .85rem; display: flex; align-items: center; justify-content: center; }
+    [data-theme="dark"] .tut-passos li::before { background: rgba(138,130,255,.18); color: #c9c5ff; }
+    .tut-dica { display: grid; grid-template-columns: 20px minmax(0,1fr); gap: 10px; align-items: start; background: rgba(78,115,223,.07);
+        border-radius: 10px; padding: 10px 12px; font-size: .88rem; margin-bottom: 10px; }
+    .tut-dica i { color: #4e73df; margin-top: 3px; }
+    .tut-dica.alerta { background: rgba(246,194,62,.14); }
+    .tut-dica.alerta i { color: #b45309; }
+    .tut-dica.perigo { background: rgba(231,74,59,.09); }
+    .tut-dica.perigo i { color: #e74a3b; }
+
+    /* Tela simulada: só ilustração, nada é clicável */
+    .tut-tela { border: 1px solid var(--sol-borda); border-radius: 12px; overflow: hidden; background: var(--sol-fundo-2); }
+    .tut-tela * { pointer-events: none; }
+    .tut-tela-barra { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--sol-borda);
+        font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--sol-suave); background: var(--sol-fundo); }
+    .tut-tela-corpo { padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+    .tut-destaque { box-shadow: 0 0 0 3px rgba(78,115,223,.45) !important; }
+    .tut-falso-campo { border: 1px solid var(--sol-borda); border-radius: 8px; padding: 7px 10px; background: var(--sol-fundo); font-size: .8rem;
+        color: var(--sol-suave); min-height: 34px; }
+    .tut-rot { font-size: .68rem; font-weight: 700; color: var(--sol-suave); margin-bottom: 3px; }
+
+    .tut-quadro { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .84rem; }
+    .tut-quadro th { background: var(--sol-fundo-2); color: var(--sol-suave); font-size: .7rem; text-transform: uppercase; letter-spacing: .4px;
+        padding: .55rem .7rem; border-bottom: 2px solid var(--sol-borda); }
+    .tut-quadro td { padding: .55rem .7rem; border-bottom: 1px solid var(--sol-borda); vertical-align: middle; }
+    .tut-sim { color: #1cc88a; } .tut-nao { color: #e74a3b; }
+
+    .tut-faq .accordion-button { font-weight: 700; font-size: .9rem; background: var(--sol-fundo); color: var(--sol-texto); }
+    .tut-faq .accordion-item { background: var(--sol-fundo); border-color: var(--sol-borda); }
+    .tut-faq .accordion-body { font-size: .88rem; }
+
+    .tut-resumo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .tut-resumo i { font-size: .65rem; color: var(--sol-suave); }
+    .tut-resumo .badge { font-size: .8rem; padding: .45em .7em; }
+    @media (prefers-reduced-motion: reduce) { .tut-mapa { transition: none; } }
+</style>
+
+<script>
+/* Progresso do tutorial: fica guardado só no navegador de quem está lendo. */
+window.TutProgresso = function (chave) {
+    var estado = {};
+    try { estado = JSON.parse(localStorage.getItem(chave) || '{}') || {}; } catch (e) { estado = {}; }
+    function salvar() { try { localStorage.setItem(chave, JSON.stringify(estado)); } catch (e) { /* sem storage */ } }
+    function pintar() {
+        var etapas = document.querySelectorAll('.tut-etapa');
+        var feitas = 0;
+        etapas.forEach(function (card) {
+            var n = card.getAttribute('data-etapa');
+            var feito = !!estado[n];
+            if (feito) feitas++;
+            card.classList.toggle('feito', feito);
+            var chk = card.querySelector('input[data-etapa]');
+            if (chk) chk.checked = feito;
+            var mapa = document.querySelector('.tut-mapa[data-etapa="' + n + '"]');
+            if (mapa) mapa.classList.toggle('feito', feito);
+        });
+        var barra = document.getElementById('tutBarra');
+        var txt = document.getElementById('tutBarraTxt');
+        var pc = etapas.length ? Math.round(100 * feitas / etapas.length) : 0;
+        if (barra) barra.style.width = pc + '%';
+        if (txt) txt.textContent = feitas + ' de ' + etapas.length + ' etapas lidas';
+    }
+    document.querySelectorAll('.tut-feito input[data-etapa]').forEach(function (chk) {
+        chk.addEventListener('change', function () { estado[chk.getAttribute('data-etapa')] = chk.checked; salvar(); pintar(); });
+    });
+    var btn = document.getElementById('tutDesmarcar');
+    if (btn) btn.addEventListener('click', function (ev) { ev.stopImmediatePropagation(); estado = {}; salvar(); pintar(); });
+    pintar();
+};
+</script>

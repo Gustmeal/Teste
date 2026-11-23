@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+
+{% block title %}Tutorial - Solicitações à Área{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+{% include 'solicitacoes/_tutorial_base.html' %}
+
+<div class="sol-app tut-pagina">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Voltar às Solicitações</a>
+        {% if gestor %}
+        <a href="{{ url_for('solicitacoes.tutorial', perfil='admin') }}" class="sol-btn sol-btn-sec sol-btn-sm">
+            <i class="fas fa-user-shield"></i> Ver o tutorial dos administradores
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- ================= CABEÇALHO ================= -->
+    <div class="tut-hero mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <div class="tut-hero-icone"><i class="fas fa-graduation-cap"></i></div>
+            <div class="flex-grow-1" style="min-width:0;">
+                <div class="tut-hero-eyebrow">Ferramentas · Solicitações à Área · Usuários</div>
+                <h1 class="tut-hero-titulo">Como acompanhar o seu pedido</h1>
+                <p class="tut-hero-texto mb-0">
+                    Tudo o que você pede à área fica registrado aqui. Você confere se o registro está certo, acompanha o andamento,
+                    conversa com a equipe pelos comentários e, no final, homologa a entrega e assina o termo.
+                </p>
+            </div>
+        </div>
+        <div class="tut-hero-chips">
+            <span class="tut-hero-chip"><i class="fas fa-clock me-2"></i>Leitura: cerca de 5 minutos</span>
+            <span class="tut-hero-chip"><i class="fas fa-lock me-2"></i>Você acompanha e comenta; só a equipe altera os dados</span>
+        </div>
+    </div>
+
+    <!-- ================= MAPA DAS ETAPAS ================= -->
+    <div class="row g-2 mb-2">
+        {% for etapa in etapas %}
+        <div class="col-6 col-md-4 col-xl-2">
+            <a href="#etapa-{{ etapa.numero }}" class="tut-mapa js-ignore-loading" data-etapa="{{ etapa.numero }}">
+                <span class="tut-mapa-num">{{ etapa.numero }}</span>
+                <span class="tut-mapa-txt">{{ etapa.titulo_curto }}</span>
+                <i class="fas fa-check-circle tut-mapa-ok"></i>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <div class="tut-progresso flex-grow-1"><div id="tutBarra" style="width:0%;"></div></div>
+        <span id="tutBarraTxt" style="font-size:.78rem;color:var(--sol-suave);white-space:nowrap;"></span>
+    </div>
+
+    <div class="alert d-flex gap-3 align-items-start mb-4" style="background:var(--sol-azul-cla);border:1px solid var(--sol-azul);border-radius:14px;">
+        <i class="fas fa-info-circle fs-4 mt-1" style="color:var(--sol-azul);"></i>
+        <div style="font-size:.9rem;">
+            <strong>Quem registra o pedido é a equipe da área.</strong> Depois que você pede (por e-mail, Teams, reunião, SEI...),
+            um administrador cadastra a solicitação em seu nome. A partir daí ela aparece para você neste aplicativo.
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 1 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-1" data-etapa="1">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">1</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Encontre as suas solicitações</h5>
+                    <small class="text-white-50">Portal GEINC → Ferramentas → Solicitações à Área.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="1"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>A lista mostra <b>só</b> as solicitações que você fez ou em que foi incluído como observador.</li>
+                        <li>Se houver algo esperando por você, aparece um <b>aviso no topo</b>: pedidos para confirmar e entregas para homologar. Clique no protocolo para abrir.</li>
+                        <li>Use a busca e os filtros (situação, status, tipo, prioridade, ano) e alterne entre <b>Lista</b> e <b>Quadro</b>.</li>
+                        <li>Clique na linha para abrir a solicitação.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-hashtag"></i>
+                        <span>Cada pedido tem um <b>protocolo</b> no formato <span class="sol-proto">SOL-AAAA-NNNN</span>. Use esse número quando falar com a equipe.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Lista · avisos para você</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="d-flex gap-2 align-items-start" style="background:#fff8e1;border:1px solid #f6c23e;border-radius:10px;padding:.6rem .8rem;color:#5c4400;font-size:.78rem;">
+                                <i class="fas fa-file-signature mt-1"></i>
+                                <div><b>n entrega(s) aguardando a sua homologação</b><br><span class="sol-proto">SOL-AAAA-NNNN</span> — abra a solicitação e clique em <b>Homologar</b>.</div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-start" style="background:#eef2ff;border:1px solid #4e73df;border-radius:10px;padding:.6rem .8rem;color:#1e3a8a;font-size:.78rem;">
+                                <i class="fas fa-user-check mt-1"></i>
+                                <div><b>n solicitação(ões) aguardando a sua confirmação</b><br>Confira se o que foi registrado corresponde ao que você pediu.</div>
+                            </div>
+                            <div style="background:var(--sol-fundo);border:1px solid var(--sol-borda);border-radius:10px;padding:.55rem .75rem;" class="tut-destaque">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span><span class="sol-proto" style="font-size:.66rem;">SOL-AAAA-NNNN</span> <b style="font-size:.8rem;">Título do pedido</b></span>
+                                    <span class="sol-badge" style="background:{{ cat.status['EM_DESENVOLVIMENTO'].cor }}22;color:{{ cat.status['EM_DESENVOLVIMENTO'].cor }};"><i class="fas {{ cat.status['EM_DESENVOLVIMENTO'].icone }}"></i>{{ cat.status['EM_DESENVOLVIMENTO'].rotulo }}</span>
+                                </div>
+                                <div class="sol-barra mt-2"><div style="width:60%;"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 2 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-2" data-etapa="2">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">2</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Confirme que o pedido foi registrado certo</h5>
+                    <small class="text-white-50">Logo que a solicitação aparecer para você.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="2"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Abra a solicitação e leia a aba <b>Pedido</b> (descrição, tipo, prazos) e a aba <b>Escopo</b> (lista do que será entregue).</li>
+                        <li>Se estiver tudo certo, clique em <b><i class="fas fa-check"></i> Está correto</b> (ou <b>Confirmar pedido</b>, no topo). Pode deixar uma observação.</li>
+                        <li>Se algo estiver errado ou faltando, <b>não confirme</b>: escreva um comentário explicando o ajuste (etapa 4). A equipe corrige e você confirma depois.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-handshake"></i>
+                        <span>A confirmação garante que você e a equipe estão combinando a <b>mesma coisa</b>. Ela aparece no termo final com a data em que foi feita.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Solicitação · aviso de confirmação</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="d-flex gap-3 align-items-center flex-wrap" style="background:var(--sol-azul-cla);border:1px solid var(--sol-azul);border-radius:12px;padding:.75rem .9rem;">
+                                <span class="sol-avatar sol-avatar-lg" style="background:var(--sol-azul);border-radius:10px;"><i class="fas fa-user-check"></i></span>
+                                <div style="flex:1;min-width:180px;">
+                                    <div class="fw-bold" style="font-size:.82rem;">Confira se este registro corresponde ao que você pediu</div>
+                                    <div style="font-size:.72rem;color:var(--sol-suave);">Leia a descrição e o escopo. Se estiver correto, confirme; se não, deixe um comentário pedindo o ajuste.</div>
+                                </div>
+                                <span class="sol-btn sol-btn-pri sol-btn-sm tut-destaque"><i class="fas fa-check"></i> Está correto</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 3 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-3" data-etapa="3">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">3</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Acompanhe o andamento</h5>
+                    <small class="text-white-50">Quando quiser, sem precisar perguntar.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="3"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>No topo, a <b>linha de etapas</b> mostra onde o pedido está: a bolinha azul é a etapa atual e as verdes já foram concluídas.</li>
+                        <li>Na lateral: <b>% de andamento</b>, <b>prazos</b> (com aviso se estiver atrasado), quem está trabalhando no pedido e quantos itens do escopo já foram feitos.</li>
+                        <li>A aba <b>Andamento</b> traz cada atualização da equipe com data e hora. Use os filtros <b>Atualizações</b>, <b>Comentários</b> e <b>Status e homologação</b>.</li>
+                        <li>Na aba <b>Escopo</b>, os itens concluídos aparecem riscados, com quem concluiu e quando.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-eye"></i>
+                        <span>Você vê tudo o que a equipe publica para você. Anotações de trabalho internas da equipe não aparecem.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Solicitação · etapas</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="d-flex justify-content-between text-center" style="font-size:.62rem;font-weight:700;">
+                                {% for rot in ['Recebida', 'Análise', 'Planejada', 'Desenvolvimento', 'Testes', 'Homologação', 'Concluída'] %}
+                                <div style="flex:1;">
+                                    {% if loop.index < 4 %}<span class="sol-avatar" style="background:#1cc88a;width:24px;height:24px;font-size:.6rem;"><i class="fas fa-check"></i></span><div style="color:#1cc88a;">{{ rot }}</div>
+                                    {% elif loop.index == 4 %}<span class="sol-avatar tut-destaque" style="background:var(--sol-azul);width:24px;height:24px;font-size:.6rem;">{{ loop.index }}</span><div style="color:var(--sol-azul);">{{ rot }}</div>
+                                    {% else %}<span class="sol-avatar" style="background:var(--sol-fundo);color:var(--sol-suave);border:2px solid var(--sol-borda);width:24px;height:24px;font-size:.6rem;">{{ loop.index }}</span><div style="color:var(--sol-suave);">{{ rot }}</div>{% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="d-flex gap-2 align-items-start">
+                                <span class="sol-avatar" style="background:{{ cat.tipos_interacao['ATUALIZACAO'].cor }};"><i class="fas fa-sync-alt"></i></span>
+                                <div style="flex:1;border:1px solid var(--sol-borda);border-radius:10px;padding:.5rem .7rem;background:var(--sol-fundo);">
+                                    <div style="font-size:.7rem;color:var(--sol-suave);"><b style="color:var(--sol-texto);">Nome do executor</b> · {{ cat.tipos_interacao['ATUALIZACAO'].rotulo }} · 60% · dd/mm/aaaa às hh:mm</div>
+                                    <div style="font-size:.78rem;">O que a equipe fez nesta etapa.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        {% for k in ['RECEBIDA', 'EM_ANALISE', 'PLANEJADA', 'EM_DESENVOLVIMENTO', 'EM_TESTES', 'AGUARDANDO_HOMOLOGACAO', 'SUSPENSA', 'CONCLUIDA_HOMOLOGADA', 'CONCLUIDA_NAO_HOMOLOGADA', 'CANCELADA'] %}
+                        {% set st = cat.status[k] %}
+                        <div class="col-6 col-md-4"><span class="sol-badge" style="background:{{ st.cor }}22;color:{{ st.cor }};"><i class="fas {{ st.icone }}"></i>{{ st.rotulo }}</span></div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 4 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-4" data-etapa="4">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">4</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Fale com a equipe pelos comentários</h5>
+                    <small class="text-white-50">Dúvidas, informações novas, pedidos de ajuste.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="4"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Na aba <b>Andamento</b>, escreva na caixa do topo.</li>
+                        <li>Clique em <b><i class="fas fa-paper-plane"></i> Publicar</b>. O comentário fica na linha do tempo com seu nome, data e hora.</li>
+                        <li>Para enviar arquivos (planilha de exemplo, print, documento), use a aba <b>Arquivos</b> → <b>Enviar arquivo</b>, tipo <b>Anexo</b>.</li>
+                        <li>Errou? Passe o mouse sobre o seu comentário e clique na lixeira para excluí-lo.</li>
+                    </ol>
+                    <div class="tut-dica alerta"><i class="fas fa-exclamation-triangle"></i>
+                        <span>Mudou o que você precisa? Registre aqui. Mudanças combinadas só por conversa podem se perder — <b>o que está escrito na solicitação é o que vale</b>.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Aba Andamento · comentário</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div style="border:1px solid var(--sol-borda);border-radius:12px;background:var(--sol-fundo);padding:.7rem;">
+                                <div class="tut-falso-campo tut-destaque" style="min-height:46px;">Escreva um comentário para a equipe...</div>
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <span style="border:1.5px solid {{ cat.tipos_interacao['COMENTARIO'].cor }};background:{{ cat.tipos_interacao['COMENTARIO'].cor }};color:#fff;border-radius:99px;font-size:.66rem;font-weight:700;padding:.18rem .5rem;"><i class="fas fa-comment-dots me-1"></i>{{ cat.tipos_interacao['COMENTARIO'].rotulo }}</span>
+                                    <span class="sol-btn sol-btn-pri sol-btn-sm"><i class="fas fa-paper-plane"></i> Publicar</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 5 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-5" data-etapa="5">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">5</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Homologue a entrega</h5>
+                    <small class="text-white-50">Quando o status for <b>{{ cat.status['AGUARDANDO_HOMOLOGACAO'].rotulo }}</b>.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="5"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Abra a aba <b>Homologação</b> e leia <b>O que foi entregue</b> e <b>Como usar</b> (endereço de acesso e orientações).</li>
+                        <li><b>Teste</b> o aplicativo ou painel entregue, com os seus dados e o seu dia a dia.</li>
+                        <li>Clique em <b><i class="fas fa-file-signature"></i> Homologar</b> e escolha:
+                            <b class="tut-sim">Atende</b> (homologo a entrega) ou <b class="tut-nao">Não atende</b> (não homologo).</li>
+                        <li>Escreva o <b>parecer</b>. Em <b>Não atende</b> ele é obrigatório: explique o que não ficou como pedido.</li>
+                        <li>Clique em <b>Registrar e gerar termo</b>. O <b>termo em PDF</b> é baixado automaticamente, já com a sua decisão marcada.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-redo"></i>
+                        <span>Mudou de ideia antes da conclusão? Use <b>Refazer homologação</b>. Se a equipe corrigir e reenviar a entrega, você homologa de novo.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Janela · Homologar entrega</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="row g-2">
+                                <div class="col-6"><div class="sol-decisao sim ativa" style="padding:.7rem;"><i class="fas fa-thumbs-up fa-lg mb-1 tut-sim"></i><div class="fw-bold" style="font-size:.82rem;">Atende</div><div style="font-size:.68rem;color:var(--sol-suave);">Homologo a entrega</div></div></div>
+                                <div class="col-6"><div class="sol-decisao nao" style="padding:.7rem;"><i class="fas fa-thumbs-down fa-lg mb-1 tut-nao"></i><div class="fw-bold" style="font-size:.82rem;">Não atende</div><div style="font-size:.68rem;color:var(--sol-suave);">Não homologo</div></div></div>
+                            </div>
+                            <div><div class="tut-rot">PARECER</div><div class="tut-falso-campo" style="min-height:44px;">Observações sobre a entrega</div></div>
+                            <div class="text-end"><span class="sol-btn sol-btn-alerta sol-btn-sm tut-destaque"><i class="fas fa-file-download"></i> Registrar e gerar termo</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 6 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-6" data-etapa="6">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">6</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Assine o termo e anexe a via assinada</h5>
+                    <small class="text-white-50">Último passo do solicitante.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="6"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Abra o PDF baixado e confira: identificação, o que foi pedido, o que foi entregue e a sua decisão marcada.</li>
+                        <li>Assine digitalmente — pelo <b>assinador gov.br</b>, pelo <b>SEI</b> ou com o seu <b>certificado digital</b>.</li>
+                        <li>Volte à solicitação, aba <b>Homologação</b>, e clique em <b><i class="fas fa-upload"></i> Anexar termo assinado</b>. Escolha o arquivo assinado e clique em <b>Enviar</b>.</li>
+                        <li>Pronto! A equipe conclui a solicitação e o status muda para <b class="tut-sim">{{ cat.status['CONCLUIDA_HOMOLOGADA'].rotulo }}</b> ou <b class="tut-nao">{{ cat.status['CONCLUIDA_NAO_HOMOLOGADA'].rotulo }}</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-download"></i>
+                        <span>Perdeu o arquivo? Baixe de novo no botão <b>Termo</b> no topo da solicitação (<b>PDF para assinar</b>).</span>
+                    </div>
+                    <div class="tut-dica"><i class="fas fa-shield-alt"></i>
+                        <span>O rodapé do termo tem um <b>código de verificação</b>. Na lista de solicitações, o botão <b>Verificar termo</b> mostra se aquela via é autêntica.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Termo de Entrega e Homologação</span><span>trecho do PDF</span></div>
+                        <div class="tut-tela-corpo" style="background:#fff;color:#1f2937;">
+                            <div class="text-center" style="color:#224abe;font-weight:800;">TERMO DE ENTREGA E HOMOLOGAÇÃO</div>
+                            <div style="background:#224abe;color:#fff;font-size:.72rem;font-weight:700;padding:.25rem .5rem;">10. Homologação pelo solicitante</div>
+                            <div style="border:1px solid #224abe;background:#eef2ff;padding:.55rem .75rem;font-size:.74rem;">
+                                Declaro que recebi e verifiquei a entrega descrita neste termo e que ela:<br>
+                                <b>[X]</b> ATENDE ao que foi solicitado (homologada)<br>
+                                <b>[&nbsp;&nbsp;]</b> NÃO ATENDE ao que foi solicitado (não homologada)
+                            </div>
+                            <div class="d-flex justify-content-around text-center" style="font-size:.68rem;margin-top:.4rem;">
+                                <div class="tut-destaque" style="padding:.3rem .6rem;border-radius:6px;">_______________________<br><b>Seu nome</b><br>Solicitante</div>
+                                <div style="padding:.3rem .6rem;">_______________________<br><b>Responsável</b><br>Responsável pela entrega</div>
+                            </div>
+                            <div style="font-size:.6rem;color:#6b7280;">Portal GEINC · SOL-AAAA-NNNN · Código de verificação XXXX-XXXX-XXXX-XXXX</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= DÚVIDAS ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-cab"><h5><i class="fas fa-question-circle me-2" style="color:var(--sol-azul);"></i>Dúvidas frequentes</h5></div>
+        <div class="accordion accordion-flush tut-faq" id="faqUsuario">
+            {% for perg, resp in [
+                ('Posso abrir uma solicitação por aqui?', 'Ainda não. Faça o pedido à área como de costume (e-mail, Teams, reunião, SEI). Um administrador registra a solicitação no seu nome e ela aparece para você.'),
+                ('Posso alterar a descrição ou o prazo?', 'Não diretamente. Escreva um comentário pedindo a alteração; a equipe atualiza e a mudança fica registrada no histórico.'),
+                ('Por que não vejo todas as solicitações da minha área?', 'Você vê as solicitações que fez e aquelas em que foi incluído como observador. Para acompanhar outra, peça à equipe para incluir você como observador.'),
+                ('Recusei a entrega. E agora?', 'A equipe recebe o seu parecer, faz os ajustes e registra uma nova entrega. Você homologa de novo, e um novo termo é gerado.'),
+                ('Onde vejo o termo depois de concluído?', 'Na aba Homologação ficam o termo gerado e a via assinada, para download a qualquer momento.'),
+            ] %}
+            <div class="accordion-item">
+                <h2 class="accordion-header"><button class="accordion-button collapsed js-ignore-loading" type="button" data-bs-toggle="collapse" data-bs-target="#faqU{{ loop.index }}">{{ perg }}</button></h2>
+                <div id="faqU{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#faqUsuario"><div class="accordion-body">{{ resp }}</div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ================= RODAPÉ ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-corpo d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="tut-resumo">
+                <span class="badge bg-primary">1 Encontrar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-info text-dark">2 Confirmar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-secondary">3 Acompanhar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge" style="background:#36b9cc;">4 Comentar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-warning text-dark">5 Homologar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-success">6 Assinar e anexar</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading" id="tutDesmarcar"><i class="fas fa-undo"></i> Desmarcar tudo</button>
+                <a href="{{ url_for('solicitacoes.index') }}" class="sol-btn sol-btn-pri sol-btn-sm"><i class="fas fa-clipboard-check"></i> Ir para as minhas solicitações</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>document.addEventListener('DOMContentLoaded', function () { TutProgresso('solicitacoes_tutorial_usuario'); });</script>
+{% endblock %}

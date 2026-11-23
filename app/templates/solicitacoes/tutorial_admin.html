@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+
+{% block title %}Tutorial (administradores) - Solicitações à Área{% endblock %}
+
+{% block content %}
+{% include 'solicitacoes/_estilos.html' %}
+{% include 'solicitacoes/_tutorial_base.html' %}
+
+<div class="sol-app tut-pagina">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Voltar às Solicitações</a>
+        <a href="{{ url_for('solicitacoes.tutorial', perfil='usuario') }}" class="sol-btn sol-btn-sec sol-btn-sm">
+            <i class="fas fa-user"></i> Ver o tutorial dos usuários
+        </a>
+    </div>
+
+    <!-- ================= CABEÇALHO ================= -->
+    <div class="tut-hero mb-4">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <div class="tut-hero-icone"><i class="fas fa-user-shield"></i></div>
+            <div class="flex-grow-1" style="min-width:0;">
+                <div class="tut-hero-eyebrow">Ferramentas · Solicitações à Área · Administradores e moderadores</div>
+                <h1 class="tut-hero-titulo">Tutorial do administrador</h1>
+                <p class="tut-hero-texto mb-0">
+                    Do pedido à homologação: registre o que foi pedido, mantenha o andamento atualizado, registre a entrega,
+                    acompanhe a homologação do solicitante e conclua. Cada passo fica gravado com data e responsável — é isso que protege a área.
+                </p>
+            </div>
+        </div>
+        <div class="tut-hero-chips">
+            <span class="tut-hero-chip"><i class="fas fa-clock me-2"></i>Leitura: cerca de 10 minutos</span>
+            <span class="tut-hero-chip"><i class="fas fa-eye-slash me-2"></i>Esta página não altera nenhum dado</span>
+            <a class="tut-hero-chip js-ignore-loading" download href="{{ url_for('solicitacoes.modelo_termo', formato='docx') }}"><i class="fas fa-file-word me-2"></i>Baixar modelo do termo</a>
+        </div>
+    </div>
+
+    <!-- ================= MAPA DAS ETAPAS ================= -->
+    <div class="row g-2 mb-2">
+        {% for etapa in etapas %}
+        <div class="col-6 col-md-3 col-xl">
+            <a href="#etapa-{{ etapa.numero }}" class="tut-mapa js-ignore-loading" data-etapa="{{ etapa.numero }}">
+                <span class="tut-mapa-num">{{ etapa.numero }}</span>
+                <span class="tut-mapa-txt">{{ etapa.titulo_curto }}</span>
+                <i class="fas fa-check-circle tut-mapa-ok"></i>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    <div class="d-flex align-items-center gap-2 mb-4">
+        <div class="tut-progresso flex-grow-1"><div id="tutBarra" style="width:0%;"></div></div>
+        <span id="tutBarraTxt" style="font-size:.78rem;color:var(--sol-suave);white-space:nowrap;"></span>
+    </div>
+
+    <!-- ================= QUEM VÊ O QUÊ ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-cab"><h5><i class="fas fa-user-lock me-2" style="color:var(--sol-azul);"></i>Antes de começar: quem pode fazer o quê</h5></div>
+        <div class="table-responsive">
+            <table class="tut-quadro">
+                <thead>
+                    <tr><th>Ação</th>
+                        {% for k in ['GESTOR', 'EQUIPE', 'SOLICITANTE', 'OBSERVADOR'] %}
+                        <th class="text-center"><i class="fas {{ cat.papeis[k].icone }} me-1" style="color:{{ cat.papeis[k].cor }};"></i>{{ cat.papeis[k].rotulo }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for acao, perms in [
+                    ('Registrar e editar a solicitação', [1, 0, 0, 0]),
+                    ('Mudar status, registrar entrega, concluir, reabrir, excluir', [1, 0, 0, 0]),
+                    ('Lançar atualizações, marcos, impedimentos, % e horas', [1, 1, 0, 0]),
+                    ('Ver registros internos e o histórico de alterações', [1, 1, 0, 0]),
+                    ('Marcar itens do escopo como concluídos', [1, 1, 0, 0]),
+                    ('Ver o andamento público e comentar', [1, 1, 1, 1]),
+                    ('Confirmar o pedido e homologar a entrega', [0, 0, 1, 0]),
+                    ('Anexar o termo assinado', [1, 0, 1, 0]),
+                ] %}
+                <tr>
+                    <td>{{ acao }}</td>
+                    {% for p in perms %}
+                    <td class="text-center">{% if p %}<i class="fas fa-check-circle tut-sim"></i>{% else %}<i class="fas fa-minus" style="color:var(--sol-borda);"></i>{% endif %}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="sol-card-corpo" style="font-size:.82rem;color:var(--sol-suave);">
+            <b>Gestor</b> = perfil administrador ou moderador do portal. <b>Equipe</b> = usuário escolhido como executor da solicitação.
+            <b>Solicitante</b> = quem fez o pedido. <b>Observador</b> = pessoa que só acompanha. Quem não está em nenhum desses papéis não vê a solicitação.
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 1 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-1" data-etapa="1">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">1</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Registre o pedido assim que ele chegar</h5>
+                    <small class="text-white-50">Botão <b>Nova solicitação</b>, no topo da lista.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="1"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li><b>Quem pediu:</b> pesquise o usuário pelo nome ou e-mail. A <b>área</b> (diretoria, superintendência e setor) e o cargo aparecem sozinhos, puxados do cadastro de empregados, junto com as últimas solicitações dessa pessoa.</li>
+                        <li><b>Tipo de entrega:</b> clique em
+                            {% for k, t in cat.tipos_entrega.items() %}<b style="color:{{ t.cor }};">{{ t.rotulo }}</b>{% if not loop.last %} ou {% endif %}{% endfor %}.
+                            Esse campo é obrigatório.</li>
+                        <li><b>O que foi pedido:</b> título curto e descrição detalhada. Escreva com as palavras do solicitante — é isso que vai no termo.</li>
+                        <li><b>Classificação e origem:</b> prioridade, impacto, complexidade, como o pedido chegou (e-mail, Teams, SEI...), nº SEI e a <b>data do pedido</b>.</li>
+                        <li><b>Prazos:</b> o <b>desejado</b> é o que o solicitante pediu; o <b>acordado</b> é o compromisso da área. O indicador de atraso usa o acordado (ou o desejado, se não houver).</li>
+                        <li><b>Equipe:</b> clique em <b>Adicionar executor</b> para cada pessoa que vai trabalhar (com a função, se quiser). Em <b>Observadores</b>, inclua quem só precisa acompanhar.</li>
+                        <li><b>Escopo e evidências:</b> escreva um item por linha (vira o checklist) e arraste o e-mail/print do pedido para a área de evidências. Clique em <b>Registrar solicitação</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-shield-alt"></i>
+                        <span>Anexe <b>sempre</b> a evidência do pedido (e-mail, print do Teams, memorando). É a prova de que foi solicitado e do que foi solicitado.</span>
+                    </div>
+                    <div class="tut-dica alerta"><i class="fas fa-exclamation-triangle"></i>
+                        <span>Se aparecer <b>"Usuário sem vínculo no cadastro de empregados"</b>, a área ficará em branco. Confira o usuário antes de salvar.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Nova solicitação · Quem pediu</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <div class="tut-rot">USUÁRIO SOLICITANTE *</div>
+                                    <div class="tut-falso-campo tut-destaque">Nome do solicitante <i class="fas fa-chevron-down float-end mt-1"></i></div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="tut-rot">ÁREA DO SOLICITANTE (automática)</div>
+                                    <div class="tut-falso-campo d-flex justify-content-around text-center" style="border-style:dashed;">
+                                        <div><div style="font-size:.6rem;">DIRETORIA</div><b style="color:var(--sol-azul);">sigla</b></div>
+                                        <div><div style="font-size:.6rem;">SUPERINT.</div><b style="color:var(--sol-azul);">sigla</b></div>
+                                        <div><div style="font-size:.6rem;">SETOR</div><b style="color:var(--sol-azul);">sigla</b></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="tut-rot mb-0">TIPO DE ENTREGA *</div>
+                            <div class="row g-2">
+                                {% for k, t in cat.tipos_entrega.items() %}
+                                <div class="col-6">
+                                    <div class="sol-opcao {% if loop.first %}ativa{% endif %}" style="padding:.6rem;">
+                                        <span class="ico" style="background:{{ t.cor }};width:34px;height:34px;font-size:.9rem;"><i class="fas {{ t.icone }}"></i></span>
+                                        <span><b style="font-size:.85rem;">{{ t.rotulo }}</b><span class="d-block" style="font-size:.7rem;color:var(--sol-suave);">{{ t.descricao }}</span></span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="tut-rot mb-0">PRIORIDADE</div>
+                            <div class="sol-pilulas">
+                                {% for k, p in cat.prioridades.items() %}
+                                <span class="sol-pilula {% if k == 'MEDIA' %}ativa{% endif %}" {% if k == 'MEDIA' %}style="background:{{ p.cor }};border-color:{{ p.cor }};"{% endif %}>{{ p.rotulo }}</span>
+                                {% endfor %}
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="sol-btn sol-btn-sec sol-btn-sm"><i class="fas fa-user-plus"></i> Adicionar executor</span>
+                                <span class="sol-btn sol-btn-pri sol-btn-sm tut-destaque"><i class="fas fa-save"></i> Registrar solicitação</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tut-dica mt-3"><i class="fas fa-hashtag"></i>
+                        <span>Ao salvar, o sistema gera o <b>protocolo</b> no formato <span class="sol-proto">SOL-AAAA-NNNN</span>, numerado por ano, e o status começa em <b>{{ cat.status['RECEBIDA'].rotulo }}</b>.
+                        O solicitante passa a ver o pedido e recebe o aviso para <b>confirmar</b> que o registro está correto.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 2 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-2" data-etapa="2">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">2</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Acompanhe tudo pela lista e pelo quadro</h5>
+                    <small class="text-white-50">A tela inicial do aplicativo.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="2"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Os <b>cartões do topo</b> (Total, Em aberto, Atrasadas, Aguardando homologação...) também são filtros: clique para ver só aquelas.</li>
+                        <li>Use a barra de <b>filtros</b> para buscar por protocolo, título, solicitante ou nº SEI, e filtrar por status, tipo, prioridade, área, executor e ano.</li>
+                        <li>Alterne entre <b>Lista</b> e <b>Quadro</b>. No quadro, <b>arraste o cartão</b> para outra coluna para mudar o status (Suspensa pede justificativa).</li>
+                        <li>Clique em qualquer linha ou cartão para abrir a solicitação.</li>
+                        <li>O botão <b>Exportar</b> gera um Excel com os filtros aplicados.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-info-circle"></i>
+                        <span>A bolinha colorida ao lado do protocolo é a prioridade. A cor da coluna <b>Prazo</b> mostra a situação: verde no prazo, amarelo vencendo, vermelho atrasada.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Quadro · colunas por status</span><span>arraste para mudar o status</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="d-flex gap-2" style="overflow:hidden;">
+                                {% for k in ['EM_ANALISE', 'EM_DESENVOLVIMENTO', 'EM_TESTES'] %}
+                                {% set st = cat.status[k] %}
+                                <div style="flex:1;min-width:0;background:var(--sol-fundo);border:1px solid var(--sol-borda);border-radius:10px;">
+                                    <div style="padding:.45rem .6rem;border-bottom:3px solid {{ st.cor }};font-size:.72rem;font-weight:800;"><i class="fas {{ st.icone }} me-1" style="color:{{ st.cor }};"></i>{{ st.rotulo }}</div>
+                                    <div style="padding:.45rem;min-height:110px;">
+                                        {% if loop.index == 2 %}
+                                        <div class="sol-kcard-tut tut-destaque" style="background:var(--sol-fundo);border:1px solid var(--sol-borda);border-left:4px solid {{ cat.prioridades['ALTA'].cor }};border-radius:8px;padding:.45rem;">
+                                            <span class="sol-proto" style="font-size:.62rem;">SOL-AAAA-NNNN</span>
+                                            <div style="font-size:.72rem;font-weight:700;margin:.25rem 0;">Título do pedido</div>
+                                            <div class="sol-barra"><div style="width:60%;"></div></div>
+                                        </div>
+                                        <div class="text-center mt-2" style="font-size:.66rem;color:var(--sol-azul);"><i class="fas fa-arrows-alt-h"></i> arraste</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        {% for k in ['RECEBIDA', 'EM_ANALISE', 'PLANEJADA', 'EM_DESENVOLVIMENTO', 'EM_TESTES', 'AGUARDANDO_HOMOLOGACAO', 'SUSPENSA', 'CONCLUIDA_HOMOLOGADA', 'CONCLUIDA_NAO_HOMOLOGADA', 'CANCELADA'] %}
+                        {% set st = cat.status[k] %}
+                        <div class="col-6 col-md-4"><span class="sol-badge" style="background:{{ st.cor }}22;color:{{ st.cor }};"><i class="fas {{ st.icone }}"></i>{{ st.rotulo }}</span></div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 3 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-3" data-etapa="3">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">3</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Mantenha o andamento atualizado</h5>
+                    <small class="text-white-50">Aba <b>Andamento</b> da solicitação, durante todo o trabalho.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="3"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Escreva na caixa do topo e escolha o tipo:
+                            {% for k in ['ATUALIZACAO', 'COMENTARIO', 'MARCO', 'IMPEDIMENTO'] %}<b style="color:{{ cat.tipos_interacao[k].cor }};">{{ cat.tipos_interacao[k].rotulo }}</b>{% if not loop.last %}, {% endif %}{% endfor %}.</li>
+                        <li>Se quiser, informe o novo <b>% de conclusão</b> e as <b>horas</b> trabalhadas. O % atualiza a barra de progresso; as horas entram no dashboard.</li>
+                        <li>Marque <b><i class="fas fa-lock"></i> Interno</b> quando o registro for só da equipe. O solicitante <b>não vê</b> registros internos.</li>
+                        <li>Clique em <b>Publicar</b>. O registro entra na linha do tempo com seu nome, data e hora.</li>
+                        <li>Para mudar a etapa, use o botão <b>Status</b> (ou arraste no quadro). Entrar em <b>{{ cat.status['EM_DESENVOLVIMENTO'].rotulo }}</b> grava a data de início.</li>
+                        <li>Na aba <b>Escopo</b>, clique no quadradinho para marcar um item como concluído (vira um marco na linha do tempo). Novos itens: escreva um por linha e clique em <b>Adicionar</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-lightbulb"></i>
+                        <span>Registre os <b>impedimentos</b> (falta de acesso, dado não enviado, mudança de regra pelo solicitante). Eles justificam atrasos e ficam contados no painel lateral.</span>
+                    </div>
+                    <div class="tut-dica alerta"><i class="fas fa-exclamation-triangle"></i>
+                        <span><b>Suspensa</b> e <b>Cancelada</b> exigem justificativa. Mudança de escopo ou de prazo: edite a solicitação — o <b>Histórico</b> guarda o valor antigo e o novo.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Aba Andamento · caixa de registro</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div style="border:1px solid var(--sol-borda);border-radius:12px;background:var(--sol-fundo);padding:.7rem;">
+                                <div class="tut-falso-campo" style="border:none;min-height:46px;">Registre o que foi feito, um marco, um impedimento ou comente...</div>
+                                <div class="d-flex flex-wrap justify-content-between gap-2 mt-2">
+                                    <div class="d-flex flex-wrap gap-1">
+                                        {% for k in ['ATUALIZACAO', 'COMENTARIO', 'MARCO', 'IMPEDIMENTO'] %}
+                                        {% set t = cat.tipos_interacao[k] %}
+                                        <span class="sol-tipo-btn {% if loop.first %}ativo{% endif %}" style="border:1.5px solid {{ t.cor if loop.first else 'var(--sol-borda)' }};border-radius:99px;font-size:.66rem;font-weight:700;padding:.18rem .5rem;{% if loop.first %}background:{{ t.cor }};color:#fff;{% else %}color:var(--sol-suave);{% endif %}"><i class="fas {{ t.icone }} me-1"></i>{{ t.rotulo }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="d-flex gap-1 align-items-center" style="font-size:.7rem;">
+                                        <span class="tut-falso-campo" style="min-height:0;padding:3px 8px;">%</span>
+                                        <span class="tut-falso-campo" style="min-height:0;padding:3px 8px;">h</span>
+                                        <span class="tut-destaque" style="border-radius:6px;padding:2px 6px;"><i class="fas fa-lock"></i> Interno</span>
+                                        <span class="sol-btn sol-btn-pri sol-btn-sm"><i class="fas fa-paper-plane"></i> Publicar</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-start">
+                                <span class="sol-avatar" style="background:{{ cat.tipos_interacao['ATUALIZACAO'].cor }};"><i class="fas fa-sync-alt"></i></span>
+                                <div style="flex:1;border:1px dashed var(--sol-borda);border-radius:10px;padding:.5rem .7rem;background:var(--sol-fundo);">
+                                    <div style="font-size:.7rem;color:var(--sol-suave);"><b style="color:var(--sol-texto);">Seu nome</b> · {{ cat.tipos_interacao['ATUALIZACAO'].rotulo }} · <i class="fas fa-lock"></i> Interno · dd/mm/aaaa às hh:mm</div>
+                                    <div style="font-size:.78rem;">Texto do registro interno (só a equipe vê).</div>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-start">
+                                <span class="sol-avatar" style="background:{{ cat.tipos_interacao['MARCO'].cor }};"><i class="fas fa-flag-checkered"></i></span>
+                                <div style="flex:1;border:1px solid var(--sol-borda);border-radius:10px;padding:.5rem .7rem;background:var(--sol-fundo);">
+                                    <div style="font-size:.7rem;color:var(--sol-suave);"><b style="color:var(--sol-texto);">Seu nome</b> · {{ cat.tipos_interacao['MARCO'].rotulo }} · dd/mm/aaaa às hh:mm</div>
+                                    <div style="font-size:.78rem;">Texto público (o solicitante também vê).</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 4 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-4" data-etapa="4">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">4</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Registre a entrega para homologação</h5>
+                    <small class="text-white-50">Quando o trabalho estiver pronto e testado.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="4"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Na aba <b>Escopo</b>, confira se todos os itens estão marcados. A janela de entrega avisa se faltar algum.</li>
+                        <li>No topo da solicitação, clique em <b><i class="fas fa-box-open"></i> Registrar entrega</b>.</li>
+                        <li>Em <b>O que foi feito</b>, descreva as funcionalidades entregues, regras e dados usados. <b>Esse texto vai no termo.</b></li>
+                        <li>Informe o <b>endereço / caminho de acesso</b> e as <b>orientações de uso</b>.</li>
+                        <li>Clique em <b>Enviar para homologação</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-magic"></i>
+                        <span>Automaticamente: o status vai para <b>{{ cat.status['AGUARDANDO_HOMOLOGACAO'].rotulo }}</b>, o progresso vai a 100%, a data da entrega é gravada,
+                        o <b>termo em PDF</b> é gerado (versão 1) e o solicitante passa a ver o botão <b>Homologar</b>.</span>
+                    </div>
+                    <div class="tut-dica alerta"><i class="fas fa-redo"></i>
+                        <span>Precisou corrigir algo? Use <b>Atualizar entrega</b>. Se o conteúdo do termo mudar, uma nova versão é gerada e a decisão anterior do solicitante é limpa, para ele homologar de novo.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Janela · Registrar entrega</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div style="font-size:.74rem;background:var(--sol-azul-cla);border-radius:8px;padding:.5rem .7rem;">Esse texto vai para o <b>Termo de Entrega e Homologação</b>.</div>
+                            <div>
+                                <div class="tut-rot">O QUE FOI FEITO *</div>
+                                <div class="tut-falso-campo tut-destaque" style="min-height:70px;">Descreva as funcionalidades entregues, regras implementadas, dados utilizados...</div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-5"><div class="tut-rot">ENDEREÇO / CAMINHO DE ACESSO</div><div class="tut-falso-campo">Portal GEINC &gt; ...</div></div>
+                                <div class="col-7"><div class="tut-rot">ORIENTAÇÕES DE USO</div><div class="tut-falso-campo">Opcional</div></div>
+                            </div>
+                            <div class="text-end"><span class="sol-btn sol-btn-ok sol-btn-sm"><i class="fas fa-paper-plane"></i> Enviar para homologação</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 5 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-5" data-etapa="5">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">5</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Acompanhe a homologação e o termo assinado</h5>
+                    <small class="text-white-50">Aba <b>Homologação</b> da solicitação.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="5"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>O solicitante clica em <b>Homologar</b>, escolhe <b class="tut-sim">Atende</b> ou <b class="tut-nao">Não atende</b> (com o motivo) e o termo em PDF é baixado para ele.</li>
+                        <li>A decisão aparece para você no aviso amarelo do topo e na aba Homologação.</li>
+                        <li>O termo é assinado digitalmente (assinador gov.br, SEI ou certificado ICP-Brasil) e anexado em <b>Anexar termo assinado</b> — pelo solicitante ou por você.</li>
+                        <li>Os quatro marcadores da aba mostram o que já aconteceu: <b>Entrega</b> → <b>Parecer</b> → <b>Termo assinado</b> → <b>Conclusão</b>.</li>
+                    </ol>
+                    <div class="tut-dica"><i class="fas fa-file-download"></i>
+                        <span>Você pode baixar o termo a qualquer momento no botão <b>Termo</b>: <b>PDF</b> (para assinar) ou <b>Word</b> (editável). Sem entrega registrada, só o gestor consegue baixar.</span>
+                    </div>
+                    <div class="tut-dica"><i class="fas fa-shield-alt"></i>
+                        <span>No rodapé do termo há um <b>código de verificação</b> (ex.: XXXX-XXXX-XXXX-XXXX). Na lista, o botão <b>Verificar termo</b> confirma se uma via é autêntica e se é a versão vigente.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Aba Homologação · marcadores</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="row g-2">
+                                {% for rot, ico, ok in [('Entrega registrada', 'fa-box-open', 1), ('Parecer do solicitante', 'fa-user-check', 1), ('Termo assinado anexado', 'fa-file-signature', 0), ('Conclusão', 'fa-flag-checkered', 0)] %}
+                                <div class="col-6 col-md-3">
+                                    <div style="border-radius:10px;padding:.5rem;text-align:center;border:1px solid {{ '#1cc88a' if ok else 'var(--sol-borda)' }};background:{{ '#1cc88a14' if ok else 'var(--sol-fundo)' }};">
+                                        <i class="fas {{ ico }}" style="color:{{ '#1cc88a' if ok else 'var(--sol-suave)' }};"></i>
+                                        <div style="font-size:.66rem;font-weight:700;">{{ rot }}</div>
+                                        <div style="font-size:.6rem;color:var(--sol-suave);">{{ 'dd/mm/aaaa' if ok else 'pendente' }}</div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div style="border:1px solid #1cc88a;background:#ecfdf5;border-radius:10px;padding:.55rem .75rem;font-size:.75rem;color:#065f46;">
+                                <i class="fas fa-thumbs-up me-1"></i><b>Solicitante: a entrega ATENDE ao pedido</b> · parecer · dd/mm/aaaa hh:mm
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span style="font-size:.72rem;color:var(--sol-suave);">Termos gerados: Versão N <span class="sol-badge" style="background:#1cc88a22;color:#1cc88a;">vigente</span></span>
+                                <span class="sol-btn sol-btn-ok sol-btn-sm tut-destaque"><i class="fas fa-upload"></i> Anexar termo assinado</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 6 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-6" data-etapa="6">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">6</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Conclua: homologada ou não homologada</h5>
+                    <small class="text-white-50">Depois do parecer e, de preferência, com o termo assinado anexado.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="6"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Clique em <b><i class="fas fa-flag-checkered"></i> Concluir</b> no topo da solicitação.</li>
+                        <li>Escolha <b class="tut-sim">{{ cat.status['CONCLUIDA_HOMOLOGADA'].rotulo }}</b> ou <b class="tut-nao">{{ cat.status['CONCLUIDA_NAO_HOMOLOGADA'].rotulo }}</b>.</li>
+                        <li>Na <b>não homologada</b>, a justificativa é obrigatória (ex.: solicitante não respondeu, recusou sem motivo técnico, escopo mudou).</li>
+                        <li>Clique em <b>Concluir</b>. A data e quem concluiu ficam registrados e a solicitação sai da lista de abertas.</li>
+                    </ol>
+                    <div class="tut-dica alerta"><i class="fas fa-exclamation-triangle"></i>
+                        <span>Se ainda não houver termo assinado, a janela mostra um aviso. O sistema deixa concluir, mas o ideal é anexar a via assinada antes.</span>
+                    </div>
+                    <div class="tut-dica"><i class="fas fa-undo"></i>
+                        <span>Precisa voltar atrás? Na solicitação finalizada, o botão vira <b>Reabrir</b>: escolha o novo status e informe a justificativa. A entrega e a homologação anteriores são limpas, mas tudo continua na linha do tempo e no histórico.</span>
+                    </div>
+                    <div class="tut-dica perigo"><i class="fas fa-trash"></i>
+                        <span><b>Excluir</b> (menu <i class="fas fa-ellipsis-h"></i>) pede motivo e só tira a solicitação das listas — o registro continua guardado no banco.</span>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Janela · Concluir solicitação</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <div class="row g-2">
+                                {% for k in ['CONCLUIDA_HOMOLOGADA', 'CONCLUIDA_NAO_HOMOLOGADA'] %}
+                                {% set st = cat.status[k] %}
+                                <div class="col-6">
+                                    <div class="sol-decisao {{ 'sim ativa' if loop.first else 'nao' }}" style="padding:.7rem;">
+                                        <i class="fas {{ st.icone }} fa-lg mb-1" style="color:{{ st.cor }};"></i>
+                                        <div class="fw-bold" style="font-size:.78rem;">{{ st.rotulo }}</div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div><div class="tut-rot">JUSTIFICATIVA</div><div class="tut-falso-campo" style="min-height:48px;">Obrigatória para não homologada</div></div>
+                            <div class="text-end"><span class="sol-btn sol-btn-pri sol-btn-sm tut-destaque"><i class="fas fa-check"></i> Concluir</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= ETAPA 7 ================= -->
+    <div class="mb-4 tut-etapa" id="etapa-7" data-etapa="7">
+        <div class="tut-etapa-header">
+            <div class="d-flex align-items-center gap-3" style="min-width:0;">
+                <div class="tut-etapa-num">7</div>
+                <div style="min-width:0;">
+                    <h5 class="mb-0 fw-bold">Use o dashboard para mostrar o trabalho da área</h5>
+                    <small class="text-white-50">Botão <b>Dashboard</b>, no topo da lista.</small>
+                </div>
+            </div>
+            <label class="tut-feito"><input type="checkbox" class="form-check-input m-0 js-ignore-loading" data-etapa="7"> Feito</label>
+        </div>
+        <div class="tut-etapa-corpo">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <ol class="tut-passos">
+                        <li>Filtre por <b>ano</b>, <b>área</b> e <b>tipo</b> no canto superior direito.</li>
+                        <li>Os indicadores mostram: total, em aberto, atrasadas, aguardando homologação, homologadas, <b>taxa de homologação</b>, <b>entregas no prazo</b>, tempo médio até concluir (em dias corridos e úteis) e horas lançadas.</li>
+                        <li>Os gráficos mostram a evolução mês a mês, status, área solicitante, aplicativo × painel, prioridade, categoria e há quanto tempo as abertas estão paradas.</li>
+                        <li>Em <b>O que cada pessoa fez</b>, clique na linha da pessoa para ver a lista das solicitações dela.</li>
+                        <li><b>Precisa de atenção</b> lista as atrasadas e as paradas na homologação.</li>
+                    </ol>
+                </div>
+                <div class="col-lg-7">
+                    <div class="tut-tela">
+                        <div class="tut-tela-barra"><span>Dashboard · por pessoa</span><span>como aparece na tela</span></div>
+                        <div class="tut-tela-corpo">
+                            <table class="tut-quadro" style="font-size:.74rem;">
+                                <thead><tr><th>Pessoa</th><th class="text-center">Particip.</th><th>Distribuição</th><th class="text-center">Homolog.</th><th class="text-end">Horas</th></tr></thead>
+                                <tbody>
+                                    {% for largura in [[50, 15, 35], [30, 0, 70]] %}
+                                    <tr class="{{ 'tut-destaque' if loop.first else '' }}">
+                                        <td><span class="sol-avatar" style="background:var(--sol-azul);width:22px;height:22px;font-size:.55rem;">AB</span> Nome</td>
+                                        <td class="text-center">n</td>
+                                        <td><div class="sol-mini-barra" style="display:flex;height:7px;border-radius:99px;overflow:hidden;gap:2px;min-width:90px;">
+                                            <span style="width:{{ largura[0] }}%;background:#1cc88a;"></span><span style="width:{{ largura[1] }}%;background:#e74a3b;"></span><span style="width:{{ largura[2] }}%;background:#4e73df;"></span></div></td>
+                                        <td class="text-center tut-sim">n</td>
+                                        <td class="text-end">h</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <div style="font-size:.7rem;color:var(--sol-suave);"><span style="color:#1cc88a;">■</span> homologadas · <span style="color:#e74a3b;">■</span> não homologadas · <span style="color:#4e73df;">■</span> em aberto</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= BOAS PRÁTICAS ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-cab"><h5><i class="fas fa-shield-alt me-2" style="color:var(--sol-azul);"></i>Boas práticas para proteger a área</h5></div>
+        <div class="sol-card-corpo">
+            <div class="row g-3">
+                {% for ico, tit, txt in [
+                    ('fa-envelope-open-text', 'Evidência sempre', 'Todo pedido com o e-mail, print ou memorando anexado na abertura.'),
+                    ('fa-user-check', 'Peça a confirmação', 'Lembre o solicitante de clicar em "Está correto". O painel Pessoas mostra se ele já confirmou.'),
+                    ('fa-calendar-check', 'Prazo acordado', 'Combine e registre o prazo acordado. O indicador de entrega no prazo usa ele.'),
+                    ('fa-exclamation-triangle', 'Registre impedimentos', 'Tudo que atrasar por fora da área vira um registro de Impedimento, com data.'),
+                    ('fa-edit', 'Mudou o pedido? Edite', 'Mudanças de escopo e prazo ficam no Histórico com o antes e o depois.'),
+                    ('fa-file-signature', 'Termo assinado', 'Não conclua sem anexar a via assinada, sempre que possível.'),
+                ] %}
+                <div class="col-md-6 col-xl-4">
+                    <div class="d-flex gap-2 align-items-start" style="font-size:.85rem;">
+                        <span class="sol-avatar" style="background:var(--sol-azul-cla);color:var(--sol-azul);border:none;flex-shrink:0;"><i class="fas {{ ico }}"></i></span>
+                        <div><b>{{ tit }}</b><div style="color:var(--sol-suave);">{{ txt }}</div></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= DÚVIDAS ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-cab"><h5><i class="fas fa-question-circle me-2" style="color:var(--sol-azul);"></i>Dúvidas frequentes</h5></div>
+        <div class="accordion accordion-flush tut-faq" id="faqAdmin">
+            {% for perg, resp in [
+                ('O executor que não é administrador consegue editar a solicitação?', 'Não. Ele vê tudo (inclusive os registros internos), lança atualizações, horas e % e marca os itens do escopo. Editar dados, mudar status, entregar e concluir é só do administrador/moderador.'),
+                ('O solicitante consegue ver os registros internos?', 'Não. Registros marcados como Interno, arquivos internos e a aba Histórico não aparecem para o solicitante nem para os observadores — o filtro é feito no banco, antes de a página ser montada.'),
+                ('Mudei o solicitante na edição. O que acontece?', 'A área é puxada de novo do cadastro de empregados e a confirmação do pedido é zerada, porque a nova pessoa ainda não confirmou.'),
+                ('Por que o termo ganhou uma versão nova?', 'O termo só muda de versão quando o conteúdo dele muda (resumo, orientações, executores, itens, decisão do solicitante...). Baixar de novo sem mudanças devolve a mesma via, com o mesmo código de verificação.'),
+                ('A solicitação some quando é excluída?', 'Ela sai das listas e do dashboard, mas o registro, a linha do tempo e os arquivos continuam no banco (exclusão lógica), e o motivo fica registrado.'),
+                ('Onde ficam os arquivos?', 'No próprio banco de dados, com o hash SHA-256 de cada arquivo, para provar que não foi alterado. Limite de 15 MB por arquivo.'),
+            ] %}
+            <div class="accordion-item">
+                <h2 class="accordion-header"><button class="accordion-button collapsed js-ignore-loading" type="button" data-bs-toggle="collapse" data-bs-target="#faqA{{ loop.index }}">{{ perg }}</button></h2>
+                <div id="faqA{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#faqAdmin"><div class="accordion-body">{{ resp }}</div></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ================= RODAPÉ ================= -->
+    <div class="sol-card mb-4">
+        <div class="sol-card-corpo d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="tut-resumo">
+                <span class="badge bg-primary">1 Registrar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-info text-dark">2 Acompanhar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-secondary">3 Atualizar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-warning text-dark">4 Entregar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge" style="background:#6f42c1;">5 Homologar</span><i class="fas fa-chevron-right"></i>
+                <span class="badge bg-success">6 Concluir</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading" id="tutDesmarcar"><i class="fas fa-undo"></i> Desmarcar tudo</button>
+                <a href="{{ url_for('solicitacoes.nova') }}" class="sol-btn sol-btn-pri sol-btn-sm"><i class="fas fa-plus"></i> Registrar uma solicitação</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>document.addEventListener('DOMContentLoaded', function () { TutProgresso('solicitacoes_tutorial_admin'); });</script>
+{% endblock %}
