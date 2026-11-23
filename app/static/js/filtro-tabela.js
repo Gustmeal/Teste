@@ -9,6 +9,8 @@
  *     <select data-coluna="2" data-modo="exato">  -> valor igual (opções montadas
  *                                                   com os valores que estão na tabela)
  *   O valor de cada célula é o atributo data-filtro do <td> (ou o texto do <td>).
+ *   data-padrao="80" no select: já abre filtrado nesse valor (igual a "80" ou que
+ *   comece com "80 - ") e o botão Limpar volta para ele. O valor vem do back end.
  * Não usa dados fixos: as opções dos selects vêm das próprias linhas renderizadas
  * pelo back end.
  */
@@ -59,7 +61,18 @@
                 op.textContent = v === '' ? '(vazio)' : v;
                 campo.appendChild(op);
             });
+            aplicarPadrao(campo);
         });
+
+        // Seleciona o valor padrão do filtro (se existir na tabela)
+        function aplicarPadrao(campo) {
+            const padrao = campo.getAttribute('data-padrao');
+            if (campo.tagName !== 'SELECT' || !padrao) { return false; }
+            const ops = Array.prototype.slice.call(campo.options);
+            const achou = ops.find(function (o) { return o.value === padrao || o.value.indexOf(padrao + ' - ') === 0; });
+            if (achou) { campo.value = achou.value; return true; }
+            return false;
+        }
 
         function filtrar() {
             const termo = campoTexto ? normalizar(campoTexto.value) : '';
@@ -108,7 +121,10 @@
                 e.stopImmediatePropagation();
                 if (campoTexto) { campoTexto.value = ''; }
                 if (campoSituacao) { campoSituacao.value = ''; }
-                filtrosColuna.forEach(function (c) { c.value = c.tagName === 'SELECT' ? '__todos__' : ''; });
+                filtrosColuna.forEach(function (c) {
+                    c.value = c.tagName === 'SELECT' ? '__todos__' : '';
+                    aplicarPadrao(c);
+                });
                 filtrar();
             });
         }
