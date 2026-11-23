@@ -174,7 +174,7 @@
                         </tr>
                         <tr class="cc-filtros-coluna">
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="0" data-modo="exato"><option value="__todos__">Todos</option></select></th>
-                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="1" data-modo="exato" data-padrao="{{ item_filtro_padrao }}" title="Abre filtrado no item {{ item_filtro_padrao }}; escolha Todos para ver os demais"><option value="__todos__">Todos</option></select></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="1" data-modo="exato"><option value="__todos__">Todos</option></select></th>
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="2" data-modo="exato"><option value="__todos__">Todos</option></select></th>
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><input type="text" class="form-control form-control-sm" data-coluna="3" data-modo="texto" placeholder="Conta..."></th>
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="4" data-modo="exato"><option value="__todos__">Todos</option></select></th>
@@ -300,6 +300,12 @@
     const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_salvar') }}";
     const URL_CONTAS = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_contas') }}";
     const URL_VERIFICAR = "{{ url_for('contas_contabeis.verificar_conta') }}";
+    // Item do FCO que já vem marcado na inclusão (definido no back end)
+    const ITEM_PADRAO = "{{ item_padrao_inclusao }}";
+    function itemPadrao(idSelect) {
+        const existe = ITEM_PADRAO && document.querySelector('#' + idSelect + ' option[value="' + ITEM_PADRAO + '"]');
+        return existe ? ITEM_PADRAO : '';
+    }
     const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
 
     // Vínculo que está sendo editado (os 4 valores originais) ou null para inclusão
@@ -317,6 +323,7 @@
     const base = {theme: 'bootstrap-5', language: 'pt-BR', width: '100%'};
     $('#selAgrup').select2(Object.assign({}, base, {placeholder: 'Selecione o agrupamento'}));
     $('#selItem').select2(Object.assign({}, base, {placeholder: 'Selecione o item'}));
+    $('#selItem').val(itemPadrao('selItem')).trigger('change');
     $('#selLinha').select2(Object.assign({}, base, {placeholder: 'Selecione a linha'}));
     $('#selConta').select2(Object.assign({}, base, {
         placeholder: 'Digite para pesquisar no balancete...',
@@ -342,7 +349,7 @@
     function limparFormulario() {
         original = null;
         $('#selAgrup').val('').trigger('change');
-        $('#selItem').val('').trigger('change');
+        $('#selItem').val(itemPadrao('selItem')).trigger('change');
         $('#selLinha').val('').trigger('change');
         definirConta('');
         document.getElementById('tituloForm').innerHTML = '<i class="fas fa-link me-2"></i>Novo vínculo';
@@ -471,7 +478,7 @@
         ncConta.value = '';
         verificarConta();
         $('#ncAgrup').val('').trigger('change');
-        $('#ncItem').val('').trigger('change');
+        $('#ncItem').val(itemPadrao('ncItem')).trigger('change');
         $('#ncLinha').val('').trigger('change');
         document.getElementById('ncMsg').style.display = 'none';
         modalNC.show();

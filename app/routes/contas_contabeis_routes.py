@@ -871,8 +871,8 @@ def vinculacao_fco_nova():
 # VINCULAÇÃO FCO X BALANCETE (COR_TB041 + parâmetros COR_TB034/036/037)
 # =========================================================================
 
-# Item do FCO que a tela FCO X BALANCETE já abre filtrado (ID_FCO da COR_TB036)
-ITEM_FCO_FILTRO_PADRAO = '80'
+# Item do FCO que já vem marcado na inclusão da FCO X BALANCETE (ID_FCO da COR_TB036)
+ITEM_FCO_PADRAO_INCLUSAO = '80'
 
 # Colunas da COR_TB041 -> (rótulo na tela, chave usada no JSON)
 COLS_TB041 = [
@@ -1058,7 +1058,7 @@ def vinculacao_fco_balancete():
         qtd_contas=len(set(v['conta'] for v in vinculos)),
         qtd_sem_vinculo=sum(1 for v in vinculos if v['situacao'] == 'sem'),
         tam_conta=tam_conta,
-        item_filtro_padrao=ITEM_FCO_FILTRO_PADRAO,
+        item_padrao_inclusao=ITEM_FCO_PADRAO_INCLUSAO,
     )
 
 
