@@ -107,13 +107,14 @@
                 <div class="col-lg-5">
                     <ol class="tut-passos">
                         <li><b>Quem pediu:</b> pesquise o usuário pelo nome ou e-mail. A <b>área</b> (diretoria, superintendência e setor) e o cargo aparecem sozinhos, puxados do cadastro de empregados, junto com as últimas solicitações dessa pessoa.</li>
+                        <li><b>Mais de uma pessoa pediu?</b> Inclua os demais em <b>Outros solicitantes</b>. Todos acompanham, confirmam o pedido, podem homologar e assinam o termo.</li>
                         <li><b>Tipo de entrega:</b> clique em
                             {% for k, t in cat.tipos_entrega.items() %}<b style="color:{{ t.cor }};">{{ t.rotulo }}</b>{% if not loop.last %} ou {% endif %}{% endfor %}.
                             Esse campo é obrigatório.</li>
                         <li><b>O que foi pedido:</b> título curto e descrição detalhada. Escreva com as palavras do solicitante — é isso que vai no termo.</li>
                         <li><b>Classificação e origem:</b> prioridade, impacto, complexidade, como o pedido chegou (e-mail, Teams, SEI...), nº SEI e a <b>data do pedido</b>.</li>
                         <li><b>Prazos:</b> o <b>desejado</b> é o que o solicitante pediu; o <b>acordado</b> é o compromisso da área. O indicador de atraso usa o acordado (ou o desejado, se não houver).</li>
-                        <li><b>Equipe:</b> clique em <b>Adicionar executor</b> para cada pessoa que vai trabalhar (com a função, se quiser). Em <b>Observadores</b>, inclua quem só precisa acompanhar.</li>
+                        <li><b>Equipe:</b> clique em <b>Adicionar executor</b> para cada pessoa que vai trabalhar (com a função, se quiser). Em <b>Observadores</b>, inclua quem só precisa acompanhar. Use <b>Ver por gerência</b> para ver todos de uma gerência e adicionar a gerência inteira de uma vez.</li>
                         <li><b>Escopo e evidências:</b> escreva um item por linha (vira o checklist) e arraste o e-mail/print do pedido para a área de evidências. Clique em <b>Registrar solicitação</b>.</li>
                     </ol>
                     <div class="tut-dica"><i class="fas fa-shield-alt"></i>

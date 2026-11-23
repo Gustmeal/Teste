@@ -365,11 +365,31 @@ def _papel(sol, envolvidos):
     uid = _uid()
     if any(e['ID_USUARIO'] == uid and e['PAPEL'] == 'EXECUTOR' for e in envolvidos):
         return 'EQUIPE'
-    if sol['ID_USUARIO_SOLICITANTE'] == uid:
+    if sol['ID_USUARIO_SOLICITANTE'] == uid or any(
+            e['ID_USUARIO'] == uid and e['PAPEL'] == 'SOLICITANTE' for e in envolvidos):
         return 'SOLICITANTE'
     if any(e['ID_USUARIO'] == uid and e['PAPEL'] == 'OBSERVADOR' for e in envolvidos):
         return 'OBSERVADOR'
     return None
+
+
+def _cosolicitantes_com_area(envolvidos):
+    """Outros solicitantes (PAPEL = 'SOLICITANTE') com cargo e área atuais do cadastro de empregados."""
+    ids = [e['ID_USUARIO'] for e in envolvidos if e['PAPEL'] == 'SOLICITANTE']
+    if not ids:
+        return []
+    dados = {u['ID']: u for u in _rows(SQL_USUARIOS + " WHERE U.ID IN ({})".format(','.join(str(int(i)) for i in ids)))}
+    lista = []
+    for e in envolvidos:
+        if e['PAPEL'] != 'SOLICITANTE':
+            continue
+        u = dados.get(e['ID_USUARIO']) or {}
+        lista.append({
+            'id': e['ID_USUARIO'], 'nome': e['NO_USUARIO'], 'iniciais': _iniciais(e['NO_USUARIO']),
+            'cargo': u.get('DS_CARGO') or '', 'email': u.get('EMAIL') or '',
+            'area': ' / '.join([x for x in [u.get('SG_DIRETORIA'), u.get('SG_SUPERINTENDENCIA'), u.get('SG_SETOR')] if x]) or '—',
+        })
+    return lista
 
 
 def _ve_interno(papel):
@@ -515,9 +535,14 @@ def _ler_upload(arquivo):
     return nome, arquivo.mimetype or 'application/octet-stream', conteudo
 
 
-def _sincronizar_envolvidos(id_solicitacao, executores, observadores):
+PAPEIS_ENVOLVIDO = {'EXECUTOR': 'executor', 'OBSERVADOR': 'observador', 'SOLICITANTE': 'solicitante'}
+
+
+def _sincronizar_envolvidos(id_solicitacao, executores, observadores, cosolicitantes=None):
     """
-    executores: lista de (id_usuario, funcao); observadores: lista de id_usuario.
+    executores: lista de (id_usuario, funcao); observadores e cosolicitantes: listas de id_usuario.
+    Co-solicitantes (outras pessoas que também pediram) ficam com PAPEL = 'SOLICITANTE';
+    o solicitante principal continua na própria SOL_TB001.
     Mantém quem continua, desativa quem saiu e inclui os novos.
     Retorna lista de textos com as mudanças (para o histórico).
     """
@@ -526,8 +551,11 @@ def _sincronizar_envolvidos(id_solicitacao, executores, observadores):
     desejado = {}
     for uid, funcao in executores:
         desejado[(uid, 'EXECUTOR')] = funcao
+    for uid in (cosolicitantes or []):
+        desejado[(uid, 'SOLICITANTE')] = None
+    ja = set(k[0] for k in desejado)
     for uid in observadores:
-        if (uid, 'EXECUTOR') not in desejado:
+        if uid not in ja:
             desejado[(uid, 'OBSERVADOR')] = None
 
     for env in atuais:
@@ -535,7 +563,7 @@ def _sincronizar_envolvidos(id_solicitacao, executores, observadores):
         if chave not in desejado:
             db.session.execute(text("UPDATE " + TB_ENV + " SET DELETED_AT = GETDATE() WHERE ID_ENVOLVIDO = :id"),
                                {'id': env['ID_ENVOLVIDO']})
-            mudancas.append('{} removido(a) como {}'.format(env['NO_USUARIO'], env['PAPEL'].lower()))
+            mudancas.append('{} removido(a) como {}'.format(env['NO_USUARIO'], PAPEIS_ENVOLVIDO.get(env['PAPEL'], env['PAPEL'].lower())))
         else:
             nova_funcao = desejado.pop(chave)
             if env['PAPEL'] == 'EXECUTOR' and (nova_funcao or None) != (env['DS_FUNCAO'] or None):
@@ -555,12 +583,12 @@ def _sincronizar_envolvidos(id_solicitacao, executores, observadores):
                 VALUES (:id, :uid, :nome, :papel, :funcao, :criador, GETDATE())
             """), {'id': id_solicitacao, 'uid': uid, 'nome': nomes[uid], 'papel': papel,
                    'funcao': funcao, 'criador': _uid()})
-            mudancas.append('{} incluído(a) como {}'.format(nomes[uid], papel.lower()))
+            mudancas.append('{} incluído(a) como {}'.format(nomes[uid], PAPEIS_ENVOLVIDO.get(papel, papel.lower())))
     return mudancas
 
 
 def _dados_formulario():
-    """Lê e valida o formulário de criação/edição. Retorna (dados, executores, observadores, erros)."""
+    """Lê e valida o formulário. Retorna (dados, executores, observadores, cosolicitantes, erros)."""
     f = request.form
     erros = []
     dados = {
@@ -615,13 +643,19 @@ def _dados_formulario():
         if uid and uid not in vistos:
             vistos.add(uid)
             executores.append((uid, _limpo(funcoes[i] if i < len(funcoes) else None, 60)))
+    # Outros solicitantes: não repetem o principal (que fica na SOL_TB001)
+    cosolicitantes = []
+    for valor in request.form.getlist('cosolicitante_id'):
+        uid = _parse_int(valor)
+        if uid and uid != dados['ID_USUARIO_SOLICITANTE'] and uid not in cosolicitantes:
+            cosolicitantes.append(uid)
     observadores = []
     for valor in request.form.getlist('observador_id'):
         uid = _parse_int(valor)
-        if uid and uid not in vistos and uid != dados['ID_USUARIO_SOLICITANTE']:
+        if uid and uid not in vistos and uid != dados['ID_USUARIO_SOLICITANTE'] and uid not in cosolicitantes:
             vistos.add(uid)
             observadores.append(uid)
-    return dados, executores, observadores, erros
+    return dados, executores, observadores, cosolicitantes, erros
 
 
 # =========================================================================
@@ -709,16 +743,19 @@ def _consultar_lista(filtros, papel_global_gestor):
 
     hoje = date.today()
     executores = defaultdict(list)
+    cosolicitantes = defaultdict(list)
     if lista:
         ids = ','.join(str(int(s['ID_SOLICITACAO'])) for s in lista)
         for env in _rows("""
-            SELECT ID_SOLICITACAO, ID_USUARIO, NO_USUARIO, DS_FUNCAO FROM """ + TB_ENV + """
-            WHERE PAPEL = 'EXECUTOR' AND DELETED_AT IS NULL AND ID_SOLICITACAO IN (""" + ids + """)
+            SELECT ID_SOLICITACAO, ID_USUARIO, NO_USUARIO, DS_FUNCAO, PAPEL FROM """ + TB_ENV + """
+            WHERE PAPEL IN ('EXECUTOR', 'SOLICITANTE') AND DELETED_AT IS NULL AND ID_SOLICITACAO IN (""" + ids + """)
             ORDER BY NO_USUARIO"""):
-            executores[env['ID_SOLICITACAO']].append(env)
+            (executores if env['PAPEL'] == 'EXECUTOR' else cosolicitantes)[env['ID_SOLICITACAO']].append(env)
     for s in lista:
         _enriquecer(s, hoje)
         s['executores'] = executores.get(s['ID_SOLICITACAO'], [])
+        s['cosolicitantes'] = cosolicitantes.get(s['ID_SOLICITACAO'], [])
+        s['ids_solicitantes'] = [s['ID_USUARIO_SOLICITANTE']] + [c['ID_USUARIO'] for c in s['cosolicitantes']]
         s['iniciais'] = [_iniciais(e['NO_USUARIO']) for e in s['executores']]
     return lista
 
@@ -757,9 +794,9 @@ def index():
     # Pendências do usuário logado como solicitante
     uid = _uid()
     pendencias = {
-        'homologar': [s for s in lista if s['ID_USUARIO_SOLICITANTE'] == uid
+        'homologar': [s for s in lista if uid in s['ids_solicitantes']
                       and s['STATUS'] == 'AGUARDANDO_HOMOLOGACAO' and not s['ST_HOMOLOGACAO_SOLICITANTE']],
-        'ciencia': [s for s in lista if s['ID_USUARIO_SOLICITANTE'] == uid
+        'ciencia': [s for s in lista if uid in s['ids_solicitantes']
                     and not s['DT_CIENCIA_SOLICITANTE'] and not s['finalizada']],
     }
 
@@ -809,7 +846,7 @@ def exportar():
     ws = wb.active
     ws.title = 'Solicitações'
     cab = ['Protocolo', 'Título', 'Tipo', 'Categoria', 'Prioridade', 'Status', '% Conclusão',
-           'Solicitante', 'Diretoria', 'Superintendência', 'Setor', 'Executores', 'Aplicativo/Painel',
+           'Solicitante(s)', 'Diretoria', 'Superintendência', 'Setor', 'Executores', 'Aplicativo/Painel',
            'Referência', 'Canal', 'Data solicitação', 'Prazo desejado', 'Prazo acordado',
            'Entrega', 'Conclusão', 'Situação do prazo', 'Dias em aberto', 'Homologação solicitante',
            'Etiquetas']
@@ -817,7 +854,8 @@ def exportar():
     for s in lista:
         ws.append([
             s['NU_PROTOCOLO'], s['TITULO'], s['tipo_rotulo'], s['categoria_rotulo'], s['prioridade_rotulo'],
-            s['status_rotulo'], s['PC_CONCLUSAO'], s['NO_SOLICITANTE'], s['SG_DIRETORIA'],
+            s['status_rotulo'], s['PC_CONCLUSAO'],
+            ', '.join([s['NO_SOLICITANTE'] or ''] + [c['NO_USUARIO'] for c in s['cosolicitantes']]), s['SG_DIRETORIA'],
             s['SG_SUPERINTENDENCIA'], s['SG_SETOR'],
             ', '.join(e['NO_USUARIO'] for e in s['executores']), s['NO_SISTEMA'], s['NU_REFERENCIA'],
             s['canal_rotulo'], _como_data(s['DT_SOLICITACAO']), _como_data(s['DT_PRAZO_DESEJADO']),
@@ -876,10 +914,34 @@ def api_area_usuario(usuario_id):
 
 def _render_form(sol=None, envolvidos=None, form=None):
     atuais = [e['ID_USUARIO'] for e in (envolvidos or []) if e['PAPEL'] == 'EXECUTOR']
+    usuarios = _usuarios_ativos()
     return render_template('solicitacoes/form.html', sol=sol, envolvidos=envolvidos or [],
-                           usuarios=_usuarios_ativos(), executores_opcoes=_executores_area(atuais),
+                           usuarios=usuarios, grupos_gerencia=_agrupar_por_gerencia(usuarios),
+                           executores_opcoes=_executores_area(atuais),
                            area_executora=AREA_EXECUTORA, cat=_catalogos(), form=form,
                            hoje=date.today().strftime('%Y-%m-%d'))
+
+
+def _agrupar_por_gerencia(usuarios):
+    """
+    Agrupa os usuários pela gerência (setor do cadastro de empregados) para os
+    dropdowns de observadores e de outros solicitantes. Quem não tem vínculo no
+    cadastro fica no grupo "Sem gerência no cadastro", no fim.
+    """
+    grupos = OrderedDict()
+    for u in usuarios:
+        setor = (u.get('SG_SETOR') or '').strip()
+        chave = setor or '~SEM'
+        if chave not in grupos:
+            sup = (u.get('SG_SUPERINTENDENCIA') or '').strip()
+            grupos[chave] = {
+                'chave': chave,
+                'setor': setor or 'Sem gerência no cadastro',
+                'superintendencia': sup if setor else '',
+                'usuarios': [],
+            }
+        grupos[chave]['usuarios'].append(u)
+    return sorted(grupos.values(), key=lambda g: (g['chave'] == '~SEM', g['superintendencia'], g['setor']))
 
 
 def _validar_executores(executores, envolvidos_atuais=None):
@@ -902,7 +964,7 @@ def nova():
     if request.method == 'GET':
         return _render_form()
 
-    dados, executores, observadores, erros = _dados_formulario()
+    dados, executores, observadores, cosolicitantes, erros = _dados_formulario()
     erros += _validar_executores(executores)
     solicitante = _dados_usuario(dados['ID_USUARIO_SOLICITANTE']) if dados['ID_USUARIO_SOLICITANTE'] else None
     if dados['ID_USUARIO_SOLICITANTE'] and not solicitante:
@@ -947,7 +1009,7 @@ def nova():
                  'RECEBIDA', 0, :UID, GETDATE())
         """), params).scalar()
 
-        _sincronizar_envolvidos(novo_id, executores, observadores)
+        _sincronizar_envolvidos(novo_id, executores, observadores, cosolicitantes)
 
         ordem = 0
         for linha in (request.form.get('escopo') or '').splitlines():
@@ -963,9 +1025,14 @@ def nova():
             _gravar_arquivo(novo_id, 'EVIDENCIA', nome, ct, conteudo, interno=interno_evid,
                             observacao='Evidência registrada na abertura')
 
-        _interacao(novo_id, 'SISTEMA', 'Solicitação registrada por {} a pedido de {} ({}).'.format(
-            _unome(), solicitante['NOME'], solicitante['SG_SUPERINTENDENCIA'] or solicitante['SG_SETOR'] or 'área não informada'),
-            st_novo='RECEBIDA')
+        pedido_por = '{} ({})'.format(solicitante['NOME'], solicitante['SG_SUPERINTENDENCIA'] or solicitante['SG_SETOR'] or 'área não informada')
+        if cosolicitantes:
+            outros = [u['NOME'] for u in _rows("SELECT NOME FROM " + TB_USU + " WHERE ID IN ({}) ORDER BY NOME".format(
+                ','.join(str(int(i)) for i in cosolicitantes)))]
+            if outros:
+                pedido_por += ', junto com ' + ', '.join(outros)
+        _interacao(novo_id, 'SISTEMA', 'Solicitação registrada por {} a pedido de {}.'.format(_unome(), pedido_por),
+                   st_novo='RECEBIDA')
         db.session.commit()
         registrar_log('criar', 'solicitacoes_area', novo_id,
                       'Registrou a solicitação {} - {}'.format(protocolo, dados['TITULO']))
@@ -987,7 +1054,7 @@ def editar(id_solicitacao):
     if request.method == 'GET':
         return _render_form(sol=sol, envolvidos=env)
 
-    dados, executores, observadores, erros = _dados_formulario()
+    dados, executores, observadores, cosolicitantes, erros = _dados_formulario()
     erros += _validar_executores(executores, env)
     solicitante = None
     if dados['ID_USUARIO_SOLICITANTE'] and dados['ID_USUARIO_SOLICITANTE'] != sol['ID_USUARIO_SOLICITANTE']:
@@ -1041,7 +1108,7 @@ def editar(id_solicitacao):
             WHERE ID_SOLICITACAO = :id
         """), params)
 
-        mudancas = _sincronizar_envolvidos(id_solicitacao, executores, observadores)
+        mudancas = _sincronizar_envolvidos(id_solicitacao, executores, observadores, cosolicitantes)
         for m in mudancas:
             _historico(id_solicitacao, 'Envolvidos', None, m)
 
@@ -1151,6 +1218,7 @@ def detalhe(id_solicitacao):
 
     executores = [e for e in env if e['PAPEL'] == 'EXECUTOR']
     observadores = [e for e in env if e['PAPEL'] == 'OBSERVADOR']
+    cosolicitantes = _cosolicitantes_com_area(env)
     for e in env:
         e['iniciais'] = _iniciais(e['NO_USUARIO'])
 
@@ -1197,6 +1265,7 @@ def detalhe(id_solicitacao):
     return render_template('solicitacoes/detalhe.html', sol=sol, papel=papel, papel_info=PAPEIS[papel],
                            ve_interno=ve_interno, interacoes=interacoes, itens=itens, arquivos=arquivos,
                            historico=historico, horas=horas, executores=executores, observadores=observadores,
+                           cosolicitantes=cosolicitantes,
                            etapas=etapas, termos_gerados=termos_gerados, termos_assinados=termos_assinados,
                            stats=stats, permissoes=permissoes, status_manuais=status_manuais, cat=_catalogos())
 
@@ -1653,6 +1722,7 @@ def _dados_termo(id_solicitacao):
         'orgao': 'EMGEA – Empresa Gestora de Ativos',
         'area_executora': AREA_EXECUTORA,
         'executores': [{'nome': e['NO_USUARIO'], 'funcao': e['DS_FUNCAO']} for e in env if e['PAPEL'] == 'EXECUTOR'],
+        'outros_solicitantes': _cosolicitantes_com_area(env),
         'itens': [{'descricao': i['DESCRICAO'], 'concluido': i['FL_CONCLUIDO']} for i in itens],
         'linha_tempo': [{'data': r['CREATED_AT'],
                          'texto': '[{}] {}'.format(TIPOS_INTERACAO.get(r['TIPO'], {}).get('rotulo', r['TIPO']), r['TEXTO'] or ''),

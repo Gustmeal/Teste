@@ -101,6 +101,7 @@ def codigo_verificacao(dados):
         'parecer': sol.get('PARECER_SOLICITANTE'),
         'dt_homologacao': _fmt_data(sol.get('DT_HOMOLOGACAO_SOLICITANTE'), True),
         'executores': [e.get('nome') for e in dados.get('executores') or []],
+        'outros_solicitantes': [e.get('nome') for e in dados.get('outros_solicitantes') or []],
         'itens': [[i.get('descricao'), bool(i.get('concluido'))] for i in dados.get('itens') or []],
     }
     bruto = json.dumps(base, ensure_ascii=False, sort_keys=True, default=str).encode('utf-8')
@@ -142,7 +143,8 @@ def montar_blocos(dados):
     area = ' / '.join([x for x in [sol.get('SG_DIRETORIA'), sol.get('SG_SUPERINTENDENCIA'),
                                    sol.get('SG_SETOR')] if x])
     ciencia = sol.get('DT_CIENCIA_SOLICITANTE')
-    blocos.append(('secao', '2. Solicitante'))
+    outros = [] if modelo else (dados.get('outros_solicitantes') or [])
+    blocos.append(('secao', '2. Solicitante' + ('s' if outros else '')))
     blocos.append(('campos', [
         ('Nome', _txt(sol.get('NO_SOLICITANTE'), modelo)),
         ('Cargo', _txt(sol.get('DS_CARGO_SOLICITANTE'), modelo)),
@@ -151,6 +153,11 @@ def montar_blocos(dados):
         ('Ciência do pedido registrada no portal',
          _txt(_fmt_data(ciencia, True) if ciencia else 'Não registrada', modelo)),
     ]))
+    if outros:
+        blocos.append(('paragrafo', 'Também solicitaram:'))
+        blocos.append(('tabela', ['Nome', 'Cargo', 'Área'],
+                       [[o.get('nome') or '', o.get('cargo') or '—', o.get('area') or '—'] for o in outros],
+                       [2.4, 2, 2]))
 
     # 3. O que foi pedido
     blocos.append(('secao', '3. Descrição do que foi solicitado'))
@@ -232,12 +239,15 @@ def montar_blocos(dados):
 
     # Assinaturas
     gerador = dados.get('gerado_por') or {}
-    blocos.append(('assinaturas', [
-        ('Solicitante', '' if modelo else (sol.get('NO_SOLICITANTE') or ''),
-         '' if modelo else (sol.get('DS_CARGO_SOLICITANTE') or '')),
-        ('Responsável pela entrega', '' if modelo else (dados.get('responsavel_nome') or gerador.get('nome') or ''),
-         '' if modelo else (dados.get('responsavel_cargo') or gerador.get('cargo') or '')),
-    ]))
+    assinantes = [('Solicitante', '' if modelo else (sol.get('NO_SOLICITANTE') or ''),
+                   '' if modelo else (sol.get('DS_CARGO_SOLICITANTE') or ''))]
+    assinantes += [('Solicitante', o.get('nome') or '', o.get('cargo') or '') for o in outros]
+    assinantes.append(('Responsável pela entrega',
+                       '' if modelo else (dados.get('responsavel_nome') or gerador.get('nome') or ''),
+                       '' if modelo else (dados.get('responsavel_cargo') or gerador.get('cargo') or '')))
+    # Duas assinaturas por linha, para caber na página
+    for i in range(0, len(assinantes), 2):
+        blocos.append(('assinaturas', assinantes[i:i + 2], i == 0))
     blocos.append(('nota', 'Este termo pode ser assinado eletronicamente (assinador gov.br, SEI ou '
                            'certificado digital ICP-Brasil). Após assinado, anexe a via assinada no '
                            'portal, na aba Homologação da solicitação.'))
@@ -382,9 +392,13 @@ def gerar_pdf(blocos, rodape):
                 txt = '_____________________________________<br/><b>{}</b><br/>{}<br/><font color="#{}">{}</font>'.format(
                     escape(nome or ' '), escape(cargo or ' '), _HEX_CINZA, escape(papel))
                 celulas.append(Paragraph(txt, _E_ASS))
-            t = Table([celulas], colWidths=[largura / len(celulas)] * len(celulas))
+            primeira = bloco[2] if len(bloco) > 2 else True
+            while len(celulas) < 2:
+                celulas.append('')
+            t = Table([celulas], colWidths=[largura / 2.0] * 2)
             t.setStyle(TableStyle([('TOPPADDING', (0, 0), (-1, -1), 36), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
-            atual.append(KeepTogether([Spacer(1, 0.4 * cm), _p('Brasília/DF, ____ de ______________ de ______.', _E_ASS), t]))
+            itens = [Spacer(1, 0.4 * cm), _p('Brasília/DF, ____ de ______________ de ______.', _E_ASS), t] if primeira else [t]
+            atual.append(KeepTogether(itens))
 
         elif tipo == 'nota':
             atual.append(Spacer(1, 0.15 * cm))
@@ -570,11 +584,14 @@ def gerar_docx(blocos, rodape):
             _separador(doc, 6)
 
         elif tipo == 'assinaturas':
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            _espaco(p, 14, 26)
-            _run(p, 'Brasília/DF, ____ de ______________ de ______.', tamanho=10)
-            t = doc.add_table(rows=1, cols=len(bloco[1]))
+            if len(bloco) <= 2 or bloco[2]:
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                _espaco(p, 14, 26)
+                _run(p, 'Brasília/DF, ____ de ______________ de ______.', tamanho=10)
+            else:
+                _espaco(doc.add_paragraph(), 18, 0)
+            t = doc.add_table(rows=1, cols=2)
             for i, (papel, nome, cargo) in enumerate(bloco[1]):
                 cel = t.rows[0].cells[i]
                 p = cel.paragraphs[0]

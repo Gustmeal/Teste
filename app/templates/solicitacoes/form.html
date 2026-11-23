@@ -15,7 +15,43 @@
     {%- else -%}{{ padrao }}{%- endif -%}
 {%- endmacro %}
 
+{# Opções de usuários agrupadas por gerência (setor do cadastro de empregados) #}
+{% macro opcoes_por_gerencia(selecionados) -%}
+    {% for g in grupos_gerencia %}
+    <optgroup label="{{ g.setor }}{% if g.superintendencia %} · {{ g.superintendencia }}{% endif %} ({{ g.usuarios|length }})">
+        {% for u in g.usuarios %}
+        <option value="{{ u.ID }}" data-gerencia="{{ g.chave }}" data-area="{{ u.SG_SETOR or '' }}" data-email="{{ u.EMAIL }}"
+                {% if u.ID|string in selecionados %}selected{% endif %}>{{ u.NOME }}</option>
+        {% endfor %}
+    </optgroup>
+    {% endfor %}
+{%- endmacro %}
+
+{# Bloco "gerência inteira": escolhe a gerência, mostra todos dela e adiciona de uma vez #}
+{% macro seletor_gerencia(alvo) -%}
+    <div class="sol-ger" data-alvo="{{ alvo }}">
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+            <span style="font-size:.75rem;font-weight:700;color:var(--sol-suave);"><i class="fas fa-sitemap me-1"></i>Ver por gerência:</span>
+            <select class="form-select form-select-sm sol-ger-select" style="max-width:280px;">
+                <option value="">Escolha a gerência...</option>
+                {% for g in grupos_gerencia %}
+                <option value="{{ g.chave }}">{{ g.setor }}{% if g.superintendencia %} · {{ g.superintendencia }}{% endif %} ({{ g.usuarios|length }})</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="sol-btn sol-btn-sec sol-btn-sm js-ignore-loading sol-ger-todos" style="display:none;"><i class="fas fa-users"></i> Adicionar todos</button>
+        </div>
+        <div class="sol-ger-membros mt-2" style="display:none;"></div>
+    </div>
+{%- endmacro %}
+
 <style>
+    .sol-ger { background: var(--sol-fundo-2); border: 1px dashed var(--sol-borda); border-radius: 10px; padding: .55rem .7rem; margin-top: .5rem; }
+    .sol-ger-membro { display: inline-flex; align-items: center; gap: .35rem; border: 1px solid var(--sol-borda); background: var(--sol-fundo);
+        border-radius: 99px; padding: .15rem .55rem .15rem .2rem; font-size: .75rem; margin: 0 .3rem .3rem 0; cursor: pointer; user-select: none; }
+    .sol-ger-membro.marcado { border-color: var(--sol-azul); background: var(--sol-azul-cla); color: var(--sol-azul); font-weight: 700; }
+    .sol-ger-membro .sol-avatar { width: 20px; height: 20px; font-size: .55rem; border: none; }
+    .select2-container--bootstrap-5 .select2-results__group { font-size: .72rem; text-transform: uppercase; letter-spacing: .4px;
+        color: #4e73df; background: #eef2ff; padding: .35rem .75rem; }
     .sol-secao-num { width: 30px; height: 30px; border-radius: 9px; background: var(--sol-azul-cla); color: var(--sol-azul);
         display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: .85rem; margin-right: .55rem; }
     .sol-area-card { border: 1px dashed var(--sol-borda); border-radius: 12px; padding: .9rem 1rem; background: var(--sol-fundo-2); min-height: 92px; }
@@ -92,6 +128,15 @@
                                     <i class="fas fa-history me-1"></i>Últimas solicitações desta pessoa
                                 </div>
                                 <div id="histLista"></div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Outros solicitantes <span style="font-weight:400;">(opcional — quando mais de uma pessoa fez o pedido; todos acompanham, confirmam e podem homologar)</span></label>
+                                {% if form is not none %}{% set cosol_sel = form.getlist('cosolicitante_id') %}
+                                {% else %}{% set cosol_sel = envolvidos|selectattr('PAPEL', 'equalto', 'SOLICITANTE')|map(attribute='ID_USUARIO')|map('string')|list %}{% endif %}
+                                <select name="cosolicitante_id" id="cosolicitantes" class="form-select" multiple>
+                                    {{ opcoes_por_gerencia(cosol_sel) }}
+                                </select>
+                                {{ seletor_gerencia('cosolicitantes') }}
                             </div>
                         </div>
                     </div>
@@ -171,10 +216,9 @@
                             {% if form is not none %}{% set obs_sel = form.getlist('observador_id') %}
                             {% else %}{% set obs_sel = envolvidos|selectattr('PAPEL', 'equalto', 'OBSERVADOR')|map(attribute='ID_USUARIO')|map('string')|list %}{% endif %}
                             <select name="observador_id" id="observadores" class="form-select" multiple>
-                                {% for u in usuarios %}
-                                <option value="{{ u.ID }}" {% if u.ID|string in obs_sel %}selected{% endif %}>{{ u.NOME }}</option>
-                                {% endfor %}
+                                {{ opcoes_por_gerencia(obs_sel) }}
                             </select>
+                            {{ seletor_gerencia('observadores') }}
                         </div>
                     </div>
                 </div>
@@ -420,7 +464,81 @@ $(function () {
     const iniciais = JSON.parse(document.getElementById('dadosExecutores').textContent);
     if (iniciais.length) { iniciais.forEach(function (x) { addExecutor(x.id, x.funcao); }); } else { addExecutor(); }
 
-    $('#observadores').select2($.extend({}, opcoesSelect2, { placeholder: 'Opcional' }));
+    // ---------- Outros solicitantes e observadores (agrupados por gerência) ----------
+    function formatarComGerencia(op) {
+        if (!op.id) return op.text;
+        const area = $(op.element).data('area');
+        return $('<span>' + Sol.esc(op.text) + (area ? ' <span class="sol-chip ms-1" style="font-size:.65rem;">' + Sol.esc(area) + '</span>' : '') + '</span>');
+    }
+    ['#cosolicitantes', '#observadores'].forEach(function (sel) {
+        $(sel).select2($.extend({}, opcoesSelect2, {
+            placeholder: 'Opcional — digite o nome ou a sigla da gerência',
+            templateResult: formatarComGerencia, templateSelection: formatarComGerencia, closeOnSelect: false
+        }));
+    });
+
+    // O solicitante principal não pode estar também em "outros solicitantes" nem em observadores
+    function bloquearPrincipal() {
+        const principal = $('#solicitante').val();
+        ['#cosolicitantes', '#observadores'].forEach(function (sel) {
+            $(sel).find('option').each(function () {
+                const ehPrincipal = principal && this.value === principal;
+                $(this).prop('disabled', ehPrincipal);
+                if (ehPrincipal) $(this).prop('selected', false);
+            });
+            $(sel).trigger('change.select2');
+        });
+        $('.sol-ger-select').trigger('change');
+    }
+    $('#solicitante').on('change', bloquearPrincipal);
+    bloquearPrincipal();
+
+    // Painel "Ver por gerência": mostra todos da gerência; clique marca/desmarca; botão adiciona todos
+    function membrosDaGerencia(alvo, chave) {
+        return $('#' + alvo + ' option').filter(function () { return String($(this).data('gerencia')) === chave; });
+    }
+    function pintarGerencia(painel) {
+        const alvo = painel.data('alvo');
+        const chave = painel.find('.sol-ger-select').val();
+        const caixa = painel.find('.sol-ger-membros');
+        const botao = painel.find('.sol-ger-todos');
+        if (!chave) { caixa.hide().empty(); botao.hide(); return; }
+        const membros = membrosDaGerencia(alvo, chave);
+        const livres = membros.filter(function () { return !this.disabled; });
+        const marcados = livres.filter(function () { return this.selected; }).length;
+        caixa.html(membros.map(function () {
+            const nome = $(this).text();
+            const classe = this.disabled ? '' : (this.selected ? 'marcado' : '');
+            return '<span class="sol-ger-membro ' + classe + '" data-id="' + this.value + '"' +
+                   (this.disabled ? ' style="opacity:.45;cursor:not-allowed;" title="Solicitante principal"' : ' title="Clique para marcar ou desmarcar"') + '>' +
+                   '<span class="sol-avatar" data-avatar="' + Sol.esc(nome) + '">' + Sol.esc(nome.charAt(0)) + '</span>' + Sol.esc(nome) + '</span>';
+        }).get().join('') || '<span style="font-size:.75rem;color:var(--sol-suave);">Ninguém nesta gerência.</span>').show();
+        Sol.pintarAvatares(caixa[0]);
+        botao.show().html(marcados === livres.length && livres.length
+            ? '<i class="fas fa-user-minus"></i> Remover todos'
+            : '<i class="fas fa-users"></i> Adicionar todos (' + livres.length + ')');
+        botao.data('remover', marcados === livres.length && livres.length > 0);
+    }
+    $('.sol-ger').each(function () {
+        const painel = $(this);
+        const alvo = painel.data('alvo');
+        painel.find('.sol-ger-select').on('change', function () { pintarGerencia(painel); });
+        painel.find('.sol-ger-todos').on('click', function (e) {
+            e.stopImmediatePropagation();
+            const remover = !!$(this).data('remover');
+            membrosDaGerencia(alvo, painel.find('.sol-ger-select').val()).each(function () {
+                if (!this.disabled) $(this).prop('selected', !remover);
+            });
+            $('#' + alvo).trigger('change');
+        });
+        painel.on('click', '.sol-ger-membro', function () {
+            const op = $('#' + alvo + ' option[value="' + $(this).data('id') + '"]');
+            if (op.prop('disabled')) return;
+            op.prop('selected', !op.prop('selected'));
+            $('#' + alvo).trigger('change');
+        });
+        $('#' + alvo).on('change', function () { pintarGerencia(painel); });
+    });
 
     // ---------- Evidências (arrastar e soltar) ----------
     const drop = document.getElementById('dropEvidencias');

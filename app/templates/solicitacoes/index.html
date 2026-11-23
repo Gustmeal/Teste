@@ -282,7 +282,7 @@
                             <div class="d-flex align-items-center gap-2">
                                 <span class="sol-avatar" data-avatar="{{ s.NO_SOLICITANTE }}">{{ (s.NO_SOLICITANTE or '?')[:1] }}</span>
                                 <div>
-                                    <div style="font-weight:600;font-size:.83rem;">{{ s.NO_SOLICITANTE }}</div>
+                                    <div style="font-weight:600;font-size:.83rem;">{{ s.NO_SOLICITANTE }}{% if s.cosolicitantes %} <span class="sol-chip" title="Também solicitaram: {{ s.cosolicitantes|map(attribute='NO_USUARIO')|join(', ') }}">+{{ s.cosolicitantes|length }}</span>{% endif %}</div>
                                     <div style="font-size:.72rem;color:var(--sol-suave);">{{ s.area_completa }}</div>
                                 </div>
                             </div>
@@ -351,7 +351,7 @@
                     {% if col.chave == 'FINALIZADAS' %}
                     <span class="sol-badge mb-2" style="background:{{ s.status_cor }}22;color:{{ s.status_cor }};"><i class="fas {{ s.status_icone }}"></i>{{ s.status_rotulo }}</span>
                     {% endif %}
-                    <div style="font-size:.74rem;color:var(--sol-suave);"><i class="fas fa-user-tag me-1"></i>{{ s.NO_SOLICITANTE }} · <b>{{ s.area }}</b></div>
+                    <div style="font-size:.74rem;color:var(--sol-suave);"><i class="fas fa-user-tag me-1"></i>{{ s.NO_SOLICITANTE }}{% if s.cosolicitantes %} +{{ s.cosolicitantes|length }}{% endif %} · <b>{{ s.area }}</b></div>
                     <div class="d-flex align-items-center gap-2 mt-2">
                         <div class="sol-barra flex-grow-1"><div style="width:{{ s.PC_CONCLUSAO or 0 }}%;"></div></div>
                         <span style="font-size:.7rem;font-weight:700;">{{ s.PC_CONCLUSAO or 0 }}%</span>

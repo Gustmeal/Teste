@@ -581,7 +581,7 @@
             <div class="sol-card mb-4">
                 <div class="sol-card-cab"><h5><i class="fas fa-users me-2" style="color:var(--sol-azul);"></i>Pessoas</h5></div>
                 <div class="sol-card-corpo" style="padding-top:.3rem;">
-                    <div class="sol-grupo-tit">Solicitante</div>
+                    <div class="sol-grupo-tit">Solicitante{% if cosolicitantes %} principal{% endif %}</div>
                     <div class="sol-pessoa">
                         <span class="sol-avatar sol-avatar-lg" data-avatar="{{ sol.NO_SOLICITANTE }}">{{ (sol.NO_SOLICITANTE or '?')[:1] }}</span>
                         <div style="flex:1;">
@@ -598,6 +598,19 @@
                         <span style="color:#b45309;font-weight:700;"><i class="fas fa-user-clock me-1"></i>Ainda não confirmou o pedido</span>
                         {% endif %}
                     </div>
+
+                    {% if cosolicitantes %}
+                    <div class="sol-grupo-tit">Também solicitaram ({{ cosolicitantes|length }})</div>
+                    {% for c in cosolicitantes %}
+                    <div class="sol-pessoa">
+                        <span class="sol-avatar" data-avatar="{{ c.nome }}">{{ c.iniciais }}</span>
+                        <div>
+                            <div class="n">{{ c.nome }}</div>
+                            <div class="s">{{ c.cargo }}{% if c.cargo %} · {% endif %}<b>{{ c.area }}</b></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% endif %}
 
                     <div class="sol-grupo-tit">Executores ({{ executores|length }})</div>
                     {% for e in executores %}
