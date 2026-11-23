@@ -451,7 +451,11 @@ def _ler_filtros_balancete():
 @login_required
 @sistema_requerido(SISTEMA)
 def index():
-    """Tela inicial com os atalhos para Vinculação e Balancete."""
+    """
+    Tela inicial com os atalhos: Vinculações, Conciliações, Relatórios FCO e Auditoria.
+    Não executa a view do balancete aqui (fica na página de Conciliações),
+    para a tela inicial abrir rápido.
+    """
     db.session.expire_all()
     resumo = {'qtd_contas': 0, 'qtd_sem_vinculo': 0, 'status': None}
     try:
@@ -463,12 +467,26 @@ def index():
         r = db.session.execute(sql).mappings().first()
         resumo['qtd_contas'] = int(r['QTD'] or 0) if r else 0
         resumo['qtd_sem_vinculo'] = int(r['SEM_VINCULO'] or 0) if r else 0
-        resumo['status'] = _status_previa()
     except Exception as e:
         db.session.rollback()
         print(f"[contas_contabeis] Erro ao montar resumo: {e}")
 
     return render_template('contas_contabeis/index.html', resumo=resumo)
+
+
+@contas_contabeis_bp.route('/conciliacoes')
+@login_required
+@sistema_requerido(SISTEMA)
+def conciliacoes():
+    """Página que reúne as conciliações (por enquanto: SISGEA X BALANCETE)."""
+    db.session.expire_all()
+    resumo = {'status': None}
+    try:
+        resumo['status'] = _status_previa()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[contas_contabeis] Erro ao ler a situação da prévia: {e}")
+    return render_template('contas_contabeis/conciliacoes.html', resumo=resumo)
 
 
 # =========================================================================
