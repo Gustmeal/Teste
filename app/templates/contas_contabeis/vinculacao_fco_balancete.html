@@ -169,22 +169,21 @@
             {# Scroll próprio inline: o style.css global deixa .table-responsive com overflow: hidden #}
             <div class="cc-scroll" id="scrollTabVinculos" style="max-height: 560px; overflow: auto; width: 100%;">
                 <table class="table table-hover table-sm mb-0 align-middle" id="tabVinculos"
-                       style="min-width: 1200px; white-space: nowrap;">
+                       style="min-width: 1000px; white-space: nowrap;">
                     <thead style="position: sticky; top: 0; z-index: 2; background: #f8f9fc;">
+                        {# data-ordenar: clique no título classifica a coluna (crescente / decrescente / original) #}
                         <tr>
-                            <th style="{{ th_tab }} padding-left: 1.25rem;">Agrupamento</th>
-                            <th style="{{ th_tab }}">Item do FCO</th>
-                            <th style="{{ th_tab }}">Linha do FCO</th>
-                            <th style="{{ th_tab }}">Conta contábil</th>
-                            <th style="{{ th_tab }}">Situação</th>
+                            <th style="{{ th_tab }} padding-left: 1.25rem;" data-ordenar="0">Agrupamento</th>
+                            <th style="{{ th_tab }}" data-ordenar="1">Linha do FCO</th>
+                            <th style="{{ th_tab }}" data-ordenar="2">Conta contábil</th>
+                            <th style="{{ th_tab }}" data-ordenar="3">Situação</th>
                             <th style="{{ th_tab }} text-align: center;">Ação</th>
                         </tr>
                         <tr class="cc-filtros-coluna">
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="0" data-modo="exato"><option value="__todos__">Todos</option></select></th>
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="1" data-modo="exato"><option value="__todos__">Todos</option></select></th>
-                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="2" data-modo="exato"><option value="__todos__">Todos</option></select></th>
-                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><input type="text" class="form-control form-control-sm" data-coluna="3" data-modo="texto" placeholder="Conta..."></th>
-                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="4" data-modo="exato"><option value="__todos__">Todos</option></select></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><input type="text" class="form-control form-control-sm" data-coluna="2" data-modo="texto" placeholder="Conta..."></th>
+                            <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"><select class="form-select form-select-sm" data-coluna="3" data-modo="exato"><option value="__todos__">Todos</option></select></th>
                             <th style="background: #fff; border-bottom: 2px solid #e3e6f0; padding: 0.35rem 0.5rem;"></th>
                         </tr>
                     </thead>
@@ -195,10 +194,6 @@
                             <td style="padding-left: 1.25rem;" data-filtro="{{ v.agrup }}{{ (' - ' ~ v.dsc_agrup) if v.dsc_agrup else '' }}">
                                 <span class="fw-semibold">{{ v.agrup }}</span>
                                 <span class="text-muted">{{ ('- ' ~ v.dsc_agrup) if v.dsc_agrup else '(sem descrição na COR_TB034)' }}</span>
-                            </td>
-                            <td data-filtro="{{ v.item }}{{ (' - ' ~ v.dsc_item) if v.dsc_item else '' }}">
-                                <span class="fw-semibold">{{ v.item }}</span>
-                                <span class="text-muted">{{ ('- ' ~ v.dsc_item) if v.dsc_item else '(sem descrição na COR_TB036)' }}</span>
                             </td>
                             <td data-filtro="{{ v.linha }}{{ (' - ' ~ v.dsc_linha) if v.dsc_linha else '' }}">
                                 <span class="fw-semibold">{{ v.linha }}</span>
@@ -226,7 +221,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="6" class="text-center text-muted py-4">Nenhum vínculo cadastrado.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-4">Nenhum vínculo cadastrado.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

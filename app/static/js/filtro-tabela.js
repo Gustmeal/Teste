@@ -9,6 +9,9 @@
  *     <select data-coluna="2" data-modo="exato">  -> valor igual (opções montadas
  *                                                   com os valores que estão na tabela)
  *   O valor de cada célula é o atributo data-filtro do <td> (ou o texto do <td>).
+ * - Classificação por coluna (como a setinha do Power BI): <th data-ordenar="N"> na
+ *   primeira linha do cabeçalho. 1º clique crescente, 2º decrescente, 3º volta à
+ *   ordem original. Números são comparados como número.
  *   data-padrao="80" no select: já abre filtrado nesse valor (igual a "80" ou que
  *   comece com "80 - ") e o botão Limpar volta para ele. O valor vem do back end.
  * Não usa dados fixos: as opções dos selects vêm das próprias linhas renderizadas
@@ -109,6 +112,64 @@
             });
             if (contador) { contador.textContent = visiveis.toLocaleString('pt-BR'); }
         }
+
+        // ---------------- Classificação por coluna ----------------
+        const tbody = tabela.querySelector('tbody');
+        linhas.forEach(function (tr, i) { tr.setAttribute('data-ordem-original', i); });
+        const titulos = Array.prototype.slice.call(tabela.querySelectorAll('thead tr:first-child th[data-ordenar]'));
+        const estadoOrdem = {coluna: null, dir: 0};   // dir: 1 crescente, -1 decrescente, 0 original
+
+        function numero(texto) {
+            const limpo = String(texto).trim().replace(/\./g, '').replace(',', '.');
+            return /^-?\d+(\.\d+)?$/.test(limpo) ? parseFloat(limpo) : null;
+        }
+        function comparar(a, b) {
+            const na = numero(a), nb = numero(b);
+            if (na !== null && nb !== null) { return na - nb; }
+            if (a === '' && b !== '') { return 1; }      // vazios sempre no fim
+            if (b === '' && a !== '') { return -1; }
+            return ordenarTextos(a, b);
+        }
+        function desenharSetas() {
+            titulos.forEach(function (th) {
+                const icone = th.querySelector('.cc-seta-ordem');
+                const ativo = estadoOrdem.coluna === th.getAttribute('data-ordenar') && estadoOrdem.dir !== 0;
+                icone.className = 'fas cc-seta-ordem ms-1 ' + (ativo ? (estadoOrdem.dir === 1 ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort');
+                icone.style.opacity = ativo ? '1' : '0.35';
+            });
+        }
+        function ordenar() {
+            const indice = parseInt(estadoOrdem.coluna, 10);
+            const copia = linhas.slice();
+            copia.sort(function (x, y) {
+                if (estadoOrdem.dir === 0 || isNaN(indice)) {
+                    return parseInt(x.getAttribute('data-ordem-original'), 10) - parseInt(y.getAttribute('data-ordem-original'), 10);
+                }
+                const r = comparar(valorCelula(x, indice), valorCelula(y, indice));
+                if (r !== 0) { return r * estadoOrdem.dir; }
+                return parseInt(x.getAttribute('data-ordem-original'), 10) - parseInt(y.getAttribute('data-ordem-original'), 10);
+            });
+            copia.forEach(function (tr) { tbody.appendChild(tr); });
+            desenharSetas();
+        }
+        titulos.forEach(function (th) {
+            th.style.cursor = 'pointer';
+            th.style.userSelect = 'none';
+            th.title = 'Clique para classificar';
+            const icone = document.createElement('i');
+            icone.className = 'fas fa-sort cc-seta-ordem ms-1';
+            th.appendChild(icone);
+            th.addEventListener('click', function () {
+                const col = th.getAttribute('data-ordenar');
+                if (estadoOrdem.coluna !== col) {
+                    estadoOrdem.coluna = col; estadoOrdem.dir = 1;
+                } else {
+                    estadoOrdem.dir = estadoOrdem.dir === 1 ? -1 : (estadoOrdem.dir === -1 ? 0 : 1);
+                }
+                ordenar();
+            });
+        });
+        desenharSetas();
 
         if (campoTexto) { campoTexto.addEventListener('input', filtrar); }
         if (campoSituacao) { campoSituacao.addEventListener('change', filtrar); }
