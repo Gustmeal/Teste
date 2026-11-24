@@ -48,6 +48,10 @@
                 <div class="card-body py-3">
                     <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;">Contratos encontrados</div>
                     <div style="font-size: 1.9rem; font-weight: 700; color: #5a5c69;">{{ total | mil }}</div>
+                    {% if total_valor is not none %}
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;" class="mt-2">{{ col_valor_rotulo }} (total)</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: {{ '#e74a3b' if total_valor < 0 else '#5a5c69' }};">R$ {{ fmt(total_valor) }}</div>
+                    {% endif %}
                     <div style="font-size: 0.8rem; color: #858796;">
                         {% if filtros_ativos %}{{ filtros_ativos }} filtro(s) aplicado(s){% else %}sem filtros{% endif %}
                     </div>
@@ -70,6 +74,7 @@
                                 {{ r.nome or '(vazio)' }}
                                 {% if r.cod %}<span class="text-muted fw-normal">({{ r.cod }})</span>{% endif %}
                                 <span class="badge ms-1" style="background: {{ cfg.cor }}; color: #fff;">{{ r.qtd | mil }}</span>
+                                {% if r.valor is not none %}<span class="fw-normal ms-1" style="color: #5a5c69;">R$ {{ fmt(r.valor) }}</span>{% endif %}
                             </span>
                         </a>
                         {% endfor %}
@@ -207,7 +212,7 @@
                             <th style="{{ th_col }} text-align: center; width: 60px;">#</th>
                             {% for c, rot, tipo in colunas %}
                             {% set prox_dir = 'desc' if (ordem_col == c and ordem_dir == 'asc') else 'asc' %}
-                            <th style="{{ th_col }} {{ 'text-align: left;' if tipo == 'texto' else 'text-align: center;' }}">
+                            <th style="{{ th_col }} {{ 'text-align: left;' if tipo == 'texto' else ('text-align: right;' if tipo == 'valor' else 'text-align: center;') }}">
                                 <a href="{{ url_base }}?{{ (base_args + [('ordem', c), ('dir', prox_dir)]) | urlencode }}"
                                    class="text-white text-decoration-none" title="Ordenar por {{ rot }}">
                                     {{ rot }}
@@ -227,11 +232,13 @@
                         <tr>
                             <td style="text-align: center; color: #b7b9cc;">{{ (inicio + loop.index) | mil }}</td>
                             {% for cel in linha %}
-                            <td style="{{ 'text-align: left;' if cel.tipo == 'texto' else 'text-align: center;' }} white-space: nowrap;">
+                            <td style="{{ 'text-align: left;' if cel.tipo == 'texto' else ('text-align: right; font-variant-numeric: tabular-nums;' if cel.tipo == 'valor' else 'text-align: center;') }} white-space: nowrap;">
                                 {% if cel.nulo %}
                                     <span class="text-muted">-</span>
                                 {% elif cel.tipo == 'bit' %}
                                     <span class="badge {{ 'bg-danger' if cel.texto == 'Sim' else 'bg-secondary' }}">{{ cel.texto }}</span>
+                                {% elif cel.tipo == 'valor' %}
+                                    <span style="{{ 'color: #e74a3b;' if cel.negativo else '' }}">{{ cel.texto }}</span>
                                 {% elif cel.tipo == 'texto' %}
                                     <span class="fw-semibold" style="color: #224abe;">{{ cel.texto }}</span>
                                 {% else %}
