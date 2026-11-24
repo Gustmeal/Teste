@@ -1826,6 +1826,7 @@ AUDITORIAS = {
         'cor': '#f6c23e',
         'arquivo': 'Auditoria_Baixa_Nao_Marcada_Evolucao',
         'colunas': [
+            ('DT_REFERENCIA', 'Data de referência', 'data'),
             ('fkContratoSISCTR', 'Contrato SISCTR', 'inteiro'),
             ('BT_CTR_BAIXADO_PREJ', 'Baixado a prejuízo', 'bit'),
             ('DT_BAIXA_PREJUIZO', 'Data da baixa a prejuízo', 'data'),
@@ -1838,6 +1839,7 @@ AUDITORIAS = {
         'filtros': [
             ('NO_AGRUPAMENTO', 'multi'),
             ('COD_AGRUPAMENTO', 'multi'),
+            ('DT_REFERENCIA', 'multi'),
             ('BT_CTR_BAIXADO_PREJ', 'multi'),
             ('DT_BAIXA_PREJUIZO', 'faixa'),
             ('fkContratoSISCTR', 'contem'),
