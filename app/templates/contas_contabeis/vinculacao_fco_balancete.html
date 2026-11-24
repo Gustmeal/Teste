@@ -37,7 +37,7 @@
         <h1 class="fw-bold header-with-back mb-1">
             <i class="fas fa-sitemap me-2"></i>Vinculação FCO X BALANCETE
         </h1>
-        <p class="text-muted mb-0">Vincule agrupamento, item e linha do FCO a uma conta contábil do balancete</p>
+        <p class="text-muted mb-0">Vincule agrupamento e linha do FCO a uma conta contábil do balancete · somente o item {{ item_permitido }}{% if itens %} - {{ itens[0].dsc }}{% endif %}</p>
     </div>
 
     <div id="ccMensagem" style="display:none;"></div>
@@ -47,25 +47,25 @@
         <div class="col-md-4">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #4e73df !important;">
                 <div class="card-body py-3">
-                    <div style="font-size: 0.75rem; font-weight: 600; color: #4e73df; text-transform: uppercase;">Vínculos cadastrados</div>
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #4e73df; text-transform: uppercase;">Linhas do item {{ item_permitido }}</div>
                     <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_vinculos | mil }}</div>
-                    {% if qtd_sem_vinculo %}<div style="font-size: 0.8rem; color: #c99a06;">{{ qtd_sem_vinculo | mil }} pendente(s)</div>{% endif %}
+                    <div style="font-size: 0.8rem; color: #858796;">{{ qtd_agrup | mil }} agrupamento(s) · {{ qtd_contas | mil }} conta(s)</div>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #1cc88a !important;">
                 <div class="card-body py-3">
-                    <div style="font-size: 0.75rem; font-weight: 600; color: #1cc88a; text-transform: uppercase;">Agrupamentos</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_agrup | mil }}</div>
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #1cc88a; text-transform: uppercase;">Vinculadas (com conta)</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_vinculadas | mil }}</div>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #36b9cc !important;">
+            <div class="card border-0 shadow-sm h-100" style="border-radius: 12px; border-left: 4px solid #f6c23e !important;">
                 <div class="card-body py-3">
-                    <div style="font-size: 0.75rem; font-weight: 600; color: #258391; text-transform: uppercase;">Contas contábeis</div>
-                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_contas | mil }}</div>
+                    <div style="font-size: 0.75rem; font-weight: 600; color: #c99a06; text-transform: uppercase;">Sem vínculo (sem conta)</div>
+                    <div style="font-size: 1.5rem; font-weight: 700; color: #5a5c69;">{{ qtd_sem_vinculo | mil }}</div>
                 </div>
             </div>
         </div>
@@ -93,9 +93,11 @@
                     </select>
                 </div>
                 <div class="col-lg-3">
-                    <label for="selItem" class="form-label fw-semibold mb-1" style="{{ rotulo }}">Item do FCO</label>
-                    <select id="selItem" class="form-select" style="width: 100%;">
-                        <option value="">Selecione...</option>
+                    <label for="selItem" class="form-label fw-semibold mb-1" style="{{ rotulo }}">
+                        Item do FCO <i class="fas fa-lock text-muted ms-1" title="Fixo: esta vinculação aceita só o item {{ item_permitido }}"></i>
+                    </label>
+                    {# Travado: só o item permitido (vem do back end); o back end também bloqueia outros #}
+                    <select id="selItem" class="form-select" style="width: 100%;" disabled>
                         {% for i in itens %}
                         <option value="{{ i.cod }}">{{ i.cod }} - {{ i.dsc }}</option>
                         {% endfor %}
@@ -146,10 +148,11 @@
                 <i class="fas fa-list me-2"></i>Vínculos
             </h5>
             <div class="d-flex gap-2 align-items-center flex-wrap">
-                <select id="filtroSituacao" class="form-select form-select-sm" style="width: auto;">
+                {# Abre em "Sem vínculo" (linhas sem conta); a borracha volta para ele #}
+                <select id="filtroSituacao" class="form-select form-select-sm" style="width: auto;" data-padrao="sem">
                     <option value="">Todas as situações</option>
-                    <option value="vinculada">Vinculados</option>
-                    <option value="sem">Sem vínculo / pendentes</option>
+                    <option value="vinculada">Vinculadas (com conta)</option>
+                    <option value="sem" selected>Sem vínculo (sem conta)</option>
                 </select>
                 <input type="text" id="filtroTexto" class="form-control form-control-sm" style="width: 240px;"
                        placeholder="Pesquisar em todas as colunas...">
@@ -159,8 +162,12 @@
             </div>
         </div>
         <div class="card-body p-0">
+            {# Barra de rolagem lateral em cima da lista (sincronizada com a de baixo) #}
+            <div class="cc-scroll" id="scrollTopoVinculos" style="overflow-x: auto; overflow-y: hidden; width: 100%; height: 14px;">
+                <div style="height: 1px;"></div>
+            </div>
             {# Scroll próprio inline: o style.css global deixa .table-responsive com overflow: hidden #}
-            <div class="cc-scroll" style="max-height: 560px; overflow: auto; width: 100%;">
+            <div class="cc-scroll" id="scrollTabVinculos" style="max-height: 560px; overflow: auto; width: 100%;">
                 <table class="table table-hover table-sm mb-0 align-middle" id="tabVinculos"
                        style="min-width: 1200px; white-space: nowrap;">
                     <thead style="position: sticky; top: 0; z-index: 2; background: #f8f9fc;">
@@ -197,13 +204,17 @@
                                 <span class="fw-semibold">{{ v.linha }}</span>
                                 <span class="text-muted">{{ ('- ' ~ v.dsc_linha) if v.dsc_linha else '(sem descrição na COR_TB037)' }}</span>
                             </td>
-                            <td style="font-weight: 600;">{{ v.conta }}</td>
-                            <td data-filtro="{{ 'Vinculado' if v.situacao == 'vinculada' else 'Pendente' }}">
+                            <td style="font-weight: 600;" data-filtro="{{ v.conta }}">{{ v.conta or '-' }}</td>
+                            <td data-filtro="{{ 'Vinculado' if v.situacao == 'vinculada' else 'Sem vínculo' }}">
                                 {% if v.situacao == 'vinculada' %}
                                     <span class="badge bg-success">Vinculado</span>
                                 {% else %}
-                                    <span class="badge bg-warning text-dark" title="{{ v.pendencias | join(', ') }}">Pendente</span>
-                                    <span class="text-muted" style="font-size: 0.78rem;">{{ v.pendencias | join(', ') }}</span>
+                                    <span class="badge bg-warning text-dark">Sem vínculo</span>
+                                {% endif %}
+                                {% if v.pendencias %}
+                                    <span class="text-danger ms-1" style="font-size: 0.78rem;" title="{{ v.pendencias | join(', ') }}">
+                                        <i class="fas fa-exclamation-triangle"></i> {{ v.pendencias | join(', ') }}
+                                    </span>
                                 {% endif %}
                             </td>
                             <td style="text-align: center;">
@@ -253,9 +264,10 @@
                         </select>
                     </div>
                     <div class="col-md-4">
-                        <label for="ncItem" class="form-label fw-semibold">Item do FCO <span class="text-danger">*</span></label>
-                        <select id="ncItem" class="form-select" style="width: 100%;">
-                            <option value="">Selecione...</option>
+                        <label for="ncItem" class="form-label fw-semibold">
+                            Item do FCO <i class="fas fa-lock text-muted ms-1" title="Fixo: esta vinculação aceita só o item {{ item_permitido }}"></i>
+                        </label>
+                        <select id="ncItem" class="form-select" style="width: 100%;" disabled>
                             {% for i in itens %}<option value="{{ i.cod }}">{{ i.cod }} - {{ i.dsc }}</option>{% endfor %}
                         </select>
                     </div>
@@ -300,12 +312,8 @@
     const URL_SALVAR = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_salvar') }}";
     const URL_CONTAS = "{{ url_for('contas_contabeis.vinculacao_fco_balancete_contas') }}";
     const URL_VERIFICAR = "{{ url_for('contas_contabeis.verificar_conta') }}";
-    // Item do FCO que já vem marcado na inclusão (definido no back end)
-    const ITEM_PADRAO = "{{ item_padrao_inclusao }}";
-    function itemPadrao(idSelect) {
-        const existe = ITEM_PADRAO && document.querySelector('#' + idSelect + ' option[value="' + ITEM_PADRAO + '"]');
-        return existe ? ITEM_PADRAO : '';
-    }
+    // Item do FCO fixo nesta vinculação (vem do back end; o select já vem travado nele)
+    const ITEM_FIXO = "{{ item_permitido }}";
     const HEADERS = {'Content-Type': 'application/json', 'X-Silent-Request': 'true'};
 
     // Vínculo que está sendo editado (os 4 valores originais) ou null para inclusão
@@ -323,7 +331,7 @@
     const base = {theme: 'bootstrap-5', language: 'pt-BR', width: '100%'};
     $('#selAgrup').select2(Object.assign({}, base, {placeholder: 'Selecione o agrupamento'}));
     $('#selItem').select2(Object.assign({}, base, {placeholder: 'Selecione o item'}));
-    $('#selItem').val(itemPadrao('selItem')).trigger('change');
+    $('#selItem').val(ITEM_FIXO).trigger('change');
     $('#selLinha').select2(Object.assign({}, base, {placeholder: 'Selecione a linha'}));
     $('#selConta').select2(Object.assign({}, base, {
         placeholder: 'Digite para pesquisar no balancete...',
@@ -349,7 +357,7 @@
     function limparFormulario() {
         original = null;
         $('#selAgrup').val('').trigger('change');
-        $('#selItem').val(itemPadrao('selItem')).trigger('change');
+        $('#selItem').val(ITEM_FIXO).trigger('change');
         $('#selLinha').val('').trigger('change');
         definirConta('');
         document.getElementById('tituloForm').innerHTML = '<i class="fas fa-link me-2"></i>Novo vínculo';
@@ -478,7 +486,7 @@
         ncConta.value = '';
         verificarConta();
         $('#ncAgrup').val('').trigger('change');
-        $('#ncItem').val(itemPadrao('ncItem')).trigger('change');
+        $('#ncItem').val(ITEM_FIXO).trigger('change');
         $('#ncLinha').val('').trigger('change');
         document.getElementById('ncMsg').style.display = 'none';
         modalNC.show();
@@ -524,6 +532,7 @@
 
     // ---------------- Filtros da tabela (app/static/js/filtro-tabela.js) ----------------
     // Situação (vinculados / pendentes), busca geral e um filtro por coluna no cabeçalho
+    CCFiltroTabela.scrollTopo('scrollTopoVinculos', 'scrollTabVinculos');
     CCFiltroTabela.iniciar({
         tabela: 'tabVinculos', situacao: 'filtroSituacao', texto: 'filtroTexto',
         contador: 'qtdVisiveis', limpar: 'btnLimparFiltros'

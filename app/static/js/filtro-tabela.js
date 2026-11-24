@@ -120,7 +120,7 @@
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 if (campoTexto) { campoTexto.value = ''; }
-                if (campoSituacao) { campoSituacao.value = ''; }
+                if (campoSituacao) { campoSituacao.value = campoSituacao.getAttribute('data-padrao') || ''; }
                 filtrosColuna.forEach(function (c) {
                     c.value = c.tagName === 'SELECT' ? '__todos__' : '';
                     aplicarPadrao(c);
@@ -132,5 +132,34 @@
         return {filtrar: filtrar};
     }
 
-    global.CCFiltroTabela = {iniciar: iniciar};
+    /*
+     * Barra de rolagem lateral em cima da tabela, sincronizada com a de baixo.
+     * idTopo: div fina com overflow-x (contém uma div filha); idCorpo: div que rola a tabela.
+     */
+    function scrollTopo(idTopo, idCorpo) {
+        const topo = document.getElementById(idTopo);
+        const corpo = document.getElementById(idCorpo);
+        if (!topo || !corpo) { return; }
+        const recheio = topo.firstElementChild;
+        function ajustar() {
+            recheio.style.width = corpo.scrollWidth + 'px';
+            topo.style.display = corpo.scrollWidth > corpo.clientWidth ? '' : 'none';
+        }
+        let sincronizando = false;
+        topo.addEventListener('scroll', function () {
+            if (sincronizando) { sincronizando = false; return; }
+            sincronizando = true;
+            corpo.scrollLeft = topo.scrollLeft;
+        });
+        corpo.addEventListener('scroll', function () {
+            if (sincronizando) { sincronizando = false; return; }
+            sincronizando = true;
+            topo.scrollLeft = corpo.scrollLeft;
+        });
+        window.addEventListener('resize', ajustar);
+        ajustar();
+        setTimeout(ajustar, 300);
+    }
+
+    global.CCFiltroTabela = {iniciar: iniciar, scrollTopo: scrollTopo};
 })(window);

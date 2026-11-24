@@ -871,8 +871,9 @@ def vinculacao_fco_nova():
 # VINCULAÇÃO FCO X BALANCETE (COR_TB041 + parâmetros COR_TB034/036/037)
 # =========================================================================
 
-# Item do FCO que já vem marcado na inclusão da FCO X BALANCETE (ID_FCO da COR_TB036)
-ITEM_FCO_PADRAO_INCLUSAO = '80'
+# A Vinculação FCO X BALANCETE trabalha SOMENTE com este item do FCO (ID_FCO da COR_TB036):
+# a lista mostra só ele, a inclusão vem travada nele e o back end bloqueia qualquer outro.
+ITEM_FCO_PERMITIDO = '80'
 
 # Colunas da COR_TB041 -> (rótulo na tela, chave usada no JSON)
 COLS_TB041 = [
@@ -913,16 +914,18 @@ def _param_agrupamentos():
     return sorted(lista, key=lambda x: _chave_ordem(x['cod']))
 
 
-def _param_itens_sisgea():
-    """COR_TB036: itens do FCO (ID_FCO / DSC_FCO)."""
+def _param_itens_sisgea(somente=None):
+    """COR_TB036: itens do FCO (ID_FCO / DSC_FCO). 'somente' limita a um item."""
+    filtro = 'AND [ID_FCO] = :item' if somente is not None else ''
     sql = text(f"""
         SELECT [ID_FCO], MIN([DSC_FCO]) AS DSC
         FROM {TB_ITENS_SISGEA}
-        WHERE [ID_FCO] IS NOT NULL
+        WHERE [ID_FCO] IS NOT NULL {filtro}
         GROUP BY [ID_FCO]
     """)
+    params = {'item': somente} if somente is not None else {}
     lista = [{'cod': _txt(r['ID_FCO']), 'dsc': _txt(r['DSC'])}
-             for r in db.session.execute(sql).mappings().all()]
+             for r in db.session.execute(sql, params).mappings().all()]
     return sorted(lista, key=lambda x: _chave_ordem(x['cod']))
 
 
@@ -940,7 +943,10 @@ def _param_linhas_sisgea():
 
 
 def _listar_vinc_fco_balancete():
-    """COR_TB041 com os nomes dos parâmetros (OUTER APPLY evita duplicar linhas)."""
+    """
+    COR_TB041 (somente o item ITEM_FCO_PERMITIDO) com os nomes dos parâmetros
+    (OUTER APPLY evita duplicar linhas).
+    """
     sql = text(f"""
         SELECT V.[COD_AGRUP_SISGEA], V.[ID_FCO_ITEM], V.[ID_FCO_LINHA], V.[CT_CONTABIL],
                A.DSC AS DSC_AGRUP, I.DSC AS DSC_ITEM, L.DSC AS DSC_LINHA
@@ -951,9 +957,10 @@ def _listar_vinc_fco_balancete():
                      WHERE [ID_FCO] = V.[ID_FCO_ITEM]) I
         OUTER APPLY (SELECT TOP 1 [DSC_FCO_LINHA] AS DSC FROM {TB_LINHAS_SISGEA}
                      WHERE [ID_FCO_LINHA] = V.[ID_FCO_LINHA]) L
+        WHERE V.[ID_FCO_ITEM] = :item
     """)
     lista = []
-    for r in db.session.execute(sql).mappings().all():
+    for r in db.session.execute(sql, {'item': ITEM_FCO_PERMITIDO}).mappings().all():
         lista.append({
             'agrup': _txt(r['COD_AGRUP_SISGEA']), 'dsc_agrup': _txt(r['DSC_AGRUP']),
             'item': _txt(r['ID_FCO_ITEM']), 'dsc_item': _txt(r['DSC_ITEM']),
@@ -968,53 +975,65 @@ def _listar_vinc_fco_balancete():
             FROM {TB_BALANCETE} B
             WHERE B.[DELETED_AT] IS NULL
               AND LTRIM(RTRIM(B.[CO_CONTA])) IN (
-                  SELECT LTRIM(RTRIM([CT_CONTABIL])) FROM {TB_VINC_ITEM_LINHA_CONTA})
+                  SELECT LTRIM(RTRIM([CT_CONTABIL])) FROM {TB_VINC_ITEM_LINHA_CONTA}
+                  WHERE [ID_FCO_ITEM] = :item AND [CT_CONTABIL] IS NOT NULL)
         """)
         try:
-            contas_ok = set(_txt(r[0]) for r in db.session.execute(sql_bal).all())
+            contas_ok = set(_txt(r[0]) for r in db.session.execute(sql_bal, {'item': ITEM_FCO_PERMITIDO}).all())
         except Exception as e:
             db.session.rollback()
             print(f"[contas_contabeis] Erro ao conferir contas no balancete: {e}")
             contas_ok = None
 
-    # Situação: vinculado = agrupamento, item e linha encontrados nos parâmetros
-    # e conta existente no balancete; senão "sem vínculo" com o motivo
+    # Situação: "vinculada" = linha com conta contábil preenchida; "sem" = conta vazia.
+    # Alertas (não mudam a situação): parâmetro não encontrado ou conta fora do balancete.
     for v in lista:
-        pendencias = []
+        alertas = []
         if not v['dsc_agrup']:
-            pendencias.append('agrupamento não encontrado')
+            alertas.append('agrupamento não encontrado')
         if not v['dsc_item']:
-            pendencias.append('item não encontrado')
+            alertas.append('item não encontrado')
         if not v['dsc_linha']:
-            pendencias.append('linha não encontrada')
-        if contas_ok is not None and v['conta'] not in contas_ok:
-            pendencias.append('conta fora do balancete')
-        v['pendencias'] = pendencias
-        v['situacao'] = 'sem' if pendencias else 'vinculada'
+            alertas.append('linha não encontrada')
+        if v['conta'] and contas_ok is not None and v['conta'] not in contas_ok:
+            alertas.append('conta fora do balancete')
+        v['pendencias'] = alertas
+        v['situacao'] = 'vinculada' if v['conta'] else 'sem'
 
     lista.sort(key=lambda x: (_chave_ordem(x['agrup']), _chave_ordem(x['item']),
                               _chave_ordem(x['linha']), x['conta']))
     return lista
 
 
-def _ler_valores_tb041(dados, prefixo=''):
+def _ler_valores_tb041(dados, prefixo='', conta_obrigatoria=True):
     """
     Lê e valida os 4 campos (com o tipo da coluna vindo do banco).
+    conta_obrigatoria=False: usado no vínculo original, que pode estar sem conta.
     Retorna (valores, mensagem_erro).
     """
     meta = _metadados_tabela('COR_TB041_FCO_VINC_ITEM_LINHA_CONTA')
     valores = {}
     for coluna, rotulo, chave in COLS_TB041:
-        ok, valor, msg = _validar_campo_tb037(dados.get(prefixo + chave), meta.get(coluna), rotulo)
+        obrigatorio = conta_obrigatoria or coluna != 'CT_CONTABIL'
+        ok, valor, msg = _validar_campo_tb037(dados.get(prefixo + chave), meta.get(coluna), rotulo, obrigatorio)
         if not ok:
             return None, msg
         valores[coluna] = valor
     return valores, None
 
 
-def _where_tb041(prefixo='o_'):
-    """WHERE pelos 4 valores (a tabela não tem chave primária)."""
-    return ' AND '.join('[{c}] = :{p}{c}'.format(c=c, p=prefixo) for c, _r, _k in COLS_TB041)
+def _where_tb041(valores, prefixo='o_'):
+    """
+    WHERE pelos 4 valores (a tabela não tem chave primária).
+    Valor vazio (None) localiza a coluna nula ou em branco: é o caso da linha sem conta.
+    """
+    partes = []
+    for c, _r, _k in COLS_TB041:
+        if valores.get(c) is None:
+            partes.append("([{c}] IS NULL OR LTRIM(RTRIM(CAST([{c}] AS varchar(100)))) = '')".format(c=c))
+        else:
+            partes.append('[{c}] = :{p}{c}'.format(c=c, p=prefixo))
+    return ' AND '.join(partes)
 
 
 def _validar_parametros_tb041(v):
@@ -1051,14 +1070,15 @@ def vinculacao_fco_balancete():
         'contas_contabeis/vinculacao_fco_balancete.html',
         vinculos=vinculos,
         agrupamentos=_param_agrupamentos(),
-        itens=_param_itens_sisgea(),
+        itens=_param_itens_sisgea(somente=ITEM_FCO_PERMITIDO),
         linhas=_param_linhas_sisgea(),
         qtd_vinculos=len(vinculos),
         qtd_agrup=len(set(v['agrup'] for v in vinculos)),
-        qtd_contas=len(set(v['conta'] for v in vinculos)),
+        qtd_contas=len(set(v['conta'] for v in vinculos if v['conta'])),
         qtd_sem_vinculo=sum(1 for v in vinculos if v['situacao'] == 'sem'),
+        qtd_vinculadas=sum(1 for v in vinculos if v['situacao'] == 'vinculada'),
         tam_conta=tam_conta,
-        item_padrao_inclusao=ITEM_FCO_PADRAO_INCLUSAO,
+        item_permitido=ITEM_FCO_PERMITIDO,
     )
 
 
@@ -1123,20 +1143,26 @@ def vinculacao_fco_balancete_salvar():
         if isinstance(novos['CT_CONTABIL'], str):
             novos['CT_CONTABIL'] = novos['CT_CONTABIL'].strip()
 
+        # Bloqueio: esta vinculação só aceita o item ITEM_FCO_PERMITIDO
+        if _txt(novos['ID_FCO_ITEM']) != ITEM_FCO_PERMITIDO:
+            return _json_erro('Nesta vinculação só é permitido o item {} do FCO.'.format(ITEM_FCO_PERMITIDO), 422)
+
         msg = _validar_parametros_tb041(novos)
         if msg:
             return _json_erro(msg, 422)
 
         antigos = None
         if editando:
-            antigos, msg = _ler_valores_tb041(dados, prefixo='o_')
+            antigos, msg = _ler_valores_tb041(dados, prefixo='o_', conta_obrigatoria=False)
             if msg:
                 return _json_erro('Vínculo original inválido: ' + msg)
+            if _txt(antigos['ID_FCO_ITEM']) != ITEM_FCO_PERMITIDO:
+                return _json_erro('Nesta vinculação só é permitido alterar vínculos do item {}.'.format(ITEM_FCO_PERMITIDO), 422)
 
         # Já existe exatamente esse vínculo?
         params_novos = {'o_' + c: v for c, v in novos.items()}
         ja_existe = db.session.execute(text(
-            'SELECT TOP 1 1 FROM {} WHERE {}'.format(TB_VINC_ITEM_LINHA_CONTA, _where_tb041())), params_novos).first()
+            'SELECT TOP 1 1 FROM {} WHERE {}'.format(TB_VINC_ITEM_LINHA_CONTA, _where_tb041(novos))), params_novos).first()
         if ja_existe and (not editando or antigos != novos):
             return _json_erro('Esse vínculo já existe (agrupamento {}, item {}, linha {}, conta {}).'.format(
                 novos['COD_AGRUP_SISGEA'], novos['ID_FCO_ITEM'], novos['ID_FCO_LINHA'], novos['CT_CONTABIL']), 409)
@@ -1145,10 +1171,10 @@ def vinculacao_fco_balancete_salvar():
 
         if editando:
             params = {'n_' + c: v for c, v in novos.items()}
-            params.update({'o_' + c: v for c, v in antigos.items()})
+            params.update({'o_' + c: v for c, v in antigos.items() if v is not None})
             set_sql = ', '.join('[{c}] = :n_{c}'.format(c=c) for c, _r, _k in COLS_TB041)
             res = db.session.execute(text('UPDATE {} SET {} WHERE {}'.format(
-                TB_VINC_ITEM_LINHA_CONTA, set_sql, _where_tb041())), params)
+                TB_VINC_ITEM_LINHA_CONTA, set_sql, _where_tb041(antigos))), params)
             if not res.rowcount:
                 db.session.rollback()
                 return _json_erro('O vínculo original não foi encontrado (pode ter sido alterado por outra pessoa).', 404)
