@@ -1788,7 +1788,7 @@ def sisgea_exportar(fonte):
 # Cada relatório é descrito por uma configuração (view, colunas e filtros).
 # A mesma rota e o mesmo template atendem os dois.
 #   tipo da coluna: 'data' | 'inteiro' | 'texto' | 'bit' | 'valor' (R$, 2 casas)
-#   coluna_valor: coluna somada no resumo (total geral e por agrupamento)
+#   colunas_valor: colunas somadas no resumo (total geral e por agrupamento)
 #   filtro:
 #     'multi'  -> caixas de seleção com os valores que existem na view
 #     'faixa'  -> data de / até
@@ -1809,7 +1809,7 @@ AUDITORIAS = {
             ('NO_AGRUPAMENTO', 'Agrupamento', 'texto'),
             ('VR_FCO', 'Valor FCO', 'valor'),
         ],
-        'coluna_valor': 'VR_FCO',
+        'colunas_valor': ['VR_FCO'],
         'filtros': [
             ('NO_AGRUPAMENTO', 'multi'),
             ('COD_AGRUPAMENTO', 'multi'),
@@ -1831,7 +1831,10 @@ AUDITORIAS = {
             ('DT_BAIXA_PREJUIZO', 'Data da baixa a prejuízo', 'data'),
             ('COD_AGRUPAMENTO', 'Cód. agrupamento', 'inteiro'),
             ('NO_AGRUPAMENTO', 'Agrupamento', 'texto'),
+            ('VR_DIV_TOTAL', 'Dívida total', 'valor'),
+            ('VR_FCO', 'Valor FCO', 'valor'),
         ],
+        'colunas_valor': ['VR_DIV_TOTAL', 'VR_FCO'],
         'filtros': [
             ('NO_AGRUPAMENTO', 'multi'),
             ('COD_AGRUPAMENTO', 'multi'),
@@ -2006,9 +2009,9 @@ def _aud_opcoes(cfg):
 
 
 def _aud_resumo(cfg, where, params):
-    """Quantidade (e soma da coluna_valor, se houver) por agrupamento, já com os filtros."""
-    col_valor = cfg.get('coluna_valor')
-    soma = ', SUM([{}]) AS TOTAL_VALOR'.format(col_valor) if col_valor else ''
+    """Quantidade (e soma das colunas_valor, se houver) por agrupamento, já com os filtros."""
+    cols_valor = cfg.get('colunas_valor') or []
+    soma = ''.join(', SUM([{c}]) AS [SOMA_{c}]'.format(c=c) for c in cols_valor)
     sql = text("""
         SELECT [COD_AGRUPAMENTO], [NO_AGRUPAMENTO], COUNT(1) AS QTD{soma}
         FROM {view} {where}
@@ -2016,7 +2019,8 @@ def _aud_resumo(cfg, where, params):
     """.format(soma=soma, view=cfg['view'], where=where))
     resumo = [{'cod': _txt(r['COD_AGRUPAMENTO']), 'nome': _txt(r['NO_AGRUPAMENTO']),
                'chave_nome': _aud_valor_chave(r['NO_AGRUPAMENTO'], 'texto'), 'qtd': int(r['QTD'] or 0),
-               'valor': (_dec(r['TOTAL_VALOR']) or Decimal('0')) if col_valor else None}
+               'valores': [{'rotulo': _aud_rotulo(cfg, c), 'valor': _dec(r['SOMA_' + c]) or Decimal('0')}
+                           for c in cols_valor]}
               for r in db.session.execute(sql, params).mappings().all()]
     resumo.sort(key=lambda x: (-x['qtd'], x['nome']))
     return resumo
@@ -2080,13 +2084,15 @@ def auditoria_relatorio(relatorio):
 
     erro = None
     opcoes, resumo, linhas, total = {}, [], [], 0
-    total_valor = None
+    totais_valor = []
     try:
         opcoes = _aud_opcoes(cfg)
         resumo = _aud_resumo(cfg, where, params)
         total = sum(r['qtd'] for r in resumo)
-        if cfg.get('coluna_valor'):
-            total_valor = sum((r['valor'] for r in resumo), Decimal('0'))
+        # Total geral de cada coluna de valor (soma dos agrupamentos)
+        for i, c in enumerate(cfg.get('colunas_valor') or []):
+            totais_valor.append({'rotulo': _aud_rotulo(cfg, c),
+                                 'valor': sum((r['valores'][i]['valor'] for r in resumo), Decimal('0'))})
         total_paginas = max(1, (total + tam_pagina - 1) // tam_pagina)
         pagina = min(pagina, total_paginas)
         registros = _aud_linhas(cfg, where, params, order_by, (pagina - 1) * tam_pagina, tam_pagina)
@@ -2124,7 +2130,7 @@ def auditoria_relatorio(relatorio):
         relatorio=relatorio, cfg=cfg, colunas=cfg['colunas'],
         filtros=filtros_tela, filtros_ativos=filtros_ativos,
         resumo=resumo, linhas=linhas, total=total,
-        total_valor=total_valor, col_valor_rotulo=_aud_rotulo(cfg, cfg['coluna_valor']) if cfg.get('coluna_valor') else None,
+        totais_valor=totais_valor,
         fmt=_fmt_br,
         pagina=pagina, total_paginas=total_paginas, tam_pagina=tam_pagina,
         tamanhos=AUD_TAMANHOS_PAGINA, ordem_col=ordem_col, ordem_dir=ordem_dir,
@@ -2208,22 +2214,22 @@ def auditoria_exportar(relatorio):
         ws.column_dimensions[get_column_letter(i)].width = 24
 
     # Linha de total da coluna de valor no fim da aba Dados
-    col_valor = cfg.get('coluna_valor')
-    if col_valor and registros:
-        idx_valor = [c for c, _r, _t in cfg['colunas']].index(col_valor) + 1
+    cols_valor = cfg.get('colunas_valor') or []
+    if cols_valor and registros:
+        nomes_colunas = [c for c, _r, _t in cfg['colunas']]
         lin_tot = ultima + 1
         ws.cell(row=lin_tot, column=1, value='TOTAL').font = negrito
-        cel = ws.cell(row=lin_tot, column=idx_valor,
-                      value=float(sum((_dec(r[col_valor]) or Decimal('0')) for r in registros)))
-        cel.number_format = '#,##0.00;[Red]-#,##0.00'
-        cel.font = negrito
+        for c in cols_valor:
+            cel = ws.cell(row=lin_tot, column=nomes_colunas.index(c) + 1,
+                          value=float(sum((_dec(r[c]) or Decimal('0')) for r in registros)))
+            cel.number_format = '#,##0.00;[Red]-#,##0.00'
+            cel.font = negrito
         for i in range(1, len(cfg['colunas']) + 1):
             ws.cell(row=lin_tot, column=i).fill = cinza
 
     wr = wb.create_sheet('Resumo por agrupamento')
     cab_resumo = ['Cód. agrupamento', 'Agrupamento', 'Quantidade']
-    if col_valor:
-        cab_resumo.append(_aud_rotulo(cfg, col_valor))
+    cab_resumo += [_aud_rotulo(cfg, c) for c in cols_valor]
     for i, nome in enumerate(cab_resumo, start=1):
         cel = wr.cell(row=1, column=i, value=nome)
         cel.fill = azul
@@ -2233,17 +2239,17 @@ def auditoria_exportar(relatorio):
         wr.cell(row=n, column=1, value=_num_excel(r['cod']))
         wr.cell(row=n, column=2, value=r['nome'])
         wr.cell(row=n, column=3, value=r['qtd'])
-        if col_valor:
-            wr.cell(row=n, column=4, value=float(r['valor'])).number_format = '#,##0.00;[Red]-#,##0.00'
+        for i, v in enumerate(r['valores'], start=4):
+            wr.cell(row=n, column=i, value=float(v['valor'])).number_format = '#,##0.00;[Red]-#,##0.00'
     tot = len(resumo) + 2
     wr.cell(row=tot, column=1, value='TOTAL')
     wr.cell(row=tot, column=3, value=sum(r['qtd'] for r in resumo))
-    if col_valor:
-        wr.cell(row=tot, column=4, value=float(sum((r['valor'] for r in resumo), Decimal('0')))).number_format = '#,##0.00;[Red]-#,##0.00'
+    for i in range(len(cols_valor)):
+        wr.cell(row=tot, column=4 + i, value=float(sum((r['valores'][i]['valor'] for r in resumo), Decimal('0')))).number_format = '#,##0.00;[Red]-#,##0.00'
     for i in range(1, len(cab_resumo) + 1):
         wr.cell(row=tot, column=i).fill = cinza
         wr.cell(row=tot, column=i).font = negrito
-    for col, larg in zip('ABCD', (18, 30, 14, 20)):
+    for col, larg in zip('ABCDEF', (18, 30, 14, 20, 20, 20)):
         wr.column_dimensions[col].width = larg
 
     saida = BytesIO()

@@ -48,10 +48,10 @@
                 <div class="card-body py-3">
                     <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;">Contratos encontrados</div>
                     <div style="font-size: 1.9rem; font-weight: 700; color: #5a5c69;">{{ total | mil }}</div>
-                    {% if total_valor is not none %}
-                    <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;" class="mt-2">{{ col_valor_rotulo }} (total)</div>
-                    <div style="font-size: 1.15rem; font-weight: 700; color: {{ '#e74a3b' if total_valor < 0 else '#5a5c69' }};">R$ {{ fmt(total_valor) }}</div>
-                    {% endif %}
+                    {% for t in totais_valor %}
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #858796; text-transform: uppercase;" class="mt-2">{{ t.rotulo }} (total)</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: {{ '#e74a3b' if t.valor < 0 else '#5a5c69' }};">R$ {{ fmt(t.valor) }}</div>
+                    {% endfor %}
                     <div style="font-size: 0.8rem; color: #858796;">
                         {% if filtros_ativos %}{{ filtros_ativos }} filtro(s) aplicado(s){% else %}sem filtros{% endif %}
                     </div>
@@ -74,7 +74,7 @@
                                 {{ r.nome or '(vazio)' }}
                                 {% if r.cod %}<span class="text-muted fw-normal">({{ r.cod }})</span>{% endif %}
                                 <span class="badge ms-1" style="background: {{ cfg.cor }}; color: #fff;">{{ r.qtd | mil }}</span>
-                                {% if r.valor is not none %}<span class="fw-normal ms-1" style="color: #5a5c69;">R$ {{ fmt(r.valor) }}</span>{% endif %}
+                                {% for v in r.valores %}<span class="fw-normal ms-1" style="color: #5a5c69;" title="{{ v.rotulo }}">· {{ v.rotulo }}: R$ {{ fmt(v.valor) }}</span>{% endfor %}
                             </span>
                         </a>
                         {% endfor %}
