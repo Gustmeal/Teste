@@ -23,7 +23,7 @@
     function normalizar(texto) {
         return String(texto == null ? '' : texto)
             .toLowerCase()
-            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .trim();
     }
 
