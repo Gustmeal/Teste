@@ -51,6 +51,16 @@
         <span id="tutBarraTxt" style="font-size:.78rem;color:var(--sol-suave);white-space:nowrap;"></span>
     </div>
 
+    {% if not gestor %}
+    <div class="alert d-flex gap-3 align-items-start mb-4" style="background:#fff8e1;border:1px solid #f6c23e;border-radius:14px;color:#5c4400;">
+        <i class="fas fa-user-cog fs-4 mt-1"></i>
+        <div style="font-size:.9rem;">
+            <strong>Você está como membro da equipe da área.</strong> Você pode <b>registrar solicitações</b> (etapa 1) e <b>editar</b> as que registrou ou em que é executor,
+            além de atualizar o andamento (etapa 3). Mudar status, registrar a entrega, concluir, excluir, exportar e o dashboard (etapas 4, 6 e 7) são feitos por administrador ou moderador.
+        </div>
+    </div>
+    {% endif %}
+
     <!-- ================= QUEM VÊ O QUÊ ================= -->
     <div class="sol-card mb-4">
         <div class="sol-card-cab"><h5><i class="fas fa-user-lock me-2" style="color:var(--sol-azul);"></i>Antes de começar: quem pode fazer o quê</h5></div>
@@ -65,7 +75,8 @@
                 </thead>
                 <tbody>
                 {% for acao, perms in [
-                    ('Registrar e editar a solicitação', [1, 0, 0, 0]),
+                    ('Registrar solicitação e editar as que registrou (empregados da área)', [1, 1, 0, 0]),
+                    ('Editar qualquer solicitação', [1, 0, 0, 0]),
                     ('Mudar status, registrar entrega, concluir, reabrir, excluir', [1, 0, 0, 0]),
                     ('Lançar atualizações, marcos, impedimentos, % e horas', [1, 1, 0, 0]),
                     ('Ver registros internos e o histórico de alterações', [1, 1, 0, 0]),
@@ -85,7 +96,7 @@
             </table>
         </div>
         <div class="sol-card-corpo" style="font-size:.82rem;color:var(--sol-suave);">
-            <b>Gestor</b> = perfil administrador ou moderador do portal. <b>Equipe</b> = usuário escolhido como executor da solicitação.
+            <b>Gestor</b> = perfil administrador ou moderador do portal. <b>Equipe</b> = executor da solicitação ou empregado da área que a registrou; qualquer empregado da área pode registrar novas solicitações.
             <b>Solicitante</b> = quem fez o pedido. <b>Observador</b> = pessoa que só acompanha. Quem não está em nenhum desses papéis não vê a solicitação.
         </div>
     </div>

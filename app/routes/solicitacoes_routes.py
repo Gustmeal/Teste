@@ -32,7 +32,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
-from flask import (Blueprint, abort, flash, jsonify, redirect, render_template, request,
+from flask import (Blueprint, abort, flash, g, jsonify, redirect, render_template, request,
                    send_file, url_for)
 from flask_login import current_user, login_required
 from openpyxl import Workbook
@@ -209,6 +209,38 @@ def _gestor():
     return getattr(current_user, 'perfil', None) in ('admin', 'moderador')
 
 
+def _membro_area():
+    """
+    True se o usuário logado é empregado da área executora (AREA_EXECUTORA = GEINC),
+    pelo setor, superintendência ou diretoria do cadastro de empregados.
+    Membros da área podem REGISTRAR solicitações e EDITAR as que criaram ou em que
+    são executores, sem precisar ser moderador. Dashboard, exportação, status,
+    entrega, conclusão e exclusão continuam só para administrador/moderador.
+    Guardado em g para consultar o banco uma vez por requisição.
+    """
+    if not hasattr(g, 'sol_membro_area'):
+        try:
+            u = _dados_usuario(_uid()) or {}
+            siglas = [(u.get(c) or '').strip().upper() for c in ('SG_SETOR', 'SG_SUPERINTENDENCIA', 'SG_DIRETORIA')]
+            g.sol_membro_area = AREA_EXECUTORA.upper() in siglas
+        except Exception:
+            db.session.rollback()
+            g.sol_membro_area = False
+    return g.sol_membro_area
+
+
+def _pode_criar():
+    """Administrador, moderador ou qualquer empregado da área executora."""
+    return _gestor() or _membro_area()
+
+
+def _pode_editar(sol, papel):
+    """Gestor edita tudo; membro da área edita as que registrou ou em que é executor."""
+    if papel == 'GESTOR':
+        return True
+    return _membro_area() and (sol.get('ID_USUARIO_CRIACAO') == _uid() or papel == 'EQUIPE')
+
+
 def _uid():
     return int(current_user.id)
 
@@ -365,6 +397,8 @@ def _papel(sol, envolvidos):
     uid = _uid()
     if any(e['ID_USUARIO'] == uid and e['PAPEL'] == 'EXECUTOR' for e in envolvidos):
         return 'EQUIPE'
+    if sol.get('ID_USUARIO_CRIACAO') == uid and _membro_area():
+        return 'EQUIPE'   # membro da área que registrou a solicitação
     if sol['ID_USUARIO_SOLICITANTE'] == uid or any(
             e['ID_USUARIO'] == uid and e['PAPEL'] == 'SOLICITANTE' for e in envolvidos):
         return 'SOLICITANTE'
@@ -681,7 +715,7 @@ def _consultar_lista(filtros, papel_global_gestor):
     where = ['S.DELETED_AT IS NULL']
     params = {}
     if not papel_global_gestor:
-        where.append("""(S.ID_USUARIO_SOLICITANTE = :uid OR EXISTS (
+        where.append("""(S.ID_USUARIO_SOLICITANTE = :uid OR S.ID_USUARIO_CRIACAO = :uid OR EXISTS (
             SELECT 1 FROM """ + TB_ENV + """ EV WHERE EV.ID_SOLICITACAO = S.ID_SOLICITACAO
             AND EV.ID_USUARIO = :uid AND EV.DELETED_AT IS NULL))""")
         params['uid'] = _uid()
@@ -829,6 +863,7 @@ def index():
 
     return render_template('solicitacoes/index.html', lista=lista, resumo=resumo, filtros=filtros,
                            colunas=list(colunas.values()), pendencias=pendencias, gestor=gestor,
+                           pode_criar=_pode_criar(),
                            areas=areas, executores_opcoes=executores_opcoes, anos=anos,
                            cat=_catalogos())
 
@@ -895,7 +930,7 @@ def exportar():
 @login_required
 @sistema_requerido(SISTEMA)
 def api_area_usuario(usuario_id):
-    if not _gestor():
+    if not _pode_criar():
         return _erro('Acesso restrito.', 403)
     u = _dados_usuario(usuario_id)
     if not u:
@@ -958,8 +993,8 @@ def _validar_executores(executores, envolvidos_atuais=None):
 @login_required
 @sistema_requerido(SISTEMA)
 def nova():
-    if not _gestor():
-        flash('Somente administradores e moderadores registram solicitações.', 'warning')
+    if not _pode_criar():
+        flash('Somente administradores, moderadores e empregados da {} registram solicitações.'.format(AREA_EXECUTORA), 'warning')
         return redirect(url_for('solicitacoes.index'))
     if request.method == 'GET':
         return _render_form()
@@ -1049,7 +1084,7 @@ def nova():
 @sistema_requerido(SISTEMA)
 def editar(id_solicitacao):
     sol, env, papel = _acesso(id_solicitacao)
-    if papel != 'GESTOR':
+    if not _pode_editar(sol, papel):
         abort(403)
     if request.method == 'GET':
         return _render_form(sol=sol, envolvidos=env)
@@ -1243,7 +1278,7 @@ def detalhe(id_solicitacao):
     }
 
     permissoes = {
-        'editar': papel == 'GESTOR',
+        'editar': _pode_editar(sol, papel),
         'mudar_status': papel == 'GESTOR',
         'atualizar': papel in ('GESTOR', 'EQUIPE'),
         'comentar': True,
@@ -2122,8 +2157,10 @@ ETAPAS_TUTORIAL = {
 def tutorial():
     """Tutorial do aplicativo: versão de administradores/moderadores e versão de usuários."""
     gestor = _gestor()
+    registra = _pode_criar()
     perfil = request.args.get('perfil')
-    if perfil not in ('admin', 'usuario') or (perfil == 'admin' and not gestor):
-        perfil = 'admin' if gestor else 'usuario'
+    if perfil not in ('admin', 'usuario') or (perfil == 'admin' and not registra):
+        perfil = 'admin' if registra else 'usuario'
     modelo = 'solicitacoes/tutorial_admin.html' if perfil == 'admin' else 'solicitacoes/tutorial_usuario.html'
-    return render_template(modelo, perfil=perfil, gestor=gestor, etapas=ETAPAS_TUTORIAL[perfil], cat=_catalogos())
+    return render_template(modelo, perfil=perfil, gestor=gestor, registra=registra,
+                           etapas=ETAPAS_TUTORIAL[perfil], cat=_catalogos())

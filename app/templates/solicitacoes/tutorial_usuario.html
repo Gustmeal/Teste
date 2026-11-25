@@ -9,7 +9,7 @@
 <div class="sol-app tut-pagina">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Voltar às Solicitações</a>
-        {% if gestor %}
+        {% if registra %}
         <a href="{{ url_for('solicitacoes.tutorial', perfil='admin') }}" class="sol-btn sol-btn-sec sol-btn-sm">
             <i class="fas fa-user-shield"></i> Ver o tutorial dos administradores
         </a>

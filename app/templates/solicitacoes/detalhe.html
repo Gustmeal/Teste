@@ -84,7 +84,7 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <a href="{{ url_for('solicitacoes.index') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Solicitações</a>
         <div class="d-flex gap-2 align-items-center">
-            <a class="sol-btn sol-btn-sec sol-btn-sm" href="{{ url_for('solicitacoes.tutorial', perfil='admin' if papel == 'GESTOR' else 'usuario') }}"><i class="fas fa-graduation-cap"></i> Tutorial</a>
+            <a class="sol-btn sol-btn-sec sol-btn-sm" href="{{ url_for('solicitacoes.tutorial', perfil='admin' if (papel == 'GESTOR' or permissoes.editar) else 'usuario') }}"><i class="fas fa-graduation-cap"></i> Tutorial</a>
             <span class="sol-badge" style="background:{{ papel_info.cor }}1f;color:{{ papel_info.cor }};font-size:.78rem;">
                 <i class="fas {{ papel_info.icone }}"></i> Você está como: {{ papel_info.rotulo }}
             </span>
@@ -146,8 +146,10 @@
                         <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown"><i class="fas fa-ellipsis-h"></i></button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><a class="dropdown-item" href="{{ url_for('solicitacoes.editar', id_solicitacao=sol.ID_SOLICITACAO) }}"><i class="fas fa-pen me-2"></i>Editar dados</a></li>
+                            {% if permissoes.excluir %}
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item text-danger js-ignore-loading" href="#" data-bs-toggle="modal" data-bs-target="#modalExcluir"><i class="fas fa-trash me-2"></i>Excluir solicitação</a></li>
+                            {% endif %}
                         </ul>
                     </div>
                     {% endif %}

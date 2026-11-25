@@ -35,13 +35,13 @@
             <i class="fas fa-arrow-left"></i> Voltar
         </a>
         <div class="d-flex gap-2 flex-wrap">
-            {% if gestor %}
+            {% if pode_criar %}
             <div class="dropdown">
                 <button type="button" class="sol-btn sol-btn-sec dropdown-toggle js-ignore-loading" data-bs-toggle="dropdown" style="border-color:#4e73df;color:#4e73df !important;">
                     <i class="fas fa-graduation-cap"></i> Tutorial
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="{{ url_for('solicitacoes.tutorial', perfil='admin') }}"><i class="fas fa-user-shield me-2 text-primary"></i>Administradores e moderadores</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('solicitacoes.tutorial', perfil='admin') }}"><i class="fas fa-user-shield me-2 text-primary"></i>{{ 'Administradores e moderadores' if gestor else 'Registrar solicitações (equipe)' }}</a></li>
                     <li><a class="dropdown-item" href="{{ url_for('solicitacoes.tutorial', perfil='usuario') }}"><i class="fas fa-user me-2 text-success"></i>Usuários (solicitantes)</a></li>
                 </ul>
             </div>
@@ -69,6 +69,8 @@
             <a class="sol-btn sol-btn-sec" href="{{ url_for('solicitacoes.dashboard') }}">
                 <i class="fas fa-chart-pie"></i> Dashboard
             </a>
+            {% endif %}
+            {% if pode_criar %}
             <a class="sol-btn sol-btn-pri" href="{{ url_for('solicitacoes.nova') }}">
                 <i class="fas fa-plus"></i> Nova solicitação
             </a>
@@ -321,7 +323,7 @@
         <div class="sol-vazio">
             <i class="fas fa-inbox"></i>
             <div class="fw-bold">Nenhuma solicitação encontrada</div>
-            <div style="font-size:.85rem;">Ajuste os filtros{% if gestor %} ou registre uma nova solicitação{% endif %}.</div>
+            <div style="font-size:.85rem;">Ajuste os filtros{% if pode_criar %} ou registre uma nova solicitação{% endif %}.</div>
         </div>
         {% endif %}
     </div>
