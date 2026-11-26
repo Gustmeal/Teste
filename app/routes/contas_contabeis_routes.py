@@ -453,25 +453,9 @@ def _ler_filtros_balancete():
 def index():
     """
     Tela inicial com os atalhos: Vinculações, Conciliações, Relatórios FCO e Auditoria.
-    Não executa a view do balancete aqui (fica na página de Conciliações),
-    para a tela inicial abrir rápido.
+    Não faz consultas: os contadores ficam dentro de cada página (abre rápido).
     """
-    db.session.expire_all()
-    resumo = {'qtd_contas': 0, 'qtd_sem_vinculo': 0, 'status': None}
-    try:
-        sql = text(f"""
-            SELECT COUNT(1) AS QTD,
-                   SUM(CASE WHEN [ID_LINHA] IS NULL THEN 1 ELSE 0 END) AS SEM_VINCULO
-            FROM {TB_CONTAS}
-        """)
-        r = db.session.execute(sql).mappings().first()
-        resumo['qtd_contas'] = int(r['QTD'] or 0) if r else 0
-        resumo['qtd_sem_vinculo'] = int(r['SEM_VINCULO'] or 0) if r else 0
-    except Exception as e:
-        db.session.rollback()
-        print(f"[contas_contabeis] Erro ao montar resumo: {e}")
-
-    return render_template('contas_contabeis/index.html', resumo=resumo)
+    return render_template('contas_contabeis/index.html')
 
 
 @contas_contabeis_bp.route('/conciliacoes')
@@ -1219,7 +1203,13 @@ def balancete():
     fonte, datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
 
     status = _status_previa()                  # 1ª (e única) leitura da view
-    linhas_fonte = _linhas_da_fonte(fonte, dt_ref)
+    # A prévia só aparece quando a data de referência da view é diferente das que já
+    # estão no histórico (COR_TB032). Se for a mesma, a próxima prévia ainda não chegou.
+    previa_indisponivel = bool(status['ja_gravado'])
+    if fonte == FONTE_PREVIA and previa_indisponivel:
+        linhas_fonte = []
+    else:
+        linhas_fonte = _linhas_da_fonte(fonte, dt_ref)
     opcoes_linhas, opcoes_tipos = _opcoes_filtro(linhas_fonte)
     # Ignora tipos que não existem na origem escolhida (ex.: trocou a data)
     tipos = [t for t in tipos if t in opcoes_tipos]
@@ -1248,6 +1238,7 @@ def balancete():
         opcoes_linhas=opcoes_linhas,
         opcoes_tipos=opcoes_tipos,
         tabela=tabela,
+        previa_indisponivel=previa_indisponivel,
         fmt=_fmt_br,
         FONTE_PREVIA=FONTE_PREVIA,
         FONTE_HISTORICO=FONTE_HISTORICO,
@@ -1363,7 +1354,10 @@ def balancete_guardar_fco():
 def balancete_exportar():
     """Exporta para Excel a mesma tabela que está na tela (com os filtros)."""
     fonte, _datas, dt_ref, id_linha, tipos = _ler_filtros_balancete()
-    linhas_db = _filtrar_linhas(_linhas_da_fonte(fonte, dt_ref), id_linha, tipos)
+    if fonte == FONTE_PREVIA and _status_previa()['ja_gravado']:
+        linhas_db = []    # mesma data do histórico: a prévia ainda não está disponível
+    else:
+        linhas_db = _filtrar_linhas(_linhas_da_fonte(fonte, dt_ref), id_linha, tipos)
     tabela = _montar_tabela(linhas_db)
 
     if fonte == FONTE_HISTORICO:

@@ -25,14 +25,10 @@
                     </div>
                     <h3 class="system-title mb-3">Vinculações</h3>
                     <p class="text-muted mb-3">
-                        Vinculações SISGEA X BALANCETE (contas contábeis) e SISGEA X FCO (linhas do SISGEA).
+                        Vinculações SISGEA X BALANCETE (contas contábeis), SISGEA X FCO (linhas do SISGEA)
+                        e FCO X BALANCETE (agrupamento, linha e conta).
                     </p>
-                    <div class="fco-badges mb-4">
-                        <span class="badge bg-primary">{{ resumo.qtd_contas | mil }} conta(s)</span>
-                        {% if resumo.qtd_sem_vinculo %}
-                        <span class="badge bg-warning text-dark">{{ resumo.qtd_sem_vinculo | mil }} sem vínculo</span>
-                        {% endif %}
-                    </div>
+                    <div class="fco-badges mb-4"></div>
                     <div class="mt-auto">
                         <a href="{{ url_for('contas_contabeis.vinculacoes') }}" class="btn btn-access btn-fco">
                             <i class="fas fa-link me-2"></i>Acessar

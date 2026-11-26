@@ -31,7 +31,7 @@
                             <span class="badge bg-secondary">Ref. {{ resumo.status.dt_max.strftime('%d/%m/%Y') }}</span>
                             {% endif %}
                             {% if resumo.status.ja_gravado %}
-                            <span class="badge bg-success">FCO já guardado</span>
+                            <span class="badge bg-secondary">Aguardando nova prévia</span>
                             {% elif resumo.status.liberado %}
                             <span class="badge bg-info text-dark">Liberado para guardar</span>
                             {% else %}

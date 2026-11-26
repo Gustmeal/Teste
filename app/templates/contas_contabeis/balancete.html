@@ -56,7 +56,7 @@
                 <i class="fas fa-file-export me-2"></i>FCO em prévia
             </h5>
             <button type="button" class="btn btn-warning btn-sm js-ignore-loading" id="btnGuardarFco"
-                    {% if not status.qtd_total %}disabled{% endif %}>
+                    {% if not status.qtd_total or previa_indisponivel %}disabled title="Aguardando a nova prévia"{% endif %}>
                 <i class="fas fa-save me-1"></i> Guardar FCO
             </button>
         </div>
@@ -89,7 +89,7 @@
                     <div style="font-size: 0.75rem; font-weight: 600; color: #858796; text-transform: uppercase;">Situação</div>
                     <div class="mt-1">
                         {% if status.ja_gravado %}
-                            <span class="badge bg-success">FCO já guardado</span>
+                            <span class="badge bg-secondary">Aguardando nova prévia</span>
                         {% elif status.liberado %}
                             <span class="badge bg-info text-dark">Liberado para guardar</span>
                         {% else %}
@@ -98,9 +98,19 @@
                     </div>
                 </div>
             </div>
+            {% if previa_indisponivel %}
+            <div class="alert alert-info mt-3 mb-0" style="font-size: 0.88rem;">
+                <i class="fas fa-hourglass-half me-1"></i>
+                <strong>A nova prévia ainda não está disponível.</strong>
+                A view continua com a data de referência
+                {{ status.dt_max.strftime('%d/%m/%Y') if status.dt_max else '-' }}, que já foi guardada no histórico.
+                Assim que chegar a prévia com uma nova data de referência, ela aparece aqui.
+            </div>
+            {% else %}
             <div class="text-muted mt-3" style="font-size: 0.8rem;">
                 O botão <strong>Guardar FCO</strong> só grava no histórico quando <strong>todas</strong> as linhas da prévia estiverem com ID_PREVIA = 0.
             </div>
+            {% endif %}
             {% else %}
             <div class="text-muted">A view do balancete não retornou nenhuma linha.</div>
             {% endif %}
@@ -139,7 +149,7 @@
                 <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" style="font-size: 0.85rem;">Origem</label>
                     <select name="fonte" class="form-select form-select-sm js-filtro" id="selFonte">
-                        <option value="{{ FONTE_PREVIA }}" {% if fonte == FONTE_PREVIA %}selected{% endif %}>Prévia atual (view)</option>
+                        <option value="{{ FONTE_PREVIA }}" {% if fonte == FONTE_PREVIA %}selected{% endif %}>Prévia atual (view){% if previa_indisponivel %} - aguardando{% endif %}</option>
                         <option value="{{ FONTE_HISTORICO }}" {% if fonte == FONTE_HISTORICO %}selected{% endif %}
                                 {% if not datas_historico %}disabled{% endif %}>
                             Histórico (FCO guardados){% if not datas_historico %} - vazio{% endif %}
@@ -243,8 +253,22 @@
                 {% if fonte == FONTE_HISTORICO %}No histórico é exibida a diferença gravada ao guardar o FCO (valor inteiro).{% endif %}
             {% else %}
             <div class="text-center text-muted py-4">
+                {% if fonte == FONTE_PREVIA and previa_indisponivel %}
+                <i class="fas fa-hourglass-half fa-2x mb-2 d-block"></i>
+                <strong>A prévia atual ainda não chegou.</strong><br>
+                A data de referência da view ({{ status.dt_max.strftime('%d/%m/%Y') if status.dt_max else '-' }}) é a mesma de um FCO já guardado.
+                {% if datas_historico %}
+                <div class="mt-2">
+                    <a href="{{ url_for('contas_contabeis.balancete', fonte=FONTE_HISTORICO) }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-history me-1"></i> Ver o histórico
+                    </a>
+                </div>
+                {% endif %}
+                {% else %}
                 <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
-                {% if fonte == FONTE_HISTORICO and not datas_historico %}
+                {% endif %}
+                {% if fonte == FONTE_PREVIA and previa_indisponivel %}
+                {% elif fonte == FONTE_HISTORICO and not datas_historico %}
                     Nenhum FCO foi guardado ainda.
                 {% else %}
                     Nenhum dado encontrado para os filtros escolhidos.
