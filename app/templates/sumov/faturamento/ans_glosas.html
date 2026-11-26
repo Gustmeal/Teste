@@ -12,6 +12,11 @@
                    title="Passo a passo das penalidades ANS">
                     <i class="fas fa-graduation-cap me-1"></i>Tutorial
                 </a>
+                <span class="btn text-white js-ignore-loading" onclick="abrirModalHistorico()"
+                      style="cursor:pointer;background:linear-gradient(135deg,#6f42c1,#4b2a8a);border:none;"
+                      title="Histórico de uma ou mais ocorrências em todas as datas de apuração">
+                    <i class="fas fa-history me-1"></i>Histórico
+                </span>
                 <span class="btn btn-warning js-ignore-loading" onclick="abrirModalTarifa()" style="cursor:pointer;"
                       title="Alterar a tarifa da última data cadastrada (TB061)">
                     <i class="fas fa-dollar-sign me-1"></i>Alterar Tarifa
@@ -60,6 +65,7 @@
                            placeholder="Digite o nº da ocorrência e tecle Enter" style="display:block !important;">
                     <span class="btn btn-primary js-ignore-loading" onclick="buscarOcorrencia()" style="cursor:pointer;white-space:nowrap;" title="Localizar"><i class="fas fa-search me-1"></i></span>
                     <span class="btn btn-outline-secondary js-ignore-loading" onclick="limparBuscaOcorrencia()" style="cursor:pointer;" title="Limpar"><i class="fas fa-times"></i></span>
+                    <span class="btn btn-outline-primary js-ignore-loading" onclick="abrirHistoricoDaBusca()" style="cursor:pointer;white-space:nowrap;" title="Ver o histórico desta ocorrência em todas as apurações"><i class="fas fa-history me-1"></i>Histórico</span>
                 </div>
                 <small id="buscaOcorrenciaMsg" class="text-muted"></small>
             </div>
@@ -307,7 +313,7 @@
                             </tr></thead>
                             <tbody>{% for oc in pendentes %}
                             <tr id="row-{{ grupo }}-{{ oc.nrOcorrencia }}" data-nr-ocorrencia="{{ oc.nrOcorrencia }}" data-grupo="{{ grupo }}">
-                                <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
+                                <td class="text-center fw-bold" style="white-space:nowrap;">{{ oc.nrOcorrencia }} <i class="fas fa-history hist-atalho js-ignore-loading" onclick="event.stopPropagation(); abrirModalHistorico([{{ oc.nrOcorrencia }}]);" title="Histórico da ocorrência {{ oc.nrOcorrencia }}"></i></td>
                                 <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_EFETIVACAO.strftime('%d/%m/%Y') if oc.DT_EFETIVACAO else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_DEFERIDO.strftime('%d/%m/%Y') if oc.DT_DEFERIDO else '-' }}</td>
@@ -349,7 +355,7 @@
                                 <th class="text-center" style="width:85px;">Reit.</th>
                             </tr></thead>
                             <tbody>{% for oc in analisadas %}<tr id="row-an-{{ grupo }}-{{ oc.nrOcorrencia }}" data-nr-ocorrencia="{{ oc.nrOcorrencia }}" data-grupo="{{ grupo }}" data-situacao="analisada">
-                                <td class="text-center fw-bold">{{ oc.nrOcorrencia }}</td>
+                                <td class="text-center fw-bold" style="white-space:nowrap;">{{ oc.nrOcorrencia }} <i class="fas fa-history hist-atalho js-ignore-loading" onclick="event.stopPropagation(); abrirModalHistorico([{{ oc.nrOcorrencia }}]);" title="Histórico da ocorrência {{ oc.nrOcorrencia }}"></i></td>
                                 <td class="text-center">{{ oc.DT_ABERTURA.strftime('%d/%m/%Y') if oc.DT_ABERTURA else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_EFETIVACAO.strftime('%d/%m/%Y') if oc.DT_EFETIVACAO else '-' }}</td>
                                 <td class="text-center">{{ oc.DT_DEFERIDO.strftime('%d/%m/%Y') if oc.DT_DEFERIDO else '-' }}</td>
@@ -515,6 +521,173 @@
             </div>
         </div>
     </div>
+
+    <!-- ================= Modal: HISTÓRICO DE OCORRÊNCIAS (TB045 + TB048, todas as datas) ================= -->
+    <div class="modal fade" id="modalHistorico" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width:1320px;">
+            <div class="modal-content hist-modal">
+                <div class="modal-header hist-header">
+                    <div class="d-flex align-items-center">
+                        <div class="hist-header-icone"><i class="fas fa-history"></i></div>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0 text-white">Histórico de Ocorrências</h5>
+                            <small class="text-white-50">Todas as datas de apuração — Sim/Não de cada mês e a situação da penalidade</small>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" onclick="fecharModalHistorico()" aria-label="Fechar"></button>
+                </div>
+
+                <div class="modal-body hist-body">
+                    <!-- Entrada de ocorrências (chips) -->
+                    <div class="hist-entrada">
+                        <label class="fw-bold mb-2 d-block"><i class="fas fa-hashtag me-1 text-primary"></i>Ocorrências</label>
+                        <div class="d-flex flex-wrap gap-2 align-items-stretch">
+                            <div id="histChipBox" class="hist-chip-box" onclick="document.getElementById('histInput').focus()">
+                                <div id="histChips" class="d-contents"></div>
+                                <input type="text" id="histInput" class="hist-input" inputmode="numeric" autocomplete="off"
+                                       placeholder="Digite o nº e tecle Enter (ou cole vários de uma vez)">
+                            </div>
+                            <span id="btnHistConsultar" class="btn btn-primary px-4 js-ignore-loading d-flex align-items-center" onclick="consultarHistorico()" style="cursor:pointer;">
+                                <i class="fas fa-search me-2"></i>Consultar
+                            </span>
+                            <span class="btn btn-outline-secondary js-ignore-loading d-flex align-items-center" onclick="limparHistorico()" style="cursor:pointer;" title="Limpar tudo">
+                                <i class="fas fa-eraser"></i>
+                            </span>
+                        </div>
+                        <small class="text-muted d-block mt-1"><i class="fas fa-lightbulb me-1 text-warning"></i>Separe por Enter, vírgula, espaço ou quebra de linha. Backspace remove o último. Clique no <b>×</b> do chip para tirar um.</small>
+                    </div>
+
+                    <!-- Estados -->
+                    <div id="histVazio" class="hist-estado">
+                        <i class="fas fa-search-plus"></i>
+                        <div class="fw-bold mt-2">Informe uma ou mais ocorrências para ver o histórico</div>
+                        <small class="text-muted">A linha do tempo mostra cada data de apuração e o que aconteceu com a ocorrência naquele mês.</small>
+                    </div>
+                    <div id="histCarregando" class="hist-estado" style="display:none;">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="fw-bold mt-2">Buscando o histórico...</div>
+                    </div>
+                    <div id="histErro" class="alert alert-danger py-2 mt-3 mb-0" style="display:none;"></div>
+                    <div id="histNaoEncontradas" class="alert alert-warning py-2 mt-3 mb-0" style="display:none;"></div>
+
+                    <!-- Resultado -->
+                    <div id="histResultado" style="display:none;">
+                        <!-- Legenda interativa (vem do backend) -->
+                        <div class="hist-legenda-wrap">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                <span class="fw-bold small text-uppercase text-muted"><i class="fas fa-palette me-1"></i>Legenda <span class="fw-normal text-lowercase">(clique para destacar)</span></span>
+                                <span id="histLimparFiltro" class="small text-primary js-ignore-loading" onclick="filtrarLegenda(null)" style="cursor:pointer;display:none;"><i class="fas fa-times-circle me-1"></i>Mostrar todas</span>
+                            </div>
+                            <div id="histLegenda" class="hist-legenda"></div>
+                        </div>
+
+                        <!-- Abas -->
+                        <div class="hist-abas">
+                            <span class="hist-aba ativa js-ignore-loading" data-aba="tempo" onclick="trocarAbaHistorico('tempo')"><i class="fas fa-stream me-1"></i>Linha do tempo</span>
+                            <span class="hist-aba js-ignore-loading" data-aba="detalhado" onclick="trocarAbaHistorico('detalhado')"><i class="fas fa-list-ul me-1"></i>Detalhado (Sim/Não)</span>
+                        </div>
+
+                        <!-- ABA: Linha do tempo -->
+                        <div id="histAbaTempo">
+                            <div class="hist-matriz-wrap" id="histMatrizWrap">
+                                <table class="hist-matriz" id="histMatriz"></table>
+                            </div>
+                            <div id="histDetalheMes" class="hist-detalhe">
+                                <div class="text-center text-muted py-3">
+                                    <i class="fas fa-hand-pointer me-1"></i>Clique em um quadradinho da linha do tempo para ver o detalhe daquele mês.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ABA: Detalhado -->
+                        <div id="histAbaDetalhado" style="display:none;">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input js-ignore-loading" type="checkbox" id="histOcultarNada" onchange="renderizarDetalhado()">
+                                <label class="form-check-label small" for="histOcultarNada">Ocultar os meses em que não aconteceu nada</label>
+                            </div>
+                            <div id="histDetalhadoConteudo"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer py-2">
+                    <small class="text-muted me-auto" id="histRodape"></small>
+                    <span class="btn btn-secondary js-ignore-loading" onclick="fecharModalHistorico()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Fechar</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .hist-atalho{color:#6f42c1;font-size:.72rem;cursor:pointer;opacity:.55;margin-left:3px;transition:all .15s ease}
+        .hist-atalho:hover{opacity:1;transform:scale(1.25)}
+        .hist-modal{border:none;border-radius:14px;overflow:hidden}
+        .hist-header{background:linear-gradient(135deg,#4b2a8a 0%,#1a2744 100%);border:none;padding:16px 22px}
+        .hist-header-icone{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.2rem;margin-right:14px}
+        .hist-body{background:#f8f9fc;padding:20px 22px}
+        .hist-entrada{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+        .hist-chip-box{flex:1 1 420px;min-height:44px;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;border:1px solid #d1d3e2;border-radius:10px;background:#fff;cursor:text;transition:border-color .15s ease,box-shadow .15s ease}
+        .hist-chip-box:focus-within{border-color:#6f42c1;box-shadow:0 0 0 .2rem rgba(111,66,193,.15)}
+        .d-contents{display:contents}
+        .hist-chip{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#6f42c1,#4b2a8a);color:#fff;border-radius:20px;padding:3px 6px 3px 12px;font-weight:600;font-size:.85rem;animation:histPop .18s ease}
+        .hist-chip .hist-chip-x{width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:.7rem}
+        .hist-chip .hist-chip-x:hover{background:rgba(255,255,255,.45)}
+        .hist-input{flex:1 1 180px;border:none;outline:none;min-width:160px;font-size:.95rem;padding:4px}
+        @keyframes histPop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+        @keyframes histFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+        .hist-estado{text-align:center;padding:42px 10px;color:#5a5c69}
+        .hist-estado > i{font-size:2.4rem;color:#c5b3e6}
+        .hist-legenda-wrap{background:#fff;border-radius:12px;padding:12px 16px;margin-top:16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+        .hist-legenda{display:flex;flex-wrap:wrap;gap:8px}
+        .hist-leg-item{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;border:2px solid transparent;background:#f1f2f7;cursor:pointer;font-size:.82rem;font-weight:600;color:#3a3b45;transition:all .15s ease;user-select:none}
+        .hist-leg-item:hover{transform:translateY(-1px);box-shadow:0 4px 10px rgba(0,0,0,.08)}
+        .hist-leg-item.ativo{background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+        .hist-leg-item.apagado{opacity:.4}
+        .hist-leg-cor{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:.65rem}
+        .hist-leg-qtd{background:rgba(0,0,0,.08);border-radius:10px;padding:0 7px;font-size:.75rem}
+        .hist-abas{display:flex;gap:4px;margin:16px 0 0;border-bottom:2px solid #e3e6f0}
+        .hist-aba{padding:9px 18px;cursor:pointer;font-weight:600;font-size:.88rem;color:#858796;border-radius:10px 10px 0 0;border-bottom:3px solid transparent;margin-bottom:-2px;transition:all .15s ease}
+        .hist-aba:hover{color:#4b2a8a;background:rgba(111,66,193,.05)}
+        .hist-aba.ativa{color:#4b2a8a;border-bottom-color:#6f42c1;background:#fff}
+        .hist-matriz-wrap{background:#fff;border-radius:0 0 12px 12px;box-shadow:0 2px 10px rgba(0,0,0,.05);overflow:auto;max-height:420px}
+        .hist-matriz{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+        .hist-matriz th,.hist-matriz td{padding:6px 5px;text-align:center;border-bottom:1px solid #f0f1f5}
+        .hist-matriz thead th{position:sticky;top:0;background:#fff;z-index:2;font-size:.68rem;text-transform:uppercase;color:#858796;letter-spacing:.3px;white-space:nowrap}
+        .hist-matriz .hist-col-oc{position:sticky;left:0;background:#fff;z-index:1;text-align:left;min-width:230px;max-width:260px;padding-left:14px;border-right:2px solid #eaecf4}
+        .hist-matriz thead .hist-col-oc{z-index:3}
+        .hist-matriz tbody tr:hover td{background:#faf8ff}
+        .hist-matriz tbody tr:hover .hist-col-oc{background:#f5f0ff}
+        .hist-oc-nr{font-weight:800;font-size:1rem;color:#2e2f37}
+        .hist-oc-sub{font-size:.7rem;color:#858796;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .hist-cel{width:40px;height:40px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:.72rem;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease,opacity .2s ease;position:relative}
+        .hist-cel:hover{transform:scale(1.18);box-shadow:0 6px 14px rgba(0,0,0,.2);z-index:5}
+        .hist-cel.nada{color:#9a9cab;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.55) 0 4px,transparent 4px 8px)}
+        .hist-cel.selecionada{outline:3px solid #0d6efd;outline-offset:2px;transform:scale(1.12)}
+        .hist-cel.apagada{opacity:.15}
+        .hist-cel .hist-cel-jus{position:absolute;bottom:2px;right:3px;font-size:.5rem;opacity:.9}
+        .hist-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:12px;color:#fff;font-size:.7rem;font-weight:700;white-space:nowrap}
+        .hist-detalhe{background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-top:14px;padding:14px 18px;animation:histFade .2s ease}
+        .hist-det-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+        .hist-det-box{background:#f8f9fc;border-radius:10px;padding:9px 10px;text-align:center}
+        .hist-det-box .rot{font-size:.66rem;text-transform:uppercase;color:#858796;letter-spacing:.3px}
+        .hist-det-box .val{font-weight:700;font-size:.95rem;margin-top:3px}
+        .hist-sn{display:inline-block;min-width:44px;padding:2px 10px;border-radius:12px;font-weight:700;font-size:.78rem}
+        .hist-sn.sim{background:#e74a3b;color:#fff}
+        .hist-sn.nao{background:#e3e6f0;color:#5a5c69}
+        .hist-sn.ok{background:#1cc88a;color:#fff}
+        .hist-sn.vazio{background:transparent;color:#b7b9cc}
+        .hist-texto{background:#f8f9fc;border-left:4px solid #6f42c1;border-radius:6px;padding:8px 12px;font-size:.82rem;white-space:pre-wrap;max-height:140px;overflow:auto}
+        .hist-card-oc{background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:14px;overflow:hidden;animation:histFade .2s ease}
+        .hist-card-oc-head{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;border-left:5px solid #6f42c1}
+        .hist-card-oc-head:hover{background:#faf8ff}
+        .hist-tab-det{width:100%;font-size:.8rem;margin:0}
+        .hist-tab-det th{font-size:.66rem;text-transform:uppercase;color:#858796;background:#f8f9fc;padding:7px 6px;text-align:center;white-space:nowrap;position:sticky;top:0}
+        .hist-tab-det td{padding:6px;text-align:center;border-top:1px solid #f0f1f5;vertical-align:middle}
+        .hist-tab-det tr.linha-nada td{color:#b7b9cc;background:repeating-linear-gradient(45deg,#fbfbfd 0 6px,#f6f7fa 6px 12px)}
+        .hist-tab-det tr.apagada{opacity:.25}
+        .hist-mini-barra{display:flex;height:8px;border-radius:4px;overflow:hidden;width:160px;background:#eaecf4}
+        .hist-mini-barra > div{height:100%}
+    </style>
 </div>
 
 <style>
@@ -1001,6 +1174,384 @@ function salvarDtAplicacao() {
     .then(function(r){return r.json();})
     .then(function(d){if(d.success){alert(d.message);window.location.reload();}else alert('Erro: ' + d.message);})
     .catch(function(e){alert('Erro: ' + e);});
+}
+// =========================================================================
+// HISTÓRICO DE OCORRÊNCIAS
+// Lógica: o usuário monta uma lista de nºs (chips) -> POST no backend ->
+// o backend devolve a régua de datas, os meses de cada ocorrência já
+// classificados e a legenda. O front só desenha (nada fixo aqui).
+// =========================================================================
+var URL_HISTORICO = "{{ url_for('sumov.ans_glosas_historico') }}";
+var histNrs = [];            // ocorrências digitadas (chips)
+var histDados = null;        // resposta do backend
+var histLegendaMap = {};     // codigo -> item da legenda
+var histFiltro = null;       // código da legenda destacado (ou null)
+var histSelecionada = null;  // {nr, idx} do quadradinho clicado
+
+function histEsc(t) {
+    if (t === null || t === undefined) return '';
+    return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function abrirModalHistorico(nrsIniciais) {
+    var m = document.getElementById('modalHistorico');
+    if (m.classList.contains('show')) return;
+    m.style.display = 'block';
+    m.classList.add('show');
+    document.body.classList.add('modal-open');
+    var bd = document.createElement('div');
+    bd.className = 'modal-backdrop fade show';
+    bd.id = 'modalBackdropHistorico';
+    bd.onclick = fecharModalHistorico;
+    document.body.appendChild(bd);
+
+    if (nrsIniciais && nrsIniciais.length) {
+        histNrs = [];
+        nrsIniciais.forEach(function (n) { adicionarChipHistorico(n, true); });
+        renderizarChips();
+        consultarHistorico();
+    } else {
+        setTimeout(function () { document.getElementById('histInput').focus(); }, 80);
+    }
+}
+
+function abrirHistoricoDaBusca() {
+    var txt = (document.getElementById('buscaOcorrencia').value || '');
+    var nrs = txt.match(/\d+/g) || [];
+    abrirModalHistorico(nrs.map(Number));
+}
+
+function fecharModalHistorico() {
+    var m = document.getElementById('modalHistorico');
+    m.style.display = 'none';
+    m.classList.remove('show');
+    document.body.classList.remove('modal-open');
+    var bd = document.getElementById('modalBackdropHistorico');
+    if (bd) bd.remove();
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.getElementById('modalHistorico').classList.contains('show')) fecharModalHistorico();
+});
+
+// ---------- Chips ----------
+function adicionarChipHistorico(valor, semRender) {
+    var nr = parseInt(String(valor).replace(/\D/g, ''), 10);
+    if (!nr || histNrs.indexOf(nr) >= 0) return;
+    histNrs.push(nr);
+    if (!semRender) renderizarChips();
+}
+
+function removerChipHistorico(nr) {
+    histNrs = histNrs.filter(function (n) { return n !== nr; });
+    renderizarChips();
+}
+
+function renderizarChips() {
+    document.getElementById('histChips').innerHTML = histNrs.map(function (n) {
+        return '<span class="hist-chip">' + n +
+               '<span class="hist-chip-x js-ignore-loading" title="Remover" onclick="event.stopPropagation(); removerChipHistorico(' + n + ')">' +
+               '<i class="fas fa-times"></i></span></span>';
+    }).join('');
+}
+
+function consumirTextoInput() {
+    var inp = document.getElementById('histInput');
+    (inp.value.match(/\d+/g) || []).forEach(function (n) { adicionarChipHistorico(n, true); });
+    inp.value = '';
+    renderizarChips();
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var inp = document.getElementById('histInput');
+    if (!inp) return;
+    inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (inp.value.trim()) consumirTextoInput(); else consultarHistorico();
+        } else if (e.key === ',' || e.key === ' ' || e.key === ';' || e.key === 'Tab') {
+            if (inp.value.trim()) { e.preventDefault(); consumirTextoInput(); }
+        } else if (e.key === 'Backspace' && !inp.value && histNrs.length) {
+            histNrs.pop(); renderizarChips();
+        }
+    });
+    inp.addEventListener('paste', function (e) {
+        var txt = (e.clipboardData || window.clipboardData).getData('text');
+        if (txt && /\D/.test(txt.trim())) {
+            e.preventDefault();
+            (txt.match(/\d+/g) || []).forEach(function (n) { adicionarChipHistorico(n, true); });
+            renderizarChips();
+        }
+    });
+});
+
+function limparHistorico() {
+    histNrs = []; histDados = null; histFiltro = null; histSelecionada = null;
+    renderizarChips();
+    document.getElementById('histInput').value = '';
+    mostrarEstadoHistorico('vazio');
+    document.getElementById('histRodape').textContent = '';
+    document.getElementById('histInput').focus();
+}
+
+function mostrarEstadoHistorico(estado, msg) {
+    document.getElementById('histVazio').style.display = estado === 'vazio' ? '' : 'none';
+    document.getElementById('histCarregando').style.display = estado === 'carregando' ? '' : 'none';
+    document.getElementById('histResultado').style.display = estado === 'resultado' ? '' : 'none';
+    var er = document.getElementById('histErro');
+    er.style.display = estado === 'erro' ? '' : 'none';
+    if (estado === 'erro') er.innerHTML = '<i class="fas fa-exclamation-circle me-1"></i>' + histEsc(msg);
+    if (estado !== 'resultado') document.getElementById('histNaoEncontradas').style.display = 'none';
+}
+
+// ---------- Consulta ----------
+function consultarHistorico() {
+    if (document.getElementById('histInput').value.trim()) consumirTextoInput();
+    if (!histNrs.length) { mostrarEstadoHistorico('erro', 'Informe pelo menos um número de ocorrência.'); return; }
+
+    var btn = document.getElementById('btnHistConsultar');
+    if (btn.getAttribute('data-ocupado') === '1') return;
+    btn.setAttribute('data-ocupado', '1');
+    btn.style.pointerEvents = 'none';
+    var htmlBtn = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Consultando...';
+    mostrarEstadoHistorico('carregando');
+
+    function liberar() { btn.removeAttribute('data-ocupado'); btn.style.pointerEvents = ''; btn.innerHTML = htmlBtn; }
+
+    fetch(URL_HISTORICO, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-Silent-Request': 'true'},
+        body: JSON.stringify({ocorrencias: histNrs})
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+        liberar();
+        if (!d.success) { mostrarEstadoHistorico('erro', d.message); return; }
+        histDados = d; histFiltro = null; histSelecionada = null;
+        histLegendaMap = {};
+        (d.legenda || []).forEach(function (l) { histLegendaMap[l.codigo] = l; });
+        renderizarHistorico();
+    })
+    .catch(function (e) { liberar(); mostrarEstadoHistorico('erro', 'Erro ao consultar: ' + e); });
+}
+
+function renderizarHistorico() {
+    var d = histDados;
+    var aviso = document.getElementById('histNaoEncontradas');
+    if (d.nao_encontradas && d.nao_encontradas.length) {
+        aviso.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i>Não encontrada(s) em nenhuma apuração: <b>' +
+                          d.nao_encontradas.map(histEsc).join(', ') + '</b>';
+        aviso.style.display = '';
+    } else {
+        aviso.style.display = 'none';
+    }
+
+    if (!d.ocorrencias || !d.ocorrencias.length) {
+        mostrarEstadoHistorico('resultado');
+        document.getElementById('histResultado').style.display = 'none';
+        document.getElementById('histRodape').textContent = '';
+        return;
+    }
+    mostrarEstadoHistorico('resultado');
+    aviso.style.display = (d.nao_encontradas && d.nao_encontradas.length) ? '' : 'none';
+
+    renderizarLegenda();
+    renderizarMatriz();
+    renderizarDetalhado();
+    document.getElementById('histDetalheMes').innerHTML =
+        '<div class="text-center text-muted py-3"><i class="fas fa-hand-pointer me-1"></i>Clique em um quadradinho da linha do tempo para ver o detalhe daquele mês.</div>';
+
+    var ds = d.datas || [];
+    document.getElementById('histRodape').innerHTML =
+        '<i class="fas fa-info-circle me-1"></i>' + d.ocorrencias.length + ' ocorrência(s) · ' + ds.length +
+        ' data(s) de apuração' + (ds.length ? ' (' + ds[0].br + ' a ' + ds[ds.length - 1].br + ')' : '');
+
+    // Rola a linha do tempo até a apuração mais recente
+    setTimeout(function () { var w = document.getElementById('histMatrizWrap'); w.scrollLeft = w.scrollWidth; }, 30);
+}
+
+// ---------- Legenda ----------
+function renderizarLegenda() {
+    var totais = histDados.totais || {};
+    document.getElementById('histLegenda').innerHTML = (histDados.legenda || []).map(function (l) {
+        var cls = 'hist-leg-item js-ignore-loading';
+        if (histFiltro) cls += (histFiltro === l.codigo ? ' ativo' : ' apagado');
+        return '<span class="' + cls + '" style="' + (histFiltro === l.codigo ? 'border-color:' + l.cor : '') + '" ' +
+               'title="' + histEsc(l.descricao) + '" onclick="filtrarLegenda(\'' + l.codigo + '\')">' +
+               '<span class="hist-leg-cor" style="background:' + l.cor + ';"><i class="fas ' + l.icone + '"></i></span>' +
+               histEsc(l.rotulo) + '<span class="hist-leg-qtd">' + (totais[l.codigo] || 0) + '</span></span>';
+    }).join('');
+    document.getElementById('histLimparFiltro').style.display = histFiltro ? '' : 'none';
+}
+
+function filtrarLegenda(codigo) {
+    histFiltro = (codigo && histFiltro !== codigo) ? codigo : null;
+    renderizarLegenda();
+    aplicarFiltroVisual();
+}
+
+function aplicarFiltroVisual() {
+    document.querySelectorAll('#histMatriz .hist-cel').forEach(function (c) {
+        c.classList.toggle('apagada', !!histFiltro && c.getAttribute('data-status') !== histFiltro);
+    });
+    document.querySelectorAll('#histDetalhadoConteudo tr[data-status]').forEach(function (tr) {
+        tr.classList.toggle('apagada', !!histFiltro && tr.getAttribute('data-status') !== histFiltro);
+    });
+}
+
+function pillStatus(codigo) {
+    var l = histLegendaMap[codigo];
+    if (!l) return '<span class="text-muted">—</span>';
+    var corTxt = codigo === 'NADA_NO_MES' || codigo === 'PENDENTE' ? '#3a3b45' : '#fff';
+    return '<span class="hist-pill" style="background:' + l.cor + ';color:' + corTxt + ';"><i class="fas ' + l.icone + '"></i>' + histEsc(l.rotulo) + '</span>';
+}
+
+function miniBarra(contagem, total) {
+    if (!total) return '';
+    return '<div class="hist-mini-barra" title="Distribuição dos meses">' + (histDados.legenda || []).map(function (l) {
+        var q = contagem[l.codigo] || 0;
+        return q ? '<div style="width:' + (q / total * 100) + '%;background:' + l.cor + ';" title="' + histEsc(l.rotulo) + ': ' + q + '"></div>' : '';
+    }).join('') + '</div>';
+}
+
+// ---------- Linha do tempo (matriz ocorrência x data) ----------
+function renderizarMatriz() {
+    var datas = histDados.datas || [];
+    var h = '<thead><tr><th class="hist-col-oc">Ocorrência</th>';
+    datas.forEach(function (dt) { h += '<th title="Apuração ' + dt.br + '">' + histEsc(dt.mes) + '</th>'; });
+    h += '</tr></thead><tbody>';
+
+    histDados.ocorrencias.forEach(function (oc) {
+        var c = oc.contagem || {};
+        var penal = (c.REITERADA || 0) + (c.REINCIDIDA || 0) + (c.ADVERTIDA || 0);
+        h += '<tr><td class="hist-col-oc">' +
+             '<div class="d-flex align-items-center justify-content-between gap-2">' +
+             '<span class="hist-oc-nr">' + oc.nr_ocorrencia + '</span>' + pillStatus(oc.status_atual) + '</div>' +
+             '<div class="hist-oc-sub" title="' + histEsc(oc.no_grupo_atual) + '">Grupo ' + histEsc(oc.grupo_atual) + ' · ' + histEsc(oc.no_grupo_atual) + '</div>' +
+             '<div class="hist-oc-sub">' + oc.qtde_apuracoes + ' apuração(ões) · ' + penal + ' com penalidade</div>' +
+             '<div class="mt-1">' + miniBarra(c, oc.meses.length) + '</div></td>';
+
+        oc.meses.forEach(function (m, idx) {
+            var l = histLegendaMap[m.status] || {};
+            var nada = m.status === 'NADA_NO_MES';
+            var tip = 'Ocorrência ' + oc.nr_ocorrencia + ' — ' + m.dt_apuracao_br + '\n' + (l.rotulo || '');
+            if (!nada) {
+                tip += '\nJust. aceita: ' + (m.just_aceita || '—') + ' | No prazo: ' + (m.no_prazo || '—') +
+                       '\nAdv: ' + (m.advertencia || '—') + ' | Reinc: ' + (m.reincidencia || '—') + ' | Reit: ' + (m.reiteracao || '—');
+            }
+            var jus = (!nada && m.just_aceita) ? '<span class="hist-cel-jus">' + (m.just_aceita === 'Sim' ? 'S' : 'N') + '</span>' : '';
+            h += '<td><span class="hist-cel js-ignore-loading' + (nada ? ' nada' : '') + '" data-status="' + m.status + '" ' +
+                 'data-nr="' + oc.nr_ocorrencia + '" data-idx="' + idx + '" style="background-color:' + l.cor + ';" ' +
+                 'title="' + histEsc(tip) + '" onclick="selecionarMes(' + oc.nr_ocorrencia + ',' + idx + ')">' +
+                 histEsc(l.sigla) + jus + '</span></td>';
+        });
+        h += '</tr>';
+    });
+    h += '</tbody>';
+    document.getElementById('histMatriz').innerHTML = h;
+    aplicarFiltroVisual();
+}
+
+function snBadge(v, invertido) {
+    // Para penalidades: Sim = vermelho. Para "Just. aceita"/"No prazo": Sim = verde.
+    if (!v) return '<span class="hist-sn vazio">—</span>';
+    if (v === 'Sim') return '<span class="hist-sn ' + (invertido ? 'ok' : 'sim') + '">Sim</span>';
+    return '<span class="hist-sn ' + (invertido ? 'sim' : 'nao') + '">Não</span>';
+}
+
+function selecionarMes(nr, idx) {
+    var oc = histDados.ocorrencias.filter(function (o) { return o.nr_ocorrencia === nr; })[0];
+    if (!oc) return;
+    var m = oc.meses[idx];
+    histSelecionada = {nr: nr, idx: idx};
+    document.querySelectorAll('#histMatriz .hist-cel.selecionada').forEach(function (c) { c.classList.remove('selecionada'); });
+    var cel = document.querySelector('#histMatriz .hist-cel[data-nr="' + nr + '"][data-idx="' + idx + '"]');
+    if (cel) cel.classList.add('selecionada');
+
+    var anterior = idx > 0 ? '<span class="btn btn-sm btn-outline-secondary js-ignore-loading" onclick="selecionarMes(' + nr + ',' + (idx - 1) + ')" title="Mês anterior"><i class="fas fa-chevron-left"></i></span>' : '';
+    var proximo = idx < oc.meses.length - 1 ? '<span class="btn btn-sm btn-outline-secondary js-ignore-loading" onclick="selecionarMes(' + nr + ',' + (idx + 1) + ')" title="Próximo mês"><i class="fas fa-chevron-right"></i></span>' : '';
+
+    var h = '<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">' +
+            '<div><span class="fw-bold fs-5">Ocorrência ' + nr + '</span> <span class="text-muted">— apuração de ' + m.dt_apuracao_br + '</span> ' + pillStatus(m.status) + '</div>' +
+            '<div class="d-flex gap-1">' + anterior + proximo + '</div></div>';
+
+    if (m.status === 'NADA_NO_MES') {
+        h += '<div class="text-center text-muted py-3"><i class="fas fa-minus-circle fa-2x mb-2 d-block" style="color:#d1d3e2;"></i>' +
+             histEsc((histLegendaMap.NADA_NO_MES || {}).descricao) + '</div>';
+    } else {
+        h += '<div class="hist-det-grid mb-3">' +
+             '<div class="hist-det-box"><div class="rot">Grupo</div><div class="val">' + histEsc(m.grupo) + '</div><div class="small text-muted text-truncate" title="' + histEsc(m.no_grupo) + '">' + histEsc(m.no_grupo) + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Just. aceita?</div><div class="val">' + snBadge(m.just_aceita, true) + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">No prazo?</div><div class="val">' + snBadge(m.no_prazo, true) + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Dias / Prazo</div><div class="val">' + (m.qtde_dias !== null && m.qtde_dias !== undefined ? m.qtde_dias : '—') + ' / ' + (m.prazo !== null && m.prazo !== undefined ? m.prazo : '—') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Advertência</div><div class="val">' + snBadge(m.advertencia) + '</div><div class="small text-muted">' + histEsc(m.dt_advertencia || '') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Reincidência</div><div class="val">' + snBadge(m.reincidencia) + '</div><div class="small text-muted">' + histEsc(m.dt_reincidencia || '') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Reiteração</div><div class="val">' + snBadge(m.reiteracao) + '</div><div class="small text-muted">' + histEsc(m.dt_reiteracao || '') + '</div></div>' +
+             '</div>' +
+             '<div class="d-flex flex-wrap gap-3 small text-muted mb-2">' +
+             '<span><i class="fas fa-door-open me-1"></i>Abertura: <b>' + histEsc(m.dt_abertura || '—') + '</b></span>' +
+             '<span><i class="fas fa-file-signature me-1"></i>Justificativa: <b>' + histEsc(m.dt_justificativa || '—') + '</b></span>' +
+             '<span><i class="fas fa-check-double me-1"></i>Efetivação: <b>' + histEsc(m.dt_efetivacao || '—') + '</b></span>' +
+             '<span><i class="fas fa-stamp me-1"></i>Deferido: <b>' + histEsc(m.dt_deferido || '—') + '</b></span></div>';
+        if (m.dsc_justificativa) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-comment-dots me-1 text-info"></i>Descrição da justificativa</div><div class="hist-texto">' + histEsc(m.dsc_justificativa) + '</div>';
+        if (m.retorno_prestadora) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-reply me-1 text-primary"></i>Retorno da prestadora</div><div class="hist-texto" style="border-left-color:#4e73df;">' + histEsc(m.retorno_prestadora) + '</div>';
+        if (m.manifestacao_geadi) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-landmark me-1 text-secondary"></i>Manifestação GEADI</div><div class="hist-texto" style="border-left-color:#858796;">' + histEsc(m.manifestacao_geadi) + '</div>';
+    }
+    var box = document.getElementById('histDetalheMes');
+    box.innerHTML = h;
+    box.style.animation = 'none'; void box.offsetWidth; box.style.animation = '';
+}
+
+// ---------- Detalhado (tabela Sim/Não por mês) ----------
+function renderizarDetalhado() {
+    if (!histDados || !histDados.ocorrencias) return;
+    var ocultar = document.getElementById('histOcultarNada').checked;
+    var h = '';
+    histDados.ocorrencias.forEach(function (oc) {
+        var corAtual = (histLegendaMap[oc.status_atual] || {}).cor || '#6f42c1';
+        var c = oc.contagem || {};
+        var resumo = (histDados.legenda || []).filter(function (l) { return c[l.codigo]; }).map(function (l) {
+            return '<span class="small me-2" title="' + histEsc(l.rotulo) + '"><span class="hist-leg-cor me-1" style="background:' + l.cor + ';width:14px;height:14px;border-radius:4px;vertical-align:middle;"></span>' + c[l.codigo] + '</span>';
+        }).join('');
+        h += '<div class="hist-card-oc"><div class="hist-card-oc-head js-ignore-loading" style="border-left-color:' + corAtual + ';" ' +
+             'onclick="var b=this.nextElementSibling;b.style.display=b.style.display===\'none\'?\'\':\'none\';this.querySelector(\'.secao-chevron\').classList.toggle(\'rotated\');">' +
+             '<div><span class="hist-oc-nr me-2">' + oc.nr_ocorrencia + '</span>' + pillStatus(oc.status_atual) +
+             '<div class="small text-muted mt-1">Grupo ' + histEsc(oc.grupo_atual) + ' · ' + histEsc(oc.no_grupo_atual) +
+             ' · de ' + histEsc(oc.primeira_apuracao) + ' a ' + histEsc(oc.ultima_apuracao) + '</div></div>' +
+             '<div class="d-flex align-items-center gap-2">' + resumo + '<i class="fas fa-chevron-down secao-chevron"></i></div></div>' +
+             '<div class="table-responsive" style="max-height:360px;overflow:auto;"><table class="hist-tab-det"><thead><tr>' +
+             '<th>Apuração</th><th>Grupo</th><th>Just. aceita?</th><th>No prazo?</th><th>Dias / Prazo</th>' +
+             '<th>Advertência</th><th>Reincidência</th><th>Reiteração</th><th>Situação no mês</th></tr></thead><tbody>';
+        // Mais recente primeiro na tabela
+        for (var i = oc.meses.length - 1; i >= 0; i--) {
+            var m = oc.meses[i];
+            var nada = m.status === 'NADA_NO_MES';
+            if (nada && ocultar) continue;
+            if (nada) {
+                h += '<tr class="linha-nada" data-status="' + m.status + '"><td class="fw-bold">' + m.dt_apuracao_br + '</td>' +
+                     '<td colspan="7"><i class="fas fa-minus me-1"></i>Não constava nesta apuração</td><td>' + pillStatus(m.status) + '</td></tr>';
+            } else {
+                h += '<tr data-status="' + m.status + '" style="cursor:pointer;" title="Ver na linha do tempo" ' +
+                     'onclick="trocarAbaHistorico(\'tempo\'); selecionarMes(' + oc.nr_ocorrencia + ',' + i + ');">' +
+                     '<td class="fw-bold">' + m.dt_apuracao_br + '</td><td>' + histEsc(m.grupo) + '</td>' +
+                     '<td>' + snBadge(m.just_aceita, true) + '</td><td>' + snBadge(m.no_prazo, true) + '</td>' +
+                     '<td>' + (m.qtde_dias !== null && m.qtde_dias !== undefined ? m.qtde_dias : '—') + ' / ' + (m.prazo !== null && m.prazo !== undefined ? m.prazo : '—') + '</td>' +
+                     '<td>' + snBadge(m.advertencia) + '</td><td>' + snBadge(m.reincidencia) + '</td><td>' + snBadge(m.reiteracao) + '</td>' +
+                     '<td>' + pillStatus(m.status) + '</td></tr>';
+            }
+        }
+        h += '</tbody></table></div></div>';
+    });
+    document.getElementById('histDetalhadoConteudo').innerHTML = h;
+    aplicarFiltroVisual();
+}
+
+function trocarAbaHistorico(aba) {
+    document.querySelectorAll('.hist-aba').forEach(function (a) { a.classList.toggle('ativa', a.getAttribute('data-aba') === aba); });
+    document.getElementById('histAbaTempo').style.display = aba === 'tempo' ? '' : 'none';
+    document.getElementById('histAbaDetalhado').style.display = aba === 'detalhado' ? '' : 'none';
 }
 </script>
 {% endblock %}

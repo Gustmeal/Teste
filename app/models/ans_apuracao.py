@@ -953,6 +953,208 @@ class AnsApuracao(db.Model):
         info = {'dt_apuracao': dt_ultima, 'vr_anterior': ultima['vr_tarifa'], 'vr_novo': novo_valor}
         return True, 'Tarifa da data {} alterada com sucesso.'.format(dt_ultima), info
 
+    # ==================================================================
+    # HISTÓRICO DE OCORRÊNCIAS (todas as datas de apuração)
+    # ==================================================================
+    # Legenda única do histórico — o front só desenha o que vem daqui.
+    # Ordem = prioridade da classificação do mês (a mais grave primeiro).
+    LEGENDA_HISTORICO = [
+        {'codigo': 'REITERADA', 'rotulo': 'Reiterada', 'sigla': 'RT', 'cor': '#5a2d82', 'icone': 'fa-exclamation-circle',
+         'descricao': 'Reiteração = Sim no mês (já era reincidente na apuração anterior).'},
+        {'codigo': 'REINCIDIDA', 'rotulo': 'Reincidida', 'sigla': 'RC', 'cor': '#fd7e14', 'icone': 'fa-redo',
+         'descricao': 'Reincidência = Sim no mês (já era advertida na apuração anterior).'},
+        {'codigo': 'ADVERTIDA', 'rotulo': 'Advertida', 'sigla': 'AD', 'cor': '#e74a3b', 'icone': 'fa-gavel',
+         'descricao': 'Advertência = Sim no mês.'},
+        {'codigo': 'SEM_PENALIDADE', 'rotulo': 'Sem penalidade', 'sigla': 'OK', 'cor': '#1cc88a', 'icone': 'fa-shield-alt',
+         'descricao': 'Analisada no mês, sem advertência, reincidência ou reiteração.'},
+        {'codigo': 'PENDENTE', 'rotulo': 'Pendente de análise', 'sigla': 'PD', 'cor': '#f6c23e', 'icone': 'fa-hourglass-half',
+         'descricao': 'Estava na apuração, mas a justificativa ainda não foi analisada (Sim/Não).'},
+        {'codigo': 'NADA_NO_MES', 'rotulo': 'Nada no mês', 'sigla': '—', 'cor': '#d1d3e2', 'icone': 'fa-minus',
+         'descricao': 'A ocorrência não constava nesta data de apuração.'},
+    ]
+
+    @staticmethod
+    def _sim_nao(valor):
+        """1 -> 'Sim', 0 -> 'Não', None -> None (front mostra '—')."""
+        if valor is None:
+            return None
+        return 'Sim' if int(valor) == 1 else 'Não'
+
+    @staticmethod
+    def _data_iso_br(valor):
+        """Converte date/datetime/str em (iso, br). Vazio -> (None, None)."""
+        if valor is None or valor == '':
+            return None, None
+        if isinstance(valor, datetime):
+            valor = valor.date()
+        if isinstance(valor, date):
+            return valor.strftime('%Y-%m-%d'), valor.strftime('%d/%m/%Y')
+        txt = str(valor)[:10]
+        try:
+            d = datetime.strptime(txt, '%Y-%m-%d').date()
+            return d.strftime('%Y-%m-%d'), d.strftime('%d/%m/%Y')
+        except ValueError:
+            return txt, txt
+
+    @staticmethod
+    def _classificar_mes(row):
+        """Status do mês pela regra de prioridade: Reiteração > Reincidência > Advertência > Pendente > Sem penalidade."""
+        if row.REITERACAO == 1:
+            return 'REITERADA'
+        if row.REINCIDENCIA == 1:
+            return 'REINCIDIDA'
+        if row.ADVERTENCIA == 1:
+            return 'ADVERTIDA'
+        if row.JUST_ACEITA is None:
+            return 'PENDENTE'
+        return 'SEM_PENALIDADE'
+
+    @staticmethod
+    def obter_historico_ocorrencias(nrs_ocorrencia):
+        """
+        Histórico completo (todas as DT_APURACAO da TB045) de uma ou mais ocorrências.
+
+        Lógica:
+          1) Busca na TB045 todas as linhas das ocorrências pedidas (qualquer data),
+             com o grupo/item (TB043) e o retorno da prestadora (TB048) daquele mês.
+          2) Monta a "régua" de datas: todas as DT_APURACAO existentes na TB045 desde
+             a primeira aparição de qualquer ocorrência pedida até a apuração mais recente.
+             Assim, os meses em que a ocorrência não constava aparecem como "Nada no mês".
+          3) Cada mês recebe um status pela prioridade Reiteração > Reincidência >
+             Advertência > Pendente > Sem penalidade.
+
+        Retorna dict com: datas, ocorrencias (achadas), nao_encontradas, legenda, totais.
+        """
+        from sqlalchemy import bindparam
+
+        nrs = []
+        for n in nrs_ocorrencia or []:
+            try:
+                v = int(n)
+            except (TypeError, ValueError):
+                continue
+            if v not in nrs:
+                nrs.append(v)
+
+        resultado = {'datas': [], 'ocorrencias': [], 'nao_encontradas': [],
+                     'legenda': AnsApuracao.LEGENDA_HISTORICO, 'totais': {}}
+        if not nrs:
+            return resultado
+
+        sql = text("""
+            SELECT A.DT_APURACAO, A.nrOcorrencia, A.GRUPO,
+                   A.DT_ABERTURA, A.DT_JUSTIFICATIVA, A.DT_EFETIVACAO, A.DT_DEFERIDO,
+                   A.JUST_ACEITA, A.QTDE_DIAS, A.NO_PRAZO,
+                   A.ADVERTENCIA, A.DT_ADVERTENCIA,
+                   A.REINCIDENCIA, A.DT_REINCIDENCIA,
+                   A.REITERACAO, A.DT_REITERACAO,
+                   A.DSC_JUSTIFICATIVA,
+                   B.itemServico, B.PRAZO, B.NO_GRUPO,
+                   J.RETORNO_PREST, J.MANIFESTACAO_GEADI
+            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A
+            OUTER APPLY (SELECT TOP 1 X.itemServico, X.PRAZO, X.NO_GRUPO
+                         FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X
+                         WHERE X.GRUPO = A.GRUPO) B
+            LEFT JOIN BDDASHBOARDBI.BDG.MOV_TB048_ANS_JUSTIFICATIVA_PRESTADORA J
+                   ON J.DT_APURACAO = A.DT_APURACAO AND J.nrOcorrencia = A.nrOcorrencia
+            WHERE A.nrOcorrencia IN :nrs
+            ORDER BY A.nrOcorrencia, A.DT_APURACAO
+        """).bindparams(bindparam('nrs', expanding=True))
+        linhas = db.session.execute(sql, {'nrs': nrs}).fetchall()
+
+        if not linhas:
+            resultado['nao_encontradas'] = nrs
+            return resultado
+
+        # Régua de datas: da primeira aparição até a apuração mais recente da TB045
+        primeira = min(r.DT_APURACAO for r in linhas)
+        sql_datas = text("""
+            SELECT DISTINCT DT_APURACAO
+            FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO
+            WHERE DT_APURACAO >= :dt
+            ORDER BY DT_APURACAO
+        """)
+        datas_iso = []
+        for r in db.session.execute(sql_datas, {'dt': primeira}).fetchall():
+            iso, br = AnsApuracao._data_iso_br(r.DT_APURACAO)
+            datas_iso.append(iso)
+            resultado['datas'].append({'iso': iso, 'br': br, 'mes': br[3:] if br else ''})
+
+        # Se houver duas apurações no mesmo mês, o cabeçalho mostra a data completa
+        meses_vistos = [d['mes'] for d in resultado['datas']]
+        for d in resultado['datas']:
+            if meses_vistos.count(d['mes']) > 1:
+                d['mes'] = d['br']
+
+        # Agrupa as linhas por ocorrência
+        por_nr = {}
+        for r in linhas:
+            por_nr.setdefault(int(r.nrOcorrencia), []).append(r)
+
+        totais_gerais = dict((item['codigo'], 0) for item in AnsApuracao.LEGENDA_HISTORICO)
+
+        for nr in nrs:
+            if nr not in por_nr:
+                resultado['nao_encontradas'].append(nr)
+                continue
+
+            meses_por_data = {}
+            for r in por_nr[nr]:
+                iso, br = AnsApuracao._data_iso_br(r.DT_APURACAO)
+                status = AnsApuracao._classificar_mes(r)
+                meses_por_data[iso] = {
+                    'dt_apuracao': iso,
+                    'dt_apuracao_br': br,
+                    'status': status,
+                    'grupo': r.GRUPO,
+                    'no_grupo': r.NO_GRUPO or r.itemServico or 'Grupo {}'.format(r.GRUPO),
+                    'prazo': r.PRAZO,
+                    'qtde_dias': r.QTDE_DIAS,
+                    'dt_abertura': AnsApuracao._data_iso_br(r.DT_ABERTURA)[1],
+                    'dt_justificativa': AnsApuracao._data_iso_br(r.DT_JUSTIFICATIVA)[1],
+                    'dt_efetivacao': AnsApuracao._data_iso_br(r.DT_EFETIVACAO)[1],
+                    'dt_deferido': AnsApuracao._data_iso_br(r.DT_DEFERIDO)[1],
+                    'just_aceita': AnsApuracao._sim_nao(r.JUST_ACEITA),
+                    'no_prazo': AnsApuracao._sim_nao(r.NO_PRAZO),
+                    'advertencia': AnsApuracao._sim_nao(r.ADVERTENCIA),
+                    'dt_advertencia': AnsApuracao._data_iso_br(r.DT_ADVERTENCIA)[1],
+                    'reincidencia': AnsApuracao._sim_nao(r.REINCIDENCIA),
+                    'dt_reincidencia': AnsApuracao._data_iso_br(r.DT_REINCIDENCIA)[1],
+                    'reiteracao': AnsApuracao._sim_nao(r.REITERACAO),
+                    'dt_reiteracao': AnsApuracao._data_iso_br(r.DT_REITERACAO)[1],
+                    'dsc_justificativa': r.DSC_JUSTIFICATIVA,
+                    'retorno_prestadora': r.RETORNO_PREST,
+                    'manifestacao_geadi': r.MANIFESTACAO_GEADI,
+                }
+
+            # Linha do tempo completa, preenchendo os meses sem registro
+            meses = []
+            contagem = dict((item['codigo'], 0) for item in AnsApuracao.LEGENDA_HISTORICO)
+            for d in resultado['datas']:
+                mes = meses_por_data.get(d['iso'])
+                if mes is None:
+                    mes = {'dt_apuracao': d['iso'], 'dt_apuracao_br': d['br'], 'status': 'NADA_NO_MES'}
+                meses.append(mes)
+                contagem[mes['status']] += 1
+                totais_gerais[mes['status']] += 1
+
+            presentes = [m for m in meses if m['status'] != 'NADA_NO_MES']
+            ultimo = presentes[-1] if presentes else None
+            resultado['ocorrencias'].append({
+                'nr_ocorrencia': nr,
+                'meses': meses,
+                'contagem': contagem,
+                'qtde_apuracoes': len(presentes),
+                'primeira_apuracao': presentes[0]['dt_apuracao_br'] if presentes else None,
+                'ultima_apuracao': ultimo['dt_apuracao_br'] if ultimo else None,
+                'status_atual': ultimo['status'] if ultimo else None,
+                'grupo_atual': ultimo['grupo'] if ultimo else None,
+                'no_grupo_atual': ultimo['no_grupo'] if ultimo else None,
+            })
+
+        resultado['totais'] = totais_gerais
+        return resultado
+
 
 class AnsItensFaturamento(db.Model):
     __tablename__ = 'MOV_TB043_ANS_ITENS_FATURAMENTO'

@@ -99,6 +99,7 @@ ACOES = {
     'ACESSO_NEGADO_AUDITORIA': {'rotulo': 'Acesso negado à auditoria',        'origem': 'SISTEMA',  'cor': 'bg-danger',                'icone': 'fa-ban'},
     'ACESSO_PREVIAS':          {'rotulo': 'Consulta às prévias',              'origem': 'CONSULTA', 'cor': 'bg-light text-dark border', 'icone': 'fa-eye'},
     'EXPORTACAO_PREVIAS':      {'rotulo': 'Exportação das prévias',           'origem': 'CONSULTA', 'cor': 'bg-light text-dark border', 'icone': 'fa-file-excel'},
+    'CONSULTA_HISTORICO':      {'rotulo': 'Consulta ao histórico',            'origem': 'CONSULTA', 'cor': 'bg-light text-dark border', 'icone': 'fa-history'},
 }
 
 ORIGENS = {

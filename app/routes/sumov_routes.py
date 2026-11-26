@@ -4493,6 +4493,53 @@ def ans_glosas_tutorial():
                            etapas=etapas)
 
 
+@sumov_bp.route('/faturamento/ans-glosas/historico', methods=['POST'])
+@login_required
+def ans_glosas_historico():
+    """
+    Histórico de uma ou mais ocorrências em TODAS as datas de apuração (TB045),
+    com o status de cada mês (reiterada, reincidida, advertida, sem penalidade,
+    pendente ou nada no mês). Somente leitura.
+    """
+    import re
+    from app.models.ans_apuracao import AnsApuracao
+    from app.utils.ans_auditoria import registrar_evento_simples  # [AUDITORIA]
+
+    LIMITE = 100
+    try:
+        dados = request.get_json(silent=True) or {}
+        bruto = dados.get('ocorrencias', [])
+
+        # Aceita lista ou texto livre ("123, 456 789") — fica só com os números
+        if isinstance(bruto, (list, tuple)):
+            bruto = ' '.join(str(x) for x in bruto)
+        nrs = []
+        for parte in re.findall(r'\d+', str(bruto or '')):
+            v = int(parte)
+            if v not in nrs:
+                nrs.append(v)
+
+        if not nrs:
+            return jsonify({'success': False, 'message': 'Informe pelo menos um número de ocorrência.'}), 400
+        if len(nrs) > LIMITE:
+            return jsonify({'success': False,
+                            'message': 'Informe no máximo {} ocorrências por consulta.'.format(LIMITE)}), 400
+
+        historico = AnsApuracao.obter_historico_ocorrencias(nrs)
+
+        registrar_evento_simples('CONSULTA_HISTORICO',  # [AUDITORIA]
+                                 mensagem='Histórico de {} ocorrência(s)'.format(len(nrs)),
+                                 parametros={'ocorrencias': nrs})
+
+        historico['success'] = True
+        return jsonify(historico)
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Erro ao consultar o histórico: {}'.format(str(e))}), 500
+
+
 # =====================================================
 # ANS GLOSAS - AUDITORIA (somente admin / moderador)  — FUNÇÕES NOVAS
 # =====================================================
