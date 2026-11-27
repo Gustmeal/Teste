@@ -12,7 +12,7 @@
                    title="Passo a passo das penalidades ANS">
                     <i class="fas fa-graduation-cap me-1"></i>Tutorial
                 </a>
-                <span class="btn text-white js-ignore-loading" onclick="abrirModalHistorico()"
+                <span class="btn text-white js-ignore-loading" onclick="histPararClique(event); abrirModalHistorico()"
                       style="cursor:pointer;background:linear-gradient(135deg,#6f42c1,#4b2a8a);border:none;"
                       title="Histórico de uma ou mais ocorrências em todas as datas de apuração">
                     <i class="fas fa-history me-1"></i>Histórico
@@ -65,7 +65,7 @@
                            placeholder="Digite o nº da ocorrência e tecle Enter" style="display:block !important;">
                     <span class="btn btn-primary js-ignore-loading" onclick="buscarOcorrencia()" style="cursor:pointer;white-space:nowrap;" title="Localizar"><i class="fas fa-search me-1"></i></span>
                     <span class="btn btn-outline-secondary js-ignore-loading" onclick="limparBuscaOcorrencia()" style="cursor:pointer;" title="Limpar"><i class="fas fa-times"></i></span>
-                    <span class="btn btn-outline-primary js-ignore-loading" onclick="abrirHistoricoDaBusca()" style="cursor:pointer;white-space:nowrap;" title="Ver o histórico desta ocorrência em todas as apurações"><i class="fas fa-history me-1"></i>Histórico</span>
+                    <span class="btn btn-outline-primary js-ignore-loading" onclick="histPararClique(event); abrirHistoricoDaBusca()" style="cursor:pointer;white-space:nowrap;" title="Ver o histórico desta ocorrência em todas as apurações"><i class="fas fa-history me-1"></i>Histórico</span>
                 </div>
                 <small id="buscaOcorrenciaMsg" class="text-muted"></small>
             </div>
@@ -547,10 +547,10 @@
                                 <input type="text" id="histInput" class="hist-input" inputmode="numeric" autocomplete="off"
                                        placeholder="Digite o nº e tecle Enter (ou cole vários de uma vez)">
                             </div>
-                            <span id="btnHistConsultar" class="btn btn-primary px-4 js-ignore-loading d-flex align-items-center" onclick="consultarHistorico()" style="cursor:pointer;">
+                            <span id="btnHistConsultar" class="btn btn-primary px-4 js-ignore-loading d-flex align-items-center" onclick="histPararClique(event); consultarHistorico()" style="cursor:pointer;">
                                 <i class="fas fa-search me-2"></i>Consultar
                             </span>
-                            <span class="btn btn-outline-secondary js-ignore-loading d-flex align-items-center" onclick="limparHistorico()" style="cursor:pointer;" title="Limpar tudo">
+                            <span class="btn btn-outline-secondary js-ignore-loading d-flex align-items-center" onclick="histPararClique(event); limparHistorico()" style="cursor:pointer;" title="Limpar tudo">
                                 <i class="fas fa-eraser"></i>
                             </span>
                         </div>
@@ -612,7 +612,7 @@
 
                 <div class="modal-footer py-2">
                     <small class="text-muted me-auto" id="histRodape"></small>
-                    <span class="btn btn-secondary js-ignore-loading" onclick="fecharModalHistorico()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Fechar</span>
+                    <span class="btn btn-secondary js-ignore-loading" onclick="histPararClique(event); fecharModalHistorico()" style="cursor:pointer;"><i class="fas fa-times me-1"></i>Fechar</span>
                 </div>
             </div>
         </div>
@@ -676,6 +676,8 @@
         .hist-sn.nao{background:#e3e6f0;color:#5a5c69}
         .hist-sn.ok{background:#1cc88a;color:#fff}
         .hist-sn.vazio{background:transparent;color:#b7b9cc}
+        .hist-sn.herdada{background:#f1f2f7;color:#858796;border:1px dashed #b7b9cc}
+        .hist-sn.herdada small{font-size:.62rem;font-weight:600}
         .hist-texto{background:#f8f9fc;border-left:4px solid #6f42c1;border-radius:6px;padding:8px 12px;font-size:.82rem;white-space:pre-wrap;max-height:140px;overflow:auto}
         .hist-card-oc{background:#fff;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,.05);margin-bottom:14px;overflow:hidden;animation:histFade .2s ease}
         .hist-card-oc-head{padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;cursor:pointer;border-left:5px solid #6f42c1}
@@ -1188,6 +1190,14 @@ var histLegendaMap = {};     // codigo -> item da legenda
 var histFiltro = null;       // código da legenda destacado (ou null)
 var histSelecionada = null;  // {nr, idx} do quadradinho clicado
 
+// O static/js/script.js põe em TODO .btn um clique que troca o texto por "Processando..."
+// e restaura 500 ms depois o HTML que estava no botão. Como o nosso clique já trocou o
+// botão para "Consultando...", ele restaurava esse spinner por cima do botão já liberado
+// (carregando infinito). Parar a propagação aqui impede esse handler de rodar.
+function histPararClique(ev) {
+    if (ev) { ev.preventDefault(); ev.stopImmediatePropagation(); }
+}
+
 function histEsc(t) {
     if (t === null || t === undefined) return '';
     return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -1439,7 +1449,9 @@ function renderizarMatriz() {
             var tip = 'Ocorrência ' + oc.nr_ocorrencia + ' — ' + m.dt_apuracao_br + '\n' + (l.rotulo || '');
             if (!nada) {
                 tip += '\nJust. aceita: ' + (m.just_aceita || '—') + ' | No prazo: ' + (m.no_prazo || '—') +
-                       '\nAdv: ' + (m.advertencia || '—') + ' | Reinc: ' + (m.reincidencia || '—') + ' | Reit: ' + (m.reiteracao || '—');
+                       '\nAdv: ' + (m.advertencia || '—') + (m.adv_herdada ? ' (herdada)' : '') +
+                       ' | Reinc: ' + (m.reincidencia || '—') + (m.reinc_herdada ? ' (herdada)' : '') +
+                       ' | Reit: ' + (m.reiteracao || '—') + (m.reit_herdada ? ' (herdada)' : '');
             }
             var jus = (!nada && m.just_aceita) ? '<span class="hist-cel-jus">' + (m.just_aceita === 'Sim' ? 'S' : 'N') + '</span>' : '';
             h += '<td><span class="hist-cel js-ignore-loading' + (nada ? ' nada' : '') + '" data-status="' + m.status + '" ' +
@@ -1454,9 +1466,11 @@ function renderizarMatriz() {
     aplicarFiltroVisual();
 }
 
-function snBadge(v, invertido) {
+function snBadge(v, invertido, herdada) {
     // Para penalidades: Sim = vermelho. Para "Just. aceita"/"No prazo": Sim = verde.
+    // herdada = campo Sim que veio de mês anterior (não conta como penalidade do mês)
     if (!v) return '<span class="hist-sn vazio">—</span>';
+    if (herdada && v === 'Sim') return '<span class="hist-sn herdada" title="Marcação herdada de mês anterior — não conta neste mês">Sim <small>(herdada)</small></span>';
     if (v === 'Sim') return '<span class="hist-sn ' + (invertido ? 'ok' : 'sim') + '">Sim</span>';
     return '<span class="hist-sn ' + (invertido ? 'sim' : 'nao') + '">Não</span>';
 }
@@ -1486,15 +1500,23 @@ function selecionarMes(nr, idx) {
              '<div class="hist-det-box"><div class="rot">Just. aceita?</div><div class="val">' + snBadge(m.just_aceita, true) + '</div></div>' +
              '<div class="hist-det-box"><div class="rot">No prazo?</div><div class="val">' + snBadge(m.no_prazo, true) + '</div></div>' +
              '<div class="hist-det-box"><div class="rot">Dias / Prazo</div><div class="val">' + (m.qtde_dias !== null && m.qtde_dias !== undefined ? m.qtde_dias : '—') + ' / ' + (m.prazo !== null && m.prazo !== undefined ? m.prazo : '—') + '</div></div>' +
-             '<div class="hist-det-box"><div class="rot">Advertência</div><div class="val">' + snBadge(m.advertencia) + '</div><div class="small text-muted">' + histEsc(m.dt_advertencia || '') + '</div></div>' +
-             '<div class="hist-det-box"><div class="rot">Reincidência</div><div class="val">' + snBadge(m.reincidencia) + '</div><div class="small text-muted">' + histEsc(m.dt_reincidencia || '') + '</div></div>' +
-             '<div class="hist-det-box"><div class="rot">Reiteração</div><div class="val">' + snBadge(m.reiteracao) + '</div><div class="small text-muted">' + histEsc(m.dt_reiteracao || '') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Advertência</div><div class="val">' + snBadge(m.advertencia, false, m.adv_herdada) + '</div><div class="small text-muted">' + histEsc(m.dt_advertencia || '') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Reincidência</div><div class="val">' + snBadge(m.reincidencia, false, m.reinc_herdada) + '</div><div class="small text-muted">' + histEsc(m.dt_reincidencia || '') + '</div></div>' +
+             '<div class="hist-det-box"><div class="rot">Reiteração</div><div class="val">' + snBadge(m.reiteracao, false, m.reit_herdada) + '</div><div class="small text-muted">' + histEsc(m.dt_reiteracao || '') + '</div></div>' +
              '</div>' +
              '<div class="d-flex flex-wrap gap-3 small text-muted mb-2">' +
              '<span><i class="fas fa-door-open me-1"></i>Abertura: <b>' + histEsc(m.dt_abertura || '—') + '</b></span>' +
              '<span><i class="fas fa-file-signature me-1"></i>Justificativa: <b>' + histEsc(m.dt_justificativa || '—') + '</b></span>' +
              '<span><i class="fas fa-check-double me-1"></i>Efetivação: <b>' + histEsc(m.dt_efetivacao || '—') + '</b></span>' +
              '<span><i class="fas fa-stamp me-1"></i>Deferido: <b>' + histEsc(m.dt_deferido || '—') + '</b></span></div>';
+        if (m.adv_herdada || m.reinc_herdada || m.reit_herdada) {
+            h += '<div class="alert alert-light border py-2 small mb-2"><i class="fas fa-info-circle me-1 text-secondary"></i>' +
+                 'Os campos marcados como <b>Sim (herdada)</b> vieram de uma apuração anterior e não contam como penalidade deste mês.</div>';
+        }
+        if (m.status === 'RETIRADA') {
+            h += '<div class="alert alert-info py-2 small mb-2"><i class="fas fa-undo me-1"></i>' +
+                 histEsc((histLegendaMap.RETIRADA || {}).descricao) + '</div>';
+        }
         if (m.dsc_justificativa) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-comment-dots me-1 text-info"></i>Descrição da justificativa</div><div class="hist-texto">' + histEsc(m.dsc_justificativa) + '</div>';
         if (m.retorno_prestadora) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-reply me-1 text-primary"></i>Retorno da prestadora</div><div class="hist-texto" style="border-left-color:#4e73df;">' + histEsc(m.retorno_prestadora) + '</div>';
         if (m.manifestacao_geadi) h += '<div class="small fw-bold mt-2 mb-1"><i class="fas fa-landmark me-1 text-secondary"></i>Manifestação GEADI</div><div class="hist-texto" style="border-left-color:#858796;">' + histEsc(m.manifestacao_geadi) + '</div>';
@@ -1538,7 +1560,7 @@ function renderizarDetalhado() {
                      '<td class="fw-bold">' + m.dt_apuracao_br + '</td><td>' + histEsc(m.grupo) + '</td>' +
                      '<td>' + snBadge(m.just_aceita, true) + '</td><td>' + snBadge(m.no_prazo, true) + '</td>' +
                      '<td>' + (m.qtde_dias !== null && m.qtde_dias !== undefined ? m.qtde_dias : '—') + ' / ' + (m.prazo !== null && m.prazo !== undefined ? m.prazo : '—') + '</td>' +
-                     '<td>' + snBadge(m.advertencia) + '</td><td>' + snBadge(m.reincidencia) + '</td><td>' + snBadge(m.reiteracao) + '</td>' +
+                     '<td>' + snBadge(m.advertencia, false, m.adv_herdada) + '</td><td>' + snBadge(m.reincidencia, false, m.reinc_herdada) + '</td><td>' + snBadge(m.reiteracao, false, m.reit_herdada) + '</td>' +
                      '<td>' + pillStatus(m.status) + '</td></tr>';
             }
         }

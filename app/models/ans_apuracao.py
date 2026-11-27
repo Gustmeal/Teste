@@ -965,8 +965,12 @@ class AnsApuracao(db.Model):
          'descricao': 'Reincidência = Sim no mês (já era advertida na apuração anterior).'},
         {'codigo': 'ADVERTIDA', 'rotulo': 'Advertida', 'sigla': 'AD', 'cor': '#e74a3b', 'icone': 'fa-gavel',
          'descricao': 'Advertência = Sim no mês.'},
+        {'codigo': 'RETIRADA', 'rotulo': 'Retirada manualmente', 'sigla': 'RM', 'cor': '#36b9cc', 'icone': 'fa-undo',
+         'descricao': 'A penalidade do mês foi alterada para Não manualmente (com retorno da prestadora). '
+                      'Não conta como penalidade no mês.'},
         {'codigo': 'SEM_PENALIDADE', 'rotulo': 'Sem penalidade', 'sigla': 'OK', 'cor': '#1cc88a', 'icone': 'fa-shield-alt',
-         'descricao': 'Analisada no mês, sem advertência, reincidência ou reiteração.'},
+         'descricao': 'Analisada no mês, sem advertência, reincidência ou reiteração do próprio mês '
+                      '(marcações herdadas de meses anteriores não contam).'},
         {'codigo': 'PENDENTE', 'rotulo': 'Pendente de análise', 'sigla': 'PD', 'cor': '#f6c23e', 'icone': 'fa-hourglass-half',
          'descricao': 'Estava na apuração, mas a justificativa ainda não foi analisada (Sim/Não).'},
         {'codigo': 'NADA_NO_MES', 'rotulo': 'Nada no mês', 'sigla': '—', 'cor': '#d1d3e2', 'icone': 'fa-minus',
@@ -997,14 +1001,64 @@ class AnsApuracao(db.Model):
             return txt, txt
 
     @staticmethod
+    def _so_data(valor):
+        """date/datetime/str -> date (ou None)."""
+        if valor is None or valor == '':
+            return None
+        if isinstance(valor, datetime):
+            return valor.date()
+        if isinstance(valor, date):
+            return valor
+        try:
+            return datetime.strptime(str(valor)[:10], '%Y-%m-%d').date()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _penalidade_do_mes(flag, dt_penalidade, dt_apuracao):
+        """
+        A penalidade é DO MÊS quando o campo = 1 e a data dela não é anterior à apuração.
+        Campo = 1 com data de mês anterior é marcação HERDADA: veio copiada pela rotina
+        (ocorrências do mês anterior) ou a rotina regravou a data da 1ª vez. Ela não é
+        uma penalidade nova naquele mês (mesmo critério da TB049 e do Excel).
+        """
+        if flag != 1:
+            return False
+        dp = AnsApuracao._so_data(dt_penalidade)
+        da = AnsApuracao._so_data(dt_apuracao)
+        if dp is None or da is None:
+            return True
+        return dp >= da
+
+    @staticmethod
+    def _penalidades_mes(row):
+        """Retorna (adv_do_mes, reinc_do_mes, reit_do_mes) já descontando as herdadas."""
+        return (
+            AnsApuracao._penalidade_do_mes(row.ADVERTENCIA, row.DT_ADVERTENCIA, row.DT_APURACAO),
+            AnsApuracao._penalidade_do_mes(row.REINCIDENCIA, row.DT_REINCIDENCIA, row.DT_APURACAO),
+            AnsApuracao._penalidade_do_mes(row.REITERACAO, row.DT_REITERACAO, row.DT_APURACAO),
+        )
+
+    @staticmethod
     def _classificar_mes(row):
-        """Status do mês pela regra de prioridade: Reiteração > Reincidência > Advertência > Pendente > Sem penalidade."""
-        if row.REITERACAO == 1:
+        """
+        Status do mês. Prioridade:
+          Reiteração do mês > Reincidência do mês > Advertência do mês >
+          Retirada manualmente (tem retorno da prestadora na TB048) >
+          Pendente (JUST_ACEITA vazio) > Sem penalidade.
+        Marcações herdadas de meses anteriores NÃO classificam o mês: se a última
+        reiteração foi retirada manualmente, a reincidência antiga que ficou na linha
+        não faz o mês aparecer como "Reincidida".
+        """
+        adv, reinc, reit = AnsApuracao._penalidades_mes(row)
+        if reit:
             return 'REITERADA'
-        if row.REINCIDENCIA == 1:
+        if reinc:
             return 'REINCIDIDA'
-        if row.ADVERTENCIA == 1:
+        if adv:
             return 'ADVERTIDA'
+        if getattr(row, 'TEM_TB048', 0) == 1:
+            return 'RETIRADA'
         if row.JUST_ACEITA is None:
             return 'PENDENTE'
         return 'SEM_PENALIDADE'
@@ -1050,7 +1104,8 @@ class AnsApuracao(db.Model):
                    A.REITERACAO, A.DT_REITERACAO,
                    A.DSC_JUSTIFICATIVA,
                    B.itemServico, B.PRAZO, B.NO_GRUPO,
-                   J.RETORNO_PREST, J.MANIFESTACAO_GEADI
+                   J.RETORNO_PREST, J.MANIFESTACAO_GEADI,
+                   CASE WHEN J.nrOcorrencia IS NULL THEN 0 ELSE 1 END AS TEM_TB048
             FROM BDDASHBOARDBI.BDG.MOV_TB045_ANS_APURACAO A
             OUTER APPLY (SELECT TOP 1 X.itemServico, X.PRAZO, X.NO_GRUPO
                          FROM BDDASHBOARDBI.BDG.MOV_TB043_ANS_ITENS_FATURAMENTO X
@@ -1102,6 +1157,7 @@ class AnsApuracao(db.Model):
             for r in por_nr[nr]:
                 iso, br = AnsApuracao._data_iso_br(r.DT_APURACAO)
                 status = AnsApuracao._classificar_mes(r)
+                adv_mes, reinc_mes, reit_mes = AnsApuracao._penalidades_mes(r)
                 meses_por_data[iso] = {
                     'dt_apuracao': iso,
                     'dt_apuracao_br': br,
@@ -1122,6 +1178,11 @@ class AnsApuracao(db.Model):
                     'dt_reincidencia': AnsApuracao._data_iso_br(r.DT_REINCIDENCIA)[1],
                     'reiteracao': AnsApuracao._sim_nao(r.REITERACAO),
                     'dt_reiteracao': AnsApuracao._data_iso_br(r.DT_REITERACAO)[1],
+                    # Campo = 1 mas de mês anterior (não conta no mês) — o front mostra "Sim (herdada)"
+                    'adv_herdada': r.ADVERTENCIA == 1 and not adv_mes,
+                    'reinc_herdada': r.REINCIDENCIA == 1 and not reinc_mes,
+                    'reit_herdada': r.REITERACAO == 1 and not reit_mes,
+                    'retirada_manual': getattr(r, 'TEM_TB048', 0) == 1,
                     'dsc_justificativa': r.DSC_JUSTIFICATIVA,
                     'retorno_prestadora': r.RETORNO_PREST,
                     'manifestacao_geadi': r.MANIFESTACAO_GEADI,
